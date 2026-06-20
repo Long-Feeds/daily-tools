@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cron 透镜 · 表达式解释 + 下次触发预览</title>
+<meta name="description" content="把 cron 表达式翻译成人话,并预览接下来的触发时间。支持时区、范围/步长/列表、@daily 等宏。">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%236ea8fe'/%3E%3Ctext x='50' y='72' font-size='60' text-anchor='middle'%3E⏰%3C/text%3E%3C/svg%3E">
+<style>
+:root{
+  --bg:#0b0d12; --card:#161a24; --card2:#12151d; --border:#242a37; --text:#e7ebf3;
+  --muted:#8b94a7; --accent:#6ea8fe; --accent2:#9d7bff; --ok:#5fd28b; --err:#ff7a8a; --radius:14px;
+}
+@media (prefers-color-scheme:light){
+  :root{--bg:#f6f8fc;--card:#fff;--card2:#eef2f9;--border:#e2e8f2;--text:#1a2030;--muted:#5d6577;--accent:#2f6bff;--accent2:#7a4fe0;--ok:#1c9e5e;--err:#d6455a;}
+}
+*{box-sizing:border-box;}
+body{margin:0;background:radial-gradient(1100px 500px at 85% -10%,rgba(110,168,254,.10),transparent 60%),var(--bg);color:var(--text);
+  font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft Yahei",Roboto,Arial,sans-serif;min-height:100vh;}
+.wrap{max-width:880px;margin:0 auto;padding:32px 20px 80px;}
+.back{color:var(--muted);text-decoration:none;font-size:14px;}
+.back:hover{color:var(--accent);}
+header h1{font-size:28px;margin:14px 0 4px;letter-spacing:-.02em;}
+header p{color:var(--muted);margin:0 0 22px;font-size:14.5px;}
+.input-row{display:flex;gap:12px;flex-wrap:wrap;}
+.expr-wrap{flex:1;min-width:240px;}
+label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px;}
+#expr{width:100%;padding:14px 16px;font:600 20px/1.3 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;letter-spacing:.06em;
+  background:var(--card2);border:1px solid var(--border);border-radius:12px;color:var(--text);outline:none;}
+#expr:focus{border-color:var(--accent);}
+#expr.invalid{border-color:var(--err);}
+select{padding:14px 12px;background:var(--card2);border:1px solid var(--border);border-radius:12px;color:var(--text);font-size:15px;outline:none;min-width:170px;}
+.presets{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0 4px;}
+.preset{padding:7px 12px;border-radius:999px;border:1px solid var(--border);background:var(--card2);color:var(--muted);
+  cursor:pointer;font:13px ui-monospace,monospace;transition:.15s;}
+.preset:hover{color:var(--text);border-color:var(--accent);}
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:18px 20px;margin-top:20px;}
+#summary{font-size:19px;font-weight:650;display:flex;align-items:center;gap:10px;}
+#summary .ico{font-size:22px;}
+#error{color:var(--err);font-weight:600;margin-top:14px;display:none;}
+#error.show{display:block;}
+.section-title{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0 0 12px;}
+table{width:100%;border-collapse:collapse;font-size:14.5px;}
+th,td{text-align:left;padding:9px 8px;border-bottom:1px solid var(--border);}
+th{color:var(--muted);font-weight:600;font-size:12.5px;}
+td.field{font:600 14px ui-monospace,monospace;color:var(--accent);white-space:nowrap;}
+td.raw{font:14px ui-monospace,monospace;color:var(--muted);}
+#next-runs{list-style:none;margin:0;padding:0;}
+#next-runs li{display:flex;align-items:baseline;gap:12px;padding:10px 4px;border-bottom:1px solid var(--border);font-size:15px;}
+#next-runs li:last-child{border-bottom:none;}
+#next-runs .dt{font:600 15px ui-monospace,monospace;letter-spacing:.02em;}
+#next-runs .wd{color:var(--accent);font-size:13px;}
+#next-runs .rel{margin-left:auto;color:var(--muted);font-size:13px;}
+.toolbar{display:flex;gap:10px;margin-top:14px;}
+.btn{padding:9px 14px;border-radius:10px;border:1px solid var(--border);background:var(--card2);color:var(--text);cursor:pointer;font-size:14px;}
+.btn:hover{border-color:var(--accent);}
+.btn.copied{color:var(--ok);border-color:var(--ok);}
+.legend{color:var(--muted);font-size:12.5px;margin-top:10px;font-family:ui-monospace,monospace;}
+footer{margin-top:40px;color:var(--muted);font-size:12.5px;text-align:center;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="../../">← 返回工具集</a>
+  <header>
+    <h1>⏰ Cron 透镜</h1>
+    <p>把 cron 表达式翻译成人话,并预览接下来会在什么时候触发。支持范围 <code>1-5</code>、步长 <code>*/15</code>、列表 <code>1,3,5</code>、月份/星期名、以及 <code>@daily</code> 等宏。</p>
+  </header>
+
+  <div class="input-row">
+    <div class="expr-wrap">
+      <label for="expr">Cron 表达式(分 时 日 月 周)</label>
+      <input id="expr" type="text" value="0 9 * * *" spellcheck="false" autocomplete="off" autocapitalize="off">
+    </div>
+    <div>
+      <label for="tz">时区</label>
+      <select id="tz"></select>
+    </div>
+  </div>
+
+  <div class="presets" id="presets"></div>
+
+  <div class="card">
+    <div id="summary"></div>
+    <div id="error"></div>
+    <div class="legend" id="legend"></div>
+    <div class="toolbar">
+      <button class="btn" id="copy">复制表达式</button>
+    </div>
+  </div>
+
+  <div class="card" id="fields-card">
+    <p class="section-title">字段明细</p>
+    <table>
+      <thead><tr><th>字段</th><th>值</th><th>含义</th></tr></thead>
+      <tbody id="fields"></tbody>
+    </table>
+  </div>
+
+  <div class="card" id="runs-card">
+    <p class="section-title">接下来的触发时间</p>
+    <ul id="next-runs"></ul>
+  </div>
+
+  <footer>每日工具集 · Cron 透镜 · 纯前端 · 计算在你的浏览器本地完成</footer>
+</div>
+
+<script>
+const WD = ['周日','周一','周二','周三','周四','周五','周六'];
+const FIELD_DEFS = [
+  { name:'minute', label:'分钟', unit:'分钟', min:0, max:59 },
+  { name:'hour',   label:'小时', unit:'小时', min:0, max:23 },
+  { name:'dom',    label:'日(月)', unit:'天', min:1, max:31 },
+  { name:'month',  label:'月份', unit:'个月', min:1, max:12,
+    names:{jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12} },
+  { name:'dow',    label:'星期', unit:'天', min:0, max:7,
+    names:{sun:0,mon:1,tue:2,wed:3,thu:4,fri:5,sat:6} },
+];
+const MACROS = {
+  '@yearly':'0 0 1 1 *','@annually':'0 0 1 1 *','@monthly':'0 0 1 * *',
+  '@weekly':'0 0 * * 0','@daily':'0 0 * * *','@midnight':'0 0 * * *','@hourly':'0 * * * *',
+};
+const PRESETS = [
+  ['* * * * *','每分钟'],['*/15 * * * *','每15分钟'],['0 * * * *','每小时'],
+  ['0 9 * * *','每天9点'],['30 8 * * 1-5','工作日8:30'],['0 0 * * 0','每周日0点'],
+  ['0 0 1 * *','每月1号'],['0 0 1 1 *','每年元旦'],['@daily','@daily'],
+];
+
+function parseField(raw, def){
+  const norm = (tok)=>{
+    let t = tok.trim().toLowerCase();
+    if (def.names && def.names[t] !== undefined) return def.names[t];
+    const n = Number(t);
+    if (t==='' || !Number.isInteger(n)) throw new Error(`「${def.label}」含非法值:"${tok}"`);
+    return n;
+  };
+  const set = new Set();
+  const add = (v)=>{
+    if (def.name==='dow' && v===7) v=0;
+    if (v < def.min || v > def.max) throw new Error(`「${def.label}」值 ${v} 超出范围 ${def.min}-${def.max}`);
+    set.add(v);
+  };
+  for (let part of raw.split(',')){
+    part = part.trim();
+    if (part==='') throw new Error(`「${def.label}」有空项`);
+    let step = 1, rangePart = part;
+    if (part.includes('/')){
+      const bits = part.split('/');
+      if (bits.length!==2) throw new Error(`「${def.label}」步长写法非法:"${part}"`);
+      step = Number(bits[1]);
+      if (!Number.isInteger(step) || step<=0) throw new Error(`「${def.label}」步长非法:"${bits[1]}"`);
+      rangePart = bits[0];
+    }
+    let lo, hi;
+    if (rangePart==='*' || rangePart==='?'){ lo=def.min; hi=def.max; }
+    else if (rangePart.includes('-')){
+      const [a,b] = rangePart.split('-');
+      lo=norm(a); hi=norm(b);
+      if (def.name==='dow'){ if(lo===7)lo=0; if(hi===7)hi=0; }
+    } else {
+      lo = hi = norm(rangePart);
+      if (def.name==='dow' && lo===7){ lo=hi=0; }
+    }
+    if (lo > hi) throw new Error(`「${def.label}」范围起点大于终点:"${rangePart}"`);
+    for (let v=lo; v<=hi; v+=step) add(v);
+  }
+  if (set.size===0) throw new Error(`「${def.label}」未解析出任何值`);
+  return [...set].sort((a,b)=>a-b);
+}
+
+function parseCron(expr){
+  let e = expr.trim().replace(/\s+/g,' ');
+  if (!e) throw new Error('请输入 cron 表达式');
+  if (MACROS[e.toLowerCase()]) e = MACROS[e.toLowerCase()];
+  const parts = e.split(' ');
+  if (parts.length !== 5) throw new Error(`需要 5 个字段(分 时 日 月 周),当前 ${parts.length} 个`);
+  const fields = {};
+  FIELD_DEFS.forEach((def,i)=>{
+    const raw = parts[i];
+    fields[def.name] = { raw, values: parseField(raw, def), star: raw.trim()==='*'||raw.trim()==='?' };
+  });
+  return { norm:e, parts, fields };
+}
+
+function tzParts(tz, date){
+  const dtf = new Intl.DateTimeFormat('en-CA',{ timeZone:tz, hour12:false,
+    year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit' });
+  const p = {};
+  for (const x of dtf.formatToParts(date)) if (x.type!=='literal') p[x.type]=+x.value;
+  if (p.hour===24) p.hour=0;
+  return { y:p.year, mo:p.month, d:p.day, h:p.hour, mi:p.minute };
+}
+
+function nextRuns(cron, tz, count=10, capDays=366*5){
+  const f = cron.fields;
+  const minSet=new Set(f.minute.values), hrSet=new Set(f.hour.values),
+        monSet=new Set(f.month.values), domSet=new Set(f.dom.values), dowSet=new Set(f.dow.values);
+  const domStar=f.dom.star, dowStar=f.dow.star;
+  const now = tzParts(tz, new Date());
+  // carrier date holds target-tz wall-clock fields as if they were UTC
+  let cur = new Date(Date.UTC(now.y, now.mo-1, now.d, now.h, now.mi) + 60000);
+  const limit = new Date(cur.getTime() + capDays*86400000);
+  const out=[];
+  while (cur < limit && out.length < count){
+    const Y=cur.getUTCFullYear(), Mo=cur.getUTCMonth()+1, D=cur.getUTCDate(),
+          H=cur.getUTCHours(), Mi=cur.getUTCMinutes(), dow=cur.getUTCDay();
+    if (!monSet.has(Mo)){ cur = new Date(Date.UTC(Y, Mo, 1, 0, 0)); continue; }
+    let dayOk;
+    if (domStar && dowStar) dayOk = true;
+    else if (domStar) dayOk = dowSet.has(dow);
+    else if (dowStar) dayOk = domSet.has(D);
+    else dayOk = domSet.has(D) || dowSet.has(dow);
+    if (!dayOk){ cur = new Date(Date.UTC(Y, Mo-1, D+1, 0, 0)); continue; }
+    if (!hrSet.has(H)){ cur = new Date(Date.UTC(Y, Mo-1, D, H+1, 0)); continue; }
+    if (!minSet.has(Mi)){
+      const nextMin = f.minute.values.find(m=>m>Mi);
+      cur = nextMin!==undefined ? new Date(Date.UTC(Y,Mo-1,D,H,nextMin)) : new Date(Date.UTC(Y,Mo-1,D,H+1,0));
+      continue;
+    }
+    out.push({ y:Y, mo:Mo, d:D, h:H, mi:Mi, dow });
+    cur = new Date(cur.getTime()+60000);
+  }
+  return out;
+}
+
+const pad = (n)=>String(n).padStart(2,'0');
+
+function humanizeDelta(ms){
+  if (ms < 0) return '';
+  const m = Math.round(ms/60000);
+  if (m < 1) return '即将';
+  const days = Math.floor(m/1440), hrs = Math.floor((m%1440)/60), mins = m%60;
+  if (days>0) return `距现在 ${days} 天${hrs?` ${hrs} 小时`:''}`;
+  if (hrs>0) return `距现在 ${hrs} 小时${mins?` ${mins} 分`:''}`;
+  return `距现在 ${mins} 分钟`;
+}
+
+function describe(cron){
+  const f = cron.fields;
+  const everyMin = f.minute.values.length===60, everyHr = f.hour.values.length===24;
+  const allDate = f.dom.star && f.month.star && f.dow.star;
+  const mstep = (f.minute.raw.trim().match(/^\*\/(\d+)$/)||[])[1];
+  const time = (f.hour.values.length===1 && f.minute.values.length===1)
+    ? `${pad(f.hour.values[0])}:${pad(f.minute.values[0])}` : null;
+  if (everyMin && everyHr && allDate) return '每分钟执行一次';
+  if (mstep && everyHr && allDate) return `每 ${mstep} 分钟执行一次`;
+  if (f.minute.values.length===1 && everyHr && allDate) return `每小时的第 ${f.minute.values[0]} 分钟执行`;
+  if (time && allDate) return `每天 ${time} 执行`;
+  if (time && f.dom.star && f.month.star && !f.dow.star)
+    return `每周 ${f.dow.values.map(d=>WD[d]).join('、')} 的 ${time} 执行`;
+  if (time && !f.dom.star && f.month.star && f.dow.star)
+    return `每月 ${f.dom.values.join('、')} 号的 ${time} 执行`;
+  if (time && !f.month.star)
+    return `每年 ${f.month.values.join('、')} 月` + (f.dom.star?'':` ${f.dom.values.join('、')} 号`) + ` 的 ${time} 执行`;
+  return null;
+}
+
+function readableField(f, def){
+  const raw = f.raw.trim();
+  if (raw==='*'||raw==='?') return '任意(' + (def.name==='dom'||def.name==='dow' ? '每天':'每'+def.unit.replace(/个|钟/g,'')) + ')';
+  const step = raw.match(/^\*\/(\d+)$/);
+  if (step) return `每 ${step[1]} ${def.unit}`;
+  const vals = f.values;
+  if (def.name==='dow') return vals.map(d=>WD[d]).join('、');
+  if (def.name==='month') return vals.map(m=>m+' 月').join('、');
+  const compact = vals.length>12 ? vals.slice(0,12).join(', ')+` …(共 ${vals.length} 个)` : vals.join(', ');
+  return compact;
+}
+
+function render(){
+  const expr = document.getElementById('expr').value;
+  const tz = document.getElementById('tz').value;
+  const elErr = document.getElementById('error');
+  const elSum = document.getElementById('summary');
+  const elRuns = document.getElementById('next-runs');
+  const elFields = document.getElementById('fields');
+  const elLegend = document.getElementById('legend');
+  const elInput = document.getElementById('expr');
+  document.getElementById('legend').textContent = '┌ 分 ┬ 时 ┬ 日 ┬ 月 ┬ 周 ┐';
+  try {
+    const cron = parseCron(expr);
+    elInput.classList.remove('invalid');
+    elErr.classList.remove('show'); elErr.textContent='';
+    const desc = describe(cron);
+    elSum.innerHTML = `<span class="ico">🗒️</span><span>${desc || '复合规则,请看下方字段明细与触发时间'}</span>`;
+    elLegend.textContent = `规范化:${cron.norm}    字段顺序 = 分 时 日 月 周`;
+    // fields table
+    elFields.innerHTML = FIELD_DEFS.map(def=>{
+      const f = cron.fields[def.name];
+      return `<tr><td class="field">${def.label}</td><td class="raw">${escapeHtml(f.raw)}</td><td>${escapeHtml(readableField(f, def))}</td></tr>`;
+    }).join('');
+    // next runs
+    const runs = nextRuns(cron, tz, 10);
+    const nowCarrier = (()=>{ const n=tzParts(tz,new Date()); return Date.UTC(n.y,n.mo-1,n.d,n.h,n.mi); })();
+    if (!runs.length){
+      elRuns.innerHTML = `<li>未来若干年内没有匹配的触发时间(这个表达式可能永远不会触发,比如 2 月 30 号)。</li>`;
+    } else {
+      elRuns.innerHTML = runs.map(r=>{
+        const carrier = Date.UTC(r.y,r.mo-1,r.d,r.h,r.mi);
+        const rel = humanizeDelta(carrier - nowCarrier);
+        return `<li><span class="dt">${r.y}-${pad(r.mo)}-${pad(r.d)} ${pad(r.h)}:${pad(r.mi)}</span><span class="wd">${WD[r.dow]}</span><span class="rel">${rel}</span></li>`;
+      }).join('');
+    }
+  } catch (e){
+    elInput.classList.add('invalid');
+    elErr.textContent = '⚠️ ' + e.message;
+    elErr.classList.add('show');
+    elSum.innerHTML = '';
+    elRuns.innerHTML = '';
+    elFields.innerHTML = '';
+  }
+}
+
+function escapeHtml(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+
+function initTz(){
+  const sel = document.getElementById('tz');
+  let local = 'UTC';
+  try { local = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch(_){}
+  const zones = ['Asia/Singapore','Asia/Shanghai','Asia/Tokyo','UTC','America/New_York','America/Los_Angeles','Europe/London','Europe/Paris'];
+  if (!zones.includes(local)) zones.unshift(local);
+  for (const z of zones){
+    const o = document.createElement('option'); o.value=z; o.textContent=z; sel.appendChild(o);
+  }
+  sel.value = zones.includes('Asia/Singapore') ? 'Asia/Singapore' : local;
+}
+
+function initPresets(){
+  const box = document.getElementById('presets');
+  for (const [cron,label] of PRESETS){
+    const b = document.createElement('button');
+    b.className='preset'; b.dataset.cron=cron; b.textContent=label; b.title=cron;
+    b.onclick=()=>{ document.getElementById('expr').value=cron; render(); };
+    box.appendChild(b);
+  }
+}
+
+document.addEventListener('DOMContentLoaded', ()=>{
+  initTz(); initPresets();
+  document.getElementById('expr').addEventListener('input', render);
+  document.getElementById('tz').addEventListener('change', render);
+  document.getElementById('copy').addEventListener('click', async (e)=>{
+    try { await navigator.clipboard.writeText(document.getElementById('expr').value); }catch(_){}
+    const b=e.target; b.classList.add('copied'); const t=b.textContent; b.textContent='已复制 ✓';
+    setTimeout(()=>{b.classList.remove('copied');b.textContent=t;},1200);
+  });
+  render();
+});
+</script>
+</body>
+</html>
