@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>复利计算器 · 本金 + 定投的复利增长可视化</title>
+<meta name="description" content="算清楚一笔本金加上每月/季/年定投,在某个年化收益率下,经过若干年会滚成多少钱。带逐年增长图与明细表,看清时间与利率的力量。纯前端,数据只存在你的浏览器。">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%235fd28b'/%3E%3Ctext x='50' y='73' font-size='58' text-anchor='middle'%3E📈%3C/text%3E%3C/svg%3E">
+<style>
+:root{
+  --bg:#0b0d12; --card:#161a24; --card2:#12151d; --border:#242a37; --text:#e7ebf3;
+  --muted:#8b94a7; --accent:#6ea8fe; --accent2:#9d7bff; --ok:#5fd28b; --err:#ff7a8a; --radius:14px;
+  --principal:#6ea8fe; --interest:#5fd28b;
+}
+@media (prefers-color-scheme:light){
+  :root{--bg:#f6f8fc;--card:#fff;--card2:#eef2f9;--border:#e2e8f2;--text:#1a2030;--muted:#5d6577;
+    --accent:#2f6bff;--accent2:#7a4fe0;--ok:#1c9e5e;--err:#d6455a;--principal:#2f6bff;--interest:#1c9e5e;}
+}
+*{box-sizing:border-box;}
+body{margin:0;background:radial-gradient(1100px 520px at 85% -10%,rgba(95,210,139,.10),transparent 60%),var(--bg);color:var(--text);
+  font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft Yahei",Roboto,Arial,sans-serif;min-height:100vh;}
+.wrap{max-width:920px;margin:0 auto;padding:32px 20px 80px;}
+.back{color:var(--muted);text-decoration:none;font-size:14px;}
+.back:hover{color:var(--accent);}
+header h1{font-size:28px;margin:14px 0 4px;letter-spacing:-.02em;}
+header p{color:var(--muted);margin:0 0 22px;font-size:14.5px;max-width:680px;}
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:18px 20px;margin-top:20px;}
+.section-title{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0 0 14px;}
+
+/* inputs */
+.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px 18px;}
+@media (max-width:640px){.grid{grid-template-columns:1fr;}}
+.field label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px;}
+.field .hintline{font-size:12px;color:var(--muted);margin-top:5px;opacity:.85;}
+.input-affix{position:relative;display:flex;align-items:center;}
+.input-affix .pre,.input-affix .suf{position:absolute;color:var(--muted);font-size:14px;pointer-events:none;}
+.input-affix .pre{left:14px;} .input-affix .suf{right:14px;}
+input[type=number],select{width:100%;padding:13px 14px;background:var(--card2);border:1px solid var(--border);border-radius:11px;
+  color:var(--text);font:600 17px/1.3 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;outline:none;transition:border-color .15s;}
+.input-affix.has-pre input{padding-left:30px;} .input-affix.has-suf input{padding-right:36px;}
+select{font:600 15px/1.3 -apple-system,"PingFang SC","Microsoft Yahei",sans-serif;cursor:pointer;}
+input[type=number]:focus,select:focus{border-color:var(--accent);}
+input[type=number].invalid{border-color:var(--err);}
+input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-spin-button{opacity:.5;}
+input[type=range]{width:100%;margin:12px 0 0;accent-color:var(--ok);cursor:pointer;}
+.seg{display:flex;gap:0;border:1px solid var(--border);border-radius:11px;overflow:hidden;background:var(--card2);}
+.seg button{flex:1;padding:12px 6px;border:none;background:transparent;color:var(--muted);cursor:pointer;font:600 14px sans-serif;transition:.15s;}
+.seg button[aria-pressed=true]{background:var(--accent);color:#fff;}
+.seg button:not([aria-pressed=true]):hover{color:var(--text);}
+.presets{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px;}
+.preset{padding:7px 13px;border-radius:999px;border:1px solid var(--border);background:var(--card2);color:var(--muted);
+  cursor:pointer;font:13px sans-serif;transition:.15s;}
+.preset:hover{color:var(--text);border-color:var(--accent);}
+#hint{color:var(--err);font-weight:600;font-size:14px;margin-top:14px;min-height:0;display:none;}
+#hint.show{display:block;}
+
+/* results */
+.results{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:14px;}
+@media (max-width:640px){.results{grid-template-columns:1fr 1fr;}}
+.stat{background:var(--card2);border:1px solid var(--border);border-radius:12px;padding:16px;}
+.stat .k{font-size:12.5px;color:var(--muted);letter-spacing:.02em;}
+.stat .v{font:700 26px/1.15 ui-monospace,SFMono-Regular,Menlo,monospace;margin-top:7px;letter-spacing:-.01em;}
+.stat .sub{font-size:12.5px;color:var(--muted);margin-top:5px;}
+.stat.final{grid-column:span 1;}
+.stat.final .v{color:var(--ok);font-size:30px;}
+@media (max-width:640px){.stat.final{grid-column:span 2;}.stat.final .v{font-size:28px;}}
+.stat.interest .v{color:var(--interest);}
+.return-pill{display:inline-block;margin-top:6px;font-size:12.5px;font-weight:700;color:var(--ok);}
+
+/* chart */
+.chart-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:6px;}
+.legend{display:flex;gap:16px;font-size:12.5px;color:var(--muted);}
+.legend span{display:inline-flex;align-items:center;gap:6px;}
+.swatch{width:11px;height:11px;border-radius:3px;display:inline-block;}
+.chart-box{position:relative;width:100%;}
+svg#chart{width:100%;height:auto;display:block;overflow:visible;}
+.bar .b-prin{fill:var(--principal);}
+.bar .b-int{fill:var(--interest);}
+.bar:hover .b-prin,.bar:hover .b-int{filter:brightness(1.12);}
+.bar rect{transition:opacity .12s;}
+.axis line{stroke:var(--border);}
+.axis text,.xlab{fill:var(--muted);font:11px ui-monospace,monospace;}
+#tooltip{position:absolute;pointer-events:none;background:var(--card);border:1px solid var(--border);border-radius:10px;
+  padding:9px 11px;font-size:12.5px;line-height:1.5;box-shadow:0 8px 28px rgba(0,0,0,.35);opacity:0;transition:opacity .1s;z-index:5;white-space:nowrap;}
+#tooltip .tt-y{font-weight:700;margin-bottom:3px;}
+#tooltip .dot{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:5px;}
+
+/* table */
+.table-scroll{max-height:340px;overflow:auto;border-radius:10px;}
+table{width:100%;border-collapse:collapse;font-size:14px;}
+th,td{text-align:right;padding:9px 10px;border-bottom:1px solid var(--border);white-space:nowrap;}
+th:first-child,td:first-child{text-align:left;}
+th{color:var(--muted);font-weight:600;font-size:12px;position:sticky;top:0;background:var(--card);z-index:1;}
+tbody td{font:14px ui-monospace,monospace;}
+tbody tr:hover{background:var(--card2);}
+tbody tr.final-row td{font-weight:700;color:var(--ok);}
+td.gain{color:var(--interest);}
+.toolbar{display:flex;gap:10px;margin-top:14px;flex-wrap:wrap;}
+.btn{padding:9px 14px;border-radius:10px;border:1px solid var(--border);background:var(--card2);color:var(--text);cursor:pointer;font-size:14px;}
+.btn:hover{border-color:var(--accent);}
+.btn.done{color:var(--ok);border-color:var(--ok);}
+footer{margin-top:40px;color:var(--muted);font-size:12.5px;text-align:center;}
+footer .note{display:block;margin-top:6px;opacity:.8;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="../../">← 返回工具集</a>
+  <header>
+    <h1>📈 复利计算器</h1>
+    <p>一笔本金,加上每月 / 每季 / 每年的定投,在给定年化收益率下,经过若干年会滚成多少钱?下面实时算出最终金额、累计投入与累计收益,并画出逐年增长——看清<strong>时间与利率的力量</strong>。计算全部在你的浏览器本地完成。</p>
+  </header>
+
+  <!-- INPUTS -->
+  <div class="card">
+    <p class="section-title">参数</p>
+    <div class="grid">
+      <div class="field">
+        <label for="principal">初始本金</label>
+        <div class="input-affix has-pre"><span class="pre cur-sym">¥</span>
+          <input id="principal" type="number" inputmode="decimal" min="0" step="1000" value="100000" autocomplete="off"></div>
+        <div class="hintline">一开始就投入的一笔钱(没有就填 0)</div>
+      </div>
+
+      <div class="field">
+        <label for="contribution">每期定投金额</label>
+        <div class="input-affix has-pre"><span class="pre cur-sym">¥</span>
+          <input id="contribution" type="number" inputmode="decimal" min="0" step="100" value="3000" autocomplete="off"></div>
+        <div class="hintline">每个周期固定追加的钱(没有就填 0)</div>
+      </div>
+
+      <div class="field">
+        <label for="frequency">定投频率</label>
+        <select id="frequency">
+          <option value="12" selected>每月</option>
+          <option value="4">每季度</option>
+          <option value="1">每年</option>
+        </select>
+        <div class="hintline">复利按相同频率结算</div>
+      </div>
+
+      <div class="field">
+        <label for="rate">年化收益率</label>
+        <div class="input-affix has-suf"><input id="rate" type="number" inputmode="decimal" step="0.1" value="8" autocomplete="off"><span class="suf">%</span></div>
+        <div class="hintline">长期股指基金历史约 6–10%;可填负数</div>
+      </div>
+
+      <div class="field" style="grid-column:1/-1">
+        <label for="years">投资年限:<strong id="years-label">20</strong> 年</label>
+        <div class="input-affix has-suf" style="max-width:160px"><input id="years" type="number" inputmode="numeric" min="1" max="60" step="1" value="20" autocomplete="off"><span class="suf">年</span></div>
+        <input id="years-slider" type="range" min="1" max="60" step="1" value="20" aria-label="投资年限滑块">
+      </div>
+
+      <div class="field">
+        <label for="timing-end">缴款时机</label>
+        <div class="seg" id="timing" role="group" aria-label="缴款时机">
+          <button type="button" id="timing-end" data-timing="end" aria-pressed="true">期末投入</button>
+          <button type="button" id="timing-begin" data-timing="begin" aria-pressed="false">期初投入</button>
+        </div>
+        <div class="hintline">期初投入会多滚一个周期的利息</div>
+      </div>
+
+      <div class="field">
+        <label for="currency">货币符号</label>
+        <select id="currency">
+          <option value="¥" selected>¥ 人民币</option>
+          <option value="$">$ 美元</option>
+          <option value="€">€ 欧元</option>
+          <option value="">不显示符号</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="presets" id="presets"></div>
+    <div id="hint"></div>
+  </div>
+
+  <!-- RESULTS -->
+  <div class="card">
+    <p class="section-title">结果</p>
+    <div class="results">
+      <div class="stat final">
+        <div class="k">最终总额</div>
+        <div class="v" id="final-amount" data-raw="0">¥0</div>
+        <div class="sub" id="final-wan"></div>
+      </div>
+      <div class="stat">
+        <div class="k">累计投入</div>
+        <div class="v" id="total-contributed" data-raw="0" style="font-size:22px">¥0</div>
+        <div class="sub" id="contributed-detail"></div>
+      </div>
+      <div class="stat interest">
+        <div class="k">累计收益</div>
+        <div class="v" id="total-interest" data-raw="0" style="font-size:22px">¥0</div>
+        <div class="sub"><span class="return-pill" id="total-return" data-raw="0">+0%</span> 总回报</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CHART -->
+  <div class="card">
+    <div class="chart-head">
+      <p class="section-title" style="margin:0">逐年增长</p>
+      <div class="legend">
+        <span><i class="swatch" style="background:var(--principal)"></i>累计投入</span>
+        <span><i class="swatch" style="background:var(--interest)"></i>累计收益</span>
+      </div>
+    </div>
+    <div class="chart-box">
+      <svg id="chart" viewBox="0 0 820 320" role="img" aria-label="逐年资产增长堆叠柱状图"></svg>
+      <div id="tooltip"></div>
+    </div>
+  </div>
+
+  <!-- TABLE -->
+  <div class="card">
+    <p class="section-title">逐年明细</p>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>年份</th><th>累计投入</th><th>累计收益</th><th>期末总额</th></tr></thead>
+        <tbody id="breakdown"></tbody>
+      </table>
+    </div>
+    <div class="toolbar">
+      <button class="btn" id="copy-summary">复制结果摘要</button>
+      <button class="btn" id="reset">恢复默认</button>
+    </div>
+  </div>
+
+  <footer>
+    每日工具集 · 复利计算器 · 纯前端,参数保存在你本地浏览器
+    <span class="note">仅作教育与估算用途,假设收益率恒定、不计税费与通胀,实际投资有波动与风险。</span>
+  </footer>
+</div>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const LS_KEY = "compound-calc:v1";
+const DEFAULTS = { principal:100000, contribution:3000, frequency:12, rate:8, years:20, timing:"end", currency:"¥" };
+
+const FREQ_LABEL = { 12:"每月", 4:"每季度", 1:"每年" };
+const PRESETS = [
+  { label:"月供 3000 · 8% · 20年", v:{ principal:0, contribution:3000, frequency:12, rate:8, years:20 } },
+  { label:"一次性 10万 · 6% · 10年", v:{ principal:100000, contribution:0, frequency:12, rate:6, years:10 } },
+  { label:"月供 1000 · 10% · 30年", v:{ principal:0, contribution:1000, frequency:12, rate:10, years:30 } },
+  { label:"50万 + 月供5000 · 7% · 15年", v:{ principal:500000, contribution:5000, frequency:12, rate:7, years:15 } },
+  { label:"年存 5万 · 4% · 25年", v:{ principal:0, contribution:50000, frequency:1, rate:4, years:25 } },
+];
+
+let timing = "end";
+
+/* ---------- math ---------- */
+// Future value at the end of `year`, given per-period rate and contribution schedule.
+// Returns yearly snapshots [{year, contributed, value, interest}] for year = 0..years.
+function computeSchedule(p) {
+  const i = (p.rate / 100) / p.periodsPerYear; // per-period rate
+  const out = [];
+  for (let y = 0; y <= p.years; y++) {
+    const N = p.periodsPerYear * y;
+    let value, contributed = p.principal + p.contribution * N;
+    if (i === 0) {
+      value = p.principal + p.contribution * N;
+    } else {
+      const growth = Math.pow(1 + i, N);
+      const fvPrincipal = p.principal * growth;
+      let fvSeries = p.contribution * ((growth - 1) / i);
+      if (p.timing === "begin") fvSeries *= (1 + i); // annuity-due: each payment compounds one extra period
+      value = fvPrincipal + fvSeries;
+    }
+    out.push({ year: y, contributed, value, interest: value - contributed });
+  }
+  return out;
+}
+
+/* ---------- formatting ---------- */
+let CUR = "¥";
+const round2 = (v) => Math.round((v + Number.EPSILON) * 100) / 100;
+function money(v) { return CUR + Math.round(v).toLocaleString("en-US"); }
+function compact(v) {
+  const a = Math.abs(v);
+  if (a >= 1e8) return (v / 1e8).toFixed(a >= 1e9 ? 0 : 1) + "亿";
+  if (a >= 1e4) return (v / 1e4).toFixed(a >= 1e6 ? 0 : 1) + "万";
+  return String(Math.round(v));
+}
+function wanText(v) { return Math.abs(v) >= 10000 ? "≈ " + compact(v) + (CUR ? " " + CUR : "") : ""; }
+
+/* ---------- input reading ---------- */
+function readNumber(el, def, { min = -Infinity, max = Infinity } = {}) {
+  const raw = parseFloat(el.value);
+  if (!Number.isFinite(raw)) return { value: def, ok: el.value.trim() === "" ? true : false, empty: el.value.trim() === "" };
+  return { value: Math.min(max, Math.max(min, raw)), ok: true, empty: false, clamped: raw < min || raw > max };
+}
+
+function gatherParams() {
+  const pr = readNumber($("principal"), 0, { min: 0, max: 1e12 });
+  const co = readNumber($("contribution"), 0, { min: 0, max: 1e12 });
+  const ra = readNumber($("rate"), 0, { min: -99, max: 1000 });
+  const yr = readNumber($("years"), DEFAULTS.years, { min: 1, max: 60 });
+  const freq = parseInt($("frequency").value, 10) || 12;
+  const years = Math.round(yr.value);
+  $("principal").classList.toggle("invalid", !pr.ok);
+  $("contribution").classList.toggle("invalid", !co.ok);
+  $("rate").classList.toggle("invalid", !ra.ok);
+  $("years").classList.toggle("invalid", !yr.ok);
+  const params = {
+    principal: pr.value, contribution: co.value, rate: ra.value,
+    years, periodsPerYear: freq, timing,
+  };
+  const errors = [];
+  if (!pr.ok) errors.push("初始本金请填一个有效的非负数字");
+  if (!co.ok) errors.push("定投金额请填一个有效的非负数字");
+  if (!ra.ok) errors.push("年化收益率请填一个有效数字");
+  if (!yr.ok && !yr.empty) errors.push("投资年限请填 1–60 之间的整数");
+  if (pr.value <= 0 && co.value <= 0) errors.push("请至少填入初始本金或定投金额其中之一");
+  return { params, errors };
+}
+
+/* ---------- chart ---------- */
+const W = 820, H = 320, PAD = { l: 56, r: 14, t: 16, b: 28 };
+function niceMax(v) {
+  if (v <= 0) return 1;
+  const pow = Math.pow(10, Math.floor(Math.log10(v)));
+  const n = v / pow;
+  const step = n <= 1 ? 1 : n <= 2 ? 2 : n <= 2.5 ? 2.5 : n <= 5 ? 5 : 10;
+  return step * pow;
+}
+function renderChart(schedule) {
+  const svg = $("chart");
+  const data = schedule.filter((d) => d.year >= 1); // bars for years 1..t
+  const maxVal = niceMax(Math.max(1, ...schedule.map((d) => d.value)));
+  const plotW = W - PAD.l - PAD.r, plotH = H - PAD.t - PAD.b;
+  const x0 = PAD.l, y0 = PAD.t, yBase = PAD.t + plotH;
+  const yOf = (v) => yBase - (v / maxVal) * plotH;
+  const n = data.length || 1;
+  const slot = plotW / n;
+  const bw = Math.max(2, Math.min(slot * 0.7, 46));
+  let parts = [];
+
+  // y grid + labels
+  const ticks = 4;
+  parts.push('<g class="axis">');
+  for (let t = 0; t <= ticks; t++) {
+    const val = (maxVal / ticks) * t;
+    const y = yOf(val);
+    parts.push(`<line x1="${x0}" y1="${y.toFixed(1)}" x2="${W - PAD.r}" y2="${y.toFixed(1)}"/>`);
+    parts.push(`<text x="${x0 - 8}" y="${(y + 4).toFixed(1)}" text-anchor="end">${compact(val)}</text>`);
+  }
+  parts.push("</g>");
+
+  // bars (stacked: contributed bottom, interest top)
+  const labelEvery = Math.ceil(n / 12);
+  data.forEach((d, idx) => {
+    const cx = x0 + slot * idx + (slot - bw) / 2;
+    const yContribTop = yOf(d.contributed);
+    const yValTop = yOf(d.value);
+    const hPrin = Math.max(0, yBase - yContribTop);
+    const hInt = Math.max(0, yContribTop - yValTop);
+    parts.push(`<g class="bar" data-year="${d.year}" data-value="${round2(d.value)}" data-contributed="${round2(d.contributed)}" data-interest="${round2(d.interest)}">`);
+    parts.push(`<rect class="b-int" x="${cx.toFixed(1)}" y="${yValTop.toFixed(1)}" width="${bw.toFixed(1)}" height="${hInt.toFixed(1)}" rx="2"/>`);
+    parts.push(`<rect class="b-prin" x="${cx.toFixed(1)}" y="${yContribTop.toFixed(1)}" width="${bw.toFixed(1)}" height="${hPrin.toFixed(1)}" rx="2"/>`);
+    // transparent hit area for easier hover
+    parts.push(`<rect fill="transparent" x="${(x0 + slot * idx).toFixed(1)}" y="${y0}" width="${slot.toFixed(1)}" height="${plotH.toFixed(1)}"/>`);
+    parts.push("</g>");
+    if (idx === 0 || (d.year % labelEvery === 0) || idx === data.length - 1) {
+      parts.push(`<text class="xlab" x="${(cx + bw / 2).toFixed(1)}" y="${(yBase + 18).toFixed(1)}" text-anchor="middle">${d.year}年</text>`);
+    }
+  });
+
+  svg.innerHTML = parts.join("");
+  bindChartHover(svg);
+}
+
+function bindChartHover(svg) {
+  const tip = $("tooltip");
+  const box = svg.parentElement;
+  svg.querySelectorAll(".bar").forEach((g) => {
+    g.addEventListener("mousemove", (e) => {
+      const y = g.dataset.year, val = +g.dataset.value, con = +g.dataset.contributed, int = +g.dataset.interest;
+      tip.innerHTML = `<div class="tt-y">第 ${y} 年末</div>` +
+        `<div><span class="dot" style="background:var(--principal)"></span>累计投入 ${money(con)}</div>` +
+        `<div><span class="dot" style="background:var(--interest)"></span>累计收益 ${money(int)}</div>` +
+        `<div style="margin-top:3px;font-weight:700">总额 ${money(val)}</div>`;
+      tip.style.opacity = "1";
+      const r = box.getBoundingClientRect();
+      let left = e.clientX - r.left + 14;
+      let top = e.clientY - r.top - 10;
+      if (left + 190 > r.width) left = e.clientX - r.left - 190;
+      tip.style.left = left + "px";
+      tip.style.top = Math.max(0, top) + "px";
+    });
+    g.addEventListener("mouseleave", () => { tip.style.opacity = "0"; });
+  });
+}
+
+/* ---------- table ---------- */
+function renderTable(schedule) {
+  const tb = $("breakdown");
+  const rows = schedule.filter((d) => d.year >= 1);
+  tb.innerHTML = rows.map((d) => {
+    const last = d.year === rows.length;
+    return `<tr class="${last ? "final-row" : ""}"><td>第 ${d.year} 年</td>` +
+      `<td>${money(d.contributed)}</td>` +
+      `<td class="${last ? "" : "gain"}">${money(d.interest)}</td>` +
+      `<td>${money(d.value)}</td></tr>`;
+  }).join("");
+}
+
+/* ---------- main render ---------- */
+let lastSummary = "";
+function render() {
+  CUR = $("currency").value;
+  document.querySelectorAll(".cur-sym").forEach((el) => (el.textContent = CUR || ""));
+
+  const { params, errors } = gatherParams();
+  $("years-label").textContent = params.years;
+  $("years-slider").value = params.years;
+
+  const hint = $("hint");
+  if (errors.length) {
+    hint.textContent = "⚠️ " + errors[0];
+    hint.classList.add("show");
+  } else {
+    hint.classList.remove("show");
+  }
+
+  const schedule = computeSchedule(params);
+  const fin = schedule[schedule.length - 1];
+  const contributed = fin.contributed, interest = fin.interest, value = fin.value;
+  const retPct = contributed > 0 ? (interest / contributed) * 100 : 0;
+
+  const fEl = $("final-amount");
+  fEl.textContent = money(value); fEl.dataset.raw = round2(value);
+  $("final-wan").textContent = wanText(value);
+
+  const cEl = $("total-contributed");
+  cEl.textContent = money(contributed); cEl.dataset.raw = round2(contributed);
+  const N = params.periodsPerYear * params.years;
+  $("contributed-detail").textContent = params.contribution > 0
+    ? `本金 ${money(params.principal)} + ${FREQ_LABEL[params.periodsPerYear]} ${money(params.contribution)} × ${N} 期`
+    : `一次性投入`;
+
+  const iEl = $("total-interest");
+  iEl.textContent = money(interest); iEl.dataset.raw = round2(interest);
+  const rEl = $("total-return");
+  rEl.textContent = (retPct >= 0 ? "+" : "") + retPct.toFixed(1) + "%";
+  rEl.dataset.raw = round2(retPct);
+  rEl.style.color = retPct >= 0 ? "var(--ok)" : "var(--err)";
+
+  renderChart(schedule);
+  renderTable(schedule);
+
+  lastSummary = `复利计算 · ${params.years} 年\n` +
+    `初始本金 ${money(params.principal)}, ${FREQ_LABEL[params.periodsPerYear]}定投 ${money(params.contribution)}, 年化 ${params.rate}%\n` +
+    `累计投入 ${money(contributed)}\n累计收益 ${money(interest)} (总回报 ${retPct.toFixed(1)}%)\n最终总额 ${money(value)}`;
+
+  save(params);
+}
+
+/* ---------- persistence ---------- */
+function save(params) {
+  try {
+    localStorage.setItem(LS_KEY, JSON.stringify({
+      principal: params.principal, contribution: params.contribution, frequency: params.periodsPerYear,
+      rate: params.rate, years: params.years, timing: params.timing, currency: CUR,
+    }));
+  } catch (_) {}
+}
+function load() {
+  let s = null;
+  try { s = JSON.parse(localStorage.getItem(LS_KEY) || "null"); } catch (_) {}
+  const v = s && typeof s === "object" ? s : DEFAULTS;
+  applyState(v);
+}
+function applyState(v) {
+  if (v.principal != null) $("principal").value = v.principal;
+  if (v.contribution != null) $("contribution").value = v.contribution;
+  if (v.frequency != null) $("frequency").value = String(v.frequency);
+  if (v.rate != null) $("rate").value = v.rate;
+  if (v.years != null) { $("years").value = v.years; $("years-slider").value = v.years; }
+  if (v.currency != null) $("currency").value = v.currency;
+  setTiming(v.timing || "end");
+}
+function setTiming(t) {
+  timing = (t === "begin") ? "begin" : "end";
+  $("timing-end").setAttribute("aria-pressed", String(timing === "end"));
+  $("timing-begin").setAttribute("aria-pressed", String(timing === "begin"));
+}
+
+/* ---------- presets ---------- */
+function initPresets() {
+  const box = $("presets");
+  PRESETS.forEach((p) => {
+    const b = document.createElement("button");
+    b.className = "preset"; b.type = "button"; b.textContent = p.label;
+    b.onclick = () => {
+      $("principal").value = p.v.principal;
+      $("contribution").value = p.v.contribution;
+      $("frequency").value = String(p.v.frequency);
+      $("rate").value = p.v.rate;
+      $("years").value = p.v.years; $("years-slider").value = p.v.years;
+      render();
+    };
+    box.appendChild(b);
+  });
+}
+
+/* ---------- wiring ---------- */
+document.addEventListener("DOMContentLoaded", () => {
+  load();
+  initPresets();
+
+  ["principal", "contribution", "rate", "years", "frequency", "currency"].forEach((id) =>
+    $(id).addEventListener("input", render));
+  $("years").addEventListener("input", () => { $("years-slider").value = $("years").value; });
+  $("years-slider").addEventListener("input", () => { $("years").value = $("years-slider").value; render(); });
+
+  $("timing-end").addEventListener("click", () => { setTiming("end"); render(); });
+  $("timing-begin").addEventListener("click", () => { setTiming("begin"); render(); });
+
+  $("copy-summary").addEventListener("click", async (e) => {
+    try { await navigator.clipboard.writeText(lastSummary); } catch (_) {}
+    const b = e.target; b.classList.add("done"); const t = b.textContent; b.textContent = "已复制 ✓";
+    setTimeout(() => { b.classList.remove("done"); b.textContent = t; }, 1200);
+  });
+  $("reset").addEventListener("click", () => { applyState(DEFAULTS); render(); });
+
+  render();
+});
+</script>
+</body>
+</html>
