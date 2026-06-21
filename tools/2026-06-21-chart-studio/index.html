@@ -1,0 +1,716 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>数据成图 · 粘贴表格,一键生成可分享图表</title>
+<meta name="description" content="把一张表格(从 Excel / 网页 / CSV 复制)粘进来,立刻生成柱状图、折线图、面积图或饼图。支持多数据列、图例切换、数值标签,可一键导出 PNG / SVG 或复制数据。纯前端,数据只留在你的浏览器,不上传任何服务器。">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%23ffb454'/%3E%3Ctext x='50' y='72' font-size='56' text-anchor='middle'%3E📊%3C/text%3E%3C/svg%3E">
+<style>
+:root{
+  --bg:#0b0d12; --card:#161a24; --card2:#12151d; --border:#242a37; --text:#e7ebf3;
+  --muted:#8b94a7; --accent:#6ea8fe; --accent2:#9d7bff; --ok:#5fd28b; --err:#ff7a8a; --radius:14px;
+}
+@media (prefers-color-scheme:light){
+  :root{--bg:#f6f8fc;--card:#fff;--card2:#eef2f9;--border:#e2e8f2;--text:#1a2030;--muted:#5d6577;
+    --accent:#2f6bff;--accent2:#7a4fe0;--ok:#1c9e5e;--err:#d6455a;}
+}
+*{box-sizing:border-box;}
+body{margin:0;background:radial-gradient(1100px 520px at 85% -10%,rgba(255,180,84,.10),transparent 60%),
+   radial-gradient(820px 460px at -8% 0%,rgba(110,168,254,.10),transparent 55%),var(--bg);color:var(--text);
+  font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft Yahei",Roboto,Arial,sans-serif;min-height:100vh;}
+.wrap{max-width:980px;margin:0 auto;padding:32px 20px 80px;}
+.back{color:var(--muted);text-decoration:none;font-size:14px;}
+.back:hover{color:var(--accent);}
+header h1{font-size:28px;margin:14px 0 4px;letter-spacing:-.02em;}
+header p{color:var(--muted);margin:0 0 22px;font-size:14.5px;max-width:720px;}
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:18px 20px;margin-top:20px;}
+.section-title{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0 0 14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+.section-title .grow{flex:1;}
+
+/* data input */
+textarea#data-input{width:100%;min-height:140px;resize:vertical;padding:13px 14px;background:var(--card2);border:1px solid var(--border);
+  border-radius:11px;color:var(--text);font:13.5px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;outline:none;tab-size:4;}
+textarea#data-input:focus{border-color:var(--accent);}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:12px;}
+.chip{padding:7px 13px;border-radius:999px;border:1px solid var(--border);background:var(--card2);color:var(--muted);
+  cursor:pointer;font:13px sans-serif;transition:.15s;}
+.chip:hover{color:var(--text);border-color:var(--accent);}
+.chk{display:inline-flex;align-items:center;gap:7px;font-size:13.5px;color:var(--text);cursor:pointer;user-select:none;}
+.chk input{width:16px;height:16px;accent-color:var(--accent);cursor:pointer;}
+label.lbl{display:block;font-size:13px;color:var(--muted);margin-bottom:6px;}
+select,input[type=text]{padding:11px 12px;background:var(--card2);border:1px solid var(--border);border-radius:10px;color:var(--text);
+  font:600 14px/1.3 -apple-system,"PingFang SC","Microsoft Yahei",sans-serif;outline:none;}
+select:focus,input[type=text]:focus{border-color:var(--accent);}
+
+/* settings grid */
+.settings{display:grid;grid-template-columns:auto 1fr;gap:16px 22px;align-items:start;}
+@media (max-width:640px){.settings{grid-template-columns:1fr;}}
+.seg{display:inline-flex;border:1px solid var(--border);border-radius:11px;overflow:hidden;background:var(--card2);flex-wrap:wrap;}
+.seg button{padding:11px 16px;border:none;background:transparent;color:var(--muted);cursor:pointer;font:600 14px sans-serif;transition:.15s;}
+.seg button[aria-pressed=true]{background:var(--accent);color:#fff;}
+.seg button:not([aria-pressed=true]):hover{color:var(--text);}
+.field-inline{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
+#series-list{display:flex;gap:8px 14px;flex-wrap:wrap;}
+#series-list .chk .sw{width:11px;height:11px;border-radius:3px;display:inline-block;}
+.opts{display:flex;gap:18px;flex-wrap:wrap;align-items:center;}
+
+/* chart */
+.chart-box{position:relative;width:100%;margin-top:2px;}
+svg#chart{width:100%;height:auto;display:block;overflow:visible;}
+.bar-rect{transition:opacity .12s;cursor:default;}
+.slice{transition:opacity .12s;cursor:default;}
+.series-line{fill:none;stroke-width:2.5;}
+.pt{cursor:default;}
+g.hl-on .bar-rect:not(.hot),g.hl-on .slice:not(.hot){opacity:.32;}
+#legend{display:flex;gap:8px 14px;flex-wrap:wrap;margin-top:14px;}
+.leg-item{display:inline-flex;align-items:center;gap:7px;padding:5px 11px;border-radius:999px;border:1px solid var(--border);
+  background:var(--card2);color:var(--text);cursor:pointer;font:13px sans-serif;transition:.15s;}
+.leg-item .sw{width:11px;height:11px;border-radius:3px;display:inline-block;}
+.leg-item[aria-pressed=false]{opacity:.45;text-decoration:line-through;}
+.leg-item:hover{border-color:var(--accent);}
+#chart-empty{display:none;color:var(--muted);text-align:center;padding:48px 10px;font-size:14.5px;}
+#chart-empty.show{display:block;}
+#chart-empty.show ~ .chart-box{display:none;}
+#tooltip{position:absolute;pointer-events:none;background:var(--card);border:1px solid var(--border);border-radius:10px;
+  padding:9px 11px;font-size:12.5px;line-height:1.55;box-shadow:0 8px 28px rgba(0,0,0,.35);opacity:0;transition:opacity .1s;z-index:5;white-space:nowrap;}
+#tooltip .tt-h{font-weight:700;margin-bottom:3px;}
+#tooltip .dot{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:6px;}
+.toolbar{display:flex;gap:10px;margin-top:16px;flex-wrap:wrap;}
+.btn{padding:9px 14px;border-radius:10px;border:1px solid var(--border);background:var(--card2);color:var(--text);cursor:pointer;font-size:14px;}
+.btn:hover{border-color:var(--accent);}
+.btn.done{color:var(--ok);border-color:var(--ok);}
+.hint{color:var(--err);font-weight:600;font-size:13.5px;margin-top:12px;display:none;}
+.hint.show{display:block;}
+
+/* preview table */
+.table-scroll{max-height:300px;overflow:auto;border-radius:10px;border:1px solid var(--border);}
+table{width:100%;border-collapse:collapse;font-size:13.5px;}
+th,td{text-align:left;padding:8px 11px;border-bottom:1px solid var(--border);white-space:nowrap;}
+th{color:var(--muted);font-weight:600;font-size:12px;position:sticky;top:0;background:var(--card);z-index:1;}
+th.is-num,td.is-num{text-align:right;font-family:ui-monospace,monospace;}
+th.is-label{color:var(--accent);}
+tbody tr:hover{background:var(--card2);}
+footer{margin-top:40px;color:var(--muted);font-size:12.5px;text-align:center;}
+footer .note{display:block;margin-top:6px;opacity:.8;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="../../">← 返回工具集</a>
+  <header>
+    <h1>📊 数据成图</h1>
+    <p>从 Excel、网页或 CSV <strong>复制一张表格直接粘进来</strong>,立刻得到一张干净、可分享的图表——柱状、折线、面积或饼图任选,支持多列数据、图例点选、数值标签,并能一键导出 <strong>PNG / SVG</strong> 或复制数据。全部在你的浏览器本地完成,<strong>数据不会上传到任何服务器</strong>。</p>
+  </header>
+
+  <!-- DATA -->
+  <div class="card">
+    <p class="section-title"><span>① 粘贴数据</span><span class="grow"></span>
+      <span style="font-size:12px;text-transform:none;letter-spacing:0">支持逗号 / Tab / 分号分隔</span></p>
+    <textarea id="data-input" spellcheck="false" aria-label="表格数据输入" placeholder="例如:&#10;月份,线上,线下&#10;1月,1200,800&#10;2月,1500,900&#10;…&#10;&#10;也可以直接从 Excel / 表格里整片复制粘贴。"></textarea>
+    <div class="row">
+      <label class="chk"><input type="checkbox" id="opt-header" checked> 首行是表头</label>
+      <div class="field-inline">
+        <span style="font-size:13px;color:var(--muted)">分隔符</span>
+        <select id="delim" aria-label="分隔符">
+          <option value="auto" selected>自动识别</option>
+          <option value=",">逗号 ,</option>
+          <option value="\t">制表符 Tab</option>
+          <option value=";">分号 ;</option>
+        </select>
+      </div>
+      <span class="grow" style="flex:1"></span>
+      <span style="font-size:13px;color:var(--muted)">示例:</span>
+      <div id="samples" style="display:flex;gap:8px;flex-wrap:wrap"></div>
+      <button class="chip" id="clear" type="button">清空</button>
+    </div>
+  </div>
+
+  <!-- SETTINGS -->
+  <div class="card">
+    <p class="section-title">② 图表设置</p>
+    <div class="settings">
+      <span style="font-size:13px;color:var(--muted);padding-top:11px">图表类型</span>
+      <div class="seg" id="type" role="group" aria-label="图表类型">
+        <button type="button" data-type="bar" aria-pressed="true">柱状图</button>
+        <button type="button" data-type="line" aria-pressed="false">折线图</button>
+        <button type="button" data-type="area" aria-pressed="false">面积图</button>
+        <button type="button" data-type="pie" aria-pressed="false">饼图</button>
+      </div>
+
+      <span style="font-size:13px;color:var(--muted);padding-top:11px">分类轴(标签列)</span>
+      <div><select id="label-col" aria-label="标签列(分类轴)"></select>
+        <span id="pie-note" style="font-size:12.5px;color:var(--muted);margin-left:10px;display:none">饼图只取第一个选中的数据列</span></div>
+
+      <span style="font-size:13px;color:var(--muted);padding-top:6px">数据列(数值)</span>
+      <div id="series-list" aria-label="数据列选择"></div>
+
+      <span style="font-size:13px;color:var(--muted);padding-top:11px">标题与显示</span>
+      <div class="opts">
+        <input type="text" id="opt-title" placeholder="图表标题(可留空)" maxlength="60" style="min-width:200px">
+        <label class="chk"><input type="checkbox" id="opt-legend" checked> 显示图例</label>
+        <label class="chk"><input type="checkbox" id="opt-values"> 显示数值标签</label>
+      </div>
+    </div>
+    <div class="hint" id="hint"></div>
+  </div>
+
+  <!-- CHART -->
+  <div class="card">
+    <p class="section-title"><span>③ 图表</span></p>
+    <div id="chart-empty">粘贴数据并选择至少一个数据列,即可生成图表。</div>
+    <div class="chart-box">
+      <svg id="chart" viewBox="0 0 860 380" role="img" aria-label="数据图表"></svg>
+      <div id="tooltip"></div>
+    </div>
+    <div id="legend" aria-label="图例"></div>
+    <div class="toolbar">
+      <button class="btn" id="dl-png" type="button">⬇ 下载 PNG</button>
+      <button class="btn" id="dl-svg" type="button">⬇ 下载 SVG</button>
+      <button class="btn" id="copy-json" type="button" data-payload="">复制数据(JSON)</button>
+    </div>
+  </div>
+
+  <!-- PREVIEW -->
+  <div class="card">
+    <p class="section-title"><span>数据预览</span><span class="grow"></span><span id="row-count" style="font-size:12px;text-transform:none;letter-spacing:0"></span></p>
+    <div class="table-scroll">
+      <table>
+        <thead><tr id="preview-head"></tr></thead>
+        <tbody id="preview-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <footer>
+    每日工具集 · 数据成图 · 纯前端,数据与设置只保存在你本地浏览器
+    <span class="note">图表为客户端实时绘制(SVG),导出文件不含任何水印或追踪。</span>
+  </footer>
+</div>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const SVGNS = "http://www.w3.org/2000/svg";
+const LS_KEY = "chart-studio:v1";
+const PALETTE = ["#6ea8fe","#5fd28b","#ffb454","#ff7a8a","#9d7bff","#46c9d6","#f78fb3","#c3e88d","#e0a458","#7aa2ff"];
+
+const SAMPLES = {
+  "上半年销售": { type:"bar", text:"月份,线上,线下\n1月,1200,800\n2月,1500,900\n3月,1800,1100\n4月,1400,1300\n5月,2100,1500\n6月,2600,1700" },
+  "流量来源占比": { type:"pie", text:"渠道,访问量\n直接访问,3500\n搜索引擎,2800\n社交媒体,1600\n推荐链接,900\n邮件,400" },
+  "气温趋势": { type:"line", text:"年份,本城,全国均值\n2019,12.1,11.0\n2020,13.4,11.5\n2021,12.8,11.9\n2022,14.6,12.3\n2023,15.9,12.8\n2024,17.2,13.4" },
+};
+const DEFAULT_SAMPLE = "上半年销售";
+
+const state = {
+  type: "bar",
+  labelCol: "__index__",   // "__index__" or stringified column index
+  series: [],              // array of column indices (numbers)
+  hidden: new Set(),       // series indices hidden via legend (numbers)
+  header: true,
+  delim: "auto",
+  title: "",
+  legend: true,
+  values: false,
+};
+let lastSig = "";
+
+/* ---------- parsing ---------- */
+function detectDelim(text) {
+  if (state.delim !== "auto") return state.delim;
+  if (text.indexOf("\t") >= 0) return "\t";
+  const c = (text.match(/,/g) || []).length, s = (text.match(/;/g) || []).length;
+  return s > c ? ";" : ",";
+}
+// state-machine CSV/DSV parser supporting quoted fields
+function parseDSV(text, delim) {
+  const rows = []; let row = [], field = "", q = false;
+  for (let k = 0; k < text.length; k++) {
+    const ch = text[k];
+    if (q) {
+      if (ch === '"') { if (text[k + 1] === '"') { field += '"'; k++; } else q = false; }
+      else field += ch;
+    } else if (ch === '"') q = true;
+    else if (ch === delim) { row.push(field); field = ""; }
+    else if (ch === "\n") { row.push(field); rows.push(row); row = []; field = ""; }
+    else if (ch === "\r") { /* skip */ }
+    else field += ch;
+  }
+  if (field !== "" || row.length) { row.push(field); rows.push(row); }
+  return rows.filter((r) => !(r.length === 1 && r[0].trim() === ""));
+}
+function toNum(s) {
+  if (s == null) return NaN;
+  const t = String(s).trim().replace(/[,\s]/g, "").replace(/%$/, "").replace(/^[¥$€£]/, "");
+  if (t === "") return NaN;
+  return Number(t);
+}
+function parseAll() {
+  const text = $("data-input").value;
+  const delim = detectDelim(text);
+  let grid = parseDSV(text, delim);
+  let headers, rows;
+  if (grid.length === 0) return { headers: [], rows: [], ncols: 0, numeric: [] };
+  const ncols = Math.max(...grid.map((r) => r.length));
+  grid = grid.map((r) => { const c = r.slice(); while (c.length < ncols) c.push(""); return c; });
+  if (state.header) { headers = grid[0]; rows = grid.slice(1); }
+  else { headers = Array.from({ length: ncols }, (_, i) => "列" + (i + 1)); rows = grid; }
+  headers = headers.map((h, i) => (String(h).trim() || "列" + (i + 1)));
+  // a column is numeric if it has >=1 non-empty cell and every non-empty cell parses as a finite number
+  const numeric = Array.from({ length: ncols }, (_, c) => {
+    let any = false;
+    for (const r of rows) {
+      const cell = (r[c] ?? "").trim();
+      if (cell === "") continue;
+      any = true;
+      if (!Number.isFinite(toNum(cell))) return false;
+    }
+    return any;
+  });
+  return { headers, rows, ncols, numeric };
+}
+function numericIdx(p) { return p.numeric.map((b, i) => (b ? i : -1)).filter((i) => i >= 0); }
+function availableSeries(p) { return numericIdx(p).filter((i) => String(i) !== state.labelCol); }
+
+function recomputeDefaults(p) {
+  // default label column = first non-numeric column, else row index
+  let lbl = "__index__";
+  for (let i = 0; i < p.ncols; i++) { if (!p.numeric[i]) { lbl = String(i); break; } }
+  state.labelCol = lbl;
+  state.series = availableSeries(p).slice();
+  state.hidden = new Set();
+}
+function reconcile(p) {
+  const avail = availableSeries(p);
+  // label col still valid?
+  if (state.labelCol !== "__index__") {
+    const li = Number(state.labelCol);
+    if (!(li >= 0 && li < p.ncols)) state.labelCol = "__index__";
+  }
+  state.series = state.series.filter((i) => avail.includes(i));
+  if (state.series.length === 0 && avail.length) state.series = avail.slice();
+  state.hidden = new Set([...state.hidden].filter((i) => state.series.includes(i)));
+}
+
+/* ---------- derived data ---------- */
+function buildData(p) {
+  let labels;
+  if (state.labelCol === "__index__") labels = p.rows.map((_, i) => String(i + 1));
+  else { const li = Number(state.labelCol); labels = p.rows.map((r) => (r[li] ?? "").trim() || "—"); }
+  const series = state.series.map((idx, k) => ({
+    idx, name: p.headers[idx], color: PALETTE[k % PALETTE.length],
+    values: p.rows.map((r) => { const n = toNum(r[idx]); return Number.isFinite(n) ? n : 0; }),
+  }));
+  const active = series.filter((s) => !state.hidden.has(s.idx));
+  return { labels, series, active };
+}
+
+/* ---------- theme + formatting ---------- */
+function theme() {
+  const cs = getComputedStyle(document.documentElement);
+  const g = (n, f) => (cs.getPropertyValue(n).trim() || f);
+  return { text: g("--text", "#e7ebf3"), muted: g("--muted", "#8b94a7"), border: g("--border", "#242a37"), bg: g("--card", "#161a24") };
+}
+function trimNum(x) { const r = Math.round(x * 100) / 100; return Number.isInteger(r) ? r.toLocaleString("en-US") : String(r); }
+function fmt(v) {
+  const a = Math.abs(v);
+  if (a >= 1e8) return trimNum(v / 1e8) + "亿";
+  if (a >= 1e4) return trimNum(v / 1e4) + "万";
+  return trimNum(v);
+}
+function fmtFull(v) { return (Math.round(v * 100) / 100).toLocaleString("en-US"); }
+function niceMax(v) {
+  if (v <= 0) return 1;
+  const pow = Math.pow(10, Math.floor(Math.log10(v)));
+  const n = v / pow;
+  const step = n <= 1 ? 1 : n <= 2 ? 2 : n <= 2.5 ? 2.5 : n <= 5 ? 5 : 10;
+  return step * pow;
+}
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+/* ---------- chart geometry ---------- */
+const W = 860, H = 380, PAD = { l: 56, r: 20, t: 30, b: 48 };
+const plotW = W - PAD.l - PAD.r, plotH = H - PAD.t - PAD.b;
+const x0 = PAD.l, yTop = PAD.t, yBase = PAD.t + plotH;
+
+function titleSVG(th) {
+  if (!state.title) return "";
+  return `<text x="${W / 2}" y="18" text-anchor="middle" fill="${th.text}" font-family="-apple-system,'PingFang SC',sans-serif" font-size="15" font-weight="700">${esc(state.title)}</text>`;
+}
+
+function drawAxisChart(d, th) {
+  const all = d.active.flatMap((s) => s.values);
+  const dataMax = Math.max(0, ...all), dataMin = Math.min(0, ...all);
+  let ymax = dataMax > 0 ? niceMax(dataMax) : 0;
+  let ymin = dataMin < 0 ? -niceMax(-dataMin) : 0;
+  if (ymax === ymin) ymax = ymin + 1;
+  const yOf = (v) => yBase - ((v - ymin) / (ymax - ymin)) * plotH;
+  const n = d.labels.length, slot = plotW / Math.max(1, n);
+  const parts = [titleSVG(th)];
+  const svg = $("chart");
+  svg.dataset.ymax = ymax; svg.dataset.ymin = ymin;
+
+  // gridlines + y labels
+  const ticks = 4;
+  parts.push(`<g>`);
+  for (let t = 0; t <= ticks; t++) {
+    const val = ymin + ((ymax - ymin) / ticks) * t, y = yOf(val);
+    parts.push(`<line x1="${x0}" y1="${y.toFixed(1)}" x2="${W - PAD.r}" y2="${y.toFixed(1)}" stroke="${th.border}"/>`);
+    parts.push(`<text x="${x0 - 9}" y="${(y + 4).toFixed(1)}" text-anchor="end" fill="${th.muted}" font-family="ui-monospace,monospace" font-size="11">${fmt(val)}</text>`);
+  }
+  parts.push(`</g>`);
+
+  // x labels
+  const every = Math.ceil(n / 14);
+  const rotate = n > 8;
+  d.labels.forEach((lb, i) => {
+    if (!(i % every === 0 || i === n - 1)) return;
+    const cx = x0 + slot * i + slot / 2;
+    const ty = yBase + (rotate ? 12 : 18);
+    const tf = rotate ? ` transform="rotate(-32 ${cx.toFixed(1)} ${ty})" text-anchor="end"` : ` text-anchor="middle"`;
+    parts.push(`<text x="${cx.toFixed(1)}" y="${ty}"${tf} fill="${th.muted}" font-family="-apple-system,'PingFang SC',sans-serif" font-size="11">${esc(lb)}</text>`);
+  });
+
+  if (state.type === "bar") {
+    const s = d.active.length, groupW = slot * 0.72, bw = Math.max(2, groupW / s);
+    d.active.forEach((ser) => {
+      const k = d.active.indexOf(ser);
+      ser.values.forEach((v, i) => {
+        const bx = x0 + slot * i + (slot - groupW) / 2 + k * bw;
+        const top = yOf(Math.max(0, v)), bot = yOf(Math.min(0, v)), h = Math.max(0, bot - top);
+        parts.push(`<rect class="bar-rect" data-series="${esc(ser.name)}" data-cat="${esc(d.labels[i])}" data-value="${v}" x="${bx.toFixed(1)}" y="${top.toFixed(1)}" width="${(bw - 1.5).toFixed(1)}" height="${h.toFixed(1)}" rx="2" fill="${ser.color}"/>`);
+        if (state.values && h > 12) parts.push(`<text class="val-label" x="${(bx + (bw - 1.5) / 2).toFixed(1)}" y="${(top - 4).toFixed(1)}" text-anchor="middle" fill="${th.muted}" font-family="ui-monospace,monospace" font-size="10">${fmt(v)}</text>`);
+      });
+    });
+  } else { // line / area
+    d.active.forEach((ser) => {
+      const pts = ser.values.map((v, i) => `${(x0 + slot * i + slot / 2).toFixed(1)},${yOf(v).toFixed(1)}`);
+      if (state.type === "area") {
+        const base = yOf(Math.max(ymin, 0)).toFixed(1);
+        parts.push(`<polygon class="series-area" data-series="${esc(ser.name)}" points="${(x0 + slot / 2).toFixed(1)},${base} ${pts.join(" ")} ${(x0 + slot * (ser.values.length - 1) + slot / 2).toFixed(1)},${base}" fill="${ser.color}" fill-opacity="0.18" stroke="none"/>`);
+      }
+      parts.push(`<polyline class="series-line" data-series="${esc(ser.name)}" points="${pts.join(" ")}" stroke="${ser.color}"/>`);
+      ser.values.forEach((v, i) => {
+        const cx = x0 + slot * i + slot / 2, cy = yOf(v);
+        parts.push(`<circle class="pt" data-series="${esc(ser.name)}" data-cat="${esc(d.labels[i])}" data-value="${v}" cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="3.5" fill="${ser.color}"/>`);
+        if (state.values) parts.push(`<text class="val-label" x="${cx.toFixed(1)}" y="${(cy - 8).toFixed(1)}" text-anchor="middle" fill="${th.muted}" font-family="ui-monospace,monospace" font-size="10">${fmt(v)}</text>`);
+      });
+    });
+  }
+  svg.innerHTML = parts.join("");
+}
+
+function drawPie(d, th) {
+  const ser = d.active[0];
+  const svg = $("chart");
+  delete svg.dataset.ymax; delete svg.dataset.ymin;
+  const items = d.labels.map((lb, i) => ({ label: lb, value: ser.values[i], color: PALETTE[i % PALETTE.length] })).filter((x) => x.value > 0);
+  const total = items.reduce((a, b) => a + b.value, 0);
+  const cx = x0 + plotW / 2, cy = yTop + plotH / 2, r = Math.min(plotH, plotW) / 2 * 0.84;
+  const parts = [titleSVG(th)];
+  if (total <= 0) { svg.innerHTML = parts.join(""); return; }
+  let acc = 0;
+  const pt = (a) => [cx + r * Math.sin(a), cy - r * Math.cos(a)];
+  items.forEach((it) => {
+    const frac = it.value / total, a0 = acc * 2 * Math.PI, a1 = (acc + frac) * 2 * Math.PI;
+    const deg = (a1 - a0) * 180 / Math.PI, pct = frac * 100;
+    if (frac >= 0.9999) {
+      parts.push(`<circle class="slice" data-label="${esc(it.label)}" data-value="${it.value}" data-angle="360" data-percent="100" cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="${r.toFixed(1)}" fill="${it.color}"/>`);
+    } else {
+      const [sx, sy] = pt(a0), [ex, ey] = pt(a1), large = deg > 180 ? 1 : 0;
+      parts.push(`<path class="slice" data-label="${esc(it.label)}" data-value="${it.value}" data-angle="${deg.toFixed(2)}" data-percent="${pct.toFixed(2)}" d="M${cx.toFixed(1)},${cy.toFixed(1)} L${sx.toFixed(2)},${sy.toFixed(2)} A${r.toFixed(1)},${r.toFixed(1)} 0 ${large} 1 ${ex.toFixed(2)},${ey.toFixed(2)} Z" fill="${it.color}"/>`);
+    }
+    if (state.values && pct >= 4) {
+      const mid = (a0 + a1) / 2, lr = r * 0.62;
+      const lx = cx + lr * Math.sin(mid), ly = cy - lr * Math.cos(mid);
+      parts.push(`<text class="val-label" x="${lx.toFixed(1)}" y="${(ly + 4).toFixed(1)}" text-anchor="middle" fill="#fff" font-family="-apple-system,sans-serif" font-size="11" font-weight="700">${pct.toFixed(0)}%</text>`);
+    }
+    acc += frac;
+  });
+  svg.innerHTML = parts.join("");
+}
+
+/* ---------- legend ---------- */
+function renderLegend(d) {
+  const box = $("legend");
+  if (!state.legend || !d.series.length) { box.innerHTML = ""; box.style.display = "none"; return; }
+  box.style.display = "flex";
+  if (state.type === "pie") {
+    const ser = d.active[0];
+    if (!ser) { box.innerHTML = ""; return; }
+    box.innerHTML = d.labels.map((lb, i) =>
+      `<span class="leg-item" aria-pressed="true" style="cursor:default"><i class="sw" style="background:${PALETTE[i % PALETTE.length]}"></i>${esc(lb)}</span>`).join("");
+    return;
+  }
+  box.innerHTML = d.series.map((s) => {
+    const on = !state.hidden.has(s.idx);
+    return `<button class="leg-item" type="button" data-idx="${s.idx}" aria-pressed="${on}"><i class="sw" style="background:${s.color}"></i>${esc(s.name)}</button>`;
+  }).join("");
+  box.querySelectorAll(".leg-item[data-idx]").forEach((b) => {
+    b.addEventListener("click", () => {
+      const idx = Number(b.dataset.idx);
+      if (state.hidden.has(idx)) state.hidden.delete(idx);
+      else if (state.series.filter((i) => !state.hidden.has(i)).length > 1) state.hidden.add(idx); // keep >=1 visible
+      render();
+    });
+  });
+}
+
+/* ---------- hover tooltip ---------- */
+function bindHover() {
+  const svg = $("chart"), tip = $("tooltip"), box = svg.parentElement;
+  const show = (el, html) => {
+    el.addEventListener("mousemove", (e) => {
+      tip.innerHTML = html(el); tip.style.opacity = "1";
+      const r = box.getBoundingClientRect();
+      let left = e.clientX - r.left + 14, top = e.clientY - r.top - 8;
+      if (left + 200 > r.width) left = e.clientX - r.left - 200;
+      tip.style.left = Math.max(0, left) + "px"; tip.style.top = Math.max(0, top) + "px";
+    });
+    el.addEventListener("mouseleave", () => { tip.style.opacity = "0"; });
+  };
+  svg.querySelectorAll(".bar-rect,.pt").forEach((el) =>
+    show(el, (e) => `<div class="tt-h">${esc(e.dataset.cat)}</div><div><span class="dot" style="background:${e.getAttribute("fill")}"></span>${esc(e.dataset.series)}: <b>${fmtFull(+e.dataset.value)}</b></div>`));
+  svg.querySelectorAll(".slice").forEach((el) =>
+    show(el, (e) => `<div class="tt-h">${esc(e.dataset.label)}</div><div><span class="dot" style="background:${e.getAttribute("fill")}"></span><b>${fmtFull(+e.dataset.value)}</b> · ${(+e.dataset.percent).toFixed(1)}%</div>`));
+}
+
+/* ---------- controls (rebuilt from parsed columns) ---------- */
+function buildControls(p) {
+  // label column select
+  const sel = $("label-col");
+  let opts = `<option value="__index__"${state.labelCol === "__index__" ? " selected" : ""}>行号(1,2,3…)</option>`;
+  for (let i = 0; i < p.ncols; i++) {
+    opts += `<option value="${i}"${state.labelCol === String(i) ? " selected" : ""}>${esc(p.headers[i])}${p.numeric[i] ? "" : " · 文本"}</option>`;
+  }
+  sel.innerHTML = opts;
+  // series checkboxes (numeric columns except the label column)
+  const list = $("series-list"), avail = availableSeries(p);
+  if (!avail.length) { list.innerHTML = `<span style="font-size:13px;color:var(--muted)">没有可用的数值列</span>`; return; }
+  list.innerHTML = avail.map((i, k) => {
+    const on = state.series.includes(i), color = PALETTE[state.series.indexOf(i) % PALETTE.length] || PALETTE[k % PALETTE.length];
+    return `<label class="chk"><input type="checkbox" class="ser-chk" data-idx="${i}"${on ? " checked" : ""}><i class="sw" style="background:${on ? color : "var(--muted)"}"></i>${esc(p.headers[i])}</label>`;
+  }).join("");
+  list.querySelectorAll(".ser-chk").forEach((c) => c.addEventListener("change", () => {
+    const idx = Number(c.dataset.idx);
+    if (c.checked) { if (!state.series.includes(idx)) state.series.push(idx); state.series.sort((a, b) => a - b); }
+    else state.series = state.series.filter((i) => i !== idx);
+    render();
+  }));
+}
+
+/* ---------- preview table ---------- */
+function renderPreview(p) {
+  const head = $("preview-head"), body = $("preview-body");
+  if (!p.ncols) { head.innerHTML = ""; body.innerHTML = ""; $("row-count").textContent = ""; return; }
+  head.innerHTML = p.headers.map((h, i) => {
+    const cls = String(i) === state.labelCol ? "is-label" : (p.numeric[i] ? "is-num" : "");
+    return `<th class="${cls}">${esc(h)}</th>`;
+  }).join("");
+  const shown = p.rows.slice(0, 100);
+  body.innerHTML = shown.map((r) =>
+    `<tr>${p.headers.map((_, i) => `<td class="${p.numeric[i] ? "is-num" : ""}">${esc((r[i] ?? "").trim())}</td>`).join("")}</tr>`).join("");
+  $("row-count").textContent = `共 ${p.rows.length} 行 · ${p.ncols} 列` + (p.rows.length > 100 ? "(预览前 100 行)" : "");
+}
+
+/* ---------- main render ---------- */
+function render() {
+  try {
+    state.header = $("opt-header").checked;
+    state.delim = $("delim").value;
+    state.title = $("opt-title").value;
+    state.legend = $("opt-legend").checked;
+    state.values = $("opt-values").checked;
+
+    const p = parseAll();
+    reconcile(p);
+    buildControls(p);
+    renderPreview(p);
+    $("pie-note").style.display = state.type === "pie" ? "inline" : "none";
+
+    const th = theme();
+    const d = buildData(p);
+    const hint = $("hint");
+    const noData = p.rows.length === 0;
+    const noSeries = state.series.length === 0;
+    const empty = noData || noSeries;
+    $("chart-empty").classList.toggle("show", empty);
+    if (empty) {
+      $("chart").innerHTML = "";
+      $("chart-empty").textContent = noData ? "粘贴数据后即可生成图表。" : "请至少选择一个数据列(数值)。";
+      $("legend").innerHTML = "";
+      hint.classList.remove("show");
+      $("copy-json").dataset.payload = "";
+      save();
+      return;
+    }
+    hint.classList.remove("show");
+
+    if (state.type === "pie") {
+      if (d.active.length > 1) { hint.textContent = "饼图一次只显示一个数据列,已取第一个。"; hint.classList.add("show"); }
+      drawPie(d, th);
+    } else {
+      drawAxisChart(d, th);
+    }
+    bindHover();
+    renderLegend(d);
+
+    $("copy-json").dataset.payload = JSON.stringify({
+      labels: d.labels,
+      series: (state.type === "pie" ? d.active.slice(0, 1) : d.active).map((s) => ({ name: s.name, data: s.values })),
+    }, null, 2);
+    save();
+  } catch (err) {
+    const hint = $("hint");
+    hint.textContent = "⚠️ 解析或绘制出错:" + (err && err.message ? err.message : err);
+    hint.classList.add("show");
+  }
+}
+
+/* ---------- export ---------- */
+function exportSVGString() {
+  const th = theme(), svg = $("chart"), clone = svg.cloneNode(true);
+  clone.setAttribute("xmlns", SVGNS);
+  clone.setAttribute("width", String(W));
+  clone.setAttribute("height", String(H));
+  const bg = document.createElementNS(SVGNS, "rect");
+  bg.setAttribute("x", "0"); bg.setAttribute("y", "0");
+  bg.setAttribute("width", String(W)); bg.setAttribute("height", String(H));
+  bg.setAttribute("fill", th.bg);
+  clone.insertBefore(bg, clone.firstChild);
+  // inline stroke-width for lines (class-based, won't survive standalone render)
+  clone.querySelectorAll(".series-line").forEach((l) => { l.setAttribute("fill", "none"); l.setAttribute("stroke-width", "2.5"); });
+  return '<?xml version="1.0" encoding="UTF-8"?>\n' + new XMLSerializer().serializeToString(clone);
+}
+function triggerDownload(href, name) {
+  const a = document.createElement("a"); a.href = href; a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+}
+function flashBtn(btn) { const t = btn.textContent; btn.classList.add("done"); btn.textContent = "已完成 ✓"; setTimeout(() => { btn.classList.remove("done"); btn.textContent = t; }, 1200); }
+
+async function downloadPNG(btn) {
+  const str = exportSVGString(), scale = 2;
+  const url = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(str);
+  const img = new Image();
+  await new Promise((res, rej) => { img.onload = res; img.onerror = () => rej(new Error("render")); img.src = url; });
+  const canvas = document.createElement("canvas");
+  canvas.width = W * scale; canvas.height = H * scale;
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(scale, 0, 0, scale, 0, 0);
+  ctx.drawImage(img, 0, 0);
+  triggerDownload(canvas.toDataURL("image/png"), "chart-" + state.type + ".png");
+  if (btn) flashBtn(btn);
+}
+function downloadSVG(btn) {
+  const blob = new Blob([exportSVGString()], { type: "image/svg+xml" });
+  const url = URL.createObjectURL(blob);
+  triggerDownload(url, "chart-" + state.type + ".svg");
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+  if (btn) flashBtn(btn);
+}
+
+/* ---------- persistence ---------- */
+function save() {
+  try {
+    localStorage.setItem(LS_KEY, JSON.stringify({
+      text: $("data-input").value, type: state.type, labelCol: state.labelCol, series: state.series,
+      hidden: [...state.hidden], header: state.header, delim: state.delim,
+      title: state.title, legend: state.legend, values: state.values,
+    }));
+  } catch (_) {}
+}
+function load() {
+  let s = null;
+  try { s = JSON.parse(localStorage.getItem(LS_KEY) || "null"); } catch (_) {}
+  if (s && typeof s === "object" && typeof s.text === "string") {
+    $("data-input").value = s.text;
+    state.type = s.type || "bar";
+    state.labelCol = s.labelCol != null ? String(s.labelCol) : "__index__";
+    state.series = Array.isArray(s.series) ? s.series.map(Number) : [];
+    state.hidden = new Set(Array.isArray(s.hidden) ? s.hidden.map(Number) : []);
+    state.header = s.header !== false; state.delim = s.delim || "auto";
+    state.title = s.title || ""; state.legend = s.legend !== false; state.values = !!s.values;
+    lastSig = "restored";
+  } else {
+    loadSample(DEFAULT_SAMPLE, true);
+  }
+  // reflect into DOM controls
+  $("opt-header").checked = state.header;
+  $("delim").value = state.delim;
+  $("opt-title").value = state.title;
+  $("opt-legend").checked = state.legend;
+  $("opt-values").checked = state.values;
+  setType(state.type);
+}
+function loadSample(name, silent) {
+  const s = SAMPLES[name]; if (!s) return;
+  $("data-input").value = s.text;
+  state.type = s.type;
+  setType(s.type);
+  const p = parseAll();
+  recomputeDefaults(p);
+  lastSig = p.ncols + "|" + p.numeric.join(",");
+  if (!silent) render();
+}
+
+/* ---------- type segmented ---------- */
+function setType(t) {
+  state.type = t;
+  document.querySelectorAll("#type button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.type === t)));
+}
+
+/* ---------- data-change detection ---------- */
+function onDataChanged() {
+  state.header = $("opt-header").checked;
+  state.delim = $("delim").value;
+  const p = parseAll();
+  const sig = p.ncols + "|" + p.numeric.join(",");
+  if (sig !== lastSig) { recomputeDefaults(p); lastSig = sig; }
+  render();
+}
+
+/* ---------- wiring ---------- */
+document.addEventListener("DOMContentLoaded", () => {
+  // sample chips
+  const sbox = $("samples");
+  Object.keys(SAMPLES).forEach((name) => {
+    const b = document.createElement("button");
+    b.className = "chip"; b.type = "button"; b.textContent = name;
+    b.addEventListener("click", () => loadSample(name));
+    sbox.appendChild(b);
+  });
+
+  load();
+
+  $("data-input").addEventListener("input", onDataChanged);
+  $("opt-header").addEventListener("change", onDataChanged);
+  $("delim").addEventListener("change", onDataChanged);
+  $("clear").addEventListener("click", () => { $("data-input").value = ""; lastSig = ""; onDataChanged(); });
+
+  document.querySelectorAll("#type button").forEach((b) =>
+    b.addEventListener("click", () => { setType(b.dataset.type); render(); }));
+  $("label-col").addEventListener("change", () => {
+    state.labelCol = $("label-col").value;
+    const p = parseAll();
+    state.series = state.series.filter((i) => availableSeries(p).includes(i));
+    if (!state.series.length) state.series = availableSeries(p).slice();
+    render();
+  });
+  ["opt-title", "opt-legend", "opt-values"].forEach((id) => $(id).addEventListener("input", render));
+
+  $("dl-png").addEventListener("click", (e) => {
+    downloadPNG(e.currentTarget).catch((err) => {
+      const h = $("hint"); h.textContent = "导出 PNG 失败:" + (err && err.message ? err.message : err); h.classList.add("show");
+    });
+  });
+  $("dl-svg").addEventListener("click", (e) => downloadSVG(e.currentTarget));
+  $("copy-json").addEventListener("click", async (e) => {
+    try { await navigator.clipboard.writeText(e.currentTarget.dataset.payload || ""); } catch (_) {}
+    flashBtn(e.currentTarget);
+  });
+
+  render();
+});
+</script>
+</body>
+</html>
