@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>热量与宏量计算器 · 基础代谢 · 每日热量目标 · 蛋白碳水脂肪配比</title>
+<meta name="description" content="输入身高体重年龄活动量,算出基础代谢(BMR)、每日热量消耗(TDEE),以及减脂/维持/增肌三种目标的每日热量与蛋白质·碳水·脂肪克数。可选体脂率走更精准的 Katch-McArdle,并预估每周体重变化与达成目标的时间。纯前端,数据只存在你的浏览器。">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%23ffb454'/%3E%3Ctext x='50' y='74' font-size='56' text-anchor='middle'%3E🔥%3C/text%3E%3C/svg%3E">
+<style>
+:root{
+  --bg:#0b0d12; --card:#161a24; --card2:#12151d; --border:#242a37; --text:#e7ebf3;
+  --muted:#8b94a7; --accent:#6ea8fe; --accent2:#9d7bff; --ok:#5fd28b; --err:#ff7a8a; --radius:14px;
+  --protein:#6ea8fe; --carb:#5fd28b; --fat:#ffb454;
+}
+@media (prefers-color-scheme:light){
+  :root{--bg:#f6f8fc;--card:#fff;--card2:#eef2f9;--border:#e2e8f2;--text:#1a2030;--muted:#5d6577;
+    --accent:#2f6bff;--accent2:#7a4fe0;--ok:#1c9e5e;--err:#d6455a;
+    --protein:#2f6bff;--carb:#1c9e5e;--fat:#e0900f;}
+}
+*{box-sizing:border-box;}
+body{margin:0;background:radial-gradient(1100px 520px at 85% -10%,rgba(255,180,84,.12),transparent 60%),var(--bg);color:var(--text);
+  font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft Yahei",Roboto,Arial,sans-serif;min-height:100vh;}
+.wrap{max-width:960px;margin:0 auto;padding:30px 20px 80px;}
+.back{color:var(--muted);text-decoration:none;font-size:14px;}
+.back:hover{color:var(--accent);}
+header h1{font-size:28px;margin:14px 0 4px;letter-spacing:-.02em;}
+header p{color:var(--muted);margin:0 0 10px;font-size:14.5px;max-width:720px;}
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:18px 20px;margin-top:18px;}
+.section-title{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0 0 14px;display:flex;align-items:center;gap:8px;justify-content:space-between;}
+.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:15px 18px;}
+@media (max-width:620px){.grid{grid-template-columns:1fr;}}
+.field label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px;}
+.field .hintline{font-size:12px;color:var(--muted);margin-top:5px;opacity:.85;}
+.input-affix{position:relative;display:flex;align-items:center;}
+.input-affix .suf{position:absolute;right:14px;color:var(--muted);font-size:14px;pointer-events:none;}
+input[type=number],select{width:100%;padding:12px 14px;background:var(--card2);border:1px solid var(--border);border-radius:11px;
+  color:var(--text);font:600 17px/1.3 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;outline:none;transition:border-color .15s;}
+.input-affix.has-suf input{padding-right:42px;}
+select{font:600 15px/1.3 -apple-system,"PingFang SC","Microsoft Yahei",sans-serif;cursor:pointer;}
+input[type=number]:focus,select:focus{border-color:var(--accent);}
+input[type=number].invalid{border-color:var(--err);}
+input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-spin-button{opacity:.5;}
+.seg{display:flex;gap:0;border:1px solid var(--border);border-radius:11px;overflow:hidden;background:var(--card2);}
+.seg button{flex:1;padding:11px 6px;border:none;background:transparent;color:var(--muted);cursor:pointer;font:600 14.5px sans-serif;transition:.15s;}
+.seg button[aria-pressed=true]{background:var(--accent);color:#fff;}
+.seg button:not([aria-pressed=true]):hover{color:var(--text);}
+.seg.small button{padding:9px 6px;font-size:13.5px;}
+
+/* sliders */
+.slider-field{margin-top:4px;}
+.slider-head{display:flex;justify-content:space-between;align-items:baseline;font-size:13px;color:var(--muted);margin-bottom:2px;}
+.slider-head b{color:var(--text);font:700 15px ui-monospace,monospace;}
+input[type=range]{width:100%;margin:6px 0 0;accent-color:var(--fat);cursor:pointer;height:22px;}
+.slider-field.hidden{display:none;}
+
+/* goal selector cards */
+.goals{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;}
+@media (max-width:520px){.goals{grid-template-columns:1fr;}}
+.goal{background:var(--card2);border:1.5px solid var(--border);border-radius:13px;padding:14px 12px;cursor:pointer;text-align:center;transition:.15s;position:relative;}
+.goal:hover{border-color:var(--accent);}
+.goal:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+.goal[aria-pressed=true]{border-color:var(--fat);background:linear-gradient(180deg,rgba(255,180,84,.13),transparent);}
+.goal .g-name{font-size:14px;font-weight:700;}
+.goal .g-emoji{font-size:20px;line-height:1;}
+.goal .kcal{font:800 23px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace;margin-top:7px;letter-spacing:-.02em;}
+.goal .kcal small{font-size:12px;font-weight:600;color:var(--muted);letter-spacing:0;}
+.goal .g-off{font-size:11.5px;color:var(--muted);margin-top:3px;min-height:14px;}
+.goal[aria-pressed=true] .g-off{color:var(--fat);font-weight:700;}
+
+/* result stats */
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:13px;}
+@media (max-width:640px){.stats{grid-template-columns:1fr 1fr;}}
+.stat{background:var(--card2);border:1px solid var(--border);border-radius:12px;padding:15px;}
+.stat .k{font-size:12.5px;color:var(--muted);}
+.stat .v{font:800 25px/1.15 ui-monospace,SFMono-Regular,Menlo,monospace;margin-top:6px;letter-spacing:-.01em;}
+.stat .v small{font-size:12.5px;font-weight:600;color:var(--muted);}
+.stat .sub{font-size:12px;color:var(--muted);margin-top:4px;}
+.stat.target .v{color:var(--fat);}
+
+/* macros */
+.macro-wrap{display:grid;grid-template-columns:150px 1fr;gap:22px;align-items:center;}
+@media (max-width:560px){.macro-wrap{grid-template-columns:1fr;justify-items:center;gap:16px;}}
+.donut{width:150px;height:150px;border-radius:50%;position:relative;flex:none;
+  background:conic-gradient(var(--border) 0 100%);}
+.donut .hole{position:absolute;inset:24px;border-radius:50%;background:var(--card);display:flex;flex-direction:column;align-items:center;justify-content:center;}
+.donut .hole .cal{font:800 22px/1 ui-monospace,monospace;}
+.donut .hole .lab{font-size:11px;color:var(--muted);margin-top:3px;}
+.macro-rows{width:100%;display:flex;flex-direction:column;gap:11px;}
+.mrow{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;}
+.mrow .dot{width:12px;height:12px;border-radius:4px;flex:none;}
+.mrow .ml{font-size:14px;}
+.mrow .ml b{font-weight:700;}
+.mrow .mbar{height:8px;border-radius:6px;background:var(--border);overflow:hidden;}
+.mrow .mbar i{display:block;height:100%;border-radius:6px;}
+.mrow .mg{font:700 16px/1 ui-monospace,monospace;text-align:right;white-space:nowrap;}
+.mrow .mg small{font-size:11.5px;color:var(--muted);font-weight:600;}
+.dot.protein,.mbar i.protein{background:var(--protein);}
+.dot.carb,.mbar i.carb{background:var(--carb);}
+.dot.fat,.mbar i.fat{background:var(--fat);}
+
+/* bmi scale */
+.bmi-scale{margin-top:6px;}
+.bmi-track{position:relative;height:10px;border-radius:6px;overflow:visible;
+  background:linear-gradient(90deg,#6ea8fe 0 18%,#5fd28b 18% 45%,#ffb454 45% 68%,#ff7a8a 68% 100%);}
+.bmi-mark{position:absolute;top:-5px;width:3px;height:20px;background:var(--text);border-radius:2px;transform:translateX(-50%);box-shadow:0 0 0 2px var(--card);transition:left .25s;}
+.bmi-legend{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:7px;}
+
+/* projection */
+.proj{display:grid;grid-template-columns:1fr 1fr;gap:13px;}
+@media (max-width:560px){.proj{grid-template-columns:1fr;}}
+
+#hint{color:var(--err);font-weight:600;font-size:14px;margin-top:14px;display:none;}
+#hint.show{display:block;}
+.warn{background:rgba(255,180,84,.10);border:1px solid var(--fat);color:var(--text);border-radius:11px;padding:11px 13px;font-size:13.5px;margin-top:13px;}
+.warn.err{background:rgba(255,122,138,.10);border-color:var(--err);}
+.presets{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px;}
+.preset{padding:7px 13px;border-radius:999px;border:1px solid var(--border);background:var(--card2);color:var(--muted);cursor:pointer;font:13px sans-serif;transition:.15s;}
+.preset:hover{color:var(--text);border-color:var(--accent);}
+.muted-note{color:var(--muted);font-size:12.5px;margin-top:10px;}
+footer{margin-top:38px;color:var(--muted);font-size:12.5px;text-align:center;line-height:1.7;}
+footer .note{display:block;margin-top:6px;opacity:.8;}
+.placeholder{color:var(--muted);}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="../../">← 返回工具集</a>
+  <header>
+    <h1>🔥 热量与宏量计算器</h1>
+    <p>填入你的身体数据,实时算出 <strong>基础代谢(BMR)</strong>、<strong>每日总消耗(TDEE)</strong>,以及减脂 / 维持 / 增肌三种目标的每日热量和<strong>蛋白质·碳水·脂肪</strong>克数,并预估每周体重变化与达成目标体重的时间。所有计算都在你的浏览器本地完成,不上传任何数据。</p>
+  </header>
+
+  <!-- INPUTS -->
+  <div class="card">
+    <p class="section-title"><span>① 你的身体数据</span>
+      <span class="seg small" id="unit-seg" style="width:auto;min-width:168px" role="group" aria-label="单位">
+        <button type="button" id="unit-metric" data-unit="metric" aria-pressed="true">公制 cm·kg</button>
+        <button type="button" id="unit-imperial" data-unit="imperial" aria-pressed="false">英制 in·lb</button>
+      </span>
+    </p>
+    <div class="grid">
+      <div class="field">
+        <label>性别</label>
+        <div class="seg" id="sex-seg" role="group" aria-label="性别">
+          <button type="button" id="sex-male" data-sex="male" aria-pressed="true">♂ 男</button>
+          <button type="button" id="sex-female" data-sex="female" aria-pressed="false">♀ 女</button>
+        </div>
+      </div>
+      <div class="field">
+        <label for="age">年龄</label>
+        <div class="input-affix has-suf"><input id="age" type="number" inputmode="numeric" min="10" max="100" step="1" value="30" autocomplete="off"><span class="suf">岁</span></div>
+      </div>
+      <div class="field">
+        <label for="height">身高</label>
+        <div class="input-affix has-suf"><input id="height" type="number" inputmode="decimal" min="1" step="0.5" value="175" autocomplete="off"><span class="suf" id="height-unit">cm</span></div>
+      </div>
+      <div class="field">
+        <label for="weight">体重</label>
+        <div class="input-affix has-suf"><input id="weight" type="number" inputmode="decimal" min="1" step="0.1" value="70" autocomplete="off"><span class="suf" id="weight-unit">kg</span></div>
+      </div>
+      <div class="field">
+        <label for="bodyfat">体脂率 <span style="opacity:.7">(可选 · 更精准)</span></label>
+        <div class="input-affix has-suf"><input id="bodyfat" type="number" inputmode="decimal" min="3" max="65" step="0.5" placeholder="不填走标准公式" autocomplete="off"><span class="suf">%</span></div>
+        <div class="hintline" id="formula-note">使用 Mifflin-St Jeor 公式</div>
+      </div>
+      <div class="field">
+        <label for="activity">活动水平</label>
+        <select id="activity">
+          <option value="1.2">久坐 · 几乎不运动</option>
+          <option value="1.375">轻度 · 每周运动 1–3 天</option>
+          <option value="1.55" selected>中度 · 每周运动 3–5 天</option>
+          <option value="1.725">高度 · 每周运动 6–7 天</option>
+          <option value="1.9">极高 · 体力劳动 / 每天高强度</option>
+        </select>
+        <div class="hintline">用于把基础代谢换算成每日总消耗</div>
+      </div>
+    </div>
+    <div class="presets" aria-label="快速示例">
+      <button type="button" class="preset" data-preset="cut-male">男 · 减脂示例</button>
+      <button type="button" class="preset" data-preset="bulk-female">女 · 增肌示例</button>
+      <button type="button" class="preset" data-preset="office">久坐白领示例</button>
+    </div>
+    <div id="hint"></div>
+  </div>
+
+  <!-- GOAL -->
+  <div class="card">
+    <p class="section-title"><span>② 选择目标</span></p>
+    <div class="goals" id="goals" role="group" aria-label="目标">
+      <div class="goal" id="goal-cut" data-goal="cut" role="button" tabindex="0" aria-pressed="false">
+        <div class="g-emoji">📉</div><div class="g-name">减脂</div>
+        <div class="kcal"><span class="num">—</span> <small>kcal/日</small></div>
+        <div class="g-off" data-off></div>
+      </div>
+      <div class="goal" id="goal-maintain" data-goal="maintain" role="button" tabindex="0" aria-pressed="true">
+        <div class="g-emoji">⚖️</div><div class="g-name">维持</div>
+        <div class="kcal"><span class="num">—</span> <small>kcal/日</small></div>
+        <div class="g-off" data-off>= 每日消耗</div>
+      </div>
+      <div class="goal" id="goal-bulk" data-goal="bulk" role="button" tabindex="0" aria-pressed="false">
+        <div class="g-emoji">📈</div><div class="g-name">增肌</div>
+        <div class="kcal"><span class="num">—</span> <small>kcal/日</small></div>
+        <div class="g-off" data-off></div>
+      </div>
+    </div>
+
+    <div class="grid" style="margin-top:18px">
+      <div class="field slider-field" id="intensity-field">
+        <div class="slider-head"><label for="intensity" id="intensity-label" style="margin:0">热量缺口</label><b id="intensity-val">20%</b></div>
+        <input type="range" id="intensity" min="10" max="30" step="1" value="20">
+        <div class="hintline" id="intensity-hint">越大瘦得越快,但过猛易掉肌肉、难坚持</div>
+      </div>
+      <div class="field">
+        <label for="goal-weight">目标体重 <span style="opacity:.7">(可选)</span></label>
+        <div class="input-affix has-suf"><input id="goal-weight" type="number" inputmode="decimal" min="1" step="0.1" placeholder="填了就预估达成时间" autocomplete="off"><span class="suf" id="goalw-unit">kg</span></div>
+      </div>
+      <div class="field slider-field">
+        <div class="slider-head"><label for="protein-rate" style="margin:0">蛋白质摄入</label><b id="protein-rate-val">1.8 g/kg</b></div>
+        <input type="range" id="protein-rate" min="1.2" max="2.6" step="0.1" value="1.8">
+        <div class="hintline">每公斤体重的蛋白质;减脂期建议 1.8–2.2</div>
+      </div>
+      <div class="field slider-field">
+        <div class="slider-head"><label for="fat-pct" style="margin:0">脂肪供能比</label><b id="fat-pct-val">25%</b></div>
+        <input type="range" id="fat-pct" min="15" max="40" step="1" value="25">
+        <div class="hintline">脂肪占总热量的比例;其余热量给碳水</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RESULTS -->
+  <div class="card" id="results">
+    <p class="section-title"><span>③ 结果</span></p>
+    <div class="stats">
+      <div class="stat"><div class="k">基础代谢 BMR</div><div class="v" id="bmr-val">—</div><div class="sub" id="bmr-sub">静息每日最低消耗</div></div>
+      <div class="stat"><div class="k">每日总消耗 TDEE</div><div class="v" id="tdee-val">—</div><div class="sub">维持当前体重所需</div></div>
+      <div class="stat target"><div class="k" id="target-k">目标热量</div><div class="v" id="target-val">—</div><div class="sub" id="target-sub">&nbsp;</div></div>
+      <div class="stat"><div class="k">身体质量指数 BMI</div><div class="v" id="bmi-val">—</div><div class="sub" id="bmi-cat">&nbsp;</div></div>
+    </div>
+
+    <div id="bmi-scale" class="bmi-scale" style="margin-top:16px">
+      <div class="bmi-track"><div class="bmi-mark" id="bmi-mark" style="left:0%"></div></div>
+      <div class="bmi-legend"><span>偏瘦 &lt;18.5</span><span>正常</span><span>超重 25+</span><span>肥胖 30+</span></div>
+    </div>
+
+    <div id="warn-box"></div>
+  </div>
+
+  <!-- MACROS -->
+  <div class="card">
+    <p class="section-title"><span>④ 每日宏量营养素 <span style="text-transform:none;letter-spacing:0;color:var(--muted)">(按目标热量分配)</span></span></p>
+    <div class="macro-wrap">
+      <div class="donut" id="macro-donut"><div class="hole"><div class="cal" id="donut-cal">—</div><div class="lab">kcal/日</div></div></div>
+      <div class="macro-rows">
+        <div class="mrow">
+          <span class="dot protein"></span>
+          <div>
+            <div class="ml"><b>蛋白质</b> · <span id="protein-pct">—</span> 供能 · <span id="protein-kcal">—</span> kcal</div>
+            <div class="mbar"><i class="protein" id="protein-bar" style="width:0%"></i></div>
+          </div>
+          <div class="mg"><span id="protein-g">—</span><small> g</small></div>
+        </div>
+        <div class="mrow">
+          <span class="dot carb"></span>
+          <div>
+            <div class="ml"><b>碳水化合物</b> · <span id="carb-pct">—</span> 供能 · <span id="carb-kcal">—</span> kcal</div>
+            <div class="mbar"><i class="carb" id="carb-bar" style="width:0%"></i></div>
+          </div>
+          <div class="mg"><span id="carb-g">—</span><small> g</small></div>
+        </div>
+        <div class="mrow">
+          <span class="dot fat"></span>
+          <div>
+            <div class="ml"><b>脂肪</b> · <span id="fat-pct-out">—</span> 供能 · <span id="fat-kcal">—</span> kcal</div>
+            <div class="mbar"><i class="fat" id="fat-bar" style="width:0%"></i></div>
+          </div>
+          <div class="mg"><span id="fat-g">—</span><small> g</small></div>
+        </div>
+      </div>
+    </div>
+    <div class="muted-note">蛋白质 / 碳水 4 kcal/g,脂肪 9 kcal/g。蛋白质按体重计算,脂肪按供能比,余下热量分配给碳水。</div>
+  </div>
+
+  <!-- PROJECTION -->
+  <div class="card">
+    <p class="section-title"><span>⑤ 进度预估</span></p>
+    <div class="proj">
+      <div class="stat"><div class="k">预计每周体重变化</div><div class="v" id="weekly-change">—</div><div class="sub" id="weekly-sub">基于每日热量盈缺(约 7700 kcal ≈ 1 kg)</div></div>
+      <div class="stat"><div class="k">达成目标体重</div><div class="v" id="weeks-to-goal">—</div><div class="sub" id="goal-date-sub">填写「目标体重」后估算</div></div>
+    </div>
+  </div>
+
+  <footer>
+    BMR：Mifflin-St Jeor(填体脂率时改用 Katch-McArdle)· TDEE = BMR × 活动系数 · 仅供健康参考,不构成医疗或营养建议。
+    <span class="note">数据只保存在本浏览器(localStorage),不会上传。极端体重 / 疾病 / 孕期等情况请咨询专业人士。</span>
+  </footer>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  const $ = (id) => document.getElementById(id);
+  const KG_PER_LB = 0.45359237, CM_PER_IN = 2.54, KCAL_PER_KG = 7700;
+  const ACT_LABEL = {1.2:'久坐',1.375:'轻度',1.55:'中度',1.725:'高度',1.9:'极高'};
+
+  // ---- state ----
+  const state = {
+    unit: 'metric',           // metric | imperial
+    sex: 'male',
+    goal: 'maintain',         // cut | maintain | bulk
+    deficit: 20,              // % below TDEE when cutting
+    surplus: 10,              // % above TDEE when bulking
+  };
+
+  const num = (el) => { const v = parseFloat(el.value); return Number.isFinite(v) ? v : NaN; };
+  const r0 = (x) => Math.round(x);
+  const fmt = (x) => r0(x).toLocaleString('en-US');
+  const r1 = (x) => Math.round(x*10)/10;
+
+  // ---- unit helpers (inputs are shown in the active unit; convert to metric for math) ----
+  function heightCm(){ const h = num($('height')); return state.unit==='imperial' ? h*CM_PER_IN : h; }
+  function weightKg(){ const w = num($('weight')); return state.unit==='imperial' ? w*KG_PER_LB : w; }
+  function goalWeightKg(){ const g = num($('goal-weight')); if(!Number.isFinite(g)) return NaN; return state.unit==='imperial' ? g*KG_PER_LB : g; }
+  function dispWeight(kg){ return state.unit==='imperial' ? r1(kg/KG_PER_LB) : r1(kg); }
+  const wUnit = () => state.unit==='imperial' ? 'lb' : 'kg';
+
+  // ---- core compute ----
+  function compute(){
+    const age = num($('age')), hCm = heightCm(), wKg = weightKg();
+    const bf = num($('bodyfat'));
+    const act = parseFloat($('activity').value);
+    const hint = $('hint');
+
+    const validBf = Number.isFinite(bf) && bf>0;
+    // validation
+    const errs = [];
+    if(!(age>=10 && age<=100)) errs.push('年龄');
+    if(!(hCm>0 && hCm<260)) errs.push('身高');
+    if(!(wKg>0 && wKg<400)) errs.push('体重');
+    if($('bodyfat').value.trim()!=='' && !(bf>=3 && bf<=65)) errs.push('体脂率(3–65%)');
+
+    if(errs.length){
+      hint.textContent = '请检查输入：' + errs.join('、') + ' 需为合理数值。';
+      hint.classList.add('show');
+      clearOutputs();
+      return;
+    }
+    hint.classList.remove('show');
+
+    // BMR
+    let bmr, formula;
+    if(validBf){
+      const lbm = wKg*(1-bf/100);
+      bmr = 370 + 21.6*lbm;
+      formula = 'Katch-McArdle(去脂体重)';
+    } else {
+      bmr = 10*wKg + 6.25*hCm - 5*age + (state.sex==='male' ? 5 : -161);
+      formula = 'Mifflin-St Jeor 公式';
+    }
+    $('formula-note').textContent = '使用 ' + formula;
+
+    const tdee = bmr*act;
+    const targets = {
+      cut: tdee*(1-state.deficit/100),
+      maintain: tdee,
+      bulk: tdee*(1+state.surplus/100),
+    };
+    const target = targets[state.goal];
+
+    // --- render stat cards ---
+    $('bmr-val').innerHTML = fmt(bmr) + ' <small>kcal</small>';
+    $('bmr-sub').textContent = formula.split('(')[0];
+    $('tdee-val').innerHTML = fmt(tdee) + ' <small>kcal</small>';
+    $('tdee-val').dataset.raw = String(r0(tdee));
+    $('target-val').innerHTML = fmt(target) + ' <small>kcal</small>';
+    $('target-val').dataset.raw = String(r0(target));
+    const goalName = {cut:'减脂',maintain:'维持',bulk:'增肌'}[state.goal];
+    $('target-k').textContent = goalName + '目标热量';
+    const diff = r0(target - tdee);
+    $('target-sub').textContent = diff===0 ? '与每日消耗持平'
+      : (diff<0 ? '每日缺口 ' + fmt(-diff) + ' kcal' : '每日盈余 ' + fmt(diff) + ' kcal');
+
+    // --- goal cards ---
+    for(const g of ['cut','maintain','bulk']){
+      const card = $('goal-'+g);
+      card.querySelector('.num').textContent = fmt(targets[g]);
+      card.setAttribute('aria-pressed', String(g===state.goal));
+      const off = card.querySelector('[data-off]');
+      if(g==='cut') off.textContent = '−' + state.deficit + '% 热量';
+      else if(g==='bulk') off.textContent = '+' + state.surplus + '% 热量';
+    }
+
+    // --- BMI ---
+    const hM = hCm/100;
+    const bmi = wKg/(hM*hM);
+    $('bmi-val').innerHTML = r1(bmi) + '';
+    let cat, lo, hi;
+    if(bmi<18.5){cat='偏瘦';lo=0;hi=18.5;}
+    else if(bmi<25){cat='正常';lo=18.5;hi=25;}
+    else if(bmi<30){cat='超重';lo=25;hi=30;}
+    else {cat='肥胖';lo=30;hi=40;}
+    $('bmi-cat').textContent = cat + '(WHO 标准)';
+    // map BMI 15..40 -> 0..100 for marker; segments at 18.5/25/30 don't need to be linear to width but keep simple linear on 15..40
+    const pct = Math.max(0, Math.min(100, (bmi-15)/(40-15)*100));
+    $('bmi-mark').style.left = pct + '%';
+
+    // --- warnings ---
+    const warnBox = $('warn-box');
+    warnBox.innerHTML = '';
+    if(target < bmr){
+      warnBox.innerHTML += '<div class="warn err">⚠️ 目标热量已低于你的基础代谢('+fmt(bmr)+' kcal),长期如此可能损害代谢与肌肉,建议减小缺口。</div>';
+    }
+
+    // --- macros ---
+    const proteinRate = parseFloat($('protein-rate').value);
+    const fatPctVal = parseFloat($('fat-pct').value)/100;
+    let proteinG = proteinRate*wKg;
+    let proteinKcal = proteinG*4;
+    let fatKcal = target*fatPctVal;
+    let fatG = fatKcal/9;
+    let carbKcal = target - proteinKcal - fatKcal;
+    let carbG = carbKcal/4;
+    let macroWarn = '';
+    if(carbKcal < 0){
+      carbKcal = 0; carbG = 0;
+      macroWarn = '蛋白质与脂肪之和已超过目标热量,碳水已归零——请调低蛋白质或脂肪比例。';
+    }
+    const sumKcal = proteinKcal + fatKcal + carbKcal || 1;
+    const pP = proteinKcal/sumKcal, pC = carbKcal/sumKcal, pF = fatKcal/sumKcal;
+
+    $('donut-cal').textContent = fmt(target);
+    $('protein-g').textContent = fmt(proteinG); $('protein-g').dataset.raw = String(r0(proteinG));
+    $('carb-g').textContent = fmt(carbG); $('carb-g').dataset.raw = String(r0(carbG));
+    $('fat-g').textContent = fmt(fatG); $('fat-g').dataset.raw = String(r0(fatG));
+    $('protein-kcal').textContent = fmt(proteinKcal);
+    $('carb-kcal').textContent = fmt(carbKcal);
+    $('fat-kcal').textContent = fmt(fatKcal);
+    $('protein-pct').textContent = Math.round(pP*100)+'%';
+    $('carb-pct').textContent = Math.round(pC*100)+'%';
+    $('fat-pct-out').textContent = Math.round(pF*100)+'%';
+    $('protein-bar').style.width = (pP*100)+'%';
+    $('carb-bar').style.width = (pC*100)+'%';
+    $('fat-bar').style.width = (pF*100)+'%';
+    const a1 = pP*100, a2 = (pP+pC)*100;
+    $('macro-donut').style.background =
+      'conic-gradient(var(--protein) 0 '+a1+'%, var(--carb) '+a1+'% '+a2+'%, var(--fat) '+a2+'% 100%)';
+
+    if(macroWarn) warnBox.innerHTML += '<div class="warn">⚠️ '+macroWarn+'</div>';
+
+    // --- projection ---
+    const dailyDelta = target - tdee;              // kcal/day (negative = deficit)
+    const weeklyKg = dailyDelta*7/KCAL_PER_KG;     // kg/week (negative = loss)
+    if(Math.abs(dailyDelta) < 1){
+      $('weekly-change').innerHTML = '±0 <small>kg/周</small>';
+    } else {
+      const sign = weeklyKg<0 ? '−' : '+';
+      $('weekly-change').innerHTML = sign + Math.abs(dispWeight(Math.abs(weeklyKg))).toFixed(2) + ' <small>'+wUnit()+'/周</small>';
+    }
+    $('weekly-change').dataset.weeklyKg = String(weeklyKg);
+
+    // weeks to goal
+    const gwKg = goalWeightKg();
+    const weeksEl = $('weeks-to-goal'), dateSub = $('goal-date-sub');
+    if(!Number.isFinite(gwKg)){
+      weeksEl.innerHTML = '<span class="placeholder">—</span>';
+      dateSub.textContent = '填写「目标体重」后估算';
+    } else if(Math.abs(gwKg-wKg) < 0.05){
+      weeksEl.innerHTML = '已达标 🎉';
+      dateSub.textContent = '当前体重已等于目标';
+    } else if(Math.abs(weeklyKg) < 0.001){
+      weeksEl.innerHTML = '∞';
+      dateSub.textContent = '维持热量下体重不变,无法靠热量盈缺达成';
+    } else {
+      const dir = gwKg < wKg ? -1 : 1;         // need to lose / gain
+      const moveDir = weeklyKg < 0 ? -1 : 1;   // currently losing / gaining
+      if(dir !== moveDir){
+        weeksEl.innerHTML = '方向不符';
+        dateSub.textContent = '当前热量方向与目标相反('+(dir<0?'需减重':'需增重')+'),请调整目标或缺口/盈余';
+      } else {
+        const weeks = Math.abs(gwKg-wKg)/Math.abs(weeklyKg);
+        weeksEl.innerHTML = (weeks>=1 ? r0(weeks) : r1(weeks)) + ' <small>周</small>';
+        const d = new Date();
+        d.setDate(d.getDate() + Math.round(weeks*7));
+        const ds = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+        dateSub.textContent = '约 '+ds+' 达到 '+dispWeight(gwKg)+' '+wUnit()+'(线性估算)';
+      }
+    }
+
+    save();
+  }
+
+  function clearOutputs(){
+    ['bmr-val','tdee-val','target-val','bmi-val','donut-cal','protein-g','carb-g','fat-g',
+     'protein-kcal','carb-kcal','fat-kcal','weekly-change','weeks-to-goal'].forEach(id=>{
+      $(id).innerHTML = '<span class="placeholder">—</span>';
+    });
+    ['protein-pct','carb-pct','fat-pct-out'].forEach(id=>$(id).textContent='—');
+    $('bmi-cat').textContent='—';
+    $('warn-box').innerHTML='';
+    ['cut','maintain','bulk'].forEach(g=>$('goal-'+g).querySelector('.num').textContent='—');
+  }
+
+  // ---- intensity slider reflects the active goal ----
+  function syncIntensityUI(){
+    const f = $('intensity-field');
+    if(state.goal==='maintain'){ f.classList.add('hidden'); return; }
+    f.classList.remove('hidden');
+    const isCut = state.goal==='cut';
+    $('intensity-label').textContent = isCut ? '热量缺口' : '热量盈余';
+    $('intensity-hint').textContent = isCut
+      ? '越大瘦得越快,但过猛易掉肌肉、难坚持'
+      : '越大长得越快,但脂肪增加也越多';
+    const slider = $('intensity');
+    if(isCut){ slider.min=10; slider.max=30; slider.value=state.deficit; }
+    else { slider.min=5; slider.max=20; slider.value=state.surplus; }
+    $('intensity-val').textContent = (isCut?'−':'+') + slider.value + '%';
+  }
+
+  // ---- persistence ----
+  const LS = 'tdee-calc-v1';
+  function save(){
+    try{
+      localStorage.setItem(LS, JSON.stringify({
+        unit:state.unit, sex:state.sex, goal:state.goal, deficit:state.deficit, surplus:state.surplus,
+        age:$('age').value, height:$('height').value, weight:$('weight').value,
+        bodyfat:$('bodyfat').value, activity:$('activity').value, goalWeight:$('goal-weight').value,
+        protein:$('protein-rate').value, fat:$('fat-pct').value,
+      }));
+    }catch(e){}
+  }
+  function restore(){
+    let s; try{ s = JSON.parse(localStorage.getItem(LS)||'null'); }catch(e){ s=null; }
+    if(!s) return;
+    state.unit = s.unit==='imperial'?'imperial':'metric';
+    state.sex = s.sex==='female'?'female':'male';
+    state.goal = ['cut','maintain','bulk'].includes(s.goal)?s.goal:'maintain';
+    if(Number.isFinite(+s.deficit)) state.deficit = +s.deficit;
+    if(Number.isFinite(+s.surplus)) state.surplus = +s.surplus;
+    const setv=(id,v)=>{ if(v!==undefined && v!==null) $(id).value=v; };
+    setv('age',s.age); setv('height',s.height); setv('weight',s.weight);
+    setv('bodyfat',s.bodyfat); setv('goal-weight',s.goalWeight);
+    setv('protein-rate',s.protein); setv('fat-pct',s.fat);
+    if(s.activity) $('activity').value = s.activity;
+    // reflect segmented states
+    $('sex-male').setAttribute('aria-pressed', String(state.sex==='male'));
+    $('sex-female').setAttribute('aria-pressed', String(state.sex==='female'));
+    setUnitUI();
+    $('protein-rate-val').textContent = (+$('protein-rate').value).toFixed(1)+' g/kg';
+    $('fat-pct-val').textContent = $('fat-pct').value+'%';
+  }
+
+  function setUnitUI(){
+    $('unit-metric').setAttribute('aria-pressed', String(state.unit==='metric'));
+    $('unit-imperial').setAttribute('aria-pressed', String(state.unit==='imperial'));
+    const u = state.unit==='imperial' ? 'in' : 'cm';
+    $('height-unit').textContent = u;
+    $('weight-unit').textContent = wUnit();
+    $('goalw-unit').textContent = wUnit();
+  }
+
+  // ---- events ----
+  $('sex-seg').addEventListener('click', (e)=>{
+    const b = e.target.closest('button[data-sex]'); if(!b) return;
+    state.sex = b.dataset.sex;
+    $('sex-male').setAttribute('aria-pressed', String(state.sex==='male'));
+    $('sex-female').setAttribute('aria-pressed', String(state.sex==='female'));
+    compute();
+  });
+
+  $('unit-seg').addEventListener('click', (e)=>{
+    const b = e.target.closest('button[data-unit]'); if(!b) return;
+    const next = b.dataset.unit;
+    if(next===state.unit) return;
+    // convert visible numbers so the same person is preserved
+    const conv = (id, toImp, f) => {
+      const v = parseFloat($(id).value);
+      if(Number.isFinite(v)) $(id).value = r1(toImp ? v/f : v*f);
+    };
+    const toImp = next==='imperial';
+    conv('height', toImp, CM_PER_IN);
+    conv('weight', toImp, KG_PER_LB);
+    if($('goal-weight').value.trim()!=='') conv('goal-weight', toImp, KG_PER_LB);
+    state.unit = next;
+    setUnitUI();
+    compute();
+  });
+
+  $('goals').addEventListener('click', (e)=>{
+    const card = e.target.closest('.goal[data-goal]'); if(!card) return;
+    state.goal = card.dataset.goal;
+    syncIntensityUI();
+    compute();
+  });
+  $('goals').addEventListener('keydown', (e)=>{
+    const card = e.target.closest('.goal[data-goal]'); if(!card) return;
+    if(e.key==='Enter' || e.key===' '){ e.preventDefault(); card.click(); }
+  });
+
+  $('intensity').addEventListener('input', ()=>{
+    const v = parseInt($('intensity').value,10);
+    if(state.goal==='cut') state.deficit = v;
+    else if(state.goal==='bulk') state.surplus = v;
+    $('intensity-val').textContent = (state.goal==='cut'?'−':'+') + v + '%';
+    compute();
+  });
+  $('protein-rate').addEventListener('input', ()=>{
+    $('protein-rate-val').textContent = (+$('protein-rate').value).toFixed(1)+' g/kg'; compute();
+  });
+  $('fat-pct').addEventListener('input', ()=>{
+    $('fat-pct-val').textContent = $('fat-pct').value+'%'; compute();
+  });
+
+  ['age','height','weight','bodyfat','goal-weight'].forEach(id=>$(id).addEventListener('input', compute));
+  $('activity').addEventListener('change', compute);
+
+  // presets
+  const PRESETS = {
+    'cut-male':   {unit:'metric',sex:'male',  age:30,height:178,weight:82,bodyfat:'',activity:'1.55',goal:'cut',  deficit:20,goalWeight:75,protein:2.0,fat:25},
+    'bulk-female':{unit:'metric',sex:'female',age:26,height:165,weight:55,bodyfat:'',activity:'1.55',goal:'bulk', surplus:12,goalWeight:58,protein:1.8,fat:25},
+    'office':     {unit:'metric',sex:'male',  age:35,height:172,weight:78,bodyfat:'',activity:'1.2', goal:'maintain',protein:1.6,fat:30,goalWeight:''},
+  };
+  document.querySelector('.presets').addEventListener('click',(e)=>{
+    const b = e.target.closest('.preset'); if(!b) return;
+    const p = PRESETS[b.dataset.preset]; if(!p) return;
+    state.unit='metric'; setUnitUI();
+    state.sex=p.sex;
+    $('sex-male').setAttribute('aria-pressed',String(p.sex==='male'));
+    $('sex-female').setAttribute('aria-pressed',String(p.sex==='female'));
+    $('age').value=p.age; $('height').value=p.height; $('weight').value=p.weight;
+    $('bodyfat').value=p.bodyfat||''; $('activity').value=p.activity;
+    $('goal-weight').value=p.goalWeight!==undefined?p.goalWeight:'';
+    if(p.deficit) state.deficit=p.deficit;
+    if(p.surplus) state.surplus=p.surplus;
+    $('protein-rate').value=p.protein; $('protein-rate-val').textContent=p.protein.toFixed(1)+' g/kg';
+    $('fat-pct').value=p.fat; $('fat-pct-val').textContent=p.fat+'%';
+    state.goal=p.goal;
+    syncIntensityUI();
+    compute();
+  });
+
+  // init
+  restore();
+  syncIntensityUI();
+  compute();
+})();
+</script>
+</body>
+</html>
