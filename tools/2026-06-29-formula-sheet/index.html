@@ -1,0 +1,750 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>公式表格 · Formula Sheet</title>
+<meta name="description" content="浏览器里的迷你电子表格：真公式引擎（SUM/AVERAGE/IF…）+ 单元格引用与区间 + 依赖自动重算 + 循环检测与错误传播 + 本地自动保存。零后端、不上传。" />
+<style>
+  :root {
+    --bg: #f1f5f9;
+    --card: #ffffff;
+    --ink: #0f172a;
+    --muted: #64748b;
+    --line: #cbd5e1;
+    --line-soft: #e2e8f0;
+    --head: #f1f5f9;
+    --accent: #2563eb;
+    --accent-soft: #dbeafe;
+    --num: #0f172a;
+    --text: #334155;
+    --formula-tick: #f59e0b;
+    --err-bg: #fee2e2;
+    --err-ink: #dc2626;
+    --btn: #f8fafc;
+    --btn-border: #cbd5e1;
+    --shadow: 0 10px 30px rgba(2, 6, 23, 0.08);
+    --radius: 14px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0b1120;
+      --card: #111827;
+      --ink: #e5e7eb;
+      --muted: #94a3b8;
+      --line: #334155;
+      --line-soft: #1f2937;
+      --head: #0f172a;
+      --accent: #60a5fa;
+      --accent-soft: #1e293b;
+      --num: #e5e7eb;
+      --text: #cbd5e1;
+      --formula-tick: #fbbf24;
+      --err-bg: #4c1d24;
+      --err-ink: #fca5a5;
+      --btn: #1f2937;
+      --btn-border: #374151;
+      --shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+      "Hiragino Sans GB", "Microsoft YaHei", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    padding: 18px 16px 56px;
+  }
+  a { color: var(--accent); }
+  .back { display: inline-block; text-decoration: none; color: var(--muted); font-size: 14px; margin-bottom: 14px; }
+  .back:hover { color: var(--accent); }
+  .wrap { max-width: 1080px; margin: 0 auto; }
+  header h1 { margin: 0 0 4px; font-size: clamp(22px, 4.5vw, 30px); letter-spacing: .3px; }
+  header p { margin: 0 0 18px; color: var(--muted); font-size: 14px; }
+
+  .panel {
+    background: var(--card);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 16px;
+  }
+
+  .toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 12px; }
+  .toolbar .sp { flex: 1 1 auto; }
+  select, button, input { font-family: inherit; font-size: 14px; }
+  button {
+    background: var(--btn); color: var(--ink);
+    border: 1px solid var(--btn-border); border-radius: 10px;
+    padding: 8px 13px; cursor: pointer;
+    transition: transform .04s ease, background .15s ease, border-color .15s ease;
+  }
+  button:hover { border-color: var(--accent); }
+  button:active { transform: translateY(1px); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.ghost { background: transparent; }
+  button:focus-visible, input:focus-visible, .sheet-wrap:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 2px;
+  }
+
+  /* formula bar */
+  .formula-bar { display: flex; align-items: stretch; gap: 0; margin-bottom: 12px; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  .cell-name {
+    min-width: 64px; padding: 8px 10px; text-align: center; font-weight: 700;
+    font-variant-numeric: tabular-nums; background: var(--head); color: var(--ink);
+    border-right: 1px solid var(--line); display: flex; align-items: center; justify-content: center;
+  }
+  .fx { padding: 8px 8px 8px 12px; color: var(--muted); display: flex; align-items: center; font-style: italic; }
+  #formula-input {
+    flex: 1 1 auto; border: none; padding: 8px 12px; background: var(--card); color: var(--ink);
+    font-size: 14px; min-width: 0;
+  }
+  #formula-input::placeholder { color: var(--muted); }
+
+  /* sheet */
+  .sheet-wrap { overflow: auto; max-height: 64vh; border: 1px solid var(--line); border-radius: 10px; }
+  table.sheet { border-collapse: separate; border-spacing: 0; table-layout: fixed; width: max-content; font-variant-numeric: tabular-nums; }
+  .sheet th, .sheet td { border-right: 1px solid var(--line-soft); border-bottom: 1px solid var(--line-soft); height: 32px; }
+  .sheet th {
+    background: var(--head); color: var(--muted); font-weight: 600; font-size: 12px;
+    text-align: center; user-select: none;
+  }
+  .sheet thead th { position: sticky; top: 0; z-index: 2; min-width: 92px; }
+  .sheet thead th.corner { left: 0; z-index: 3; min-width: 44px; width: 44px; }
+  .sheet th.rowhead { position: sticky; left: 0; z-index: 1; min-width: 44px; width: 44px; }
+  .sheet td {
+    position: relative; padding: 0 8px; min-width: 92px; max-width: 220px;
+    font-size: 14px; color: var(--num); cursor: cell;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .sheet td.num { text-align: right; color: var(--num); }
+  .sheet td.text { text-align: left; color: var(--text); }
+  .sheet td.err { text-align: center; color: var(--err-ink); background: var(--err-bg); font-size: 12px; font-weight: 600; }
+  .sheet td.hasf::before {
+    content: ""; position: absolute; top: 0; right: 0;
+    border-width: 0 6px 6px 0; border-style: solid;
+    border-color: transparent var(--formula-tick) transparent transparent;
+  }
+  .sheet td.sel { outline: 2px solid var(--accent); outline-offset: -2px; z-index: 1; }
+  .sheet td.sel.err { background: var(--err-bg); }
+  .cell-input {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    border: none; padding: 0 7px; font: inherit; font-size: 14px;
+    background: var(--card); color: var(--ink); outline: 2px solid var(--accent); outline-offset: -2px;
+  }
+
+  .statusbar { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; margin-top: 12px; font-size: 13px; color: var(--muted); }
+  .statusbar b { color: var(--ink); font-variant-numeric: tabular-nums; }
+  .statusbar .bad b { color: var(--err-ink); }
+
+  details.help { margin-top: 16px; }
+  details.help summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+  details.help .help-body { margin-top: 10px; font-size: 13px; color: var(--muted); }
+  details.help code { background: var(--accent-soft); color: var(--accent); padding: 1px 6px; border-radius: 6px; font-size: 12px; }
+  details.help ul { margin: 8px 0; padding-left: 20px; }
+  details.help li { margin: 3px 0; }
+
+  .hint { font-size: 12px; color: var(--muted); margin-top: 10px; }
+  @media (max-width: 560px) {
+    .cell-name { min-width: 52px; }
+    .sheet td, .sheet thead th { min-width: 76px; }
+  }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <a class="back" href="../../">← 返回工具集</a>
+    <header>
+      <h1>公式表格 · Formula Sheet</h1>
+      <p>浏览器里的迷你电子表格：写公式（<code style="font-size:12px">=SUM(B2:B5)</code>）、引用单元格、改一个数全表自动重算。带循环引用检测与错误传播，全部本地运行、自动保存，不上传任何数据。</p>
+    </header>
+
+    <div class="panel">
+      <div class="toolbar">
+        <button id="btn-sample-budget" class="ghost">示例：月度预算</button>
+        <button id="btn-sample-grades" class="ghost">示例：成绩单</button>
+        <span class="sp"></span>
+        <button id="btn-addrow" class="ghost" title="增加一行">+ 行</button>
+        <button id="btn-addcol" class="ghost" title="增加一列">+ 列</button>
+        <button id="btn-clear">清空</button>
+      </div>
+
+      <div class="formula-bar">
+        <div class="cell-name" id="cell-name">A1</div>
+        <span class="fx">fx</span>
+        <input id="formula-input" type="text" autocomplete="off" autocapitalize="off" spellcheck="false"
+               aria-label="编辑选中单元格的内容或公式" placeholder="输入数字、文本，或以 = 开头的公式，回车确认" />
+      </div>
+
+      <div class="sheet-wrap" id="sheet-wrap" tabindex="0" aria-label="电子表格，方向键移动，输入即编辑，回车确认">
+        <table class="sheet">
+          <thead id="sheet-head"></thead>
+          <tbody id="sheet-body"></tbody>
+        </table>
+      </div>
+
+      <div class="statusbar">
+        <span>选中 <b id="st-sel">A1</b></span>
+        <span>公式 <b id="st-formulas">0</b> 个</span>
+        <span class="bad" id="st-errwrap" hidden>错误 <b id="st-errors">0</b> 个</span>
+        <span>已自动保存到本地</span>
+      </div>
+
+      <p class="hint">提示：点选单元格后直接输入即可编辑；<b>方向键</b>移动、<b>回车</b>下移、<b>Tab</b>右移、<b>Delete</b>清空、<b>F2</b>编辑。改动任意数字，依赖它的公式会立即重算。</p>
+
+      <details class="help">
+        <summary>支持的公式与函数</summary>
+        <div class="help-body">
+          <p>引用单元格用 <code>A1</code>，区间用 <code>A1:B3</code>。运算符：<code>+ - * / ^</code>、字符串拼接 <code>&amp;</code>、比较 <code>= &lt;&gt; &lt; &lt;= &gt; &gt;=</code>（返回 1/0）。</p>
+          <ul>
+            <li><b>聚合</b>：<code>SUM</code> <code>AVERAGE</code>(AVG) <code>MIN</code> <code>MAX</code> <code>COUNT</code> <code>COUNTA</code> <code>PRODUCT</code></li>
+            <li><b>数学</b>：<code>ROUND</code> <code>ABS</code> <code>SQRT</code> <code>POWER</code> <code>MOD</code> <code>INT</code></li>
+            <li><b>逻辑</b>：<code>IF(条件, 真值, 假值)</code> <code>AND</code> <code>OR</code> <code>NOT</code></li>
+            <li><b>文本</b>：<code>CONCAT</code>(CONCATENATE) <code>LEN</code></li>
+          </ul>
+          <p>错误值会沿依赖链传播：<code>#DIV/0!</code> 除零、<code>#NAME?</code> 未知函数、<code>#VALUE!</code> 类型错误、<code>#REF!</code> 区间非法、<code>#CYCLE!</code> 循环引用、<code>#ERROR!</code> 语法错误。</p>
+        </div>
+      </details>
+    </div>
+  </div>
+
+<script>
+(function () {
+  "use strict";
+
+  // ---------------------------------------------------------------- state
+  var NCOLS = 8, NROWS = 16;
+  var STORE_KEY = "formula-sheet-v1";
+  var cells = {};            // "A1" -> raw string (only non-empty kept)
+  var selected = "A1";
+  var editing = false, editingRef = null;
+  var memo = {};             // ref -> resolved scalar (number | string | null)
+  var astCache = {};         // formula-text -> {ast} or {error}
+
+  // ---------------------------------------------------------------- refs
+  function colName(c) { var s = "", n = c + 1; while (n > 0) { var m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); } return s; }
+  function colIndex(s) { var n = 0; for (var i = 0; i < s.length; i++) n = n * 26 + (s.charCodeAt(i) - 64); return n - 1; }
+  function refToRC(ref) { var m = /^([A-Z]+)(\d+)$/.exec(ref); if (!m) return null; return { c: colIndex(m[1]), r: parseInt(m[2], 10) - 1 }; }
+  function rcToRef(r, c) { return colName(c) + (r + 1); }
+
+  // ---------------------------------------------------------------- errors
+  function FErr(code) { this.code = code; }
+  FErr.prototype.toString = function () { return this.code; };
+  function ferr(code) { return new FErr(code); }
+  function isFErr(e) { return e instanceof FErr; }
+
+  // ---------------------------------------------------------------- tokenizer
+  function tokenize(src) {
+    var toks = [], i = 0, n = src.length;
+    function isDigit(ch) { return ch >= "0" && ch <= "9"; }
+    function isAlpha(ch) { return (ch >= "A" && ch <= "Z") || (ch >= "a" && ch <= "z"); }
+    while (i < n) {
+      var ch = src[i];
+      if (ch === " " || ch === "\t") { i++; continue; }
+      if (isDigit(ch) || (ch === "." && isDigit(src[i + 1]))) {
+        var j = i + 1; while (j < n && (isDigit(src[j]) || src[j] === ".")) j++;
+        toks.push({ t: "num", v: parseFloat(src.slice(i, j)) }); i = j; continue;
+      }
+      if (ch === '"') {
+        var k = i + 1, str = "";
+        while (k < n && src[k] !== '"') { str += src[k]; k++; }
+        if (k >= n) throw ferr("#ERROR!");
+        toks.push({ t: "str", v: str }); i = k + 1; continue;
+      }
+      if (isAlpha(ch) || ch === "$") {
+        var p = i; while (p < n && (isAlpha(src[p]) || isDigit(src[p]) || src[p] === "_" || src[p] === "$")) p++;
+        var word = src.slice(i, p).replace(/\$/g, ""); i = p;
+        if (/^[A-Za-z]+\d+$/.test(word)) { toks.push({ t: "ref", v: word.toUpperCase() }); }
+        else {
+          var up = word.toUpperCase();
+          if (up === "TRUE") toks.push({ t: "num", v: 1 });
+          else if (up === "FALSE") toks.push({ t: "num", v: 0 });
+          else toks.push({ t: "name", v: up });
+        }
+        continue;
+      }
+      var two = src.substr(i, 2);
+      if (two === "<=" || two === ">=" || two === "<>") { toks.push({ t: "op", v: two }); i += 2; continue; }
+      if ("+-*/^(),:&<>=".indexOf(ch) !== -1) { toks.push({ t: "op", v: ch }); i++; continue; }
+      throw ferr("#ERROR!");
+    }
+    return toks;
+  }
+
+  // ---------------------------------------------------------------- parser (recursive descent)
+  function parse(toks) {
+    var p = 0;
+    function peek() { return toks[p]; }
+    function next() { return toks[p++]; }
+    function isOp(v) { var t = toks[p]; return t && t.t === "op" && t.v === v; }
+    function expect(v) { if (!isOp(v)) throw ferr("#ERROR!"); p++; }
+
+    function expr() { return compare(); }
+    function compare() {
+      var left = concat();
+      while (peek() && peek().t === "op" && ["=", "<>", "<", "<=", ">", ">="].indexOf(peek().v) !== -1) {
+        var op = next().v; left = { type: "bin", op: op, left: left, right: concat() };
+      }
+      return left;
+    }
+    function concat() {
+      var left = add();
+      while (isOp("&")) { next(); left = { type: "concat", left: left, right: add() }; }
+      return left;
+    }
+    function add() {
+      var left = mul();
+      while (peek() && peek().t === "op" && (peek().v === "+" || peek().v === "-")) {
+        var op = next().v; left = { type: "bin", op: op, left: left, right: mul() };
+      }
+      return left;
+    }
+    function mul() {
+      var left = pow();
+      while (peek() && peek().t === "op" && (peek().v === "*" || peek().v === "/")) {
+        var op = next().v; left = { type: "bin", op: op, left: left, right: pow() };
+      }
+      return left;
+    }
+    function pow() {
+      var left = unary();
+      if (isOp("^")) { next(); return { type: "bin", op: "^", left: left, right: pow() }; }
+      return left;
+    }
+    function unary() {
+      if (peek() && peek().t === "op" && (peek().v === "-" || peek().v === "+")) {
+        var op = next().v; return { type: "unary", op: op, operand: unary() };
+      }
+      return primary();
+    }
+    function primary() {
+      var t = peek();
+      if (!t) throw ferr("#ERROR!");
+      if (t.t === "num") { next(); return { type: "num", v: t.v }; }
+      if (t.t === "str") { next(); return { type: "str", v: t.v }; }
+      if (isOp("(")) { next(); var e = expr(); expect(")"); return e; }
+      if (t.t === "ref") {
+        next();
+        if (isOp(":")) { next(); var t2 = next(); if (!t2 || t2.t !== "ref") throw ferr("#ERROR!"); return { type: "range", from: t.v, to: t2.v }; }
+        return { type: "ref", v: t.v };
+      }
+      if (t.t === "name") {
+        next();
+        if (isOp("(")) {
+          next(); var args = [];
+          if (!isOp(")")) {
+            args.push(expr());
+            while (isOp(",")) { next(); args.push(expr()); }
+          }
+          expect(")");
+          return { type: "call", name: t.v, args: args };
+        }
+        throw ferr("#NAME?");
+      }
+      throw ferr("#ERROR!");
+    }
+
+    var ast = expr();
+    if (p < toks.length) throw ferr("#ERROR!");
+    return ast;
+  }
+
+  function getAST(formula) {
+    if (Object.prototype.hasOwnProperty.call(astCache, formula)) {
+      var c = astCache[formula];
+      if (c.error) throw ferr(c.error);
+      return c.ast;
+    }
+    try { var ast = parse(tokenize(formula)); astCache[formula] = { ast: ast }; return ast; }
+    catch (e) { var code = isFErr(e) ? e.code : "#ERROR!"; astCache[formula] = { error: code }; throw ferr(code); }
+  }
+
+  // ---------------------------------------------------------------- evaluation
+  function parseLiteralNumber(s) {
+    var t = s.trim();
+    if (t === "") return null;
+    if (/^[+-]?(\d+\.?\d*|\.\d+)$/.test(t)) return Number(t);
+    return null;
+  }
+
+  function cellValue(ref, visiting) {
+    if (Object.prototype.hasOwnProperty.call(memo, ref)) return memo[ref];
+    var raw = cells[ref];
+    if (raw === undefined || raw === "") { memo[ref] = null; return null; }
+    if (raw.charAt(0) === "=") {
+      if (visiting[ref]) throw ferr("#CYCLE!");
+      visiting[ref] = true;
+      var val;
+      try { var ast = getAST(raw.slice(1)); val = evalNode(ast, visiting); if (val && val.__range) throw ferr("#VALUE!"); }
+      finally { delete visiting[ref]; }
+      memo[ref] = val; return val;
+    }
+    var num = parseLiteralNumber(raw);
+    var v = num === null ? raw : num;
+    memo[ref] = v; return v;
+  }
+
+  function toNum(v) {
+    if (v === null) return 0;
+    if (typeof v === "number") { if (!isFinite(v)) throw ferr("#NUM!"); return v; }
+    if (typeof v === "string") { if (v.trim() === "") return 0; var n = Number(v); if (!isNaN(n)) return n; throw ferr("#VALUE!"); }
+    if (v && v.__range) throw ferr("#VALUE!");
+    return 0;
+  }
+  function toStr(v) {
+    if (v === null) return "";
+    if (typeof v === "number") return fmtNum(v);
+    if (v && v.__range) throw ferr("#VALUE!");
+    return String(v);
+  }
+
+  function evalNode(node, visiting) {
+    switch (node.type) {
+      case "num": return node.v;
+      case "str": return node.v;
+      case "ref": return cellValue(node.v, visiting);
+      case "range": return { __range: true, from: node.from, to: node.to };
+      case "unary": { var u = toNum(evalNode(node.operand, visiting)); return node.op === "-" ? -u : u; }
+      case "concat": return toStr(evalNode(node.left, visiting)) + toStr(evalNode(node.right, visiting));
+      case "bin": return evalBin(node, visiting);
+      case "call": return evalCall(node, visiting);
+    }
+    throw ferr("#ERROR!");
+  }
+
+  function evalBin(node, visiting) {
+    var op = node.op;
+    if (["=", "<>", "<", "<=", ">", ">="].indexOf(op) !== -1) {
+      return compareVals(evalNode(node.left, visiting), evalNode(node.right, visiting), op) ? 1 : 0;
+    }
+    var a = toNum(evalNode(node.left, visiting)), b = toNum(evalNode(node.right, visiting));
+    switch (op) {
+      case "+": return a + b;
+      case "-": return a - b;
+      case "*": return a * b;
+      case "/": if (b === 0) throw ferr("#DIV/0!"); return a / b;
+      case "^": return Math.pow(a, b);
+    }
+    throw ferr("#ERROR!");
+  }
+  function compareVals(a, b, op) {
+    var x, y;
+    var aNum = typeof a === "number" || a === null, bNum = typeof b === "number" || b === null;
+    if (aNum && bNum) { x = toNum(a); y = toNum(b); } else { x = toStr(a); y = toStr(b); }
+    switch (op) {
+      case "=": return x === y;
+      case "<>": return x !== y;
+      case "<": return x < y;
+      case "<=": return x <= y;
+      case ">": return x > y;
+      case ">=": return x >= y;
+    }
+    return false;
+  }
+
+  function rangeRefs(from, to) {
+    var a = refToRC(from), b = refToRC(to);
+    if (!a || !b) throw ferr("#REF!");
+    var r1 = Math.min(a.r, b.r), r2 = Math.max(a.r, b.r), c1 = Math.min(a.c, b.c), c2 = Math.max(a.c, b.c);
+    if ((r2 - r1 + 1) * (c2 - c1 + 1) > 5000) throw ferr("#REF!");
+    var refs = [];
+    for (var r = r1; r <= r2; r++) for (var c = c1; c <= c2; c++) refs.push(rcToRef(r, c));
+    return refs;
+  }
+  function collectValues(argNodes, visiting) {
+    var out = [];
+    for (var i = 0; i < argNodes.length; i++) {
+      var nd = argNodes[i];
+      if (nd.type === "range") { var rs = rangeRefs(nd.from, nd.to); for (var j = 0; j < rs.length; j++) out.push(cellValue(rs[j], visiting)); }
+      else out.push(evalNode(nd, visiting));
+    }
+    return out;
+  }
+  function numbersOf(values) {
+    var nums = [];
+    for (var i = 0; i < values.length; i++) {
+      var v = values[i];
+      if (v === null) continue;
+      if (typeof v === "number") { if (isFinite(v)) nums.push(v); }
+      else if (typeof v === "string") { if (v.trim() === "") continue; var x = Number(v); if (!isNaN(x)) nums.push(x); }
+    }
+    return nums;
+  }
+
+  var FUNCS = {
+    SUM: function (a, v) { return numbersOf(collectValues(a, v)).reduce(function (s, x) { return s + x; }, 0); },
+    PRODUCT: function (a, v) { return numbersOf(collectValues(a, v)).reduce(function (s, x) { return s * x; }, 1); },
+    AVERAGE: function (a, v) { var ns = numbersOf(collectValues(a, v)); if (!ns.length) throw ferr("#DIV/0!"); return ns.reduce(function (s, x) { return s + x; }, 0) / ns.length; },
+    MIN: function (a, v) { var ns = numbersOf(collectValues(a, v)); return ns.length ? Math.min.apply(null, ns) : 0; },
+    MAX: function (a, v) { var ns = numbersOf(collectValues(a, v)); return ns.length ? Math.max.apply(null, ns) : 0; },
+    COUNT: function (a, v) { return numbersOf(collectValues(a, v)).length; },
+    COUNTA: function (a, v) { return collectValues(a, v).filter(function (x) { return x !== null && !(typeof x === "string" && x.trim() === ""); }).length; },
+    ROUND: function (a, v) { var vs = collectValues(a, v); var x = toNum(vs[0]); var d = vs.length > 1 ? toNum(vs[1]) : 0; var f = Math.pow(10, d); return Math.round(x * f) / f; },
+    ABS: function (a, v) { return Math.abs(toNum(collectValues(a, v)[0])); },
+    SQRT: function (a, v) { var x = toNum(collectValues(a, v)[0]); if (x < 0) throw ferr("#NUM!"); return Math.sqrt(x); },
+    POWER: function (a, v) { var vs = collectValues(a, v); return Math.pow(toNum(vs[0]), toNum(vs[1])); },
+    MOD: function (a, v) { var vs = collectValues(a, v); var d = toNum(vs[1]); if (d === 0) throw ferr("#DIV/0!"); return toNum(vs[0]) % d; },
+    INT: function (a, v) { return Math.floor(toNum(collectValues(a, v)[0])); },
+    IF: function (a, v) { if (a.length < 2) throw ferr("#ERROR!"); var cond = toNum(evalNode(a[0], v)); return cond !== 0 ? evalNode(a[1], v) : (a.length > 2 ? evalNode(a[2], v) : 0); },
+    AND: function (a, v) { return collectValues(a, v).every(function (x) { return toNum(x) !== 0; }) ? 1 : 0; },
+    OR: function (a, v) { return collectValues(a, v).some(function (x) { return toNum(x) !== 0; }) ? 1 : 0; },
+    NOT: function (a, v) { return toNum(evalNode(a[0], v)) === 0 ? 1 : 0; },
+    CONCAT: function (a, v) { return collectValues(a, v).map(toStr).join(""); },
+    LEN: function (a, v) { return toStr(collectValues(a, v)[0]).length; }
+  };
+  FUNCS.AVG = FUNCS.AVERAGE;
+  FUNCS.CONCATENATE = FUNCS.CONCAT;
+
+  function evalCall(node, visiting) {
+    var fn = FUNCS[node.name];
+    if (!fn) throw ferr("#NAME?");
+    return fn(node.args, visiting);
+  }
+
+  function fmtNum(x) {
+    if (!isFinite(x)) throw ferr("#NUM!");
+    if (Number.isInteger(x)) return String(x);
+    var s = x.toFixed(10).replace(/0+$/, "").replace(/\.$/, "");
+    return s;
+  }
+
+  function computeCell(ref) {
+    try {
+      var v = cellValue(ref, {});
+      if (v === null) return { display: "", kind: "empty" };
+      if (typeof v === "number") return { display: fmtNum(v), kind: "num" };
+      return { display: String(v), kind: "text" };
+    } catch (e) { return { display: isFErr(e) ? e.code : "#ERROR!", kind: "err" }; }
+  }
+
+  // ---------------------------------------------------------------- DOM
+  var sheetHead = document.getElementById("sheet-head");
+  var gridBody = document.getElementById("sheet-body");
+  var sheetWrap = document.getElementById("sheet-wrap");
+  var cellNameEl = document.getElementById("cell-name");
+  var formulaInput = document.getElementById("formula-input");
+  var stSel = document.getElementById("st-sel");
+  var stFormulas = document.getElementById("st-formulas");
+  var stErrors = document.getElementById("st-errors");
+  var stErrWrap = document.getElementById("st-errwrap");
+
+  function cellEl(ref) { return gridBody.querySelector('td[data-ref="' + ref + '"]'); }
+
+  function buildGrid() {
+    var thead = '<tr><th class="corner"></th>';
+    for (var c = 0; c < NCOLS; c++) thead += "<th>" + colName(c) + "</th>";
+    thead += "</tr>";
+    var tb = "";
+    for (var r = 0; r < NROWS; r++) {
+      tb += '<tr><th class="rowhead">' + (r + 1) + "</th>";
+      for (var c2 = 0; c2 < NCOLS; c2++) tb += '<td data-ref="' + rcToRef(r, c2) + '"></td>';
+      tb += "</tr>";
+    }
+    sheetHead.innerHTML = thead;
+    gridBody.innerHTML = tb;
+  }
+
+  function recalc() { memo = {}; }
+
+  function render() {
+    var formulaCount = 0, errorCount = 0;
+    var tds = gridBody.querySelectorAll("td[data-ref]");
+    for (var i = 0; i < tds.length; i++) {
+      var td = tds[i], ref = td.getAttribute("data-ref");
+      var raw = cells[ref];
+      var isF = raw !== undefined && raw !== "" && raw.charAt(0) === "=";
+      if (isF) formulaCount++;
+      if (editing && ref === editingRef) { continue; } // don't clobber the live editor
+      var res = computeCell(ref);
+      if (res.kind === "err") errorCount++;
+      td.textContent = res.display;
+      td.className = "";
+      if (res.kind === "num") td.classList.add("num");
+      else if (res.kind === "text") td.classList.add("text");
+      else if (res.kind === "err") td.classList.add("err");
+      if (isF) td.classList.add("hasf");
+      if (ref === selected) td.classList.add("sel");
+    }
+    cellNameEl.textContent = selected;
+    stSel.textContent = selected;
+    stFormulas.textContent = String(formulaCount);
+    stErrors.textContent = String(errorCount);
+    stErrWrap.hidden = errorCount === 0;
+    if (!editing) formulaInput.value = cells[selected] != null ? cells[selected] : "";
+  }
+
+  function setRaw(ref, raw) {
+    raw = String(raw);
+    if (raw === "") delete cells[ref]; else cells[ref] = raw;
+  }
+  function commit(ref, raw) { setRaw(ref, raw); recalc(); render(); save(); }
+
+  // ---------------------------------------------------------------- selection + editing
+  function selectCell(ref) {
+    if (editing && editingRef && editingRef !== ref) commitEdit(null);
+    selected = ref;
+    render();
+  }
+  function moveSel(dir) {
+    var rc = refToRC(selected), nr = rc.r, nc = rc.c;
+    if (dir === "down") nr = Math.min(NROWS - 1, nr + 1);
+    else if (dir === "up") nr = Math.max(0, nr - 1);
+    else if (dir === "right") nc = Math.min(NCOLS - 1, nc + 1);
+    else if (dir === "left") nc = Math.max(0, nc - 1);
+    selectCell(rcToRef(nr, nc));
+    ensureVisible();
+  }
+  function ensureVisible() { var td = cellEl(selected); if (td && td.scrollIntoView) td.scrollIntoView({ block: "nearest", inline: "nearest" }); }
+  function focusGrid() { sheetWrap.focus(); }
+
+  function startEdit(initial) {
+    if (editing) return;
+    var td = cellEl(selected);
+    if (!td) return;
+    editing = true; editingRef = selected;
+    var input = document.createElement("input");
+    input.className = "cell-input";
+    input.setAttribute("autocomplete", "off");
+    input.value = initial !== undefined ? initial : (cells[selected] != null ? cells[selected] : "");
+    td.textContent = "";
+    td.appendChild(input);
+    input.focus();
+    var v = input.value; input.value = ""; input.value = v; // caret to end
+    input.addEventListener("keydown", onEditorKey);
+    input.addEventListener("blur", function () { if (editing && editingRef) commitEdit(null); });
+  }
+  function onEditorKey(e) {
+    if (e.key === "Enter") { e.preventDefault(); e.stopPropagation(); commitEdit("down"); }
+    else if (e.key === "Tab") { e.preventDefault(); e.stopPropagation(); commitEdit(e.shiftKey ? "left" : "right"); }
+    else if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); cancelEdit(); }
+    else e.stopPropagation();
+  }
+  function commitEdit(move) {
+    if (!editing) return;
+    var td = cellEl(editingRef), input = td ? td.querySelector("input") : null;
+    var val = input ? input.value : "";
+    var wasRef = editingRef;
+    editing = false; editingRef = null;
+    setRaw(wasRef, val); recalc(); render(); save();
+    if (move) moveSel(move);
+    focusGrid();
+  }
+  function cancelEdit() { editing = false; editingRef = null; render(); focusGrid(); }
+
+  // ---------------------------------------------------------------- events
+  gridBody.addEventListener("mousedown", function (e) {
+    var td = e.target.closest("td[data-ref]");
+    if (!td) return;
+    if (editing) commitEdit(null);
+    selectCell(td.getAttribute("data-ref"));
+    setTimeout(focusGrid, 0);
+  });
+  gridBody.addEventListener("dblclick", function (e) {
+    var td = e.target.closest("td[data-ref]");
+    if (!td) return;
+    selectCell(td.getAttribute("data-ref"));
+    startEdit();
+  });
+
+  document.addEventListener("keydown", function (e) {
+    if (editing) return;
+    var t = e.target;
+    if (t && (t.tagName === "INPUT" || t.tagName === "SELECT" || t.tagName === "TEXTAREA" || t.tagName === "BUTTON" || t.tagName === "A")) return;
+    var k = e.key;
+    if (k === "ArrowDown") { e.preventDefault(); moveSel("down"); }
+    else if (k === "ArrowUp") { e.preventDefault(); moveSel("up"); }
+    else if (k === "ArrowRight") { e.preventDefault(); moveSel("right"); }
+    else if (k === "ArrowLeft") { e.preventDefault(); moveSel("left"); }
+    else if (k === "Enter" || k === "F2") { e.preventDefault(); startEdit(); }
+    else if (k === "Tab") { e.preventDefault(); moveSel(e.shiftKey ? "left" : "right"); }
+    else if (k === "Backspace" || k === "Delete") { e.preventDefault(); commit(selected, ""); }
+    else if (k.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); startEdit(k); }
+  });
+
+  formulaInput.addEventListener("keydown", function (e) {
+    if (e.key === "Enter") { e.preventDefault(); commit(selected, formulaInput.value); moveSel("down"); focusGrid(); }
+    else if (e.key === "Escape") { e.preventDefault(); formulaInput.value = cells[selected] != null ? cells[selected] : ""; focusGrid(); }
+  });
+
+  document.getElementById("btn-clear").addEventListener("click", function () {
+    if (Object.keys(cells).length && !window.confirm("清空整张表？此操作不可撤销。")) return;
+    cells = {}; recalc(); render(); save();
+  });
+  document.getElementById("btn-addrow").addEventListener("click", function () { NROWS++; buildGrid(); render(); save(); });
+  document.getElementById("btn-addcol").addEventListener("click", function () { NCOLS++; buildGrid(); render(); save(); });
+  document.getElementById("btn-sample-budget").addEventListener("click", function () { loadSample("budget"); });
+  document.getElementById("btn-sample-grades").addEventListener("click", function () { loadSample("grades"); });
+
+  // ---------------------------------------------------------------- samples
+  var SAMPLES = {
+    budget: {
+      NCOLS: 8, NROWS: 16, sel: "B7",
+      cells: {
+        A1: "月度预算",
+        A2: "项目", B2: "金额",
+        A3: "工资", B3: "12000",
+        A4: "房租", B4: "-4500",
+        A5: "餐饮", B5: "-2400",
+        A6: "交通", B6: "-600",
+        A7: "结余", B7: "=SUM(B3:B6)",
+        D2: "数量", E2: "单价", F2: "小计",
+        D3: "3", E3: "25", F3: "=D3*E3",
+        D4: "5", E4: "12", F4: "=D4*E4",
+        D5: "合计", F5: "=SUM(F3:F4)"
+      }
+    },
+    grades: {
+      NCOLS: 8, NROWS: 16, sel: "D2",
+      cells: {
+        A1: "学生", B1: "数学", C1: "英语", D1: "平均", E1: "评定",
+        A2: "小明", B2: "88", C2: "92", D2: "=ROUND(AVERAGE(B2:C2),1)", E2: '=IF(D2>=60,"及格","补考")',
+        A3: "小红", B3: "76", C3: "54", D3: "=ROUND(AVERAGE(B3:C3),1)", E3: '=IF(D3>=60,"及格","补考")',
+        A4: "小刚", B4: "45", C4: "50", D4: "=ROUND(AVERAGE(B4:C4),1)", E4: '=IF(D4>=60,"及格","补考")',
+        A6: "班级均分", B6: "=ROUND(AVERAGE(B2:B4),1)", C6: "=ROUND(AVERAGE(C2:C4),1)"
+      }
+    }
+  };
+  function loadSample(name) {
+    var s = SAMPLES[name]; if (!s) return;
+    NCOLS = s.NCOLS; NROWS = s.NROWS;
+    cells = {}; for (var k in s.cells) if (Object.prototype.hasOwnProperty.call(s.cells, k)) cells[k] = s.cells[k];
+    buildGrid(); recalc(); selected = s.sel || "A1"; render(); save();
+  }
+
+  // ---------------------------------------------------------------- persistence
+  function save() { try { localStorage.setItem(STORE_KEY, JSON.stringify({ NCOLS: NCOLS, NROWS: NROWS, cells: cells })); } catch (e) {} }
+  function load() {
+    try {
+      var raw = localStorage.getItem(STORE_KEY);
+      if (!raw) return false;
+      var d = JSON.parse(raw);
+      if (d && d.cells) { cells = d.cells; if (d.NCOLS) NCOLS = d.NCOLS; if (d.NROWS) NROWS = d.NROWS; return true; }
+    } catch (e) {}
+    return false;
+  }
+
+  // ---------------------------------------------------------------- test hook
+  window.__sheet = {
+    setCell: function (ref, raw) { setRaw(ref, String(raw)); recalc(); render(); save(); },
+    getRaw: function (ref) { return cells[ref] != null ? cells[ref] : ""; },
+    getValue: function (ref) { return computeCell(ref).display; },
+    isError: function (ref) { return computeCell(ref).kind === "err"; },
+    getSelected: function () { return selected; },
+    select: function (ref) { selectCell(ref); },
+    clearAll: function () { cells = {}; recalc(); render(); save(); },
+    loadSample: function (name) { loadSample(name); },
+    dims: function () { return { NCOLS: NCOLS, NROWS: NROWS }; }
+  };
+
+  // ---------------------------------------------------------------- boot
+  var restored = load();
+  buildGrid();
+  if (!restored) loadSample("budget");
+  else { recalc(); render(); }
+  selectCell(selected);
+})();
+</script>
+</body>
+</html>
