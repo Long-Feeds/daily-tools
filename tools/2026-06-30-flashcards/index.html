@@ -1,0 +1,900 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>记忆闪卡 · Flashcards</title>
+<meta name="description" content="浏览器里的间隔重复记忆卡片：真 SM-2 算法按记忆曲线安排复习 + 多牌组管理 + 一键批量造卡 + 导入导出 + 本地自动保存。零后端、不上传，每天回来清空当日队列。" />
+<style>
+  :root {
+    --bg: #f1f5f9;
+    --card: #ffffff;
+    --card-2: #f8fafc;
+    --ink: #0f172a;
+    --muted: #64748b;
+    --faint: #94a3b8;
+    --line: #cbd5e1;
+    --line-soft: #e2e8f0;
+    --head: #f1f5f9;
+    --accent: #6d28d9;
+    --accent-ink: #ffffff;
+    --accent-soft: #ede9fe;
+    --btn: #f8fafc;
+    --btn-border: #cbd5e1;
+    --again: #dc2626;
+    --hard: #d97706;
+    --good: #16a34a;
+    --easy: #2563eb;
+    --good-soft: #dcfce7;
+    --shadow: 0 10px 30px rgba(2, 6, 23, 0.08);
+    --shadow-lg: 0 24px 60px rgba(2, 6, 23, 0.16);
+    --radius: 16px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0b1120;
+      --card: #111827;
+      --card-2: #0f172a;
+      --ink: #e5e7eb;
+      --muted: #94a3b8;
+      --faint: #64748b;
+      --line: #334155;
+      --line-soft: #1f2937;
+      --head: #0f172a;
+      --accent: #a78bfa;
+      --accent-ink: #0b1120;
+      --accent-soft: #1e1b4b;
+      --btn: #1f2937;
+      --btn-border: #374151;
+      --again: #f87171;
+      --hard: #fbbf24;
+      --good: #4ade80;
+      --easy: #60a5fa;
+      --good-soft: #14321f;
+      --shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+      --shadow-lg: 0 24px 60px rgba(0, 0, 0, 0.6);
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  [hidden] { display: none !important; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+      "Hiragino Sans GB", "Microsoft YaHei", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    padding: 18px 16px 64px;
+  }
+  a { color: var(--accent); }
+  .back { display: inline-block; text-decoration: none; color: var(--muted); font-size: 14px; margin-bottom: 14px; }
+  .back:hover { color: var(--accent); }
+  .wrap { max-width: 920px; margin: 0 auto; }
+  header h1 { margin: 0 0 4px; font-size: clamp(22px, 4.5vw, 30px); letter-spacing: .3px; }
+  header p { margin: 0 0 18px; color: var(--muted); font-size: 14px; }
+
+  select, button, input, textarea { font-family: inherit; font-size: 14px; color: var(--ink); }
+  button {
+    background: var(--btn); color: var(--ink);
+    border: 1px solid var(--btn-border); border-radius: 10px;
+    padding: 8px 13px; cursor: pointer;
+    transition: transform .04s ease, background .15s ease, border-color .15s ease, color .15s ease;
+  }
+  button:hover { border-color: var(--accent); }
+  button:active { transform: translateY(1px); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
+  button.ghost { background: transparent; }
+  button.danger:hover { border-color: var(--again); color: var(--again); }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, .flashcard:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 2px;
+  }
+  input[type="text"], textarea, select {
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 9px 11px;
+  }
+  textarea { width: 100%; resize: vertical; line-height: 1.5; }
+
+  /* deck bar */
+  .deckbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+  .deckbar select { min-width: 180px; flex: 0 1 auto; font-weight: 600; }
+  .deckbar .sp { flex: 1 1 auto; }
+  .inline-form { display: flex; gap: 6px; align-items: center; }
+  .inline-form input { min-width: 150px; }
+
+  /* stats */
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 14px; }
+  .stat {
+    background: var(--card); border: 1px solid var(--line-soft); border-radius: 12px;
+    padding: 10px 12px; text-align: center; box-shadow: var(--shadow);
+  }
+  .stat .n { font-size: clamp(20px, 5vw, 26px); font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1.1; }
+  .stat .l { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .stat.due .n { color: var(--accent); }
+  .stat.new .n { color: var(--easy); }
+  .stat.today .n { color: var(--good); }
+
+  /* tabs */
+  .tabs { display: flex; gap: 6px; margin-bottom: 14px; border-bottom: 1px solid var(--line-soft); }
+  .tab {
+    border: none; background: transparent; border-bottom: 2px solid transparent;
+    border-radius: 0; padding: 8px 12px; color: var(--muted); font-weight: 600;
+  }
+  .tab:hover { color: var(--ink); border-color: transparent; }
+  .tab[aria-selected="true"] { color: var(--accent); border-bottom-color: var(--accent); }
+
+  .panel { background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); padding: 18px; }
+
+  /* study */
+  #view-study { min-height: 320px; }
+  .progress { height: 7px; background: var(--line-soft); border-radius: 99px; overflow: hidden; margin-bottom: 16px; }
+  .progress > i { display: block; height: 100%; background: var(--accent); border-radius: 99px; transition: width .25s ease; }
+  .study-meta { display: flex; justify-content: space-between; font-size: 13px; color: var(--muted); margin-bottom: 10px; }
+  .study-meta .tag { background: var(--accent-soft); color: var(--accent); padding: 1px 8px; border-radius: 99px; font-weight: 600; }
+
+  .flashcard {
+    background: var(--card-2); border: 1px solid var(--line-soft); border-radius: var(--radius);
+    box-shadow: var(--shadow-lg); min-height: 230px; padding: 26px 24px; cursor: pointer;
+    display: flex; flex-direction: column; align-items: stretch; justify-content: center; text-align: center;
+    position: relative; user-select: none;
+  }
+  .flashcard .side-label {
+    position: absolute; top: 12px; left: 14px; font-size: 11px; letter-spacing: .14em;
+    text-transform: uppercase; color: var(--faint); font-weight: 700;
+  }
+  .face { font-size: clamp(20px, 4.5vw, 30px); font-weight: 700; white-space: pre-wrap; word-break: break-word; }
+  .answer { margin-top: 18px; padding-top: 18px; border-top: 1px dashed var(--line); }
+  .answer .face { font-size: clamp(18px, 4vw, 26px); font-weight: 600; color: var(--good); }
+  .hint { margin-top: 16px; font-size: 13px; color: var(--faint); }
+
+  .grades { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 16px; }
+  .grade {
+    border: 1px solid var(--btn-border); border-radius: 12px; padding: 10px 6px; background: var(--card);
+    display: flex; flex-direction: column; gap: 3px; align-items: center; line-height: 1.2;
+  }
+  .grade .g-label { font-weight: 700; font-size: 14px; }
+  .grade .g-key { font-size: 11px; color: var(--faint); }
+  .grade .g-int { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .grade[data-q="0"] { border-top: 3px solid var(--again); }
+  .grade[data-q="3"] { border-top: 3px solid var(--hard); }
+  .grade[data-q="4"] { border-top: 3px solid var(--good); }
+  .grade[data-q="5"] { border-top: 3px solid var(--easy); }
+  .grade[data-q="0"]:hover { border-color: var(--again); }
+  .grade[data-q="3"]:hover { border-color: var(--hard); }
+  .grade[data-q="4"]:hover { border-color: var(--good); }
+  .grade[data-q="5"]:hover { border-color: var(--easy); }
+
+  .empty-state { text-align: center; padding: 40px 16px; }
+  .empty-state .big { font-size: 52px; line-height: 1; margin-bottom: 12px; }
+  .empty-state h2 { margin: 0 0 6px; font-size: 20px; }
+  .empty-state p { color: var(--muted); margin: 0 0 16px; }
+
+  /* cards table */
+  .addrow { display: grid; grid-template-columns: 1fr 1fr auto; gap: 10px; align-items: start; margin-bottom: 16px; }
+  .addrow textarea { min-height: 46px; }
+  @media (max-width: 620px) { .addrow { grid-template-columns: 1fr; } }
+  table.cards { width: 100%; border-collapse: collapse; }
+  table.cards th, table.cards td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line-soft); vertical-align: top; font-size: 14px; }
+  table.cards th { color: var(--muted); font-size: 12px; font-weight: 600; }
+  table.cards td.meta { color: var(--muted); font-size: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  table.cards td.due-now { color: var(--accent); font-weight: 600; }
+  .c-text { white-space: pre-wrap; word-break: break-word; }
+  .rowact { display: flex; gap: 6px; }
+  .rowact button { padding: 5px 9px; font-size: 13px; }
+  .list-empty { color: var(--muted); text-align: center; padding: 28px 8px; }
+
+  /* io */
+  .io-block { margin-bottom: 22px; }
+  .io-block h3 { margin: 0 0 6px; font-size: 15px; }
+  .io-block p { margin: 0 0 10px; color: var(--muted); font-size: 13px; }
+  .io-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .msg { margin-top: 10px; font-size: 13px; min-height: 18px; }
+  .msg.ok { color: var(--good); }
+  .msg.err { color: var(--again); }
+  code.kbd { background: var(--accent-soft); color: var(--accent); padding: 1px 6px; border-radius: 6px; font-size: 12px; }
+  .foot { margin-top: 22px; color: var(--faint); font-size: 12px; text-align: center; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="../../">← 返回工具集</a>
+  <header>
+    <h1>记忆闪卡 · Flashcards</h1>
+    <p>用经典 <strong>SM-2 间隔重复算法</strong>按你的记忆曲线安排复习——记得牢的卡越拉越久，记不住的明天再见。多牌组、批量造卡、导入导出，全部存在本地浏览器，每天回来清空当日队列。</p>
+  </header>
+
+  <!-- deck bar -->
+  <div class="deckbar">
+    <label for="deck-select" class="sr-only" style="position:absolute;left:-9999px">牌组</label>
+    <select id="deck-select" aria-label="选择牌组"></select>
+    <button id="deck-new-btn" title="新建牌组">＋ 牌组</button>
+    <button id="deck-rename-btn" class="ghost" title="重命名当前牌组">重命名</button>
+    <button id="deck-del-btn" class="ghost danger" title="删除当前牌组">删除</button>
+    <span class="sp"></span>
+    <div class="inline-form" id="deck-edit-form" hidden>
+      <input type="text" id="deck-name-input" placeholder="牌组名称" maxlength="60" />
+      <button id="deck-save-btn" class="primary">保存</button>
+      <button id="deck-cancel-btn" class="ghost">取消</button>
+    </div>
+  </div>
+
+  <!-- stats -->
+  <div class="stats">
+    <div class="stat due"><div class="n" id="stat-due">0</div><div class="l">待复习</div></div>
+    <div class="stat new"><div class="n" id="stat-new">0</div><div class="l">新卡</div></div>
+    <div class="stat today"><div class="n" id="stat-today">0</div><div class="l">今日已学</div></div>
+    <div class="stat total"><div class="n" id="stat-total">0</div><div class="l">总卡片</div></div>
+  </div>
+
+  <!-- tabs -->
+  <div class="tabs" role="tablist">
+    <button class="tab" id="tab-study" data-view="study" role="tab" aria-selected="true">学习</button>
+    <button class="tab" id="tab-cards" data-view="cards" role="tab" aria-selected="false">管理卡片</button>
+    <button class="tab" id="tab-io" data-view="io" role="tab" aria-selected="false">导入 / 导出</button>
+  </div>
+
+  <!-- STUDY -->
+  <section class="panel" id="view-study" role="tabpanel" aria-labelledby="tab-study">
+    <div id="study-active">
+      <div class="progress"><i id="study-bar" style="width:0%"></i></div>
+      <div class="study-meta">
+        <span>剩余 <strong id="study-remain">0</strong> 张</span>
+        <span class="tag" id="study-kind">复习</span>
+      </div>
+      <div class="flashcard" id="flashcard" tabindex="0" role="button" aria-label="点击或按空格翻面">
+        <span class="side-label">问题</span>
+        <div class="face" id="card-front">—</div>
+        <div class="answer" id="card-answer" hidden>
+          <span class="side-label" style="top:auto;bottom:-2px;left:50%;transform:translateX(-50%)"></span>
+          <div class="face" id="card-back">—</div>
+        </div>
+        <div class="hint" id="flip-hint">点击卡片或按 <code class="kbd">空格</code> 显示答案</div>
+      </div>
+      <div class="grades" id="grades" hidden>
+        <button class="grade" data-q="0"><span class="g-label">重来</span><span class="g-int" id="int-0">–</span><span class="g-key">1</span></button>
+        <button class="grade" data-q="3"><span class="g-label">困难</span><span class="g-int" id="int-3">–</span><span class="g-key">2</span></button>
+        <button class="grade" data-q="4"><span class="g-label">良好</span><span class="g-int" id="int-4">–</span><span class="g-key">3 / 空格</span></button>
+        <button class="grade" data-q="5"><span class="g-label">简单</span><span class="g-int" id="int-5">–</span><span class="g-key">4</span></button>
+      </div>
+    </div>
+
+    <div class="empty-state" id="study-empty" hidden>
+      <div class="big" id="empty-emoji">🎉</div>
+      <h2 id="empty-title">今日队列已清空！</h2>
+      <p id="empty-sub">这个牌组今天没有要复习的卡片了，明天再来吧。</p>
+      <button class="primary" id="empty-cta">去管理卡片</button>
+    </div>
+  </section>
+
+  <!-- CARDS -->
+  <section class="panel" id="view-cards" role="tabpanel" aria-labelledby="tab-cards" hidden>
+    <div class="addrow">
+      <textarea id="add-front" placeholder="正面（问题 / 单词）" aria-label="卡片正面"></textarea>
+      <textarea id="add-back" placeholder="背面（答案 / 释义）" aria-label="卡片背面"></textarea>
+      <button class="primary" id="add-btn" title="Ctrl/⌘ + Enter 也可添加">添加卡片</button>
+    </div>
+    <table class="cards">
+      <thead>
+        <tr><th style="width:34%">正面</th><th style="width:34%">背面</th><th>到期</th><th>状态</th><th></th></tr>
+      </thead>
+      <tbody id="card-list"></tbody>
+    </table>
+    <div class="list-empty" id="cards-empty" hidden>这个牌组还没有卡片。在上方添加，或到「导入 / 导出」批量造卡。</div>
+  </section>
+
+  <!-- IO -->
+  <section class="panel" id="view-io" role="tabpanel" aria-labelledby="tab-io" hidden>
+    <div class="io-block">
+      <h3>批量造卡（粘贴文本）</h3>
+      <p>每行一张卡，用 <code class="kbd">|</code> 或 <code class="kbd">Tab</code> 分隔正反面，例如 <code class="kbd">ephemeral | 短暂的</code>。导入到当前牌组。</p>
+      <textarea id="bulk-text" rows="5" placeholder="apple | 苹果&#10;ubiquitous | 无处不在的&#10;法国 | 巴黎"></textarea>
+      <div class="io-row" style="margin-top:8px"><button class="primary" id="bulk-btn">批量添加到当前牌组</button></div>
+    </div>
+
+    <div class="io-block">
+      <h3>导出 / 备份</h3>
+      <p>把全部牌组导出成 JSON 文件，可在另一台设备导入。</p>
+      <div class="io-row">
+        <button id="export-btn">导出全部牌组 (.json)</button>
+        <button class="ghost" id="sample-btn">载入示例牌组</button>
+        <button class="ghost danger" id="reset-btn">清空所有数据</button>
+      </div>
+    </div>
+
+    <div class="io-block">
+      <h3>导入（粘贴 JSON）</h3>
+      <p>粘贴导出的 JSON 并导入（将替换当前所有牌组）。</p>
+      <textarea id="import-text" rows="4" placeholder='{"decks":[ ... ]}'></textarea>
+      <div class="io-row" style="margin-top:8px"><button class="primary" id="import-btn">导入 JSON</button></div>
+    </div>
+    <div class="msg" id="io-msg" role="status"></div>
+  </section>
+
+  <div class="foot">SM-2 算法 · 数据仅保存在本浏览器（localStorage）· 不上传任何内容</div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var STORE_KEY = "daily-tools:flashcards:v1";
+  var DAY = 86400000;
+
+  /* ---------------- clock (overridable for tests) ---------------- */
+  var _nowOverride = null;
+  function now() { return _nowOverride == null ? Date.now() : _nowOverride; }
+  function dayKey(ts) { var d = new Date(ts); return d.getFullYear() + "-" + d.getMonth() + "-" + d.getDate(); }
+
+  /* ---------------- ids ---------------- */
+  var _seq = 0;
+  function uid(prefix) { _seq += 1; return prefix + "_" + now().toString(36) + "_" + _seq.toString(36); }
+
+  /* ---------------- SM-2 engine (pure) ----------------
+     quality q: 0 重来 / 3 困难 / 4 良好 / 5 简单 (0..5)
+     Returns the next scheduling state {ef, reps, interval, lapses}. No time. */
+  function schedule(card, q) {
+    q = Math.max(0, Math.min(5, Math.round(q)));
+    var ef = (typeof card.ef === "number" ? card.ef : 2.5)
+      + (0.1 - (5 - q) * (0.08 + (5 - q) * 0.02));
+    if (ef < 1.3) ef = 1.3;
+    ef = Math.round(ef * 100) / 100;
+    var reps = card.reps || 0;
+    var interval = card.interval || 0;
+    var lapses = card.lapses || 0;
+    if (q < 3) {
+      reps = 0;
+      interval = 1;
+      lapses += 1;
+    } else {
+      if (reps === 0) interval = 1;
+      else if (reps === 1) interval = 6;
+      else interval = Math.max(1, Math.round(interval * ef));
+      reps += 1;
+    }
+    return { ef: ef, reps: reps, interval: interval, lapses: lapses };
+  }
+  function projectedInterval(card, q) { return schedule(card, q).interval; }
+
+  /* ---------------- state ---------------- */
+  var state = { version: 1, decks: [], activeDeckId: null };
+
+  function freshCard(front, back) {
+    return {
+      id: uid("c"), front: front, back: back,
+      ef: 2.5, reps: 0, interval: 0, lapses: 0, reviews: 0,
+      due: now(), lastReview: null, created: now()
+    };
+  }
+  function sanitizeCard(raw) {
+    var c = freshCard(String(raw && raw.front != null ? raw.front : ""), String(raw && raw.back != null ? raw.back : ""));
+    if (raw && typeof raw === "object") {
+      if (typeof raw.ef === "number") c.ef = raw.ef;
+      if (typeof raw.reps === "number") c.reps = raw.reps;
+      if (typeof raw.interval === "number") c.interval = raw.interval;
+      if (typeof raw.lapses === "number") c.lapses = raw.lapses;
+      if (typeof raw.reviews === "number") c.reviews = raw.reviews;
+      if (typeof raw.due === "number") c.due = raw.due;
+      if (typeof raw.lastReview === "number") c.lastReview = raw.lastReview;
+      if (typeof raw.created === "number") c.created = raw.created;
+    }
+    return c;
+  }
+  function sanitizeDeck(raw) {
+    var name = raw && raw.name != null ? String(raw.name) : "未命名牌组";
+    var cards = (raw && Array.isArray(raw.cards) ? raw.cards : []).map(sanitizeCard);
+    return { id: uid("d"), name: name, created: now(), cards: cards };
+  }
+
+  function save() {
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch (e) {}
+  }
+  function load() {
+    var raw = null;
+    try { raw = localStorage.getItem(STORE_KEY); } catch (e) {}
+    if (!raw) return false;
+    try {
+      var p = JSON.parse(raw);
+      if (!p || !Array.isArray(p.decks)) return false;
+      state.decks = p.decks.map(function (d) {
+        var deck = { id: (d && d.id) || uid("d"), name: (d && d.name) || "未命名牌组", created: (d && d.created) || now(), cards: [] };
+        deck.cards = (d && Array.isArray(d.cards) ? d.cards : []).map(function (c) {
+          var sc = sanitizeCard(c);
+          if (c && c.id) sc.id = c.id;
+          return sc;
+        });
+        return deck;
+      });
+      state.activeDeckId = p.activeDeckId || (state.decks[0] && state.decks[0].id) || null;
+      if (!getDeck(state.activeDeckId) && state.decks[0]) state.activeDeckId = state.decks[0].id;
+      return true;
+    } catch (e) { return false; }
+  }
+
+  /* ---------------- deck/card ops ---------------- */
+  function getDeck(id) { for (var i = 0; i < state.decks.length; i++) if (state.decks[i].id === id) return state.decks[i]; return null; }
+  function activeDeck() { return getDeck(state.activeDeckId); }
+  function getCard(deck, cardId) { if (!deck) return null; for (var i = 0; i < deck.cards.length; i++) if (deck.cards[i].id === cardId) return deck.cards[i]; return null; }
+
+  function newDeck(name) {
+    name = (name || "").trim() || "新牌组";
+    var d = { id: uid("d"), name: name, created: now(), cards: [] };
+    state.decks.push(d);
+    state.activeDeckId = d.id;
+    save();
+    return d.id;
+  }
+  function renameDeck(id, name) {
+    var d = getDeck(id); if (!d) return false;
+    name = (name || "").trim(); if (!name) return false;
+    d.name = name; save(); return true;
+  }
+  function deleteDeck(id) {
+    var idx = -1;
+    for (var i = 0; i < state.decks.length; i++) if (state.decks[i].id === id) { idx = i; break; }
+    if (idx < 0) return false;
+    state.decks.splice(idx, 1);
+    if (state.activeDeckId === id) state.activeDeckId = state.decks[0] ? state.decks[0].id : null;
+    save(); return true;
+  }
+  function setActiveDeck(id) { if (getDeck(id)) { state.activeDeckId = id; save(); } }
+
+  function addCard(deckId, front, back) {
+    var d = getDeck(deckId); if (!d) return null;
+    front = (front == null ? "" : String(front)).trim();
+    back = (back == null ? "" : String(back)).trim();
+    if (!front) return null;
+    var c = freshCard(front, back);
+    d.cards.push(c); save(); return c.id;
+  }
+  function editCard(deckId, cardId, front, back) {
+    var c = getCard(getDeck(deckId), cardId); if (!c) return false;
+    front = (front == null ? "" : String(front)).trim();
+    if (!front) return false;
+    c.front = front; c.back = (back == null ? "" : String(back)).trim();
+    save(); return true;
+  }
+  function deleteCard(deckId, cardId) {
+    var d = getDeck(deckId); if (!d) return false;
+    for (var i = 0; i < d.cards.length; i++) if (d.cards[i].id === cardId) { d.cards.splice(i, 1); save(); return true; }
+    return false;
+  }
+  function reviewCard(deckId, cardId, q) {
+    var c = getCard(getDeck(deckId), cardId); if (!c) return null;
+    var s = schedule(c, q);
+    c.ef = s.ef; c.reps = s.reps; c.interval = s.interval; c.lapses = s.lapses;
+    c.reviews = (c.reviews || 0) + 1;
+    c.lastReview = now();
+    c.due = now() + s.interval * DAY;
+    save();
+    return c;
+  }
+
+  function dueCards(deckId) {
+    var d = getDeck(deckId); if (!d) return [];
+    var t = now();
+    return d.cards.filter(function (c) { return c.due <= t; })
+      .sort(function (a, b) { return a.due - b.due; });
+  }
+  function stats(deckId) {
+    var d = getDeck(deckId);
+    if (!d) return { due: 0, fresh: 0, today: 0, total: 0 };
+    var t = now(), tk = dayKey(t), due = 0, fresh = 0, today = 0;
+    for (var i = 0; i < d.cards.length; i++) {
+      var c = d.cards[i];
+      if (c.due <= t) due += 1;
+      if ((c.reviews || 0) === 0) fresh += 1;
+      if (c.lastReview && dayKey(c.lastReview) === tk) today += 1;
+    }
+    return { due: due, fresh: fresh, today: today, total: d.cards.length };
+  }
+
+  function bulkAdd(deckId, text) {
+    var d = getDeck(deckId); if (!d) return { added: 0, skipped: 0 };
+    var lines = String(text || "").split(/\r?\n/);
+    var added = 0, skipped = 0;
+    for (var i = 0; i < lines.length; i++) {
+      var line = lines[i];
+      if (!line.trim()) continue;
+      var parts;
+      if (line.indexOf("\t") >= 0) parts = line.split("\t");
+      else if (line.indexOf("|") >= 0) parts = line.split("|");
+      else { skipped += 1; continue; }
+      var front = parts.shift().trim();
+      var back = parts.join(line.indexOf("\t") >= 0 ? "\t" : "|").trim();
+      if (!front) { skipped += 1; continue; }
+      d.cards.push(freshCard(front, back));
+      added += 1;
+    }
+    if (added) save();
+    return { added: added, skipped: skipped };
+  }
+
+  function exportJSON() { return JSON.stringify(state, null, 2); }
+  function importJSON(str) {
+    var p;
+    try { p = JSON.parse(str); } catch (e) { return { ok: false, error: "JSON 解析失败" }; }
+    var decks = null;
+    if (p && Array.isArray(p.decks)) decks = p.decks;
+    else if (Array.isArray(p)) decks = p;
+    else if (p && p.name != null && Array.isArray(p.cards)) decks = [p];
+    if (!decks || !decks.length) return { ok: false, error: "没有找到可导入的牌组" };
+    var clean = decks.map(sanitizeDeck);
+    state.decks = clean;
+    state.activeDeckId = clean[0].id;
+    save();
+    return { ok: true, decks: clean.length };
+  }
+
+  var SAMPLES = [
+    { name: "🌍 世界首都", pairs: [["法国", "巴黎"], ["日本", "东京"], ["澳大利亚", "堪培拉"], ["加拿大", "渥太华"], ["巴西", "巴西利亚"], ["埃及", "开罗"]] },
+    { name: "📖 英语高频词", pairs: [["ubiquitous", "adj. 无处不在的"], ["ephemeral", "adj. 短暂的、转瞬即逝的"], ["gregarious", "adj. 爱社交的、合群的"], ["candid", "adj. 坦率的、直言不讳的"], ["meticulous", "adj. 一丝不苟的"]] },
+    { name: "🧠 编程概念", pairs: [["幂等 (idempotent)", "同一操作执行一次与多次效果相同"], ["竞态条件", "结果依赖于多个线程/事件不可控的执行顺序"], ["大 O 记号", "描述算法随输入规模增长的时间/空间复杂度上界"]] }
+  ];
+  function loadSample() {
+    state.decks = SAMPLES.map(function (s) {
+      var d = { id: uid("d"), name: s.name, created: now(), cards: [] };
+      d.cards = s.pairs.map(function (p) { return freshCard(p[0], p[1]); });
+      return d;
+    });
+    state.activeDeckId = state.decks[0].id;
+    save();
+  }
+
+  /* ====================================================================== */
+  /* UI                                                                     */
+  /* ====================================================================== */
+  var $ = function (id) { return document.getElementById(id); };
+  var view = "study";
+  var flipped = false;
+  var currentCardId = null;
+
+  function intervalLabel(days) {
+    if (days < 1) return "<1天";
+    if (days === 1) return "1天";
+    if (days < 30) return days + "天";
+    if (days < 365) return Math.round(days / 30 * 10) / 10 + "月";
+    return Math.round(days / 365 * 10) / 10 + "年";
+  }
+  function dueLabel(c) {
+    var diff = Math.round((c.due - now()) / DAY);
+    if ((c.reviews || 0) === 0) return "新卡";
+    if (c.due <= now()) return "现在";
+    if (diff <= 0) return "今天";
+    if (diff === 1) return "明天";
+    return diff + "天后";
+  }
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (m) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[m]; }); }
+
+  function renderDeckSelect() {
+    var sel = $("deck-select");
+    sel.innerHTML = "";
+    if (!state.decks.length) {
+      var o = document.createElement("option");
+      o.textContent = "（暂无牌组）"; o.value = ""; sel.appendChild(o);
+      sel.disabled = true;
+      $("deck-rename-btn").disabled = true;
+      $("deck-del-btn").disabled = true;
+      return;
+    }
+    sel.disabled = false;
+    $("deck-rename-btn").disabled = false;
+    $("deck-del-btn").disabled = false;
+    state.decks.forEach(function (d) {
+      var o = document.createElement("option");
+      var st = stats(d.id);
+      o.value = d.id;
+      o.textContent = d.name + " (" + st.total + (st.due ? " · 待复习 " + st.due : "") + ")";
+      if (d.id === state.activeDeckId) o.selected = true;
+      sel.appendChild(o);
+    });
+  }
+
+  function renderStats() {
+    var st = stats(state.activeDeckId);
+    $("stat-due").textContent = st.due;
+    $("stat-new").textContent = st.fresh;
+    $("stat-today").textContent = st.today;
+    $("stat-total").textContent = st.total;
+  }
+
+  function pickNextCard() {
+    var q = dueCards(state.activeDeckId);
+    currentCardId = q.length ? q[0].id : null;
+    return currentCardId;
+  }
+
+  function renderStudy() {
+    var deck = activeDeck();
+    var q = dueCards(state.activeDeckId);
+    var hasCard = deck && q.length > 0;
+    $("study-active").hidden = !hasCard;
+    $("study-empty").hidden = hasCard;
+
+    if (!hasCard) {
+      var st = stats(state.activeDeckId);
+      if (!deck) {
+        $("empty-emoji").textContent = "🗂";
+        $("empty-title").textContent = "还没有牌组";
+        $("empty-sub").textContent = "新建一个牌组并添加卡片，开始你的记忆训练。";
+        $("empty-cta").textContent = "新建牌组";
+      } else if (st.total === 0) {
+        $("empty-emoji").textContent = "🃏";
+        $("empty-title").textContent = "这个牌组还是空的";
+        $("empty-sub").textContent = "去添加卡片，或在「导入 / 导出」里批量造卡 / 载入示例。";
+        $("empty-cta").textContent = "去管理卡片";
+      } else {
+        $("empty-emoji").textContent = "🎉";
+        $("empty-title").textContent = "今日队列已清空！";
+        $("empty-sub").textContent = "「" + deck.name + "」今天没有要复习的卡片了" + (st.today ? "（今天已学 " + st.today + " 张）" : "") + "，明天再来吧。";
+        $("empty-cta").textContent = "去管理卡片";
+      }
+      return;
+    }
+
+    if (!currentCardId || !getCard(deck, currentCardId) || getCard(deck, currentCardId).due > now()) pickNextCard();
+    var card = getCard(deck, currentCardId);
+    var st2 = stats(state.activeDeckId);
+    var remaining = q.length;
+    var totalToday = st2.today + remaining;
+    $("study-remain").textContent = remaining;
+    $("study-bar").style.width = (totalToday ? (st2.today / totalToday * 100) : 0) + "%";
+    $("study-kind").textContent = (card.reviews || 0) === 0 ? "新卡" : "复习";
+
+    $("card-front").textContent = card.front;
+    $("card-back").textContent = card.back || "（无背面内容）";
+
+    $("card-answer").hidden = !flipped;
+    $("grades").hidden = !flipped;
+    $("flip-hint").hidden = flipped;
+    $("flashcard").setAttribute("aria-label", flipped ? "答案已显示，选择评分" : "点击或按空格翻面");
+
+    if (flipped) {
+      [0, 3, 4, 5].forEach(function (qq) {
+        $("int-" + qq).textContent = intervalLabel(projectedInterval(card, qq));
+      });
+    }
+  }
+
+  function renderCards() {
+    var deck = activeDeck();
+    var tbody = $("card-list");
+    tbody.innerHTML = "";
+    var empty = !deck || deck.cards.length === 0;
+    $("cards-empty").hidden = !empty;
+    if (empty) return;
+    deck.cards.forEach(function (c) {
+      var tr = document.createElement("tr");
+      tr.setAttribute("data-id", c.id);
+      var dueCls = c.due <= now() ? " due-now" : "";
+      tr.innerHTML =
+        '<td><div class="c-text c-front">' + esc(c.front) + '</div></td>' +
+        '<td><div class="c-text c-back">' + esc(c.back) + '</div></td>' +
+        '<td class="meta' + dueCls + ' c-due">' + esc(dueLabel(c)) + '</td>' +
+        '<td class="meta c-state">' + (c.reviews ? ("EF " + c.ef.toFixed(2) + " · " + c.reps + "次") : "未学") + '</td>' +
+        '<td><div class="rowact">' +
+          '<button class="c-edit ghost" aria-label="编辑">编辑</button>' +
+          '<button class="c-del ghost danger" aria-label="删除">删除</button>' +
+        '</div></td>';
+      tbody.appendChild(tr);
+    });
+  }
+
+  function render() {
+    renderDeckSelect();
+    renderStats();
+    if (view === "study") renderStudy();
+    else if (view === "cards") renderCards();
+  }
+
+  function setView(v) {
+    view = v;
+    ["study", "cards", "io"].forEach(function (name) {
+      $("view-" + name).hidden = name !== v;
+      var t = $("tab-" + name);
+      t.setAttribute("aria-selected", name === v ? "true" : "false");
+    });
+    if (v === "study") { flipped = false; pickNextCard(); }
+    render();
+  }
+
+  function flip() { if (!flipped) { flipped = true; renderStudy(); } }
+  function grade(q) {
+    if (!flipped || !currentCardId) return;
+    reviewCard(state.activeDeckId, currentCardId, q);
+    flipped = false;
+    currentCardId = null;
+    render();
+  }
+
+  /* ---------------- events ---------------- */
+  function bind() {
+    $("deck-select").addEventListener("change", function (e) { setActiveDeck(e.target.value); flipped = false; pickNextCard(); render(); });
+
+    var editMode = null; // 'new' | 'rename'
+    function openDeckForm(mode) {
+      editMode = mode;
+      $("deck-edit-form").hidden = false;
+      var input = $("deck-name-input");
+      input.value = mode === "rename" && activeDeck() ? activeDeck().name : "";
+      input.placeholder = mode === "new" ? "新牌组名称" : "重命名为…";
+      input.focus(); input.select();
+    }
+    function closeDeckForm() { editMode = null; $("deck-edit-form").hidden = true; }
+    $("deck-new-btn").addEventListener("click", function () { openDeckForm("new"); });
+    $("deck-rename-btn").addEventListener("click", function () { if (activeDeck()) openDeckForm("rename"); });
+    $("deck-cancel-btn").addEventListener("click", closeDeckForm);
+    $("deck-save-btn").addEventListener("click", function () {
+      var name = $("deck-name-input").value;
+      if (editMode === "new") newDeck(name);
+      else if (editMode === "rename") renameDeck(state.activeDeckId, name);
+      closeDeckForm(); flipped = false; pickNextCard(); render();
+    });
+    $("deck-name-input").addEventListener("keydown", function (e) {
+      if (e.key === "Enter") { e.preventDefault(); $("deck-save-btn").click(); }
+      else if (e.key === "Escape") { closeDeckForm(); }
+    });
+
+    // two-step delete
+    var delArmed = false, delTimer = null;
+    $("deck-del-btn").addEventListener("click", function () {
+      if (!activeDeck()) return;
+      if (!delArmed) {
+        delArmed = true;
+        $("deck-del-btn").textContent = "确认删除?";
+        delTimer = setTimeout(function () { delArmed = false; $("deck-del-btn").textContent = "删除"; }, 2500);
+        return;
+      }
+      clearTimeout(delTimer); delArmed = false; $("deck-del-btn").textContent = "删除";
+      deleteDeck(state.activeDeckId); flipped = false; pickNextCard(); render();
+    });
+
+    // tabs
+    ["study", "cards", "io"].forEach(function (name) {
+      $("tab-" + name).addEventListener("click", function () { setView(name); });
+    });
+    $("empty-cta").addEventListener("click", function () {
+      if (!activeDeck()) { setView("study"); $("deck-new-btn").click(); }
+      else setView("cards");
+    });
+
+    // study interactions (keyboard is handled by the single document-level
+    // listener below, so the focusable flashcard doesn't double-fire on Space)
+    $("flashcard").addEventListener("click", flip);
+    document.querySelectorAll(".grade").forEach(function (btn) {
+      btn.addEventListener("click", function () { grade(Number(btn.getAttribute("data-q"))); });
+    });
+
+    // global keyboard for study
+    document.addEventListener("keydown", function (e) {
+      if (view !== "study") return;
+      var t = e.target;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT")) return;
+      if (!flipped) {
+        if (e.key === " " || e.key === "Enter") { e.preventDefault(); flip(); }
+        return;
+      }
+      if (e.key === " " || e.key === "Enter" || e.key === "3") { e.preventDefault(); grade(4); }
+      else if (e.key === "1") { e.preventDefault(); grade(0); }
+      else if (e.key === "2") { e.preventDefault(); grade(3); }
+      else if (e.key === "4") { e.preventDefault(); grade(5); }
+    });
+
+    // add card
+    function doAdd() {
+      var f = $("add-front").value, b = $("add-back").value;
+      if (!f.trim()) { $("add-front").focus(); return; }
+      addCard(state.activeDeckId, f, b);
+      $("add-front").value = ""; $("add-back").value = "";
+      $("add-front").focus();
+      render();
+    }
+    $("add-btn").addEventListener("click", doAdd);
+    [$("add-front"), $("add-back")].forEach(function (el) {
+      el.addEventListener("keydown", function (e) {
+        if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); doAdd(); }
+      });
+    });
+
+    // card list edit/delete (delegated)
+    $("card-list").addEventListener("click", function (e) {
+      var tr = e.target.closest("tr[data-id]"); if (!tr) return;
+      var id = tr.getAttribute("data-id");
+      if (e.target.classList.contains("c-del")) {
+        if (tr.getAttribute("data-armed") === "1") { deleteCard(state.activeDeckId, id); render(); }
+        else {
+          tr.setAttribute("data-armed", "1");
+          e.target.textContent = "确认?";
+          setTimeout(function () { if (tr.parentNode) { tr.removeAttribute("data-armed"); e.target.textContent = "删除"; } }, 2500);
+        }
+      } else if (e.target.classList.contains("c-edit")) {
+        startInlineEdit(tr, id);
+      }
+    });
+    function startInlineEdit(tr, id) {
+      var card = getCard(activeDeck(), id); if (!card) return;
+      tr.innerHTML =
+        '<td><textarea class="edit-front" style="min-height:42px">' + esc(card.front) + '</textarea></td>' +
+        '<td><textarea class="edit-back" style="min-height:42px">' + esc(card.back) + '</textarea></td>' +
+        '<td colspan="3"><div class="rowact">' +
+          '<button class="edit-save primary">保存</button>' +
+          '<button class="edit-cancel ghost">取消</button>' +
+        '</div></td>';
+      tr.querySelector(".edit-save").addEventListener("click", function () {
+        editCard(state.activeDeckId, id, tr.querySelector(".edit-front").value, tr.querySelector(".edit-back").value);
+        render();
+      });
+      tr.querySelector(".edit-cancel").addEventListener("click", render);
+      tr.querySelector(".edit-front").focus();
+    }
+
+    // io
+    function msg(text, ok) { var m = $("io-msg"); m.textContent = text; m.className = "msg " + (ok ? "ok" : "err"); }
+    $("bulk-btn").addEventListener("click", function () {
+      if (!activeDeck()) { msg("请先新建一个牌组", false); return; }
+      var r = bulkAdd(state.activeDeckId, $("bulk-text").value);
+      if (r.added) { $("bulk-text").value = ""; msg("已添加 " + r.added + " 张卡片" + (r.skipped ? "，跳过 " + r.skipped + " 行（缺少分隔符）" : ""), true); }
+      else msg("没有可添加的卡片，请用 | 或 Tab 分隔正反面", false);
+      render();
+    });
+    $("export-btn").addEventListener("click", function () {
+      var blob = new Blob([exportJSON()], { type: "application/json" });
+      var a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "flashcards-" + dayKey(now()) + ".json";
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
+      msg("已导出 " + state.decks.length + " 个牌组", true);
+    });
+    $("import-btn").addEventListener("click", function () {
+      var r = importJSON($("import-text").value);
+      if (r.ok) { $("import-text").value = ""; msg("已导入 " + r.decks + " 个牌组", true); flipped = false; pickNextCard(); render(); }
+      else msg(r.error || "导入失败", false);
+    });
+    $("sample-btn").addEventListener("click", function () { loadSample(); msg("已载入 3 个示例牌组", true); flipped = false; pickNextCard(); render(); });
+    var resetArmed = false, resetTimer = null;
+    $("reset-btn").addEventListener("click", function () {
+      if (!resetArmed) {
+        resetArmed = true; $("reset-btn").textContent = "确认清空所有数据?";
+        resetTimer = setTimeout(function () { resetArmed = false; $("reset-btn").textContent = "清空所有数据"; }, 2800);
+        return;
+      }
+      clearTimeout(resetTimer); resetArmed = false; $("reset-btn").textContent = "清空所有数据";
+      state.decks = []; state.activeDeckId = null; save();
+      msg("已清空全部数据", true); flipped = false; currentCardId = null; render();
+    });
+  }
+
+  /* ---------------- boot ---------------- */
+  function boot() {
+    if (!load()) { loadSample(); }
+    bind();
+    setView("study");
+  }
+
+  /* ---------------- test hook ---------------- */
+  window.__srs = {
+    schedule: schedule,
+    projectedInterval: projectedInterval,
+    _setNow: function (ts) { _nowOverride = ts; },
+    _clearNow: function () { _nowOverride = null; },
+    now: now,
+    reset: function () { state.decks = []; state.activeDeckId = null; save(); flipped = false; currentCardId = null; if (document.getElementById("deck-select")) render(); },
+    loadSample: function () { loadSample(); flipped = false; pickNextCard(); render(); },
+    newDeck: newDeck, renameDeck: renameDeck, deleteDeck: deleteDeck, setActiveDeck: setActiveDeck,
+    addCard: addCard, editCard: editCard, deleteCard: deleteCard,
+    getCard: function (deckId, cardId) { return getCard(getDeck(deckId), cardId); },
+    reviewCard: reviewCard,
+    dueCards: function (deckId) { return dueCards(deckId).map(function (c) { return c.id; }); },
+    stats: stats, bulkAdd: bulkAdd,
+    importJSON: importJSON, exportJSON: exportJSON,
+    getState: function () { return state; },
+    getActiveId: function () { return state.activeDeckId; },
+    render: render, setView: setView,
+    flip: flip, isFlipped: function () { return flipped; }, currentCardId: function () { return currentCardId; }
+  };
+
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
+  else boot();
+})();
+</script>
+</body>
+</html>
