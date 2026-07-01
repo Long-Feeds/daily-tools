@@ -1,0 +1,1129 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>和弦与音阶 · Chord Studio</title>
+<meta name="description" content="浏览器里的乐理工作台:构建和弦与音阶、反查任意音符组成的和弦(含转位)、看任一调的顺阶和弦与五度圈,还能拼一段和弦进行并本地保存。纯前端,可选真声播放。" />
+<style>
+  :root {
+    --bg: #0f1115;
+    --bg2: #171a21;
+    --card: #1c2029;
+    --card2: #232833;
+    --line: #2c323f;
+    --line2: #3a4252;
+    --fg: #e8ebf1;
+    --fg2: #aab3c5;
+    --fg3: #78839a;
+    --accent: #f4b740;
+    --accent2: #ffd479;
+    --accent-dim: #6b551f;
+    --blue: #5aa6ff;
+    --green: #4bd48a;
+    --red: #ff6b7a;
+    --white-key: #f5f4ef;
+    --white-key-b: #d9d6cc;
+    --black-key: #23262e;
+    --radius: 14px;
+    --shadow: 0 6px 24px rgba(0,0,0,.28);
+  }
+  [data-theme="light"] {
+    --bg: #f5f6f9;
+    --bg2: #eceef3;
+    --card: #ffffff;
+    --card2: #f3f4f8;
+    --line: #e2e5ec;
+    --line2: #d2d7e1;
+    --fg: #1b2130;
+    --fg2: #515a6d;
+    --fg3: #8b93a5;
+    --accent: #d99117;
+    --accent2: #b8760a;
+    --accent-dim: #f6e6c2;
+    --blue: #2f6fd6;
+    --green: #22a866;
+    --red: #d64152;
+    --white-key: #ffffff;
+    --white-key-b: #e6e4dc;
+    --black-key: #2a2e37;
+    --shadow: 0 6px 22px rgba(30,40,70,.12);
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: radial-gradient(1200px 600px at 80% -10%, rgba(244,183,64,.07), transparent 60%), var(--bg);
+    color: var(--fg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh;
+  }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 18px 16px 64px; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  .topbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+  .back { color: var(--fg2); font-size: 14px; display: inline-flex; align-items: center; gap: 6px; }
+  .back:hover { color: var(--accent); text-decoration: none; }
+  .theme-btn {
+    background: var(--card); color: var(--fg2); border: 1px solid var(--line);
+    border-radius: 10px; padding: 7px 11px; cursor: pointer; font-size: 14px;
+  }
+  .theme-btn:hover { border-color: var(--line2); color: var(--fg); }
+
+  header.hero { margin-bottom: 16px; }
+  header.hero h1 { font-size: clamp(22px, 4.4vw, 30px); margin: 0 0 4px; letter-spacing: .2px; }
+  header.hero h1 .en { color: var(--accent); font-weight: 700; }
+  header.hero p { margin: 0; color: var(--fg2); font-size: 14px; max-width: 62ch; }
+
+  .card {
+    background: linear-gradient(180deg, var(--card), var(--card2));
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+  .card h2 { margin: 0 0 12px; font-size: 15px; color: var(--fg2); font-weight: 600; letter-spacing: .3px; display: flex; align-items: center; gap: 8px; }
+  .card h2 .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 10px var(--accent); }
+
+  /* ---------- piano ---------- */
+  .piano-wrap { overflow-x: auto; overflow-y: hidden; padding-bottom: 6px; }
+  .piano {
+    position: relative;
+    height: 168px;
+    margin: 0 auto;
+    user-select: none;
+    touch-action: manipulation;
+  }
+  .key {
+    position: absolute; top: 0;
+    border: 1px solid var(--white-key-b);
+    cursor: pointer; padding: 0;
+    font: inherit;
+    transition: background .06s, box-shadow .08s;
+  }
+  .key.white {
+    background: linear-gradient(180deg, #ffffff, var(--white-key));
+    height: 168px; border-radius: 0 0 6px 6px; z-index: 1;
+    box-shadow: inset -2px 0 3px rgba(0,0,0,.06);
+  }
+  [data-theme="light"] .key.white { background: linear-gradient(180deg,#ffffff,#f0efe9); }
+  .key.black {
+    background: linear-gradient(180deg, #3a3f4a, var(--black-key));
+    height: 104px; border-radius: 0 0 5px 5px; z-index: 2;
+    border-color: #14161b;
+    box-shadow: 0 3px 5px rgba(0,0,0,.4);
+  }
+  .key .lbl {
+    position: absolute; bottom: 7px; left: 0; right: 0; text-align: center;
+    font-size: 10px; color: #8a8f9c; pointer-events: none;
+  }
+  .key.black .lbl { color: #b9bdc7; bottom: 6px; font-size: 9px; }
+  .key.white:hover { background: linear-gradient(180deg,#fff,#eceae2); }
+  .key.black:hover { background: linear-gradient(180deg,#474d59,#2c303a); }
+  .key.hl { box-shadow: inset 0 0 0 2px var(--accent), 0 0 12px rgba(244,183,64,.5); }
+  .key.white.hl { background: linear-gradient(180deg, var(--accent2), var(--accent)); }
+  .key.black.hl { background: linear-gradient(180deg, var(--accent), var(--accent2)); }
+  .key.hl .lbl { color: #4a3a10; font-weight: 700; }
+  .key.root { box-shadow: inset 0 0 0 3px var(--blue), 0 0 14px rgba(90,166,255,.55); }
+  .key.white.root { background: linear-gradient(180deg,#bfdcff,#8fbdf5); }
+  .key.black.root { background: linear-gradient(180deg,#5aa6ff,#3d84e0); }
+  .key.sel { box-shadow: inset 0 0 0 3px var(--green), 0 0 14px rgba(75,212,138,.5); }
+  .key.white.sel { background: linear-gradient(180deg,#b7f0d1,#7fe0a8); }
+  .key.black.sel { background: linear-gradient(180deg,#4bd48a,#2fae6c); }
+  .key:focus-visible { outline: 3px solid var(--blue); outline-offset: 2px; z-index: 5; }
+
+  /* ---------- tabs ---------- */
+  .tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+  .tab {
+    background: var(--card); border: 1px solid var(--line); color: var(--fg2);
+    padding: 8px 16px; border-radius: 999px; cursor: pointer; font-size: 14px; font-weight: 500;
+  }
+  .tab:hover { border-color: var(--line2); color: var(--fg); }
+  .tab.active { background: var(--accent); color: #241a02; border-color: var(--accent); font-weight: 600; }
+
+  .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
+  .field { display: flex; flex-direction: column; gap: 5px; }
+  .field label { font-size: 12px; color: var(--fg3); letter-spacing: .3px; }
+  select, .btn, input[type=text] {
+    background: var(--bg2); color: var(--fg); border: 1px solid var(--line2);
+    border-radius: 10px; padding: 9px 12px; font-size: 14px; font-family: inherit;
+  }
+  select { cursor: pointer; min-width: 120px; }
+  input[type=text] { min-width: 150px; }
+  select:focus, input:focus, .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+  .btn { cursor: pointer; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+  .btn:hover { border-color: var(--accent); color: var(--accent); }
+  .btn.primary { background: var(--accent); color: #241a02; border-color: var(--accent); font-weight: 600; }
+  .btn.primary:hover { background: var(--accent2); color: #241a02; }
+  .btn.ghost { background: transparent; }
+  .btn.sm { padding: 6px 10px; font-size: 13px; }
+
+  .seg { display: inline-flex; border: 1px solid var(--line2); border-radius: 10px; overflow: hidden; }
+  .seg button { background: var(--bg2); color: var(--fg2); border: 0; padding: 8px 14px; cursor: pointer; font: inherit; font-size: 13px; }
+  .seg button + button { border-left: 1px solid var(--line2); }
+  .seg button.on { background: var(--accent); color: #241a02; font-weight: 600; }
+
+  /* ---------- result readout ---------- */
+  .result { margin-top: 16px; }
+  .big-name { font-size: clamp(30px, 7vw, 46px); font-weight: 800; letter-spacing: .5px; line-height: 1.1; }
+  .big-name .sub { font-size: 15px; color: var(--fg3); font-weight: 500; margin-left: 10px; letter-spacing: 0; }
+  .notes-strip { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+  .note-chip {
+    background: var(--bg2); border: 1px solid var(--line2); border-radius: 12px;
+    padding: 8px 14px; text-align: center; min-width: 52px;
+  }
+  .note-chip .nn { font-size: 20px; font-weight: 700; }
+  .note-chip .role { font-size: 11px; color: var(--accent); margin-top: 2px; letter-spacing: .3px; }
+  .note-chip.rootn { border-color: var(--blue); box-shadow: 0 0 0 1px var(--blue) inset; }
+  .meta-line { margin-top: 12px; color: var(--fg2); font-size: 13px; }
+  .meta-line b { color: var(--fg); font-weight: 600; }
+  .hint { color: var(--fg3); font-size: 13px; }
+
+  /* identify results */
+  .id-list { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
+  .id-item {
+    display: flex; align-items: center; gap: 12px; padding: 10px 14px;
+    background: var(--bg2); border: 1px solid var(--line2); border-radius: 12px;
+  }
+  .id-item .sym { font-size: 22px; font-weight: 800; min-width: 90px; }
+  .id-item.primary { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent-dim) inset; }
+  .id-item .tag { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: var(--card2); color: var(--fg2); border: 1px solid var(--line); }
+  .id-item .tag.inv { color: var(--blue); border-color: var(--blue); }
+  .id-item .desc { color: var(--fg2); font-size: 13px; }
+
+  /* ---------- circle of fifths ---------- */
+  .cof-layout { display: grid; grid-template-columns: 300px 1fr; gap: 20px; align-items: start; }
+  @media (max-width: 720px) { .cof-layout { grid-template-columns: 1fr; } }
+  .cof { position: relative; width: 288px; height: 288px; margin: 0 auto; }
+  .cof-key {
+    position: absolute; width: 62px; height: 40px; margin: -20px 0 0 -31px;
+    border-radius: 10px; border: 1px solid var(--line2); background: var(--card2);
+    color: var(--fg2); cursor: pointer; font: inherit; font-size: 14px; font-weight: 600;
+    display: flex; align-items: center; justify-content: center; transition: .1s;
+  }
+  .cof-key:hover { border-color: var(--accent); color: var(--fg); }
+  .cof-key.active { background: var(--accent); color: #241a02; border-color: var(--accent); box-shadow: 0 0 14px rgba(244,183,64,.5); }
+  .cof-center { position: absolute; inset: 84px; border-radius: 50%; border: 1px dashed var(--line2); display: flex; align-items: center; justify-content: center; text-align: center; color: var(--fg3); font-size: 12px; }
+
+  .key-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
+  .key-head .kn { font-size: 26px; font-weight: 800; }
+  .key-head .ks { color: var(--fg3); font-size: 13px; }
+  table.dia { width: 100%; border-collapse: collapse; font-size: 14px; }
+  table.dia th, table.dia td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+  table.dia th { color: var(--fg3); font-weight: 600; font-size: 12px; }
+  table.dia tr:last-child td { border-bottom: 0; }
+  .dia-chord { cursor: pointer; }
+  .dia-chord:hover td { background: var(--card2); }
+  table.dia .rn { color: var(--accent); font-weight: 700; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  table.dia .sym { font-weight: 700; font-size: 15px; }
+  table.dia .nts { color: var(--fg2); }
+
+  /* ---------- progression ---------- */
+  .prog-strip { display: flex; gap: 8px; flex-wrap: wrap; min-height: 46px; padding: 8px; background: var(--bg2); border: 1px dashed var(--line2); border-radius: 12px; align-items: center; }
+  .prog-empty { color: var(--fg3); font-size: 13px; padding: 4px 8px; }
+  .prog-chip {
+    display: inline-flex; align-items: center; gap: 8px; background: var(--card2);
+    border: 1px solid var(--line2); border-radius: 10px; padding: 7px 10px; font-weight: 700; font-size: 15px;
+  }
+  .prog-chip button { background: none; border: 0; color: var(--fg3); cursor: pointer; font-size: 15px; line-height: 1; padding: 0 2px; }
+  .prog-chip button:hover { color: var(--red); }
+  .prog-ctrls { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 12px; }
+
+  .footnote { color: var(--fg3); font-size: 12px; margin-top: 8px; }
+  .kbd { font-family: ui-monospace, Menlo, monospace; background: var(--bg2); border: 1px solid var(--line2); border-bottom-width: 2px; border-radius: 5px; padding: 1px 6px; font-size: 12px; color: var(--fg2); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <a class="back" href="../../">← 返回工具集</a>
+    <button class="theme-btn" id="theme-btn" type="button" aria-label="切换深浅色">🌗 主题</button>
+  </div>
+
+  <header class="hero">
+    <h1>和弦与音阶 · <span class="en">Chord Studio</span></h1>
+    <p>浏览器里的乐理工作台:构建任意<b>和弦 / 音阶</b>、<b>反查</b>一组音符是什么和弦(自动识别转位)、看任一调的<b>顺阶和弦</b>与<b>五度圈</b>,再把和弦拼成<b>进行</b>并本地保存。点琴键即可试听(真声,可选)。</p>
+  </header>
+
+  <!-- ============ PIANO ============ -->
+  <div class="card">
+    <div class="piano-wrap">
+      <div class="piano" id="piano" role="group" aria-label="钢琴键盘"></div>
+    </div>
+    <div class="footnote" id="piano-hint">在「和弦 / 音阶」页点琴键设根音;在「识别」页点琴键选音符。按 <span class="kbd">▶ 播放</span> 试听。</div>
+  </div>
+
+  <!-- ============ BUILDER TABS ============ -->
+  <div class="card">
+    <div class="tabs" role="tablist">
+      <button class="tab active" id="tab-chord" data-tab="chord" role="tab">和弦</button>
+      <button class="tab" id="tab-scale" data-tab="scale" role="tab">音阶</button>
+      <button class="tab" id="tab-identify" data-tab="identify" role="tab">识别和弦</button>
+    </div>
+
+    <!-- chord panel -->
+    <div id="panel-chord">
+      <div class="row">
+        <div class="field">
+          <label for="root-select">根音 Root</label>
+          <select id="root-select" aria-label="根音"></select>
+        </div>
+        <div class="field">
+          <label for="quality-select">和弦类型 Quality</label>
+          <select id="quality-select" aria-label="和弦类型"></select>
+        </div>
+        <div class="field">
+          <label>拼写</label>
+          <div class="seg" id="spelling-seg">
+            <button type="button" data-sp="flat" class="on">♭ 降号</button>
+            <button type="button" data-sp="sharp">♯ 升号</button>
+          </div>
+        </div>
+      </div>
+      <div class="result" id="chord-result">
+        <div class="big-name"><span id="chord-name">C</span></div>
+        <div class="notes-strip" id="chord-notes"></div>
+        <div class="meta-line" id="chord-meta"></div>
+        <div class="prog-ctrls">
+          <button class="btn primary" id="chord-play" type="button">▶ 播放</button>
+          <button class="btn" id="chord-add" type="button">＋ 加入进行</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- scale panel -->
+    <div id="panel-scale" hidden>
+      <div class="row">
+        <div class="field">
+          <label for="root-select-2">根音 Root</label>
+          <select id="root-select-2" aria-label="音阶根音"></select>
+        </div>
+        <div class="field">
+          <label for="scale-select">音阶 Scale</label>
+          <select id="scale-select" aria-label="音阶类型"></select>
+        </div>
+      </div>
+      <div class="result">
+        <div class="big-name"><span id="scale-name">C 大调</span></div>
+        <div class="notes-strip" id="scale-notes"></div>
+        <div class="meta-line" id="scale-meta"></div>
+        <div class="prog-ctrls">
+          <button class="btn primary" id="scale-play" type="button">▶ 上行播放</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- identify panel -->
+    <div id="panel-identify" hidden>
+      <p class="hint" id="identify-hint">在上方钢琴上点选你想识别的音符(可跨八度),这里会实时列出匹配的和弦名称与转位。最低音会被当作低音(bass)。</p>
+      <div class="notes-strip" id="identify-selection" style="margin-top:10px"></div>
+      <div class="row" style="margin-top:12px">
+        <button class="btn sm ghost" id="identify-clear" type="button">清空所选</button>
+      </div>
+      <div class="id-list" id="identify-result"></div>
+    </div>
+  </div>
+
+  <!-- ============ CIRCLE OF FIFTHS + DIATONIC ============ -->
+  <div class="card">
+    <h2><span class="dot"></span>五度圈 & 顺阶和弦</h2>
+    <div class="cof-layout">
+      <div>
+        <div class="cof" id="cof"></div>
+        <div class="row" style="justify-content:center; margin-top:12px">
+          <div class="seg" id="key-mode-seg">
+            <button type="button" data-mode="major" class="on" id="key-major">大调</button>
+            <button type="button" data-mode="minor" id="key-minor">小调</button>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="key-head">
+          <span class="kn" id="key-name">C 大调</span>
+          <span class="ks" id="key-sig"></span>
+        </div>
+        <table class="dia">
+          <thead><tr><th>级数</th><th>和弦</th><th>组成音</th></tr></thead>
+          <tbody id="diatonic-table"></tbody>
+        </table>
+        <div class="footnote">点任意一行 → 载入到「和弦」页并高亮键盘。</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ PROGRESSION ============ -->
+  <div class="card">
+    <h2><span class="dot"></span>和弦进行 · 本地保存</h2>
+    <div class="prog-strip" id="prog-strip"></div>
+    <div class="prog-ctrls">
+      <button class="btn primary" id="prog-play" type="button">▶ 播放进行</button>
+      <button class="btn sm" id="prog-clear" type="button">清空</button>
+      <span style="flex:1"></span>
+      <input type="text" id="prog-name" placeholder="进行名称,如 卡农" aria-label="进行名称" />
+      <button class="btn sm" id="prog-save" type="button">保存</button>
+      <select id="prog-saved" aria-label="已保存的进行"><option value="">载入已保存…</option></select>
+    </div>
+    <div class="footnote">和弦进行与已保存列表都存在你浏览器本地(localStorage),下次打开自动恢复,不上传任何数据。</div>
+  </div>
+
+  <p class="footnote" style="text-align:center">纯前端 · 自包含单页 · 乐理引擎与真声播放全部在本地运行 · <span id="year"></span> 每日工具集</p>
+</div>
+
+<script>
+"use strict";
+(function () {
+  // =====================================================================
+  //  MUSIC THEORY ENGINE (pure, deterministic)
+  // =====================================================================
+  var LETTERS = ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
+  var LETTER_PC = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
+  var FLATNAMES = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B'];
+  var SHARPNAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+  var INTERVAL = ['P1', 'm2', 'M2', 'm3', 'M3', 'P4', 'TT', 'P5', 'm6', 'M6', 'm7', 'M7'];
+  // major-scale semitone for each scale degree (for role labels like ♭3, ♯5)
+  var MAJ_SEMI = { 1: 0, 2: 2, 3: 4, 4: 5, 5: 7, 6: 9, 7: 11, 9: 14, 11: 17, 13: 21 };
+
+  // pitch class of a note name ("C", "F#", "Bb", "Cb", "E#" ...)
+  function pcOf(name) {
+    if (typeof name === 'number') return ((name % 12) + 12) % 12;
+    var m = /^([A-Ga-g])([#b♯♭xX]*)$/.exec(String(name).trim());
+    if (!m) return null;
+    var pc = LETTER_PC[m[1].toUpperCase()];
+    for (var i = 0; i < m[2].length; i++) {
+      var c = m[2][i];
+      if (c === '#' || c === '♯') pc++;
+      else if (c === 'b' || c === '♭') pc--;
+      else if (c === 'x' || c === 'X') pc += 2;
+    }
+    return ((pc % 12) + 12) % 12;
+  }
+  function spell(pc, flat) { return (flat ? FLATNAMES : SHARPNAMES)[((pc % 12) + 12) % 12]; }
+  function nameForPc(pc, pref) { return spell(pc, pref !== 'sharp'); }
+
+  function accStr(n) {
+    if (n === 0) return '';
+    return (n > 0) ? new Array(n + 1).join('#') : new Array(-n + 1).join('b');
+  }
+  // Spell a target pitch-class using the letter that lies `degree` steps above the
+  // root letter — yields proper diatonic spelling (G major -> F#, Db major -> Cb).
+  // Returns null when it would need a >double accidental (caller falls back).
+  function spellByLetter(rootLetterIdx, degree, targetPc) {
+    var li = (rootLetterIdx + (degree - 1)) % 7;
+    var letter = LETTERS[li];
+    var diff = (((targetPc - LETTER_PC[letter]) % 12) + 12) % 12; // 0..11
+    if (diff > 6) diff -= 12; // -5..6
+    if (diff >= -2 && diff <= 2) return letter + accStr(diff);
+    return null;
+  }
+  function rootLetterIdxOf(rootName) {
+    return LETTERS.indexOf(String(rootName)[0].toUpperCase());
+  }
+
+  // chord definitions: degs = [ [scaleDegree, semitoneFromRoot], ... ], sym = suffix
+  var CHORDS = {
+    maj:     { sym: '',      name: '大三和弦',   degs: [[1,0],[3,4],[5,7]] },
+    min:     { sym: 'm',     name: '小三和弦',   degs: [[1,0],[3,3],[5,7]] },
+    dim:     { sym: 'dim',   name: '减三和弦',   degs: [[1,0],[3,3],[5,6]] },
+    aug:     { sym: 'aug',   name: '增三和弦',   degs: [[1,0],[3,4],[5,8]] },
+    sus2:    { sym: 'sus2',  name: '挂二和弦',   degs: [[1,0],[2,2],[5,7]] },
+    sus4:    { sym: 'sus4',  name: '挂四和弦',   degs: [[1,0],[4,5],[5,7]] },
+    maj6:    { sym: '6',     name: '大六和弦',   degs: [[1,0],[3,4],[5,7],[6,9]] },
+    min6:    { sym: 'm6',    name: '小六和弦',   degs: [[1,0],[3,3],[5,7],[6,9]] },
+    dom7:    { sym: '7',     name: '属七和弦',   degs: [[1,0],[3,4],[5,7],[7,10]] },
+    maj7:    { sym: 'maj7',  name: '大七和弦',   degs: [[1,0],[3,4],[5,7],[7,11]] },
+    min7:    { sym: 'm7',    name: '小七和弦',   degs: [[1,0],[3,3],[5,7],[7,10]] },
+    m7b5:    { sym: 'm7♭5',  name: '半减七',     degs: [[1,0],[3,3],[5,6],[7,10]] },
+    dim7:    { sym: 'dim7',  name: '减七和弦',   degs: [[1,0],[3,3],[5,6],[7,9]] },
+    mMaj7:   { sym: 'mMaj7', name: '小大七',     degs: [[1,0],[3,3],[5,7],[7,11]] },
+    aug7:    { sym: '7♯5',   name: '增属七',     degs: [[1,0],[3,4],[5,8],[7,10]] },
+    add9:    { sym: 'add9',  name: '加九和弦',   degs: [[1,0],[3,4],[5,7],[9,14]] },
+    dom9:    { sym: '9',     name: '属九和弦',   degs: [[1,0],[3,4],[5,7],[7,10],[9,14]] },
+    maj9:    { sym: 'maj9',  name: '大九和弦',   degs: [[1,0],[3,4],[5,7],[7,11],[9,14]] },
+    min9:    { sym: 'm9',    name: '小九和弦',   degs: [[1,0],[3,3],[5,7],[7,10],[9,14]] }
+  };
+  var CHORD_ORDER = ['maj','min','dim','aug','sus2','sus4','maj6','min6','dom7','maj7','min7','m7b5','dim7','mMaj7','aug7','add9','dom9','maj9','min9'];
+
+  function roleLabel(deg, semi) {
+    var base = MAJ_SEMI[deg];
+    var d = semi - base;
+    var alt = d === 0 ? '' : (d > 0 ? new Array(d + 1).join('♯') : new Array(-d + 1).join('♭'));
+    return alt + deg;
+  }
+
+  function buildChord(rootName, q) {
+    var def = CHORDS[q];
+    if (!def) return null;
+    var rootPc = pcOf(rootName);
+    if (rootPc === null) return null;
+    var li = rootLetterIdxOf(rootName);
+    var useFlat = String(rootName).indexOf('b') >= 0 || String(rootName).indexOf('♭') >= 0;
+    var notes = [], pcs = [], roles = [];
+    for (var i = 0; i < def.degs.length; i++) {
+      var deg = def.degs[i][0], semi = def.degs[i][1];
+      var pc = (rootPc + semi) % 12;
+      var n = spellByLetter(li, deg, pc);
+      if (n === null) n = spell(pc, useFlat);
+      notes.push(n); pcs.push(pc); roles.push(roleLabel(deg, semi));
+    }
+    return {
+      root: rootName, quality: q, symbol: displayRoot(rootName) + def.sym,
+      name: def.name, notes: notes, pcs: pcs, roles: roles
+    };
+  }
+  function displayRoot(rootName) { return String(rootName).replace('#', '♯').replace('b', '♭'); }
+  function displaySymbol(rootName, q) { return displayRoot(rootName) + CHORDS[q].sym; }
+
+  // scale definitions
+  var SCALES = {
+    major:           { name: '大调 Ionian',       hept: true,  semis: [0,2,4,5,7,9,11] },
+    minor:           { name: '自然小调 Aeolian',  hept: true,  semis: [0,2,3,5,7,8,10] },
+    harmonicMinor:   { name: '和声小调',          hept: true,  semis: [0,2,3,5,7,8,11] },
+    melodicMinor:    { name: '旋律小调(上行)',    hept: true,  semis: [0,2,3,5,7,9,11] },
+    dorian:          { name: '多利亚 Dorian',     hept: true,  semis: [0,2,3,5,7,9,10] },
+    phrygian:        { name: '弗里几亚 Phrygian', hept: true,  semis: [0,1,3,5,7,8,10] },
+    lydian:          { name: '利底亚 Lydian',     hept: true,  semis: [0,2,4,6,7,9,11] },
+    mixolydian:      { name: '混合利底亚 Mixolydian', hept: true, semis: [0,2,4,5,7,9,10] },
+    locrian:         { name: '洛克里亚 Locrian',  hept: true,  semis: [0,1,3,5,6,8,10] },
+    majorPentatonic: { name: '大调五声',          hept: false, semis: [0,2,4,7,9],       degs: [1,2,3,5,6] },
+    minorPentatonic: { name: '小调五声',          hept: false, semis: [0,3,5,7,10],      degs: [1,3,4,5,7] },
+    blues:           { name: '布鲁斯 Blues',      hept: false, semis: [0,3,5,6,7,10],    degs: [1,3,4,5,5,7] }
+  };
+  var SCALE_ORDER = ['major','minor','harmonicMinor','melodicMinor','dorian','phrygian','lydian','mixolydian','locrian','majorPentatonic','minorPentatonic','blues'];
+
+  function buildScale(rootName, type) {
+    var def = SCALES[type];
+    if (!def) return null;
+    var rootPc = pcOf(rootName);
+    if (rootPc === null) return null;
+    var li = rootLetterIdxOf(rootName);
+    var useFlat = String(rootName).indexOf('b') >= 0 || String(rootName).indexOf('♭') >= 0;
+    var notes = [], pcs = [], degrees = [];
+    for (var i = 0; i < def.semis.length; i++) {
+      var semi = def.semis[i];
+      var deg = def.hept ? (i + 1) : def.degs[i];
+      var pc = (rootPc + semi) % 12;
+      var n = spellByLetter(li, deg, pc);
+      if (n === null) n = spell(pc, useFlat);
+      notes.push(n); pcs.push(pc); degrees.push(roleLabel(deg, semi));
+    }
+    return { root: rootName, type: type, name: displayRoot(rootName) + ' ' + def.name, notes: notes, pcs: pcs, degrees: degrees };
+  }
+
+  // reverse lookup: pc-interval-set (root position) -> quality
+  var CHORD_SET_MAP = {};
+  for (var qi = 0; qi < CHORD_ORDER.length; qi++) {
+    var qk = CHORD_ORDER[qi];
+    var semis = CHORDS[qk].degs.map(function (d) { return d[1] % 12; });
+    var uniq = [];
+    for (var s = 0; s < semis.length; s++) if (uniq.indexOf(semis[s]) < 0) uniq.push(semis[s]);
+    var key = uniq.sort(function (a, b) { return a - b; }).join(',');
+    if (!(key in CHORD_SET_MAP)) CHORD_SET_MAP[key] = qk;
+  }
+
+  // identify chords from a list of note names/pcs; first element is treated as bass
+  function identify(input, spellingPref) {
+    if (!input || !input.length) return [];
+    var pref = spellingPref || 'flat';
+    var raw = input.map(function (n) { return pcOf(n); }).filter(function (p) { return p !== null; });
+    if (raw.length < 2) return [];
+    var bass = raw[0];
+    var set = [];
+    for (var i = 0; i < raw.length; i++) if (set.indexOf(raw[i]) < 0) set.push(raw[i]);
+    if (set.length < 2) return [];
+    var results = [];
+    for (var r = 0; r < set.length; r++) {
+      var root = set[r];
+      var rel = set.map(function (p) { return ((p - root) % 12 + 12) % 12; }).sort(function (a, b) { return a - b; });
+      var q = CHORD_SET_MAP[rel.join(',')];
+      if (q) {
+        var rootName = nameForPc(root, pref);
+        var inv = (root !== bass);
+        var sym = displaySymbol(rootName, q) + (inv ? '/' + displayRoot(nameForPc(bass, pref)) : '');
+        results.push({ root: rootName, quality: q, qualityName: CHORDS[q].name, bass: nameForPc(bass, pref), inversion: inv, symbol: sym });
+      }
+    }
+    results.sort(function (a, b) { return (a.inversion ? 1 : 0) - (b.inversion ? 1 : 0); });
+    return results;
+  }
+
+  function intervalName(a, b) { return INTERVAL[(((pcOf(b) - pcOf(a)) % 12) + 12) % 12]; }
+
+  // diatonic chords of a key (major or natural minor), triads with roman numerals
+  var MAJ_TRIADS = [
+    { q: 'maj', rn: 'I' }, { q: 'min', rn: 'ii' }, { q: 'min', rn: 'iii' },
+    { q: 'maj', rn: 'IV' }, { q: 'maj', rn: 'V' }, { q: 'min', rn: 'vi' }, { q: 'dim', rn: 'vii°' }
+  ];
+  var MIN_TRIADS = [
+    { q: 'min', rn: 'i' }, { q: 'dim', rn: 'ii°' }, { q: 'maj', rn: 'III' },
+    { q: 'min', rn: 'iv' }, { q: 'min', rn: 'v' }, { q: 'maj', rn: 'VI' }, { q: 'maj', rn: 'VII' }
+  ];
+  function diatonic(keyName, mode) {
+    var scaleType = (mode === 'minor') ? 'minor' : 'major';
+    var sc = buildScale(keyName, scaleType);
+    if (!sc) return [];
+    var pat = (mode === 'minor') ? MIN_TRIADS : MAJ_TRIADS;
+    var out = [];
+    for (var i = 0; i < 7; i++) {
+      var rootName = sc.notes[i];
+      var ch = buildChord(rootName, pat[i].q);
+      out.push({ roman: pat[i].rn, root: rootName, quality: pat[i].q, symbol: ch.symbol, notes: ch.notes });
+    }
+    return out;
+  }
+
+  function keySignature(keyName, mode) {
+    var sc = buildScale(keyName, (mode === 'minor') ? 'minor' : 'major');
+    if (!sc) return '';
+    var sharps = 0, flats = 0;
+    for (var i = 0; i < sc.notes.length; i++) {
+      var acc = sc.notes[i].slice(1);
+      for (var j = 0; j < acc.length; j++) { if (acc[j] === '#') sharps++; else if (acc[j] === 'b') flats++; }
+    }
+    if (sharps === 0 && flats === 0) return '无升降号';
+    if (sharps) return sharps + ' 个升号 ♯';
+    return flats + ' 个降号 ♭';
+  }
+
+  function transpose(names, semi) {
+    return names.map(function (n) { return nameForPc(((pcOf(n) + semi) % 12 + 12) % 12, 'sharp'); });
+  }
+
+  // A4 = 440Hz; midi = (octave+1)*12 + pc
+  function noteFreq(name, octave) {
+    var midi = (octave + 1) * 12 + pcOf(name);
+    return 440 * Math.pow(2, (midi - 69) / 12);
+  }
+
+  // =====================================================================
+  //  STATE
+  // =====================================================================
+  var LS_PROGS = 'chordstudio.progressions.v1';
+  var LS_CUR = 'chordstudio.current.v1';
+
+  var state = {
+    tab: 'chord',
+    rootPc: 0,
+    quality: 'maj',
+    scaleType: 'major',
+    spelling: 'flat',
+    selection: [],           // identify: [{pc, octave}]
+    keyPc: 0,
+    keyMode: 'major',
+    progression: []          // [{root, quality}]
+  };
+
+  function rootName() { return nameForPc(state.rootPc, state.spelling); }
+
+  // =====================================================================
+  //  DOM
+  // =====================================================================
+  var $ = function (id) { return document.getElementById(id); };
+  var piano = $('piano');
+
+  var WHITE_IDX = { 0: 0, 2: 1, 4: 2, 5: 3, 7: 4, 9: 5, 11: 6 };
+  var BLACK_OFF = { 1: 0, 3: 1, 6: 3, 8: 4, 10: 5 };
+  var PIANO_OCTAVES = [4, 5];
+  var WHITE_W = 40, BLACK_W = 26;
+  var keyEls = []; // {el, pc, octave, white}
+
+  function buildPiano() {
+    piano.innerHTML = '';
+    keyEls = [];
+    var totalWhite = PIANO_OCTAVES.length * 7;
+    piano.style.width = (totalWhite * WHITE_W) + 'px';
+    // whites first (z lower), then blacks
+    PIANO_OCTAVES.forEach(function (oct, oi) {
+      for (var pc = 0; pc < 12; pc++) {
+        if (!(pc in WHITE_IDX)) continue;
+        var x = (oi * 7 + WHITE_IDX[pc]) * WHITE_W;
+        makeKey(pc, oct, true, x);
+      }
+    });
+    PIANO_OCTAVES.forEach(function (oct, oi) {
+      for (var pc = 0; pc < 12; pc++) {
+        if (!(pc in BLACK_OFF)) continue;
+        var x = (oi * 7 + BLACK_OFF[pc] + 1) * WHITE_W - BLACK_W / 2;
+        makeKey(pc, oct, false, x);
+      }
+    });
+  }
+  function makeKey(pc, oct, white, x) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'key ' + (white ? 'white' : 'black');
+    b.style.left = x + 'px';
+    b.style.width = (white ? WHITE_W : BLACK_W) + 'px';
+    var nm = nameForPc(pc, state.spelling);
+    b.setAttribute('data-pc', pc);
+    b.setAttribute('data-octave', oct);
+    b.setAttribute('aria-label', nm + oct);
+    var lbl = document.createElement('span');
+    lbl.className = 'lbl';
+    lbl.textContent = (pc === 0) ? ('C' + oct) : '';
+    b.appendChild(lbl);
+    b.addEventListener('click', function () { onKey(pc, oct); });
+    piano.appendChild(b);
+    keyEls.push({ el: b, pc: pc, octave: oct, white: white, lbl: lbl });
+  }
+
+  function onKey(pc, oct) {
+    if (state.tab === 'identify') {
+      toggleNote(pc, oct);
+    } else {
+      state.rootPc = pc;
+      syncRootSelects();
+      renderBuilder();
+      playChordOrRoot();
+    }
+  }
+
+  function toggleNote(pc, oct) {
+    var idx = -1;
+    for (var i = 0; i < state.selection.length; i++) {
+      if (state.selection[i].pc === pc && state.selection[i].octave === oct) { idx = i; break; }
+    }
+    if (idx >= 0) state.selection.splice(idx, 1);
+    else state.selection.push({ pc: pc, octave: oct });
+    renderIdentify();
+  }
+
+  // =====================================================================
+  //  RENDER
+  // =====================================================================
+  function renderPianoHL() {
+    var hl = {}; // pc -> true for chord/scale highlight
+    var rootPc = null;
+    if (state.tab === 'chord') {
+      var ch = buildChord(rootName(), state.quality);
+      if (ch) ch.pcs.forEach(function (p) { hl[p] = true; });
+      rootPc = state.rootPc;
+    } else if (state.tab === 'scale') {
+      var sc = buildScale(rootName(), state.scaleType);
+      if (sc) sc.pcs.forEach(function (p) { hl[p] = true; });
+      rootPc = state.rootPc;
+    }
+    var selMap = {};
+    state.selection.forEach(function (s) { selMap[s.pc + ':' + s.octave] = true; });
+    keyEls.forEach(function (k) {
+      k.el.classList.remove('hl', 'root', 'sel');
+      if (state.tab === 'identify') {
+        if (selMap[k.pc + ':' + k.octave]) k.el.classList.add('sel');
+      } else {
+        if (hl[k.pc]) k.el.classList.add('hl');
+        if (rootPc !== null && k.pc === rootPc) k.el.classList.add('root');
+      }
+    });
+  }
+
+  function noteChip(name, role, isRoot) {
+    var d = document.createElement('div');
+    d.className = 'note-chip' + (isRoot ? ' rootn' : '');
+    var nn = document.createElement('div'); nn.className = 'nn'; nn.textContent = displayRoot(name);
+    d.appendChild(nn);
+    if (role) { var r = document.createElement('div'); r.className = 'role'; r.textContent = role; d.appendChild(r); }
+    return d;
+  }
+
+  function renderChord() {
+    var ch = buildChord(rootName(), state.quality);
+    if (!ch) return;
+    $('chord-name').textContent = ch.symbol;
+    var strip = $('chord-notes'); strip.innerHTML = '';
+    for (var i = 0; i < ch.notes.length; i++) strip.appendChild(noteChip(ch.notes[i], ch.roles[i], i === 0));
+    var ints = [];
+    for (var j = 1; j < ch.pcs.length; j++) ints.push(INTERVAL[((ch.pcs[j] - ch.pcs[0]) % 12 + 12) % 12]);
+    $('chord-meta').innerHTML = '<b>' + ch.name + '</b> · 组成音 ' + ch.notes.map(displayRoot).join(' – ') +
+      ' · 从根音起音程 ' + ints.join(' / ');
+  }
+
+  function renderScale() {
+    var sc = buildScale(rootName(), state.scaleType);
+    if (!sc) return;
+    $('scale-name').textContent = sc.name;
+    var strip = $('scale-notes'); strip.innerHTML = '';
+    for (var i = 0; i < sc.notes.length; i++) strip.appendChild(noteChip(sc.notes[i], sc.degrees[i], i === 0));
+    $('scale-meta').innerHTML = '<b>' + sc.notes.length + ' 音</b> · ' + sc.notes.map(displayRoot).join(' – ');
+  }
+
+  function renderIdentify() {
+    var sel = state.selection.slice().sort(function (a, b) { return (a.octave * 12 + a.pc) - (b.octave * 12 + b.pc); });
+    var names = sel.map(function (s) { return nameForPc(s.pc, state.spelling); });
+    var selStrip = $('identify-selection'); selStrip.innerHTML = '';
+    sel.forEach(function (s) { selStrip.appendChild(noteChip(nameForPc(s.pc, state.spelling), '八度' + s.octave, false)); });
+    var res = identify(names, state.spelling);
+    var box = $('identify-result'); box.innerHTML = '';
+    if (state.selection.length === 0) { $('identify-hint').hidden = false; }
+    if (res.length === 0) {
+      if (state.selection.length >= 2) {
+        var none = document.createElement('div'); none.className = 'id-item';
+        none.innerHTML = '<span class="desc">未匹配到已知和弦 — 试试增减一个音,或换一组。</span>';
+        box.appendChild(none);
+      }
+      renderPianoHL();
+      return;
+    }
+    res.forEach(function (r, i) {
+      var it = document.createElement('div'); it.className = 'id-item' + (i === 0 ? ' primary' : '');
+      var sym = document.createElement('div'); sym.className = 'sym'; sym.textContent = r.symbol; it.appendChild(sym);
+      var tag = document.createElement('div'); tag.className = 'tag' + (r.inversion ? ' inv' : '');
+      tag.textContent = r.inversion ? ('转位 · 低音 ' + displayRoot(r.bass)) : '原位';
+      it.appendChild(tag);
+      var desc = document.createElement('div'); desc.className = 'desc';
+      desc.textContent = displayRoot(r.root) + ' ' + r.qualityName;
+      it.appendChild(desc);
+      box.appendChild(it);
+    });
+    renderPianoHL();
+  }
+
+  function renderDiatonic() {
+    var keyName = nameForPc(state.keyPc, state.spelling);
+    var dia = diatonic(keyName, state.keyMode);
+    $('key-name').textContent = displayRoot(keyName) + ' ' + (state.keyMode === 'minor' ? '小调' : '大调');
+    $('key-sig').textContent = keySignature(keyName, state.keyMode);
+    var tb = $('diatonic-table'); tb.innerHTML = '';
+    dia.forEach(function (d, i) {
+      var tr = document.createElement('tr'); tr.className = 'dia-chord'; tr.setAttribute('data-i', i);
+      var c1 = document.createElement('td'); c1.className = 'rn'; c1.textContent = d.roman;
+      var c2 = document.createElement('td'); var sp = document.createElement('span'); sp.className = 'sym'; sp.textContent = d.symbol; c2.appendChild(sp);
+      var c3 = document.createElement('td'); c3.className = 'nts'; c3.textContent = d.notes.map(displayRoot).join(' ');
+      tr.appendChild(c1); tr.appendChild(c2); tr.appendChild(c3);
+      tr.addEventListener('click', function () { loadDiatonic(d); });
+      tb.appendChild(tr);
+    });
+    renderCofActive();
+  }
+  function loadDiatonic(d) {
+    state.tab = 'chord';
+    state.rootPc = pcOf(d.root);
+    state.quality = d.quality;
+    syncTabs(); syncRootSelects(); syncQuality();
+    renderBuilder();
+    playChordOrRoot();
+  }
+
+  // circle of fifths order (clockwise from top)
+  var COF = [0, 7, 2, 9, 4, 11, 6, 1, 8, 3, 10, 5];
+  function buildCof() {
+    var cof = $('cof'); cof.innerHTML = '';
+    var R = 118, cx = 144, cy = 144;
+    COF.forEach(function (pc, i) {
+      var ang = (i / 12) * 2 * Math.PI - Math.PI / 2;
+      var x = cx + R * Math.cos(ang), y = cy + R * Math.sin(ang);
+      var b = document.createElement('button');
+      b.type = 'button'; b.className = 'cof-key'; b.setAttribute('data-pc', pc);
+      b.style.left = x + 'px'; b.style.top = y + 'px';
+      b.textContent = displayRoot(nameForPc(pc, state.spelling));
+      b.addEventListener('click', function () { state.keyPc = pc; renderDiatonic(); });
+      cof.appendChild(b);
+    });
+    var center = document.createElement('div'); center.className = 'cof-center';
+    center.textContent = '五度圈 · 顺时针每格升一个五度';
+    cof.appendChild(center);
+    renderCofActive();
+  }
+  function renderCofActive() {
+    var keys = $('cof').querySelectorAll('.cof-key');
+    keys.forEach(function (k) {
+      k.classList.toggle('active', parseInt(k.getAttribute('data-pc'), 10) === state.keyPc);
+      k.textContent = displayRoot(nameForPc(parseInt(k.getAttribute('data-pc'), 10), state.spelling));
+    });
+  }
+
+  function renderProgression() {
+    var strip = $('prog-strip'); strip.innerHTML = '';
+    if (state.progression.length === 0) {
+      var e = document.createElement('span'); e.className = 'prog-empty';
+      e.textContent = '还没有和弦 — 在「和弦」页按「＋ 加入进行」把和弦排进来。';
+      strip.appendChild(e);
+    } else {
+      state.progression.forEach(function (c, i) {
+        var chip = document.createElement('div'); chip.className = 'prog-chip';
+        var t = document.createElement('span'); t.textContent = displaySymbol(c.root, c.quality); chip.appendChild(t);
+        var x = document.createElement('button'); x.type = 'button'; x.textContent = '×'; x.setAttribute('aria-label', '移除');
+        x.addEventListener('click', function () { state.progression.splice(i, 1); persistCurrent(); renderProgression(); });
+        chip.appendChild(x);
+        strip.appendChild(chip);
+      });
+    }
+    persistCurrent();
+  }
+
+  function renderSavedList() {
+    var progs = getProgressions();
+    var sel = $('prog-saved');
+    sel.innerHTML = '<option value="">载入已保存…</option>';
+    Object.keys(progs).forEach(function (name) {
+      var o = document.createElement('option'); o.value = name; o.textContent = name + ' (' + progs[name].length + ')';
+      sel.appendChild(o);
+    });
+  }
+
+  function renderBuilder() { renderChord(); renderScale(); renderPianoHL(); }
+
+  function relabelKeys() {
+    keyEls.forEach(function (k) { k.el.setAttribute('aria-label', nameForPc(k.pc, state.spelling) + k.octave); });
+  }
+
+  // =====================================================================
+  //  SELECT POPULATION + SYNC
+  // =====================================================================
+  function populateSelects() {
+    var rootSel = $('root-select'), rootSel2 = $('root-select-2');
+    rootSel.innerHTML = ''; rootSel2.innerHTML = '';
+    for (var pc = 0; pc < 12; pc++) {
+      var nm = nameForPc(pc, state.spelling);
+      var o1 = document.createElement('option'); o1.value = pc; o1.textContent = displayRoot(nm); rootSel.appendChild(o1);
+      var o2 = document.createElement('option'); o2.value = pc; o2.textContent = displayRoot(nm); rootSel2.appendChild(o2);
+    }
+    var qs = $('quality-select'); qs.innerHTML = '';
+    CHORD_ORDER.forEach(function (q) {
+      var o = document.createElement('option'); o.value = q;
+      o.textContent = CHORDS[q].name + ' (' + (CHORDS[q].sym || 'maj') + ')';
+      qs.appendChild(o);
+    });
+    var ss = $('scale-select'); ss.innerHTML = '';
+    SCALE_ORDER.forEach(function (t) {
+      var o = document.createElement('option'); o.value = t; o.textContent = SCALES[t].name; ss.appendChild(o);
+    });
+    syncRootSelects(); syncQuality(); syncScale();
+  }
+  function syncRootSelects() {
+    $('root-select').value = String(state.rootPc);
+    $('root-select-2').value = String(state.rootPc);
+  }
+  function syncQuality() { $('quality-select').value = state.quality; }
+  function syncScale() { $('scale-select').value = state.scaleType; }
+  function syncTabs() {
+    ['chord', 'scale', 'identify'].forEach(function (t) {
+      $('tab-' + t).classList.toggle('active', state.tab === t);
+      $('panel-' + t).hidden = (state.tab !== t);
+    });
+    renderPianoHL();
+  }
+
+  // =====================================================================
+  //  AUDIO (Web Audio — lazy, only on user gesture; never in tests)
+  // =====================================================================
+  var actx = null;
+  function audio() {
+    if (!actx) {
+      var AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return null;
+      try { actx = new AC(); } catch (e) { return null; }
+    }
+    if (actx.state === 'suspended') { try { actx.resume(); } catch (e) {} }
+    return actx;
+  }
+  function playFreqs(freqs, when, dur) {
+    var ac = audio(); if (!ac) return;
+    var t0 = ac.currentTime + (when || 0);
+    freqs.forEach(function (f) {
+      var osc = ac.createOscillator(), g = ac.createGain();
+      osc.type = 'triangle'; osc.frequency.value = f;
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.exponentialRampToValueAtTime(0.16, t0 + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + (dur || 0.9));
+      osc.connect(g); g.connect(ac.destination);
+      osc.start(t0); osc.stop(t0 + (dur || 0.9) + 0.05);
+    });
+  }
+  function chordFreqs(ch) {
+    // ascending voicing starting at octave 4
+    var oct = 4, prev = -1, out = [];
+    for (var i = 0; i < ch.notes.length; i++) {
+      if (ch.pcs[i] < prev) oct++;
+      prev = ch.pcs[i];
+      out.push(noteFreq(ch.notes[i], oct));
+    }
+    return out;
+  }
+  function playChordOrRoot() {
+    if (state.tab !== 'chord') return;
+    var ch = buildChord(rootName(), state.quality);
+    if (ch) playFreqs(chordFreqs(ch), 0, 0.9);
+  }
+  function playScale() {
+    var sc = buildScale(rootName(), state.scaleType); if (!sc) return;
+    var oct = 4, prev = -1;
+    for (var i = 0; i < sc.notes.length; i++) {
+      if (sc.pcs[i] < prev) oct++;
+      prev = sc.pcs[i];
+      playFreqs([noteFreq(sc.notes[i], oct)], i * 0.16, 0.32);
+    }
+    playFreqs([noteFreq(sc.notes[0], oct + 1)], sc.notes.length * 0.16, 0.4);
+  }
+  function playProgression() {
+    state.progression.forEach(function (c, i) {
+      var ch = buildChord(c.root, c.quality);
+      if (ch) playFreqs(chordFreqs(ch), i * 0.85, 0.8);
+    });
+  }
+
+  // =====================================================================
+  //  PERSISTENCE
+  // =====================================================================
+  function getProgressions() {
+    try { return JSON.parse(localStorage.getItem(LS_PROGS) || '{}') || {}; } catch (e) { return {}; }
+  }
+  function saveProgression(name) {
+    name = (name || '').trim();
+    if (!name || state.progression.length === 0) return false;
+    var p = getProgressions();
+    p[name] = state.progression.slice();
+    try { localStorage.setItem(LS_PROGS, JSON.stringify(p)); } catch (e) {}
+    renderSavedList();
+    return true;
+  }
+  function loadProgression(name) {
+    var p = getProgressions();
+    if (!p[name]) return false;
+    state.progression = p[name].slice();
+    persistCurrent(); renderProgression();
+    return true;
+  }
+  function persistCurrent() {
+    try { localStorage.setItem(LS_CUR, JSON.stringify(state.progression)); } catch (e) {}
+  }
+  function restoreCurrent() {
+    try {
+      var c = JSON.parse(localStorage.getItem(LS_CUR) || '[]');
+      if (Array.isArray(c)) state.progression = c.filter(function (x) { return x && CHORDS[x.quality] && pcOf(x.root) !== null; });
+    } catch (e) {}
+  }
+
+  // =====================================================================
+  //  EVENTS
+  // =====================================================================
+  function wire() {
+    ['chord', 'scale', 'identify'].forEach(function (t) {
+      $('tab-' + t).addEventListener('click', function () { state.tab = t; syncTabs(); });
+    });
+    $('root-select').addEventListener('change', function () { state.rootPc = parseInt(this.value, 10); syncRootSelects(); renderBuilder(); });
+    $('root-select-2').addEventListener('change', function () { state.rootPc = parseInt(this.value, 10); syncRootSelects(); renderBuilder(); });
+    $('quality-select').addEventListener('change', function () { state.quality = this.value; renderChord(); renderPianoHL(); });
+    $('scale-select').addEventListener('change', function () { state.scaleType = this.value; renderScale(); renderPianoHL(); });
+
+    $('spelling-seg').querySelectorAll('button').forEach(function (b) {
+      b.addEventListener('click', function () {
+        state.spelling = b.getAttribute('data-sp');
+        $('spelling-seg').querySelectorAll('button').forEach(function (x) { x.classList.toggle('on', x === b); });
+        populateSelects(); relabelKeys(); renderBuilder(); renderIdentify(); renderDiatonic();
+      });
+    });
+
+    $('chord-play').addEventListener('click', playChordOrRoot);
+    $('scale-play').addEventListener('click', playScale);
+    $('chord-add').addEventListener('click', function () {
+      state.progression.push({ root: rootName(), quality: state.quality });
+      renderProgression();
+    });
+
+    $('identify-clear').addEventListener('click', function () { state.selection = []; renderIdentify(); });
+
+    $('key-mode-seg').querySelectorAll('button').forEach(function (b) {
+      b.addEventListener('click', function () {
+        state.keyMode = b.getAttribute('data-mode');
+        $('key-mode-seg').querySelectorAll('button').forEach(function (x) { x.classList.toggle('on', x === b); });
+        renderDiatonic();
+      });
+    });
+
+    $('prog-play').addEventListener('click', playProgression);
+    $('prog-clear').addEventListener('click', function () { state.progression = []; renderProgression(); });
+    $('prog-save').addEventListener('click', function () {
+      if (saveProgression($('prog-name').value)) { $('prog-name').value = ''; }
+    });
+    $('prog-name').addEventListener('keydown', function (e) { if (e.key === 'Enter') $('prog-save').click(); });
+    $('prog-saved').addEventListener('change', function () { if (this.value) { loadProgression(this.value); this.value = ''; } });
+
+    $('theme-btn').addEventListener('click', toggleTheme);
+  }
+
+  // =====================================================================
+  //  THEME
+  // =====================================================================
+  function applyTheme(t) {
+    if (t === 'light') document.documentElement.setAttribute('data-theme', 'light');
+    else document.documentElement.removeAttribute('data-theme');
+    try { localStorage.setItem('chordstudio.theme', t); } catch (e) {}
+  }
+  function toggleTheme() {
+    var cur = document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+    applyTheme(cur === 'light' ? 'dark' : 'light');
+  }
+  function initTheme() {
+    var saved = null;
+    try { saved = localStorage.getItem('chordstudio.theme'); } catch (e) {}
+    if (saved) applyTheme(saved);
+    else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) applyTheme('light');
+  }
+
+  // =====================================================================
+  //  INIT
+  // =====================================================================
+  function init() {
+    initTheme();
+    buildPiano();
+    buildCof();
+    populateSelects();
+    restoreCurrent();
+    wire();
+    syncTabs();
+    renderBuilder();
+    renderIdentify();
+    renderDiatonic();
+    renderProgression();
+    renderSavedList();
+    $('year').textContent = new Date().getFullYear();
+  }
+
+  // =====================================================================
+  //  TEST HOOK
+  // =====================================================================
+  window.__music = {
+    // pure engine
+    pcOf: pcOf, spell: spell, nameForPc: nameForPc,
+    buildChord: buildChord, buildScale: buildScale, identify: identify,
+    diatonic: diatonic, intervalName: intervalName, noteFreq: noteFreq,
+    transpose: transpose, roleLabel: roleLabel, keySignature: keySignature,
+    // ui drivers
+    setTab: function (t) { state.tab = t; syncTabs(); },
+    setRoot: function (pc) { state.rootPc = ((pc % 12) + 12) % 12; syncRootSelects(); renderBuilder(); },
+    setQuality: function (q) { state.quality = q; syncQuality(); renderChord(); renderPianoHL(); },
+    setScale: function (t) { state.scaleType = t; syncScale(); renderScale(); renderPianoHL(); },
+    setSpelling: function (sp) {
+      state.spelling = sp;
+      $('spelling-seg').querySelectorAll('button').forEach(function (x) { x.classList.toggle('on', x.getAttribute('data-sp') === sp); });
+      populateSelects(); relabelKeys(); renderBuilder(); renderIdentify(); renderDiatonic();
+    },
+    toggleNote: function (pc, oct) { state.tab = 'identify'; syncTabs(); toggleNote(pc, oct === undefined ? 4 : oct); },
+    clearSelection: function () { state.selection = []; renderIdentify(); },
+    setKey: function (pc, mode) { state.keyPc = ((pc % 12) + 12) % 12; if (mode) state.keyMode = mode; renderDiatonic(); },
+    addToProgression: function (root, q) {
+      state.progression.push({ root: root || rootName(), quality: q || state.quality }); renderProgression();
+    },
+    clearProgression: function () { state.progression = []; renderProgression(); },
+    saveProgression: saveProgression, loadProgression: loadProgression, getProgressions: getProgressions,
+    getState: function () { return JSON.parse(JSON.stringify(state)); },
+    reset: function () {
+      try { localStorage.removeItem(LS_PROGS); localStorage.removeItem(LS_CUR); } catch (e) {}
+      state.progression = []; state.selection = []; state.rootPc = 0; state.quality = 'maj';
+      state.scaleType = 'major'; state.tab = 'chord'; state.keyPc = 0; state.keyMode = 'major';
+      syncTabs(); syncRootSelects(); syncQuality(); syncScale();
+      renderBuilder(); renderIdentify(); renderDiatonic(); renderProgression(); renderSavedList();
+    },
+    render: function () { renderBuilder(); renderIdentify(); renderDiatonic(); renderProgression(); }
+  };
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
+})();
+</script>
+</body>
+</html>
