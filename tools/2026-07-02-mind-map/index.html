@@ -1,0 +1,1278 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>思维导图 · Mind Map</title>
+<meta name="description" content="浏览器里的思维导图：真·两侧平衡的整齐树自动排版引擎 + 键盘极速录入(Tab 子节点 / Enter 兄弟) + 大纲互导 + 折叠/缩放/拖拽 + 多图管理与本地自动保存，导出 SVG/PNG/Markdown。零后端、不上传。" />
+<style>
+  :root {
+    --bg: #eef2f7;
+    --stage-bg: #f8fafc;
+    --grid: rgba(100, 116, 139, 0.10);
+    --card: #ffffff;
+    --card-2: #f8fafc;
+    --ink: #0f172a;
+    --muted: #64748b;
+    --faint: #94a3b8;
+    --line: #cbd5e1;
+    --line-soft: #e2e8f0;
+    --accent: #4f46e5;
+    --accent-ink: #ffffff;
+    --accent-soft: #e0e7ff;
+    --btn: #ffffff;
+    --btn-border: #cbd5e1;
+    --danger: #dc2626;
+    --node-bg: #ffffff;
+    --node-ink: #0f172a;
+    --root-bg: #4f46e5;
+    --root-ink: #ffffff;
+    --shadow: 0 10px 30px rgba(2, 6, 23, 0.08);
+    --shadow-lg: 0 24px 60px rgba(2, 6, 23, 0.18);
+    --radius: 14px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0b1120;
+      --stage-bg: #0d1424;
+      --grid: rgba(148, 163, 184, 0.09);
+      --card: #111827;
+      --card-2: #0f172a;
+      --ink: #e5e7eb;
+      --muted: #94a3b8;
+      --faint: #64748b;
+      --line: #334155;
+      --line-soft: #1f2937;
+      --accent: #818cf8;
+      --accent-ink: #0b1120;
+      --accent-soft: #1e1b4b;
+      --btn: #1f2937;
+      --btn-border: #374151;
+      --danger: #f87171;
+      --node-bg: #111827;
+      --node-ink: #e5e7eb;
+      --root-bg: #6366f1;
+      --root-ink: #ffffff;
+      --shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+      --shadow-lg: 0 24px 60px rgba(0, 0, 0, 0.6);
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; height: 100%; }
+  [hidden] { display: none !important; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+      "Hiragino Sans GB", "Microsoft YaHei", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    padding: 16px 16px 40px;
+  }
+  a { color: var(--accent); }
+  .back { display: inline-block; text-decoration: none; color: var(--muted); font-size: 14px; margin-bottom: 12px; }
+  .back:hover { color: var(--accent); }
+  .wrap { max-width: 1180px; margin: 0 auto; }
+  header h1 { margin: 0 0 3px; font-size: clamp(21px, 4.2vw, 29px); letter-spacing: .3px; }
+  header p { margin: 0 0 14px; color: var(--muted); font-size: 14px; }
+
+  select, button, input, textarea { font-family: inherit; font-size: 14px; color: var(--ink); }
+  button {
+    background: var(--btn); color: var(--ink);
+    border: 1px solid var(--btn-border); border-radius: 9px;
+    padding: 7px 11px; cursor: pointer; white-space: nowrap;
+    transition: transform .04s ease, background .15s ease, border-color .15s ease, color .15s ease;
+  }
+  button:hover:not(:disabled) { border-color: var(--accent); }
+  button:active:not(:disabled) { transform: translateY(1px); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
+  button.danger:hover:not(:disabled) { border-color: var(--danger); color: var(--danger); }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  button.icon { padding: 7px 9px; min-width: 34px; }
+  select {
+    background: var(--btn); border: 1px solid var(--btn-border); border-radius: 9px;
+    padding: 7px 9px; cursor: pointer; max-width: 220px;
+  }
+  input[type="text"] {
+    background: var(--card); border: 1px solid var(--btn-border); border-radius: 9px; padding: 7px 10px;
+  }
+  button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, #stage:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 2px;
+  }
+
+  .toolbar {
+    display: flex; flex-wrap: wrap; gap: 7px; align-items: center;
+    background: var(--card); border: 1px solid var(--line-soft); border-radius: var(--radius);
+    padding: 10px; box-shadow: var(--shadow); margin-bottom: 12px;
+  }
+  .toolbar .sep { width: 1px; align-self: stretch; background: var(--line-soft); margin: 2px 3px; }
+  .toolbar .spacer { flex: 1 1 auto; }
+  .grp { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .zoom-label { font-variant-numeric: tabular-nums; color: var(--muted); min-width: 44px; text-align: center; font-size: 13px; }
+
+  #stage {
+    position: relative; height: 62vh; min-height: 440px;
+    background:
+      radial-gradient(var(--grid) 1px, transparent 1px) 0 0 / 22px 22px,
+      var(--stage-bg);
+    border: 1px solid var(--line-soft); border-radius: var(--radius);
+    box-shadow: var(--shadow); overflow: hidden; touch-action: none;
+    cursor: grab;
+  }
+  #stage.panning { cursor: grabbing; }
+  #map-svg { width: 100%; height: 100%; display: block; user-select: none; }
+
+  path.edge { fill: none; stroke-width: 2.4; opacity: .85; }
+  g.node { cursor: pointer; }
+  g.node rect.box {
+    fill: var(--node-bg); stroke: var(--line); stroke-width: 1.5;
+    filter: drop-shadow(0 2px 5px rgba(2,6,23,.10));
+  }
+  g.node.root rect.box { fill: var(--root-bg); stroke: var(--root-bg); }
+  g.node text.label { fill: var(--node-ink); font-size: 13px; dominant-baseline: middle; }
+  g.node.root text.label { fill: var(--root-ink); font-size: 15px; font-weight: 700; }
+  g.node.sel rect.box { stroke: var(--accent); stroke-width: 2.6; }
+  g.node.sel rect.box { filter: drop-shadow(0 3px 10px rgba(79,70,229,.35)); }
+  g.node .toggle { cursor: pointer; }
+  g.node .toggle circle { fill: var(--card); stroke: var(--line); stroke-width: 1.5; }
+  g.node .toggle text { fill: var(--muted); font-size: 12px; font-weight: 700; text-anchor: middle; dominant-baseline: central; }
+  g.node .badge { fill: var(--muted); font-size: 10px; }
+
+  #node-edit {
+    position: absolute; z-index: 5; display: none;
+    border: 2px solid var(--accent); border-radius: 8px; padding: 3px 7px;
+    background: var(--card); color: var(--ink); box-shadow: var(--shadow-lg);
+    font-size: 13px; min-width: 60px;
+  }
+  #empty-hint {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    color: var(--faint); font-size: 14px; pointer-events: none; text-align: center; padding: 20px;
+  }
+
+  .statusbar {
+    display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center;
+    margin-top: 10px; font-size: 13px; color: var(--muted);
+  }
+  .statusbar b { color: var(--ink); font-weight: 600; }
+  .statusbar kbd {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11px;
+    background: var(--card-2); border: 1px solid var(--line-soft); border-bottom-width: 2px;
+    border-radius: 5px; padding: 1px 5px; color: var(--ink);
+  }
+
+  .panel {
+    margin-top: 12px; background: var(--card); border: 1px solid var(--line-soft);
+    border-radius: var(--radius); padding: 14px; box-shadow: var(--shadow);
+  }
+  .panel h2 { margin: 0 0 8px; font-size: 15px; }
+  .panel p.hint { margin: 0 0 10px; color: var(--muted); font-size: 13px; }
+  textarea#outline-input {
+    width: 100%; min-height: 150px; resize: vertical; border-radius: 10px;
+    border: 1px solid var(--btn-border); background: var(--card-2); color: var(--ink);
+    padding: 10px 12px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px;
+    line-height: 1.6;
+  }
+  .panel .row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; align-items: center; }
+  .samples { display: flex; flex-wrap: wrap; gap: 8px; }
+  .kbd-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px 18px; }
+  .kbd-list div { font-size: 13px; color: var(--muted); }
+  .kbd-list kbd {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11px;
+    background: var(--card-2); border: 1px solid var(--line-soft); border-bottom-width: 2px;
+    border-radius: 5px; padding: 1px 6px; color: var(--ink); margin-right: 6px;
+  }
+  .toast {
+    position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%) translateY(16px);
+    background: var(--ink); color: var(--bg); padding: 9px 16px; border-radius: 10px;
+    font-size: 13px; box-shadow: var(--shadow-lg); opacity: 0; pointer-events: none;
+    transition: opacity .2s ease, transform .2s ease; z-index: 20;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  footer.note { margin-top: 22px; color: var(--faint); font-size: 12px; text-align: center; }
+  @media (max-width: 640px) {
+    .zoom-label, .grp.desktop-only { display: none; }
+    #stage { height: 56vh; min-height: 380px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="../../">← 返回工具集</a>
+  <header>
+    <h1>思维导图 · Mind Map</h1>
+    <p>两侧平衡自动排版 · 键盘极速录入 · 大纲互导 · 多图本地保存 —— 全程在你浏览器里，不上传。</p>
+  </header>
+
+  <div class="toolbar" role="toolbar" aria-label="工具栏">
+    <div class="grp">
+      <select id="map-select" title="切换思维导图" aria-label="切换思维导图"></select>
+      <button id="new-map" class="icon" title="新建导图">＋图</button>
+      <button id="rename-map" class="icon" title="重命名当前导图">✎</button>
+      <button id="del-map" class="icon danger" title="删除当前导图">🗑</button>
+    </div>
+    <div class="sep"></div>
+    <div class="grp">
+      <button id="add-child" title="添加子节点 (Tab)">＋子节点</button>
+      <button id="add-sib" title="添加兄弟节点 (Enter)">＋兄弟</button>
+      <button id="edit-node" title="编辑节点 (F2 / 双击)">编辑</button>
+      <button id="del-node" class="danger" title="删除节点 (Delete)">删除</button>
+    </div>
+    <div class="sep"></div>
+    <div class="grp desktop-only">
+      <button id="outdent" class="icon" title="升级 / 外提 (Shift+Tab)">⇤</button>
+      <button id="indent" class="icon" title="降级 / 内缩 (Ctrl+])">⇥</button>
+      <button id="toggle-collapse" class="icon" title="折叠 / 展开 (Space)">⊟</button>
+      <button id="undo" class="icon" title="撤销 (Ctrl+Z)">↶</button>
+    </div>
+    <div class="spacer"></div>
+    <div class="grp">
+      <button id="zoom-out" class="icon" title="缩小">−</button>
+      <span class="zoom-label" id="zoom-label">100%</span>
+      <button id="zoom-in" class="icon" title="放大">＋</button>
+      <button id="fit" class="icon" title="适应窗口">▣</button>
+    </div>
+    <div class="sep"></div>
+    <div class="grp">
+      <button id="import-btn" title="从大纲导入 / 导出">导入</button>
+      <button id="exp-md" title="导出 Markdown 大纲">.md</button>
+      <button id="exp-json" title="导出 JSON">.json</button>
+      <button id="exp-svg" title="导出 SVG 矢量图">.svg</button>
+      <button id="exp-png" title="导出 PNG 图片">.png</button>
+      <button id="help-btn" class="icon" title="帮助 / 快捷键">?</button>
+    </div>
+  </div>
+
+  <div id="stage" tabindex="0" aria-label="思维导图画布，可拖拽平移、滚轮缩放">
+    <svg id="map-svg" xmlns="http://www.w3.org/2000/svg">
+      <g id="viewport">
+        <g id="edges"></g>
+        <g id="nodes"></g>
+      </g>
+    </svg>
+    <input id="node-edit" type="text" spellcheck="false" aria-label="编辑节点文字" />
+    <div id="empty-hint" hidden></div>
+  </div>
+
+  <div class="statusbar">
+    <span>已选：<b id="sel-name">—</b></span>
+    <span id="count-info"><b id="node-count">0</b> 个节点</span>
+    <span class="grp desktop-only"><kbd>Tab</kbd> 子节点 · <kbd>Enter</kbd> 兄弟 · <kbd>F2</kbd> 编辑 · <kbd>Del</kbd> 删除 · <kbd>方向键</kbd> 导航 · <kbd>Space</kbd> 折叠 · 拖拽平移 / 滚轮缩放</span>
+  </div>
+
+  <div class="panel" id="io-panel" hidden>
+    <h2>大纲导入 / 导出</h2>
+    <p class="hint">粘贴一段带缩进的大纲（Tab 或每 2 个空格算一级，行首的 <code>-</code> <code>*</code> <code>1.</code> 会被忽略）。第一行若唯一即作为中心主题。</p>
+    <textarea id="outline-input" spellcheck="false" placeholder="产品发布&#10;&#9;市场&#10;&#9;&#9;预热海报&#10;&#9;&#9;KOL 名单&#10;&#9;研发&#10;&#9;&#9;冻结功能&#10;&#9;&#9;回归测试&#10;&#9;运营&#10;&#9;&#9;客服话术"></textarea>
+    <div class="row">
+      <button id="import-new" class="primary">作为新导图导入</button>
+      <button id="import-replace">替换当前导图</button>
+      <button id="fill-current">← 载入当前导图大纲</button>
+      <span class="spacer"></span>
+      <button id="io-close">关闭</button>
+    </div>
+    <div class="row samples">
+      <span style="color:var(--muted);font-size:13px;">示例：</span>
+      <button data-sample="product">产品发布计划</button>
+      <button data-sample="reading">读书笔记</button>
+      <button data-sample="trip">旅行清单</button>
+    </div>
+  </div>
+
+  <div class="panel" id="help-panel" hidden>
+    <h2>快捷键与用法</h2>
+    <div class="kbd-list">
+      <div><kbd>Tab</kbd>为选中节点加子节点</div>
+      <div><kbd>Enter</kbd>加兄弟节点（根节点则加子）</div>
+      <div><kbd>F2</kbd> / 双击 编辑文字</div>
+      <div><kbd>Delete</kbd> / <kbd>Backspace</kbd> 删除子树</div>
+      <div><kbd>↑</kbd><kbd>↓</kbd>在兄弟间移动</div>
+      <div><kbd>←</kbd>到父节点 · <kbd>→</kbd>进子节点</div>
+      <div><kbd>Space</kbd>折叠 / 展开</div>
+      <div><kbd>Ctrl</kbd>+<kbd>]</kbd>降级 · <kbd>Shift</kbd>+<kbd>Tab</kbd>升级</div>
+      <div><kbd>Ctrl</kbd>+<kbd>Z</kbd>撤销</div>
+      <div>编辑时 <kbd>Enter</kbd>提交 · <kbd>Esc</kbd>取消</div>
+      <div>拖拽空白处平移 · 滚轮缩放</div>
+      <div>所有导图自动保存在本地浏览器</div>
+    </div>
+    <div class="row"><span class="spacer"></span><button id="help-close">关闭</button></div>
+  </div>
+
+  <footer class="note">数据只保存在本地浏览器（localStorage），不会上传到任何服务器。</footer>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+(function () {
+  "use strict";
+  var SVG_NS = "http://www.w3.org/2000/svg";
+  var STORE_KEY = "daily-tools:mindmap:v1";
+  var BRANCH_COLORS = [
+    "#2563eb", "#16a34a", "#d97706", "#db2777", "#7c3aed",
+    "#0891b2", "#dc2626", "#65a30d", "#c026d3", "#0d9488"
+  ];
+  // Layout defaults (app). Tests pass their own {row, level} for round numbers.
+  var APP_LEVEL = 210;   // horizontal distance between depth columns (center→center)
+  var APP_ROW = 50;      // vertical slot per visible leaf
+  var NODE_H = 34;
+  var PAD_X = 13;
+  var MAX_W = 210;
+  var MIN_W = 44;
+
+  // ---------- DOM ----------
+  var $ = function (id) { return document.getElementById(id); };
+  var stage = $("stage"), svg = $("map-svg"), viewport = $("viewport");
+  var gEdges = $("edges"), gNodes = $("nodes"), editInput = $("node-edit");
+  var emptyHint = $("empty-hint"), mapSelect = $("map-select");
+  var toastEl = $("toast");
+
+  // ---------- state ----------
+  var state = { maps: [], currentId: null };
+  var view = { panX: 0, panY: 0, zoom: 1 };
+  var selectedId = null;
+  var editing = false, editingId = null;
+  var history = [];           // JSON snapshots of current tree for undo
+  var saveTimer = null;
+
+  // measuring canvas (font-accurate node widths; does not affect layout math)
+  var measCtx = document.createElement("canvas").getContext("2d");
+  function measure(text, root) {
+    measCtx.font = (root ? "700 15px " : "13px ") +
+      '-apple-system, "PingFang SC", "Microsoft YaHei", Roboto, Arial, sans-serif';
+    var w = measCtx.measureText(text || "").width;
+    return Math.max(MIN_W, Math.min(MAX_W, Math.round(w) + PAD_X * 2 + (root ? 6 : 0)));
+  }
+
+  // ---------- id ----------
+  var _seq = 0;
+  function uid() {
+    _seq += 1;
+    return "n" + _seq.toString(36) + Math.floor(Math.random() * 1e6).toString(36);
+  }
+
+  // ---------- model helpers (operate on a given root data object) ----------
+  function mkNode(text) { return { id: uid(), text: text == null ? "" : String(text), collapsed: false, children: [] }; }
+
+  function leafCount(node) {
+    if (!node || !node.children || node.children.length === 0 || node.collapsed) return 1;
+    var s = 0;
+    for (var i = 0; i < node.children.length; i++) s += leafCount(node.children[i]);
+    return s;
+  }
+  function nodeCountOf(node) {
+    if (!node) return 0;
+    var s = 1, ch = node.children || [];
+    for (var i = 0; i < ch.length; i++) s += nodeCountOf(ch[i]);
+    return s;
+  }
+  function walk(node, fn, parent, depth) {
+    depth = depth || 0;
+    fn(node, parent, depth);
+    var ch = node.children || [];
+    for (var i = 0; i < ch.length; i++) walk(ch[i], fn, node, depth + 1);
+  }
+  function findNode(root, id) {
+    var found = null;
+    walk(root, function (n) { if (n.id === id) found = n; });
+    return found;
+  }
+  function findParent(root, id) {
+    var p = null;
+    walk(root, function (n) {
+      var ch = n.children || [];
+      for (var i = 0; i < ch.length; i++) if (ch[i].id === id) p = n;
+    });
+    return p;
+  }
+  function clone(o) { return JSON.parse(JSON.stringify(o)); }
+
+  // ---------- outline parser (pure) ----------
+  function parseOutline(text) {
+    var raw = String(text == null ? "" : text).replace(/\r/g, "").split("\n");
+    var lines = [];
+    for (var i = 0; i < raw.length; i++) if (raw[i].trim().length) lines.push(raw[i]);
+    if (!lines.length) return null;
+
+    function indentOf(line) {
+      var lead = line.match(/^[\t ]*/)[0];
+      var tabs = (lead.match(/\t/g) || []).length;
+      var spaces = (lead.match(/ /g) || []).length;
+      return tabs + Math.floor(spaces / 2);
+    }
+    function cleanText(line) {
+      var t = line.trim().replace(/^([-*+]|\d+[.)])\s+/, "").trim();
+      return t.length ? t : "（空）";
+    }
+    var virtual = { level: -1, node: { children: [] } };
+    var stack = [virtual];
+    for (var j = 0; j < lines.length; j++) {
+      var lvl = indentOf(lines[j]);
+      var node = mkNode(cleanText(lines[j]));
+      while (stack.length && stack[stack.length - 1].level >= lvl) stack.pop();
+      var parent = stack[stack.length - 1].node;
+      parent.children.push(node);
+      stack.push({ level: lvl, node: node });
+    }
+    var tops = virtual.node.children;
+    if (tops.length === 1) return tops[0];
+    var root = mkNode("中心主题");
+    root.children = tops;
+    return root;
+  }
+
+  function toOutline(root) {
+    var out = [];
+    function rec(n, depth) {
+      out.push("\t".repeat(depth) + n.text);
+      var ch = n.children || [];
+      for (var i = 0; i < ch.length; i++) rec(ch[i], depth + 1);
+    }
+    rec(root, 0);
+    return out.join("\n");
+  }
+  function toMarkdown(root) {
+    var out = ["# " + (root.text || "中心主题"), ""];
+    function rec(n, depth) {
+      out.push("  ".repeat(depth) + "- " + n.text);
+      var ch = n.children || [];
+      for (var i = 0; i < ch.length; i++) rec(ch[i], depth + 1);
+    }
+    var ch = root.children || [];
+    for (var i = 0; i < ch.length; i++) rec(ch[i], 0);
+    return out.join("\n");
+  }
+
+  // ---------- layout engine (pure) ----------
+  // Two-sided, balanced, tidy horizontal tree. Root at (0,0). Returns {id:{x,y,depth,side}}.
+  function computeLayout(root, opts) {
+    opts = opts || {};
+    var ROW = opts.row || APP_ROW;
+    var LEVEL = opts.level || APP_LEVEL;
+    var pos = {};
+    pos[root.id] = { x: 0, y: 0, depth: 0, side: 0 };
+
+    var kids = root.children || [];
+    var left = [], right = [], sl = 0, sr = 0;
+    for (var i = 0; i < kids.length; i++) {
+      var w = leafCount(kids[i]);
+      if (sl < sr) { left.push(kids[i]); sl += w; }   // give to the lighter side; tie → right
+      else { right.push(kids[i]); sr += w; }
+    }
+
+    function layoutSide(branches, sign) {
+      var cursor = 0;
+      function place(n, depth) {
+        var x = sign * depth * LEVEL;
+        var y;
+        var leaf = !n.children || n.children.length === 0 || n.collapsed;
+        if (leaf) {
+          y = cursor + ROW / 2;
+          cursor += ROW;
+        } else {
+          for (var i = 0; i < n.children.length; i++) place(n.children[i], depth + 1);
+          var first = pos[n.children[0].id].y;
+          var last = pos[n.children[n.children.length - 1].id].y;
+          y = (first + last) / 2;
+        }
+        pos[n.id] = { x: x, y: y, depth: depth, side: sign };
+      }
+      for (var b = 0; b < branches.length; b++) place(branches[b], 1);
+      return cursor;
+    }
+    var hr = layoutSide(right, 1);
+    var hl = layoutSide(left, -1);
+    for (var id in pos) {
+      if (!pos.hasOwnProperty(id)) continue;
+      if (pos[id].side > 0) pos[id].y -= hr / 2;
+      else if (pos[id].side < 0) pos[id].y -= hl / 2;
+    }
+    return pos;
+  }
+
+  // ---------- current map accessors ----------
+  function currentMap() {
+    for (var i = 0; i < state.maps.length; i++) if (state.maps[i].id === state.currentId) return state.maps[i];
+    return state.maps[0] || null;
+  }
+  function currentTree() { var m = currentMap(); return m ? m.tree : null; }
+
+  // ---------- persistence ----------
+  function save() {
+    var m = currentMap();
+    if (m) m.view = { panX: view.panX, panY: view.panY, zoom: view.zoom };
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch (e) { /* ignore quota */ }
+  }
+  function saveSoon() { if (saveTimer) clearTimeout(saveTimer); saveTimer = setTimeout(save, 250); }
+  function load() {
+    var raw = null;
+    try { raw = localStorage.getItem(STORE_KEY); } catch (e) { raw = null; }
+    if (raw) {
+      try {
+        var s = JSON.parse(raw);
+        if (s && s.maps && s.maps.length) { state = s; normalizeState(); return; }
+      } catch (e) { /* fall through to seed */ }
+    }
+    seedDefault();
+  }
+  function normalizeState() {
+    // guarantee ids + shape are valid so a corrupt save can't crash render
+    var used = {};
+    for (var i = 0; i < state.maps.length; i++) {
+      var m = state.maps[i];
+      if (!m.id) m.id = uid();
+      if (!m.name) m.name = "未命名";
+      if (!m.tree || typeof m.tree !== "object") m.tree = mkNode("中心主题");
+      walk(m.tree, function (n) {
+        if (!n.id || used[n.id]) n.id = uid();
+        used[n.id] = 1;
+        if (!Array.isArray(n.children)) n.children = [];
+        n.collapsed = !!n.collapsed;
+        if (typeof n.text !== "string") n.text = "";
+      });
+    }
+    if (!currentMap()) state.currentId = state.maps[0].id;
+  }
+  function seedDefault() {
+    var m = { id: uid(), name: "欢迎使用", tree: SAMPLES.product(), view: null };
+    state = { maps: [m], currentId: m.id };
+  }
+
+  // ---------- samples ----------
+  var SAMPLES = {
+    product: function () {
+      return parseOutline(
+        "每日工具站 · 规划\n" +
+        "\t选题\n\t\t真引擎\n\t\t会回访\n\t\t技术 wow\n" +
+        "\t构建\n\t\t自包含单页\n\t\t深浅色自适应\n\t\t键盘可用\n" +
+        "\t质量闸门\n\t\t真实浏览器测试\n\t\t断言真实输出\n" +
+        "\t上线\n\t\tGitHub Pages\n\t\t飞书汇报"
+      );
+    },
+    reading: function () {
+      return parseOutline(
+        "《思考，快与慢》\n" +
+        "\t系统 1\n\t\t快速直觉\n\t\t易受偏差\n" +
+        "\t系统 2\n\t\t缓慢理性\n\t\t消耗精力\n" +
+        "\t关键概念\n\t\t锚定效应\n\t\t损失厌恶\n\t\t框架效应"
+      );
+    },
+    trip: function () {
+      return parseOutline(
+        "周末露营\n" +
+        "\t装备\n\t\t帐篷\n\t\t睡袋\n\t\t炉具\n" +
+        "\t食材\n\t\t早餐\n\t\t烧烤\n" +
+        "\t行程\n\t\t周六出发\n\t\t周日返程"
+      );
+    }
+  };
+
+  // ---------- history / undo ----------
+  function pushHistory() {
+    var t = currentTree();
+    if (!t) return;
+    history.push(JSON.stringify(t));
+    if (history.length > 60) history.shift();
+  }
+  function undo() {
+    if (!history.length) { toast("没有可撤销的操作"); return false; }
+    var m = currentMap();
+    m.tree = JSON.parse(history.pop());
+    if (!findNode(m.tree, selectedId)) selectedId = m.tree.id;
+    render(); saveSoon();
+    return true;
+  }
+
+  // ---------- rendering ----------
+  var renderMeta = {}; // id -> {x,y,w,depth,side,color}
+  function branchColorMap(root) {
+    var map = {};
+    map[root.id] = null; // root neutral
+    var kids = root.children || [];
+    for (var i = 0; i < kids.length; i++) {
+      var color = BRANCH_COLORS[i % BRANCH_COLORS.length];
+      walk(kids[i], function (n) { map[n.id] = color; });
+    }
+    return map;
+  }
+
+  function render() {
+    var root = currentTree();
+    gEdges.textContent = "";
+    gNodes.textContent = "";
+    renderMeta = {};
+    if (!root) return;
+
+    var pos = computeLayout(root, { row: APP_ROW, level: APP_LEVEL });
+    var colors = branchColorMap(root);
+
+    // visible set: skip descendants of collapsed nodes
+    var visible = {};
+    (function markVisible(n, hiddenAncestor) {
+      if (!hiddenAncestor) visible[n.id] = true;
+      var ch = n.children || [];
+      var childHidden = hiddenAncestor || n.collapsed;
+      for (var i = 0; i < ch.length; i++) markVisible(ch[i], childHidden);
+    })(root, false);
+
+    // meta pass (widths)
+    walk(root, function (n, parent, depth) {
+      if (!visible[n.id]) return;
+      var p = pos[n.id];
+      if (!p) return;
+      renderMeta[n.id] = {
+        x: p.x, y: p.y, depth: p.depth, side: p.side,
+        w: measure(n.text, depth === 0), color: colors[n.id]
+      };
+    });
+
+    // edges (parent → child), only where both visible
+    walk(root, function (n) {
+      if (!visible[n.id] || n.collapsed) return;
+      var pm = renderMeta[n.id];
+      var ch = n.children || [];
+      for (var i = 0; i < ch.length; i++) {
+        var c = ch[i];
+        if (!visible[c.id]) continue;
+        var cm = renderMeta[c.id];
+        if (!pm || !cm) continue;
+        var path = document.createElementNS(SVG_NS, "path");
+        path.setAttribute("class", "edge");
+        path.setAttribute("d", edgePath(pm, cm));
+        path.setAttribute("stroke", cm.color || "var(--line)");
+        gEdges.appendChild(path);
+      }
+    });
+
+    // nodes
+    walk(root, function (n, parent, depth) {
+      if (!visible[n.id]) return;
+      var m = renderMeta[n.id];
+      if (!m) return;
+      var isRoot = depth === 0;
+      var g = document.createElementNS(SVG_NS, "g");
+      g.setAttribute("class", "node" + (isRoot ? " root" : "") + (n.id === selectedId ? " sel" : ""));
+      g.setAttribute("data-id", n.id);
+      g.setAttribute("transform", "translate(" + m.x + "," + m.y + ")");
+
+      var rect = document.createElementNS(SVG_NS, "rect");
+      rect.setAttribute("class", "box");
+      rect.setAttribute("x", -m.w / 2); rect.setAttribute("y", -NODE_H / 2);
+      rect.setAttribute("width", m.w); rect.setAttribute("height", NODE_H);
+      rect.setAttribute("rx", isRoot ? 17 : 9);
+      if (!isRoot && m.color) rect.setAttribute("stroke", m.color);
+      g.appendChild(rect);
+
+      var label = document.createElementNS(SVG_NS, "text");
+      label.setAttribute("class", "label");
+      label.setAttribute("x", 0); label.setAttribute("y", 1);
+      label.setAttribute("text-anchor", "middle");
+      label.textContent = truncate(n.text || "（空）", m.w);
+      g.appendChild(label);
+
+      // collapse toggle for nodes with children
+      if (n.children && n.children.length) {
+        var outward = m.side < 0 ? -1 : 1;
+        var tx = outward * (m.w / 2 + 11);
+        var toggle = document.createElementNS(SVG_NS, "g");
+        toggle.setAttribute("class", "toggle");
+        toggle.setAttribute("data-toggle", n.id);
+        toggle.setAttribute("transform", "translate(" + tx + ",0)");
+        var tc = document.createElementNS(SVG_NS, "circle");
+        tc.setAttribute("r", 9); tc.setAttribute("cx", 0); tc.setAttribute("cy", 0);
+        toggle.appendChild(tc);
+        var tt = document.createElementNS(SVG_NS, "text");
+        tt.setAttribute("x", 0); tt.setAttribute("y", 0);
+        tt.textContent = n.collapsed ? "+" : "−";
+        toggle.appendChild(tt);
+        g.appendChild(toggle);
+        if (n.collapsed) {
+          var badge = document.createElementNS(SVG_NS, "text");
+          badge.setAttribute("class", "badge");
+          badge.setAttribute("x", outward * (m.w / 2 + 22));
+          badge.setAttribute("y", 1);
+          badge.setAttribute("text-anchor", outward < 0 ? "end" : "start");
+          badge.textContent = nodeCountOf(n) - 1;
+          g.appendChild(badge);
+        }
+      }
+      gNodes.appendChild(g);
+    });
+
+    applyTransform();
+    updateStatus();
+    emptyHint.hidden = true;
+  }
+
+  function truncate(text, w) {
+    var maxChars = Math.max(2, Math.floor((w - PAD_X * 2) / 7));
+    if (text.length <= maxChars) return text;
+    return text.slice(0, Math.max(1, maxChars - 1)) + "…";
+  }
+
+  function edgePath(p, c) {
+    var phw = p.w / 2, chw = c.w / 2;
+    var rightward = c.x >= p.x;
+    var x1 = p.x + (rightward ? phw : -phw), y1 = p.y;
+    var x2 = c.x + (rightward ? -chw : chw), y2 = c.y;
+    var mx = (x1 + x2) / 2;
+    return "M" + x1 + "," + y1 + " C" + mx + "," + y1 + " " + mx + "," + y2 + " " + x2 + "," + y2;
+  }
+
+  function applyTransform() {
+    var r = stage.getBoundingClientRect();
+    var ox = r.width / 2 + view.panX;
+    var oy = r.height / 2 + view.panY;
+    viewport.setAttribute("transform", "translate(" + ox + "," + oy + ") scale(" + view.zoom + ")");
+    $("zoom-label").textContent = Math.round(view.zoom * 100) + "%";
+    if (editing) positionEditor();
+  }
+
+  function updateStatus() {
+    var root = currentTree();
+    $("node-count").textContent = root ? nodeCountOf(root) : 0;
+    var sel = root && selectedId ? findNode(root, selectedId) : null;
+    $("sel-name").textContent = sel ? (sel.text || "（空）") : "—";
+    // toolbar enablement
+    var hasSel = !!sel, isRoot = sel && root && sel.id === root.id;
+    $("del-node").disabled = !hasSel || isRoot;
+    $("outdent").disabled = !hasSel || isRoot;
+    $("indent").disabled = !hasSel || isRoot;
+    $("add-sib").disabled = !hasSel;
+    $("add-child").disabled = !hasSel;
+    $("edit-node").disabled = !hasSel;
+    $("toggle-collapse").disabled = !hasSel || !(sel.children && sel.children.length);
+    $("undo").disabled = history.length === 0;
+    $("del-map").disabled = state.maps.length <= 1;
+  }
+
+  // ---------- selection ----------
+  function select(id) {
+    selectedId = id;
+    var prev = gNodes.querySelector("g.node.sel");
+    if (prev) prev.classList.remove("sel");
+    var g = gNodes.querySelector('g.node[data-id="' + cssEsc(id) + '"]');
+    if (g) g.classList.add("sel");
+    updateStatus();
+  }
+  function cssEsc(s) { return String(s).replace(/["\\]/g, "\\$&"); }
+
+  // ---------- mutations (all go through here so undo + save + render stay consistent) ----------
+  function addChild(parentId, text, silentEdit) {
+    var root = currentTree();
+    var parent = findNode(root, parentId);
+    if (!parent) return null;
+    pushHistory();
+    parent.collapsed = false;
+    var node = mkNode(text || "");
+    parent.children.push(node);
+    render(); select(node.id); saveSoon();
+    if (!silentEdit && text == null) beginEdit(node.id);
+    return node.id;
+  }
+  function addSibling(id, text, silentEdit) {
+    var root = currentTree();
+    if (id === root.id) return addChild(root.id, text, silentEdit); // root has no sibling
+    var parent = findParent(root, id);
+    if (!parent) return null;
+    pushHistory();
+    var idx = parent.children.map(function (c) { return c.id; }).indexOf(id);
+    var node = mkNode(text || "");
+    parent.children.splice(idx + 1, 0, node);
+    render(); select(node.id); saveSoon();
+    if (!silentEdit && text == null) beginEdit(node.id);
+    return node.id;
+  }
+  function setText(id, text) {
+    var root = currentTree();
+    var n = findNode(root, id);
+    if (!n) return false;
+    n.text = String(text);
+    render(); select(id); saveSoon();
+    return true;
+  }
+  function remove(id) {
+    var root = currentTree();
+    if (id === root.id) { toast("根节点不可删除"); return false; }
+    var parent = findParent(root, id);
+    if (!parent) return false;
+    pushHistory();
+    var idx = parent.children.map(function (c) { return c.id; }).indexOf(id);
+    parent.children.splice(idx, 1);
+    render();
+    select(parent.id);
+    saveSoon();
+    return true;
+  }
+  function indent(id) {
+    // become a child of previous sibling
+    var root = currentTree();
+    if (id === root.id) return false;
+    var parent = findParent(root, id);
+    var idx = parent.children.map(function (c) { return c.id; }).indexOf(id);
+    if (idx <= 0) { toast("没有可作为父级的上一个兄弟"); return false; }
+    pushHistory();
+    var node = parent.children.splice(idx, 1)[0];
+    var newParent = parent.children[idx - 1];
+    newParent.collapsed = false;
+    newParent.children.push(node);
+    render(); select(node.id); saveSoon();
+    return true;
+  }
+  function outdent(id) {
+    // become a sibling of its parent
+    var root = currentTree();
+    if (id === root.id) return false;
+    var parent = findParent(root, id);
+    if (parent.id === root.id) { toast("已在最外层"); return false; }
+    var grand = findParent(root, parent.id);
+    pushHistory();
+    var idx = parent.children.map(function (c) { return c.id; }).indexOf(id);
+    var node = parent.children.splice(idx, 1)[0];
+    var pidx = grand.children.map(function (c) { return c.id; }).indexOf(parent.id);
+    grand.children.splice(pidx + 1, 0, node);
+    render(); select(node.id); saveSoon();
+    return true;
+  }
+  function toggleCollapse(id, force) {
+    var root = currentTree();
+    var n = findNode(root, id);
+    if (!n || !n.children || !n.children.length) return false;
+    n.collapsed = (typeof force === "boolean") ? force : !n.collapsed;
+    render(); select(id); saveSoon();
+    return true;
+  }
+
+  // ---------- inline editor ----------
+  function beginEdit(id) {
+    var root = currentTree();
+    var n = findNode(root, id);
+    if (!n) return;
+    editing = true; editingId = id;
+    select(id);
+    editInput.value = n.text;
+    editInput.style.display = "block";
+    positionEditor();
+    editInput.focus();
+    editInput.select();
+  }
+  function positionEditor() {
+    var m = renderMeta[editingId];
+    if (!m) return;
+    var r = stage.getBoundingClientRect();
+    var ox = r.width / 2 + view.panX, oy = r.height / 2 + view.panY;
+    var sx = ox + m.x * view.zoom, sy = oy + m.y * view.zoom;
+    var w = Math.max(80, m.w * view.zoom);
+    editInput.style.width = w + "px";
+    editInput.style.left = (sx - w / 2) + "px";
+    editInput.style.top = (sy - 15) + "px";
+  }
+  function commitEdit() {
+    if (!editing) return;
+    var id = editingId;
+    var val = editInput.value.trim();
+    endEdit();
+    var root = currentTree();
+    var n = findNode(root, id);
+    if (n && n.text !== val) { pushHistory(); n.text = val; }
+    render(); select(id); saveSoon();
+  }
+  function endEdit() {
+    editing = false; editingId = null;
+    editInput.style.display = "none";
+    editInput.blur();
+  }
+  editInput.addEventListener("keydown", function (e) {
+    if (e.key === "Enter") { e.preventDefault(); commitEdit(); stage.focus(); }
+    else if (e.key === "Escape") { e.preventDefault(); endEdit(); render(); stage.focus(); }
+    e.stopPropagation();
+  });
+  editInput.addEventListener("blur", function () { if (editing) commitEdit(); });
+
+  // ---------- navigation ----------
+  function navSibling(dir) {
+    var root = currentTree();
+    if (selectedId === root.id) {
+      if (root.children && root.children.length) select(root.children[0].id);
+      return;
+    }
+    var parent = findParent(root, selectedId);
+    if (!parent) return;
+    var sibs = parent.children;
+    var idx = sibs.map(function (c) { return c.id; }).indexOf(selectedId);
+    var ni = idx + dir;
+    if (ni >= 0 && ni < sibs.length) select(sibs[ni].id);
+  }
+  function navParent() {
+    var root = currentTree();
+    var p = findParent(root, selectedId);
+    if (p) select(p.id);
+  }
+  function navChild() {
+    var root = currentTree();
+    var n = findNode(root, selectedId);
+    if (n && n.children && n.children.length) {
+      if (n.collapsed) toggleCollapse(n.id, false);
+      select(n.children[0].id);
+    }
+  }
+
+  // ---------- keyboard (document-level, single handler) ----------
+  document.addEventListener("keydown", function (e) {
+    if (editing) return;                                   // editor owns keys while active
+    var tag = (e.target && e.target.tagName || "").toLowerCase();
+    if (tag === "input" || tag === "textarea" || tag === "select") return;
+
+    if ((e.ctrlKey || e.metaKey) && (e.key === "z" || e.key === "Z")) { e.preventDefault(); undo(); return; }
+    if (!selectedId) return;
+
+    if (e.key === "Tab" && !e.shiftKey && !e.ctrlKey && !e.metaKey) { e.preventDefault(); addChild(selectedId); return; }
+    if (e.key === "Tab" && e.shiftKey) { e.preventDefault(); outdent(selectedId); return; }
+    if ((e.ctrlKey || e.metaKey) && e.key === "]") { e.preventDefault(); indent(selectedId); return; }
+    if ((e.ctrlKey || e.metaKey) && e.key === "[") { e.preventDefault(); outdent(selectedId); return; }
+    if (e.key === "Enter") { e.preventDefault(); addSibling(selectedId); return; }
+    if (e.key === "F2") { e.preventDefault(); beginEdit(selectedId); return; }
+    if (e.key === "Delete" || e.key === "Backspace") { e.preventDefault(); remove(selectedId); return; }
+    if (e.key === " " || e.key === "Spacebar") { e.preventDefault(); toggleCollapse(selectedId); return; }
+    if (e.key === "ArrowUp") { e.preventDefault(); navSibling(-1); return; }
+    if (e.key === "ArrowDown") { e.preventDefault(); navSibling(1); return; }
+    if (e.key === "ArrowLeft") { e.preventDefault(); navParent(); return; }
+    if (e.key === "ArrowRight") { e.preventDefault(); navChild(); return; }
+  });
+
+  // ---------- canvas interaction: click / dblclick / pan / zoom ----------
+  gNodes.addEventListener("click", function (e) {
+    var tg = e.target.closest ? e.target.closest("[data-toggle]") : null;
+    if (tg) { toggleCollapse(tg.getAttribute("data-toggle")); e.stopPropagation(); return; }
+    var g = e.target.closest ? e.target.closest("g.node") : null;
+    if (g) { select(g.getAttribute("data-id")); stage.focus(); }
+  });
+  gNodes.addEventListener("dblclick", function (e) {
+    var g = e.target.closest ? e.target.closest("g.node") : null;
+    if (g) { e.preventDefault(); beginEdit(g.getAttribute("data-id")); }
+  });
+
+  var panning = false, panStart = null;
+  stage.addEventListener("pointerdown", function (e) {
+    if (e.target.closest && e.target.closest("g.node")) return; // node handles its own
+    if (editing) commitEdit();
+    panning = true;
+    panStart = { x: e.clientX, y: e.clientY, px: view.panX, py: view.panY };
+    stage.classList.add("panning");
+    try { stage.setPointerCapture(e.pointerId); } catch (err) {}
+  });
+  stage.addEventListener("pointermove", function (e) {
+    if (!panning) return;
+    view.panX = panStart.px + (e.clientX - panStart.x);
+    view.panY = panStart.py + (e.clientY - panStart.y);
+    applyTransform();
+  });
+  function endPan() { if (panning) { panning = false; stage.classList.remove("panning"); saveSoon(); } }
+  stage.addEventListener("pointerup", endPan);
+  stage.addEventListener("pointercancel", endPan);
+  stage.addEventListener("pointerleave", endPan);
+
+  stage.addEventListener("wheel", function (e) {
+    e.preventDefault();
+    var r = stage.getBoundingClientRect();
+    var cx = e.clientX - r.left, cy = e.clientY - r.top;
+    var factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
+    zoomAt(cx, cy, factor);
+  }, { passive: false });
+
+  function zoomAt(cx, cy, factor) {
+    var r = stage.getBoundingClientRect();
+    var ox = r.width / 2 + view.panX, oy = r.height / 2 + view.panY;
+    var wx = (cx - ox) / view.zoom, wy = (cy - oy) / view.zoom;
+    var nz = clampZoom(view.zoom * factor);
+    view.zoom = nz;
+    view.panX = cx - r.width / 2 - wx * nz;
+    view.panY = cy - r.height / 2 - wy * nz;
+    applyTransform(); saveSoon();
+  }
+  function clampZoom(z) { return Math.max(0.2, Math.min(3, z)); }
+  function zoomButton(factor) {
+    var r = stage.getBoundingClientRect();
+    zoomAt(r.width / 2, r.height / 2, factor);
+  }
+
+  function fit() {
+    var root = currentTree();
+    if (!root) return;
+    var ids = Object.keys(renderMeta);
+    if (!ids.length) { view = { panX: 0, panY: 0, zoom: 1 }; applyTransform(); return; }
+    var minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    for (var i = 0; i < ids.length; i++) {
+      var m = renderMeta[ids[i]];
+      minX = Math.min(minX, m.x - m.w / 2); maxX = Math.max(maxX, m.x + m.w / 2);
+      minY = Math.min(minY, m.y - NODE_H / 2); maxY = Math.max(maxY, m.y + NODE_H / 2);
+    }
+    var r = stage.getBoundingClientRect();
+    var pad = 60;
+    var zx = (r.width - pad) / Math.max(1, maxX - minX);
+    var zy = (r.height - pad) / Math.max(1, maxY - minY);
+    view.zoom = clampZoom(Math.min(zx, zy, 1.4));
+    var cxWorld = (minX + maxX) / 2, cyWorld = (minY + maxY) / 2;
+    view.panX = -cxWorld * view.zoom;
+    view.panY = -cyWorld * view.zoom;
+    applyTransform(); saveSoon();
+  }
+
+  // ---------- map management ----------
+  function refreshMapSelect() {
+    mapSelect.textContent = "";
+    for (var i = 0; i < state.maps.length; i++) {
+      var opt = document.createElement("option");
+      opt.value = state.maps[i].id;
+      opt.textContent = state.maps[i].name;
+      if (state.maps[i].id === state.currentId) opt.selected = true;
+      mapSelect.appendChild(opt);
+    }
+  }
+  function switchMap(id) {
+    if (!findMapById(id)) return;
+    state.currentId = id;
+    var m = currentMap();
+    selectedId = m.tree.id; history = [];
+    if (m.view) view = { panX: m.view.panX, panY: m.view.panY, zoom: m.view.zoom };
+    else view = { panX: 0, panY: 0, zoom: 1 };
+    refreshMapSelect(); render();
+    if (!m.view) fit();
+    save();
+  }
+  function findMapById(id) { for (var i = 0; i < state.maps.length; i++) if (state.maps[i].id === id) return state.maps[i]; return null; }
+  function newMap(name, tree) {
+    var m = { id: uid(), name: name || "未命名导图", tree: tree || mkNode("中心主题"), view: null };
+    state.maps.push(m);
+    switchMap(m.id);
+    return m.id;
+  }
+  function renameMap(id, name) {
+    var m = findMapById(id); if (!m) return;
+    m.name = name || m.name; refreshMapSelect(); save();
+  }
+  function deleteMap(id) {
+    if (state.maps.length <= 1) { toast("至少保留一张导图"); return; }
+    state.maps = state.maps.filter(function (m) { return m.id !== id; });
+    if (state.currentId === id) switchMap(state.maps[0].id);
+    else { refreshMapSelect(); save(); }
+  }
+
+  // ---------- export ----------
+  function download(filename, text, mime) {
+    var blob = new Blob([text], { type: mime || "text/plain;charset=utf-8" });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 1500);
+  }
+  function safeName() {
+    var m = currentMap();
+    return ((m && m.name) || "mindmap").replace(/[\\/:*?"<>|\s]+/g, "_").slice(0, 40) || "mindmap";
+  }
+  function buildStandaloneSVG() {
+    var ids = Object.keys(renderMeta);
+    var minX = 0, maxX = 0, minY = 0, maxY = 0;
+    for (var i = 0; i < ids.length; i++) {
+      var m = renderMeta[ids[i]];
+      minX = Math.min(minX, m.x - m.w / 2); maxX = Math.max(maxX, m.x + m.w / 2);
+      minY = Math.min(minY, m.y - NODE_H / 2); maxY = Math.max(maxY, m.y + NODE_H / 2);
+    }
+    var pad = 40;
+    var vbX = minX - pad, vbY = minY - pad, vbW = (maxX - minX) + pad * 2, vbH = (maxY - minY) + pad * 2;
+    var dark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+    var bg = dark ? "#0d1424" : "#f8fafc";
+    var css =
+      "path.edge{fill:none;stroke-width:2.4;opacity:.85}" +
+      "g.node rect.box{fill:" + (dark ? "#111827" : "#fff") + ";stroke:" + (dark ? "#334155" : "#cbd5e1") + ";stroke-width:1.5}" +
+      "g.node.root rect.box{fill:" + (dark ? "#6366f1" : "#4f46e5") + ";stroke:" + (dark ? "#6366f1" : "#4f46e5") + "}" +
+      "g.node text.label{fill:" + (dark ? "#e5e7eb" : "#0f172a") + ";font-size:13px;dominant-baseline:middle;font-family:sans-serif}" +
+      "g.node.root text.label{fill:#fff;font-size:15px;font-weight:700}";
+    var inner = "<defs><style>" + css + "</style></defs>" +
+      '<rect x="' + vbX + '" y="' + vbY + '" width="' + vbW + '" height="' + vbH + '" fill="' + bg + '"/>' +
+      '<g transform="translate(0,0)">' + gEdges.outerHTML + gNodes.outerHTML + "</g>";
+    return '<svg xmlns="' + SVG_NS + '" viewBox="' + vbX + " " + vbY + " " + vbW + " " + vbH + '" width="' + vbW + '" height="' + vbH + '">' + inner + "</svg>";
+  }
+  function exportSVG() { download(safeName() + ".svg", buildStandaloneSVG(), "image/svg+xml;charset=utf-8"); }
+  function exportPNG() {
+    var svgText = buildStandaloneSVG();
+    var img = new Image();
+    var svgBlob = new Blob([svgText], { type: "image/svg+xml;charset=utf-8" });
+    var url = URL.createObjectURL(svgBlob);
+    img.onload = function () {
+      try {
+        var scale = 2;
+        var canvas = document.createElement("canvas");
+        canvas.width = img.width * scale; canvas.height = img.height * scale;
+        var ctx = canvas.getContext("2d");
+        ctx.scale(scale, scale);
+        ctx.drawImage(img, 0, 0);
+        canvas.toBlob(function (blob) {
+          if (!blob) { toast("PNG 导出失败"); return; }
+          var purl = URL.createObjectURL(blob);
+          var a = document.createElement("a");
+          a.href = purl; a.download = safeName() + ".png";
+          document.body.appendChild(a); a.click(); document.body.removeChild(a);
+          setTimeout(function () { URL.revokeObjectURL(purl); }, 1500);
+        }, "image/png");
+      } catch (err) { toast("PNG 导出失败"); }
+      URL.revokeObjectURL(url);
+    };
+    img.onerror = function () { toast("PNG 导出失败"); URL.revokeObjectURL(url); };
+    img.src = url;
+  }
+
+  // ---------- toast ----------
+  var toastTimer = null;
+  function toast(msg) {
+    toastEl.textContent = msg;
+    toastEl.classList.add("show");
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { toastEl.classList.remove("show"); }, 1800);
+  }
+
+  // ---------- wiring: toolbar ----------
+  mapSelect.addEventListener("change", function () { switchMap(mapSelect.value); stage.focus(); });
+  $("new-map").addEventListener("click", function () {
+    var name = prompt("新导图名称：", "未命名导图");
+    if (name === null) return;
+    newMap(name.trim() || "未命名导图");
+    beginEdit(currentTree().id);
+  });
+  $("rename-map").addEventListener("click", function () {
+    var m = currentMap();
+    var name = prompt("重命名导图：", m.name);
+    if (name === null) return;
+    renameMap(m.id, name.trim() || m.name);
+  });
+  $("del-map").addEventListener("click", function () {
+    var m = currentMap();
+    if (confirm("删除导图「" + m.name + "」？此操作不可撤销。")) deleteMap(m.id);
+  });
+
+  $("add-child").addEventListener("click", function () { if (selectedId) addChild(selectedId); });
+  $("add-sib").addEventListener("click", function () { if (selectedId) addSibling(selectedId); });
+  $("edit-node").addEventListener("click", function () { if (selectedId) beginEdit(selectedId); });
+  $("del-node").addEventListener("click", function () { if (selectedId) remove(selectedId); });
+  $("indent").addEventListener("click", function () { if (selectedId) indent(selectedId); });
+  $("outdent").addEventListener("click", function () { if (selectedId) outdent(selectedId); });
+  $("toggle-collapse").addEventListener("click", function () { if (selectedId) toggleCollapse(selectedId); });
+  $("undo").addEventListener("click", undo);
+
+  $("zoom-in").addEventListener("click", function () { zoomButton(1.2); });
+  $("zoom-out").addEventListener("click", function () { zoomButton(1 / 1.2); });
+  $("fit").addEventListener("click", fit);
+
+  $("help-btn").addEventListener("click", function () { var p = $("help-panel"); p.hidden = !p.hidden; if (!p.hidden) $("io-panel").hidden = true; });
+  $("help-close").addEventListener("click", function () { $("help-panel").hidden = true; });
+
+  // ---------- wiring: import/export panel ----------
+  $("import-btn").addEventListener("click", function () {
+    var p = $("io-panel"); p.hidden = !p.hidden;
+    if (!p.hidden) { $("help-panel").hidden = true; }
+  });
+  $("io-close").addEventListener("click", function () { $("io-panel").hidden = true; });
+  $("fill-current").addEventListener("click", function () { $("outline-input").value = toOutline(currentTree()); });
+  $("import-new").addEventListener("click", function () {
+    var tree = parseOutline($("outline-input").value);
+    if (!tree) { toast("大纲为空"); return; }
+    newMap("导入的导图", tree);
+    $("io-panel").hidden = true; toast("已作为新导图导入");
+  });
+  $("import-replace").addEventListener("click", function () {
+    var tree = parseOutline($("outline-input").value);
+    if (!tree) { toast("大纲为空"); return; }
+    if (!confirm("用大纲替换当前导图内容？")) return;
+    pushHistory();
+    currentMap().tree = tree; selectedId = tree.id;
+    render(); fit(); saveSoon();
+    $("io-panel").hidden = true; toast("已替换当前导图");
+  });
+  var sampleBtns = document.querySelectorAll("[data-sample]");
+  for (var si = 0; si < sampleBtns.length; si++) {
+    sampleBtns[si].addEventListener("click", function () {
+      var key = this.getAttribute("data-sample");
+      if (SAMPLES[key]) $("outline-input").value = toOutline(SAMPLES[key]());
+    });
+  }
+
+  $("exp-md").addEventListener("click", function () { download(safeName() + ".md", toMarkdown(currentTree()), "text/markdown;charset=utf-8"); });
+  $("exp-json").addEventListener("click", function () { download(safeName() + ".json", JSON.stringify(currentTree(), null, 2), "application/json;charset=utf-8"); });
+  $("exp-svg").addEventListener("click", exportSVG);
+  $("exp-png").addEventListener("click", exportPNG);
+
+  window.addEventListener("resize", applyTransform);
+
+  // ---------- boot ----------
+  load();
+  refreshMapSelect();
+  var m0 = currentMap();
+  selectedId = m0 ? m0.tree.id : null;
+  if (m0 && m0.view) view = { panX: m0.view.panX, panY: m0.view.panY, zoom: m0.view.zoom };
+  render();
+  if (!(m0 && m0.view)) fit();
+
+  // ---------- test / automation hook ----------
+  window.__mindmap = {
+    // pure helpers (operate on passed data — deterministic, no app side effects)
+    parseOutline: function (t) { return parseOutline(t); },
+    computeLayout: function (root, opts) { return computeLayout(root, opts); },
+    leafCount: leafCount,
+    nodeCountOf: nodeCountOf,
+    toOutline: toOutline,
+    toMarkdown: toMarkdown,
+    // live app control
+    reset: function () {
+      var m = { id: uid(), name: "测试导图", tree: mkNode("中心主题"), view: null };
+      state = { maps: [m], currentId: m.id };
+      selectedId = m.tree.id; history = [];
+      view = { panX: 0, panY: 0, zoom: 1 };
+      refreshMapSelect(); render(); return m.tree.id;
+    },
+    loadTree: function (root) {
+      currentMap().tree = clone(root);
+      selectedId = currentMap().tree.id; history = [];
+      render(); fit(); return selectedId;
+    },
+    getTree: function () { return clone(currentTree()); },
+    rootId: function () { return currentTree().id; },
+    select: select,
+    selected: function () { return selectedId; },
+    getNode: function (id) { var n = findNode(currentTree(), id); return n ? clone(n) : null; },
+    childrenOf: function (id) {
+      var n = findNode(currentTree(), id);
+      return n ? n.children.map(function (c) { return { id: c.id, text: c.text }; }) : [];
+    },
+    parentOf: function (id) { var p = findParent(currentTree(), id); return p ? p.id : null; },
+    addChild: function (id, text) { return addChild(id, text, true); },
+    addSibling: function (id, text) { return addSibling(id, text, true); },
+    setText: setText,
+    remove: remove,
+    indent: indent,
+    outdent: outdent,
+    collapse: function (id, f) { return toggleCollapse(id, f); },
+    toggleCollapse: function (id) { return toggleCollapse(id); },
+    undo: undo,
+    nodeCount: function () { return nodeCountOf(currentTree()); },
+    layout: function () { return computeLayout(currentTree(), { row: APP_ROW, level: APP_LEVEL }); },
+    render: render,
+    fit: fit,
+    // maps
+    maps: function () { return state.maps.map(function (m) { return { id: m.id, name: m.name }; }); },
+    currentMapName: function () { var m = currentMap(); return m ? m.name : null; },
+    newMap: function (name, tree) { return newMap(name, tree); },
+    switchMap: switchMap,
+    renameMap: renameMap,
+    deleteMap: deleteMap,
+    loadSample: function (key) { if (SAMPLES[key]) { currentMap().tree = SAMPLES[key](); selectedId = currentTree().id; render(); fit(); } },
+    // DOM inspection helpers
+    domNodeCount: function () { return gNodes.querySelectorAll("g.node").length; },
+    domEdgeCount: function () { return gEdges.querySelectorAll("path.edge").length; },
+    domLabels: function () {
+      return Array.prototype.map.call(gNodes.querySelectorAll("g.node text.label"), function (t) { return t.textContent; });
+    }
+  };
+})();
+</script>
+</body>
+</html>
