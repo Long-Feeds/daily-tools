@@ -1,0 +1,1335 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>SQL 工作台 · SQL Workbench</title>
+<meta name="description" content="浏览器里的 SQL 查询引擎：粘贴 CSV/JSON 建表，用真 SQL 查询（SELECT/JOIN/GROUP BY/HAVING/ORDER BY/LIMIT + 聚合与标量函数）。自研 tokenizer→parser→executor，零后端、数据不上传、本地自动保存。" />
+<style>
+  :root {
+    --bg: #f1f5f9;
+    --card: #ffffff;
+    --ink: #0f172a;
+    --muted: #64748b;
+    --line: #cbd5e1;
+    --line-soft: #e2e8f0;
+    --head: #f1f5f9;
+    --accent: #2563eb;
+    --accent-soft: #dbeafe;
+    --editor-bg: #f8fafc;
+    --num: #0f172a;
+    --text: #334155;
+    --ok: #15803d;
+    --ok-bg: #dcfce7;
+    --err: #dc2626;
+    --err-bg: #fee2e2;
+    --null: #94a3b8;
+    --kw: #7c3aed;
+    --btn: #f8fafc;
+    --btn-border: #cbd5e1;
+    --chip: #f1f5f9;
+    --shadow: 0 10px 30px rgba(2, 6, 23, 0.08);
+    --radius: 14px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0b1120;
+      --card: #111827;
+      --ink: #e5e7eb;
+      --muted: #94a3b8;
+      --line: #334155;
+      --line-soft: #1f2937;
+      --head: #0f172a;
+      --accent: #60a5fa;
+      --accent-soft: #1e293b;
+      --editor-bg: #0b1220;
+      --num: #e5e7eb;
+      --text: #cbd5e1;
+      --ok: #4ade80;
+      --ok-bg: #052e1a;
+      --err: #fca5a5;
+      --err-bg: #4c1d24;
+      --null: #64748b;
+      --kw: #c4b5fd;
+      --btn: #1f2937;
+      --btn-border: #374151;
+      --chip: #1f2937;
+      --shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+      "Hiragino Sans GB", "Microsoft YaHei", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    padding: 18px 16px 56px;
+  }
+  a { color: var(--accent); }
+  .back { display: inline-block; text-decoration: none; color: var(--muted); font-size: 14px; margin-bottom: 14px; }
+  .back:hover { color: var(--accent); }
+  .wrap { max-width: 1080px; margin: 0 auto; }
+  header h1 { margin: 0 0 4px; font-size: clamp(22px, 4.5vw, 30px); letter-spacing: .3px; }
+  header p { margin: 0 0 18px; color: var(--muted); font-size: 14px; }
+  header .engine-tag { color: var(--accent); font-weight: 600; }
+
+  .panel {
+    background: var(--card);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+  h2 { font-size: 14px; margin: 0; color: var(--muted); font-weight: 700; letter-spacing: .3px; }
+  .row { display: flex; align-items: center; gap: 10px; }
+  .row.between { justify-content: space-between; flex-wrap: wrap; }
+  .btns { display: flex; gap: 8px; flex-wrap: wrap; }
+
+  select, button, input, textarea { font-family: inherit; font-size: 14px; }
+  button {
+    background: var(--btn); color: var(--ink);
+    border: 1px solid var(--btn-border); border-radius: 10px;
+    padding: 8px 13px; cursor: pointer;
+    transition: transform .04s ease, background .15s ease, border-color .15s ease;
+  }
+  button:hover { border-color: var(--accent); }
+  button:active { transform: translateY(1px); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.ghost { background: transparent; }
+  button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 2px;
+  }
+
+  /* chips */
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: var(--chip); border: 1px solid var(--line-soft); border-radius: 999px;
+    padding: 5px 10px; font-size: 13px; cursor: pointer; color: var(--ink);
+  }
+  .chip:hover { border-color: var(--accent); }
+  .chip .count { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .chip .drop { border: none; background: transparent; color: var(--muted); padding: 0 0 0 2px; font-size: 15px; line-height: 1; cursor: pointer; border-radius: 999px; }
+  .chip .drop:hover { color: var(--err); }
+  .samples .chip { background: transparent; border-style: dashed; }
+
+  /* schema */
+  .schema { margin-top: 14px; display: grid; gap: 10px; }
+  .schema-table { border: 1px solid var(--line-soft); border-radius: 10px; padding: 10px 12px; }
+  .schema-table .tname { font-weight: 700; font-size: 13.5px; }
+  .schema-table .tname .rc { color: var(--muted); font-weight: 500; font-size: 12px; }
+  .schema-cols { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .col-chip {
+    font-size: 12px; padding: 3px 8px; border-radius: 7px; cursor: pointer;
+    background: var(--accent-soft); color: var(--ink); border: 1px solid transparent;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  .col-chip:hover { border-color: var(--accent); }
+  .col-chip .ty { color: var(--muted); margin-left: 4px; }
+
+  /* import panel */
+  #import-panel { margin-top: 12px; border: 1px dashed var(--line); border-radius: 10px; padding: 12px; }
+  #import-panel .frow { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 8px; }
+  #import-panel input[type=text] { flex: 1 1 160px; min-width: 120px; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--ink); }
+  #import-panel select { padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--ink); }
+  #import-text { width: 100%; min-height: 110px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--editor-bg); color: var(--ink); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; resize: vertical; }
+  .hint { color: var(--muted); font-size: 12px; margin-top: 6px; }
+
+  /* editor */
+  #sql-editor {
+    width: 100%; min-height: 150px; margin-top: 12px; padding: 12px 14px;
+    border: 1px solid var(--line); border-radius: 10px;
+    background: var(--editor-bg); color: var(--ink);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    font-size: 13.5px; line-height: 1.6; resize: vertical; tab-size: 2;
+  }
+  #sql-editor::placeholder { color: var(--muted); }
+
+  /* status + result */
+  .status { font-size: 13.5px; font-weight: 600; min-height: 20px; }
+  .status.ok { color: var(--ok); }
+  .status.err { color: var(--err); }
+  .result-wrap { margin-top: 12px; overflow: auto; max-height: 60vh; border: 1px solid var(--line-soft); border-radius: 10px; }
+  .result-wrap.empty { border-style: dashed; }
+  table.result { border-collapse: separate; border-spacing: 0; width: max-content; min-width: 100%; font-variant-numeric: tabular-nums; }
+  table.result th, table.result td {
+    border-right: 1px solid var(--line-soft); border-bottom: 1px solid var(--line-soft);
+    padding: 7px 12px; font-size: 13px; text-align: left; white-space: nowrap;
+    max-width: 340px; overflow: hidden; text-overflow: ellipsis;
+  }
+  table.result thead th {
+    position: sticky; top: 0; background: var(--head); color: var(--muted);
+    font-weight: 700; z-index: 1; font-size: 12px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  table.result tbody tr:nth-child(even) { background: color-mix(in srgb, var(--head) 45%, transparent); }
+  table.result td.c-num { text-align: right; color: var(--num); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  table.result td.c-null { color: var(--null); font-style: italic; }
+  table.result td.c-bool { color: var(--accent); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  .empty-note { padding: 22px 14px; color: var(--muted); font-size: 13.5px; text-align: center; }
+  .cap-note { padding: 8px 12px; color: var(--muted); font-size: 12px; border-top: 1px dashed var(--line-soft); background: var(--head); }
+
+  /* history */
+  .history { margin-top: 12px; display: grid; gap: 6px; }
+  .hist-item {
+    display: flex; align-items: center; gap: 10px; padding: 8px 10px;
+    border: 1px solid var(--line-soft); border-radius: 8px; cursor: pointer; background: var(--card);
+  }
+  .hist-item:hover { border-color: var(--accent); }
+  .hist-item .sql { flex: 1 1 auto; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
+  .hist-item .badge { font-size: 11px; padding: 2px 7px; border-radius: 999px; flex: 0 0 auto; font-weight: 600; }
+  .hist-item .badge.ok { background: var(--ok-bg); color: var(--ok); }
+  .hist-item .badge.err { background: var(--err-bg); color: var(--err); }
+  .muted-empty { color: var(--muted); font-size: 13px; padding: 6px 2px; }
+
+  footer { color: var(--muted); font-size: 12.5px; text-align: center; margin-top: 8px; line-height: 1.7; }
+  footer code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background: var(--chip); padding: 1px 5px; border-radius: 5px; }
+
+  @media (max-width: 560px) {
+    body { padding: 14px 10px 44px; }
+    .panel { padding: 13px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="../../">← 返回工具集</a>
+  <header>
+    <h1>SQL 工作台 · SQL Workbench</h1>
+    <p>粘贴 CSV / JSON 建表，用<span class="engine-tag"> 真 SQL </span>就地查询 —— 自研 tokenizer → parser → executor，支持 JOIN / GROUP BY / HAVING / 聚合与标量函数。100% 本地运行，数据不上传。</p>
+  </header>
+
+  <section class="panel">
+    <div class="row between">
+      <h2>数据表</h2>
+      <div class="btns">
+        <button id="load-sample" class="ghost" type="button">加载示例数据</button>
+        <button id="toggle-import" class="ghost" type="button">＋ 添加表</button>
+      </div>
+    </div>
+    <div id="import-panel" hidden>
+      <div class="frow">
+        <input id="import-name" type="text" placeholder="表名，例如 users" aria-label="表名" />
+        <select id="import-format" aria-label="格式">
+          <option value="csv">CSV（首行表头）</option>
+          <option value="json">JSON（对象数组）</option>
+        </select>
+        <button id="import-btn" class="primary" type="button">添加</button>
+        <button id="import-cancel" class="ghost" type="button">取消</button>
+      </div>
+      <textarea id="import-text" spellcheck="false" placeholder="name,age,city&#10;Alice,30,SF&#10;Bob,45,NY"></textarea>
+      <div class="hint">CSV 自动识别数字 / true·false / 空值(NULL)；JSON 需为对象数组 <code>[{...},{...}]</code>。</div>
+    </div>
+    <div id="table-list" class="chips"></div>
+    <div id="schema" class="schema"></div>
+  </section>
+
+  <section class="panel">
+    <div class="row between">
+      <h2>SQL 查询</h2>
+      <div class="btns">
+        <button id="run-btn" class="primary" type="button">运行 ▶</button>
+        <button id="clear-btn" class="ghost" type="button">清空</button>
+      </div>
+    </div>
+    <textarea id="sql-editor" spellcheck="false" placeholder="SELECT * FROM employees WHERE salary > 90000 ORDER BY salary DESC;"></textarea>
+    <div class="samples chips" id="sample-queries"></div>
+    <div class="hint">⌘/Ctrl + Enter 运行。支持 <code>SELECT DISTINCT</code>、<code>JOIN / LEFT JOIN … ON</code>、<code>WHERE</code>(=, &lt;&gt;, LIKE, IN, BETWEEN, IS NULL, AND/OR/NOT)、<code>GROUP BY … HAVING</code>、<code>ORDER BY</code>、<code>LIMIT … OFFSET</code>、聚合 <code>COUNT/SUM/AVG/MIN/MAX</code> 与标量函数。</div>
+  </section>
+
+  <section class="panel">
+    <div class="row between">
+      <div id="status" class="status">就绪。</div>
+      <div class="btns">
+        <button id="export-csv" class="ghost" type="button">导出 CSV</button>
+        <button id="export-json" class="ghost" type="button">导出 JSON</button>
+      </div>
+    </div>
+    <div id="result" class="result-wrap empty"><div class="empty-note">运行查询后，结果会显示在这里。</div></div>
+  </section>
+
+  <section class="panel">
+    <div class="row between">
+      <h2>历史查询</h2>
+      <button id="clear-history" class="ghost" type="button">清空历史</button>
+    </div>
+    <div id="history" class="history"></div>
+  </section>
+
+  <footer>
+    纯前端 SQL 引擎 · 数据仅存于本机浏览器(localStorage) · 支持 <code>--</code> 与 <code>/* */</code> 注释<br/>
+    每日工具集 · 自动构建并通过真实浏览器集成测试
+  </footer>
+</div>
+
+<script>
+"use strict";
+(function () {
+  /* =========================================================================
+   *  0. Value semantics helpers
+   * ========================================================================= */
+  class SqlError extends Error {}
+
+  function rank(v) { return typeof v === 'number' ? 0 : typeof v === 'boolean' ? 1 : 2; }
+
+  // Type-aware three-way comparison. NULLs sort smallest.
+  function cmp(a, b) {
+    if (a === null && b === null) return 0;
+    if (a === null) return -1;
+    if (b === null) return 1;
+    const ra = rank(a), rb = rank(b);
+    if (ra !== rb) return ra < rb ? -1 : 1;
+    if (typeof a === 'number') return a < b ? -1 : a > b ? 1 : 0;
+    if (typeof a === 'boolean') return a === b ? 0 : (a ? 1 : -1);
+    return a < b ? -1 : a > b ? 1 : 0;
+  }
+
+  // Coerce to a number, or null when impossible.
+  function num(v) {
+    if (v === null || v === undefined) return null;
+    if (typeof v === 'number') return isFinite(v) ? v : null;
+    if (typeof v === 'boolean') return v ? 1 : 0;
+    const s = String(v).trim();
+    if (s === '') return null;
+    const n = Number(s);
+    return isNaN(n) || !isFinite(n) ? null : n;
+  }
+
+  // Boolean coercion with SQL three-valued logic (returns true / false / null).
+  function toBool(v) {
+    if (v === null || v === undefined) return null;
+    if (typeof v === 'boolean') return v;
+    if (typeof v === 'number') return v !== 0;
+    if (typeof v === 'string') return v !== '';
+    return true;
+  }
+  const truthy = (v) => toBool(v) === true;
+
+  // String projection for || concat and display.
+  function sqlStr(v) {
+    if (v === null || v === undefined) return '';
+    if (typeof v === 'number') return fmtNum(v);
+    if (typeof v === 'boolean') return v ? 'true' : 'false';
+    return String(v);
+  }
+
+  function fmtNum(n) {
+    if (typeof n !== 'number' || !isFinite(n)) return String(n);
+    if (Number.isInteger(n)) return String(n);
+    return String(Math.round(n * 1e10) / 1e10);
+  }
+
+  // Stable key for a value (grouping / DISTINCT / MIN-MAX de-dup).
+  function keyPart(v) {
+    if (v === null || v === undefined) return '@@null@@';
+    return typeof v + ':' + String(v);
+  }
+
+  function escapeRegex(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+  function likeRe(pattern) {
+    let re = '^';
+    for (const ch of String(pattern)) {
+      if (ch === '%') re += '.*';
+      else if (ch === '_') re += '.';
+      else re += escapeRegex(ch);
+    }
+    return new RegExp(re + '$', 'is'); // case-insensitive (SQLite-style)
+  }
+
+  const AGG = new Set(['COUNT', 'SUM', 'AVG', 'MIN', 'MAX']);
+  const STRUCTURAL = new Set(['FROM','WHERE','GROUP','BY','HAVING','ORDER','ASC','DESC','LIMIT','OFFSET',
+    'JOIN','INNER','LEFT','RIGHT','FULL','OUTER','CROSS','ON','AS','AND','OR','NOT','IN','IS','NULL',
+    'LIKE','BETWEEN','DISTINCT','ALL','UNION','SELECT']);
+
+  /* =========================================================================
+   *  1. Tokenizer
+   * ========================================================================= */
+  function tokenize(sql) {
+    const toks = [];
+    let i = 0; const n = sql.length;
+    const identStart = (c) => /[A-Za-z_$]/.test(c) || c.charCodeAt(0) > 0x7f;
+    const identPart = (c) => /[A-Za-z0-9_$]/.test(c) || c.charCodeAt(0) > 0x7f;
+    while (i < n) {
+      const c = sql[i];
+      if (c === ' ' || c === '\t' || c === '\n' || c === '\r' || c === '\f') { i++; continue; }
+      if (c === '-' && sql[i + 1] === '-') { i += 2; while (i < n && sql[i] !== '\n') i++; continue; }
+      if (c === '/' && sql[i + 1] === '*') { i += 2; while (i < n && !(sql[i] === '*' && sql[i + 1] === '/')) i++; i += 2; continue; }
+      if (/[0-9]/.test(c) || (c === '.' && /[0-9]/.test(sql[i + 1] || ''))) {
+        let j = i;
+        while (j < n && /[0-9]/.test(sql[j])) j++;
+        if (sql[j] === '.') { j++; while (j < n && /[0-9]/.test(sql[j])) j++; }
+        if (sql[j] === 'e' || sql[j] === 'E') { j++; if (sql[j] === '+' || sql[j] === '-') j++; while (j < n && /[0-9]/.test(sql[j])) j++; }
+        const raw = sql.slice(i, j);
+        toks.push({ type: 'num', value: Number(raw), raw }); i = j; continue;
+      }
+      if (c === "'") {
+        let j = i + 1, s = '';
+        while (j < n) { if (sql[j] === "'") { if (sql[j + 1] === "'") { s += "'"; j += 2; continue; } j++; break; } s += sql[j++]; }
+        toks.push({ type: 'str', value: s, raw: sql.slice(i, j) }); i = j; continue;
+      }
+      if (c === '"' || c === '`') {
+        const q = c; let j = i + 1, s = '';
+        while (j < n) { if (sql[j] === q) { if (sql[j + 1] === q) { s += q; j += 2; continue; } j++; break; } s += sql[j++]; }
+        toks.push({ type: 'ident', value: s, quoted: true, raw: sql.slice(i, j) }); i = j; continue;
+      }
+      if (identStart(c)) {
+        let j = i + 1; while (j < n && identPart(sql[j])) j++;
+        const raw = sql.slice(i, j);
+        toks.push({ type: 'ident', value: raw, quoted: false, raw }); i = j; continue;
+      }
+      const two = sql.slice(i, i + 2);
+      if (two === '<=' || two === '>=' || two === '<>' || two === '!=' || two === '||') { toks.push({ type: 'sym', value: two, raw: two }); i += 2; continue; }
+      if ('=<>+-*/%(),.;'.includes(c)) { toks.push({ type: 'sym', value: c, raw: c }); i++; continue; }
+      throw new SqlError('无法识别的字符: ' + c);
+    }
+    toks.push({ type: 'eof', value: null, raw: '' });
+    return toks;
+  }
+
+  /* =========================================================================
+   *  2. Parser (recursive descent)
+   * ========================================================================= */
+  function parse(sql) {
+    const toks = tokenize(sql);
+    let i = 0;
+    const peek = (k = 0) => toks[i + k];
+    const next = () => toks[i++];
+    const atEnd = () => peek().type === 'eof';
+    const isKw = (t, w) => t && t.type === 'ident' && !t.quoted && t.value.toUpperCase() === w;
+    const atKw = (w) => isKw(peek(), w);
+    const atSym = (s) => { const t = peek(); return t.type === 'sym' && t.value === s; };
+    const desc = (t) => t.type === 'eof' ? '查询结尾' : ('“' + (t.raw || t.value) + '”');
+    const err = (m) => { throw new SqlError(m); };
+    const eatKw = (w) => { if (!atKw(w)) err('期望关键字 ' + w + '，却遇到 ' + desc(peek())); return next(); };
+    const eatSym = (s) => { if (!atSym(s)) err('期望 “' + s + '”，却遇到 ' + desc(peek())); return next(); };
+
+    const canBeAlias = () => { const t = peek(); return t.type === 'ident' && (t.quoted || !STRUCTURAL.has(t.value.toUpperCase())); };
+    const aliasName = () => { const t = next(); if (t.type !== 'ident') err('期望别名，却遇到 ' + desc(t)); return t.value; };
+
+    function parseSelect() {
+      eatKw('SELECT');
+      let distinct = false;
+      if (atKw('DISTINCT')) { next(); distinct = true; }
+      else if (atKw('ALL')) { next(); }
+      const columns = [parseSelectItem()];
+      while (atSym(',')) { next(); columns.push(parseSelectItem()); }
+
+      let from = null;
+      if (atKw('FROM')) { next(); from = parseFrom(); }
+      let where = null;
+      if (atKw('WHERE')) { next(); where = parseOr(); }
+      let groupBy = [];
+      if (atKw('GROUP')) { next(); eatKw('BY'); groupBy = [parseOr()]; while (atSym(',')) { next(); groupBy.push(parseOr()); } }
+      let having = null;
+      if (atKw('HAVING')) { next(); having = parseOr(); }
+      let orderBy = [];
+      if (atKw('ORDER')) { next(); eatKw('BY'); orderBy = [parseOrderTerm()]; while (atSym(',')) { next(); orderBy.push(parseOrderTerm()); } }
+      let limit = null, offset = 0;
+      if (atKw('LIMIT')) {
+        next(); limit = parseIntLit();
+        if (atKw('OFFSET')) { next(); offset = parseIntLit(); }
+        else if (atSym(',')) { next(); const second = parseIntLit(); offset = limit; limit = second; }
+      }
+      return { distinct, columns, from, where, groupBy, having, orderBy, limit, offset };
+    }
+
+    function parseIntLit() {
+      const t = next();
+      if (t.type !== 'num' || !Number.isInteger(t.value) || t.value < 0) err('期望非负整数，却遇到 ' + desc(t));
+      return t.value;
+    }
+
+    function parseSelectItem() {
+      if (atSym('*')) { next(); return { expr: { type: 'star', table: null }, alias: null }; }
+      if (peek().type === 'ident' && peek(1) && peek(1).type === 'sym' && peek(1).value === '.' &&
+          peek(2) && peek(2).type === 'sym' && peek(2).value === '*') {
+        const tb = next().value; next(); next();
+        return { expr: { type: 'star', table: tb }, alias: null };
+      }
+      const expr = parseOr();
+      let alias = null;
+      if (atKw('AS')) { next(); alias = aliasName(); }
+      else if (canBeAlias()) { alias = aliasName(); }
+      return { expr, alias };
+    }
+
+    function parseTableRef() {
+      const t = next();
+      if (t.type !== 'ident') err('期望表名，却遇到 ' + desc(t));
+      const name = t.value;
+      let alias = name;
+      if (atKw('AS')) { next(); alias = aliasName(); }
+      else if (canBeAlias()) { alias = aliasName(); }
+      return { name, alias };
+    }
+
+    function parseFrom() {
+      const base = parseTableRef();
+      const joins = [];
+      for (;;) {
+        let jt = null;
+        if (atKw('INNER')) { next(); eatKw('JOIN'); jt = 'INNER'; }
+        else if (atKw('LEFT')) { next(); if (atKw('OUTER')) next(); eatKw('JOIN'); jt = 'LEFT'; }
+        else if (atKw('CROSS')) { next(); eatKw('JOIN'); jt = 'CROSS'; }
+        else if (atKw('RIGHT') || atKw('FULL')) { err(peek().value.toUpperCase() + ' JOIN 暂不支持（可改用 LEFT JOIN）'); }
+        else if (atKw('JOIN')) { next(); jt = 'INNER'; }
+        else break;
+        const tgt = parseTableRef();
+        let on = { type: 'bool', value: true };
+        if (jt !== 'CROSS') { eatKw('ON'); on = parseOr(); }
+        joins.push({ name: tgt.name, alias: tgt.alias, joinType: jt, on });
+      }
+      return { name: base.name, alias: base.alias, joins };
+    }
+
+    function parseOrderTerm() {
+      const expr = parseOr();
+      let dir = 'ASC';
+      if (atKw('ASC')) next();
+      else if (atKw('DESC')) { next(); dir = 'DESC'; }
+      return { expr, dir };
+    }
+
+    /* ---- expression grammar (precedence via descent) ---- */
+    function parseOr() { let l = parseAnd(); while (atKw('OR')) { next(); l = { type: 'or', left: l, right: parseAnd() }; } return l; }
+    function parseAnd() { let l = parseNot(); while (atKw('AND')) { next(); l = { type: 'and', left: l, right: parseNot() }; } return l; }
+    function parseNot() { if (atKw('NOT')) { next(); return { type: 'not', expr: parseNot() }; } return parseCmp(); }
+
+    function parseCmp() {
+      let l = parseAdd();
+      for (;;) {
+        if (atSym('=') || atSym('<') || atSym('>') || atSym('<=') || atSym('>=') || atSym('<>') || atSym('!=')) {
+          const op = next().value; l = { type: 'bin', op, left: l, right: parseAdd() }; continue;
+        }
+        if (atKw('IS')) { next(); let neg = false; if (atKw('NOT')) { next(); neg = true; } eatKw('NULL'); l = { type: 'isnull', left: l, neg }; continue; }
+        let neg = false;
+        if (atKw('NOT') && (isKw(peek(1), 'LIKE') || isKw(peek(1), 'IN') || isKw(peek(1), 'BETWEEN'))) { next(); neg = true; }
+        if (atKw('LIKE')) { next(); l = { type: 'like', left: l, pattern: parseAdd(), neg }; continue; }
+        if (atKw('IN')) {
+          next(); eatSym('('); const list = [];
+          if (!atSym(')')) { list.push(parseOr()); while (atSym(',')) { next(); list.push(parseOr()); } }
+          eatSym(')'); l = { type: 'in', left: l, list, neg }; continue;
+        }
+        if (atKw('BETWEEN')) { next(); const lo = parseAdd(); eatKw('AND'); const hi = parseAdd(); l = { type: 'between', left: l, lo, hi, neg }; continue; }
+        if (neg) err('NOT 之后期望 LIKE / IN / BETWEEN');
+        break;
+      }
+      return l;
+    }
+
+    function parseAdd() {
+      let l = parseMul();
+      while (atSym('+') || atSym('-') || atSym('||')) { const op = next().value; l = { type: 'bin', op, left: l, right: parseMul() }; }
+      return l;
+    }
+    function parseMul() {
+      let l = parseUnary();
+      while (atSym('*') || atSym('/') || atSym('%')) { const op = next().value; l = { type: 'bin', op, left: l, right: parseUnary() }; }
+      return l;
+    }
+    function parseUnary() {
+      if (atSym('-')) { next(); return { type: 'neg', expr: parseUnary() }; }
+      if (atSym('+')) { next(); return parseUnary(); }
+      return parsePrimary();
+    }
+
+    function parsePrimary() {
+      const t = peek();
+      if (atSym('(')) { next(); const e = parseOr(); eatSym(')'); return e; }
+      if (atSym('*')) { next(); return { type: 'star', table: null }; }
+      if (t.type === 'num') { next(); return { type: 'num', value: t.value }; }
+      if (t.type === 'str') { next(); return { type: 'str', value: t.value }; }
+      if (t.type === 'ident') {
+        const up = t.value.toUpperCase();
+        if (!t.quoted && up === 'NULL') { next(); return { type: 'null' }; }
+        if (!t.quoted && up === 'TRUE') { next(); return { type: 'bool', value: true }; }
+        if (!t.quoted && up === 'FALSE') { next(); return { type: 'bool', value: false }; }
+        if (peek(1) && peek(1).type === 'sym' && peek(1).value === '(') return parseFuncCall();
+        next();
+        if (atSym('.')) {
+          next(); const c = next();
+          if (c.type === 'sym' && c.value === '*') return { type: 'star', table: t.value };
+          if (c.type !== 'ident') err('“.” 之后期望列名，却遇到 ' + desc(c));
+          return { type: 'col', table: t.value, name: c.value };
+        }
+        return { type: 'col', table: null, name: t.value };
+      }
+      err('无法解析的记号: ' + desc(t));
+    }
+
+    function parseFuncCall() {
+      const name = next().value;
+      eatSym('(');
+      let star = false, distinct = false; const args = [];
+      if (atSym('*')) { next(); star = true; }
+      else {
+        if (atKw('DISTINCT')) { next(); distinct = true; }
+        if (!atSym(')')) { args.push(parseOr()); while (atSym(',')) { next(); args.push(parseOr()); } }
+      }
+      eatSym(')');
+      return { type: 'func', name, star, distinct, args };
+    }
+
+    if (!atKw('SELECT')) err('仅支持 SELECT 查询');
+    const ast = parseSelect();
+    while (atSym(';')) next();
+    if (!atEnd()) err('多余的记号: ' + desc(peek()) + '（本引擎一次只执行一条 SELECT）');
+    return ast;
+  }
+
+  /* =========================================================================
+   *  3. astToString (for default column headers)
+   * ========================================================================= */
+  function astToString(node) {
+    switch (node.type) {
+      case 'num': return fmtNum(node.value);
+      case 'str': return "'" + node.value + "'";
+      case 'null': return 'NULL';
+      case 'bool': return node.value ? 'TRUE' : 'FALSE';
+      case 'col': return (node.table ? node.table + '.' : '') + node.name;
+      case 'star': return (node.table ? node.table + '.' : '') + '*';
+      case 'neg': return '-' + astToString(node.expr);
+      case 'not': return 'NOT ' + astToString(node.expr);
+      case 'and': return astToString(node.left) + ' AND ' + astToString(node.right);
+      case 'or': return astToString(node.left) + ' OR ' + astToString(node.right);
+      case 'bin': return astToString(node.left) + ' ' + node.op + ' ' + astToString(node.right);
+      case 'like': return astToString(node.left) + (node.neg ? ' NOT' : '') + ' LIKE ' + astToString(node.pattern);
+      case 'in': return astToString(node.left) + (node.neg ? ' NOT' : '') + ' IN (…)';
+      case 'between': return astToString(node.left) + (node.neg ? ' NOT' : '') + ' BETWEEN ' + astToString(node.lo) + ' AND ' + astToString(node.hi);
+      case 'isnull': return astToString(node.left) + ' IS ' + (node.neg ? 'NOT ' : '') + 'NULL';
+      case 'func': return node.name + '(' + (node.star ? '*' : (node.distinct ? 'DISTINCT ' : '') + node.args.map(astToString).join(', ')) + ')';
+      default: return '?';
+    }
+  }
+
+  function hasAgg(node) {
+    if (!node || typeof node !== 'object') return false;
+    if (node.type === 'func' && AGG.has(node.name.toUpperCase())) return true;
+    for (const k in node) {
+      const v = node[k];
+      if (Array.isArray(v)) { for (const x of v) if (hasAgg(x)) return true; }
+      else if (v && typeof v === 'object') { if (hasAgg(v)) return true; }
+    }
+    return false;
+  }
+
+  /* =========================================================================
+   *  4. Executor
+   * ========================================================================= */
+  function findAlias(schema, name) {
+    const low = name.toLowerCase();
+    return schema.order.find((a) => a.toLowerCase() === low) || null;
+  }
+  function addSchema(schema, alias, colNames) {
+    if (findAlias(schema, alias)) throw new SqlError('重复的表别名: ' + alias);
+    schema.order.push(alias);
+    schema.cols[alias] = { list: colNames, lower: new Map(colNames.map((c) => [c.toLowerCase(), c])) };
+  }
+  function resolveCol(node, ctx) {
+    const { row, schema } = ctx;
+    if (node.table) {
+      const al = findAlias(schema, node.table);
+      if (!al) throw new SqlError('未知的表: ' + node.table);
+      const real = schema.cols[al].lower.get(node.name.toLowerCase());
+      if (real === undefined) throw new SqlError('未知的列: ' + node.table + '.' + node.name);
+      const rr = row[al];
+      return rr && rr[real] !== undefined ? rr[real] : null;
+    }
+    const nm = node.name.toLowerCase();
+    let found = null;
+    for (const al of schema.order) {
+      if (schema.cols[al].lower.has(nm)) { if (found) throw new SqlError('有歧义的列(多表同名): ' + node.name); found = al; }
+    }
+    if (!found) throw new SqlError('未知的列: ' + node.name);
+    const real = schema.cols[found].lower.get(nm);
+    const rr = row[found];
+    return rr && rr[real] !== undefined ? rr[real] : null;
+  }
+
+  function evalExpr(node, ctx) {
+    switch (node.type) {
+      case 'num': case 'str': case 'bool': return node.value;
+      case 'null': return null;
+      case 'col': return resolveCol(node, ctx);
+      case 'neg': { const v = num(evalExpr(node.expr, ctx)); return v === null ? null : -v; }
+      case 'not': { const v = toBool(evalExpr(node.expr, ctx)); return v === null ? null : !v; }
+      case 'and': {
+        const a = toBool(evalExpr(node.left, ctx)), b = toBool(evalExpr(node.right, ctx));
+        if (a === false || b === false) return false;
+        if (a === null || b === null) return null;
+        return true;
+      }
+      case 'or': {
+        const a = toBool(evalExpr(node.left, ctx)), b = toBool(evalExpr(node.right, ctx));
+        if (a === true || b === true) return true;
+        if (a === null || b === null) return null;
+        return false;
+      }
+      case 'bin': return evalBin(node, ctx);
+      case 'like': {
+        const v = evalExpr(node.left, ctx); if (v === null) return null;
+        const p = evalExpr(node.pattern, ctx); if (p === null) return null;
+        const m = likeRe(sqlStr(p)).test(sqlStr(v));
+        return node.neg ? !m : m;
+      }
+      case 'in': {
+        const v = evalExpr(node.left, ctx); if (v === null) return null;
+        let anyNull = false, found = false;
+        for (const e of node.list) { const x = evalExpr(e, ctx); if (x === null) { anyNull = true; continue; } if (cmp(v, x) === 0) { found = true; break; } }
+        const r = found ? true : (anyNull ? null : false);
+        return node.neg ? (r === null ? null : !r) : r;
+      }
+      case 'between': {
+        const v = evalExpr(node.left, ctx), lo = evalExpr(node.lo, ctx), hi = evalExpr(node.hi, ctx);
+        if (v === null || lo === null || hi === null) return null;
+        const r = cmp(v, lo) >= 0 && cmp(v, hi) <= 0;
+        return node.neg ? !r : r;
+      }
+      case 'isnull': { const v = evalExpr(node.left, ctx); const isN = v === null; return node.neg ? !isN : isN; }
+      case 'func': return evalFunc(node, ctx);
+      case 'star': throw new SqlError("“*” 只能用于 COUNT(*) 或 SELECT *");
+      default: throw new SqlError('无法求值的表达式: ' + node.type);
+    }
+  }
+
+  function evalBin(node, ctx) {
+    const op = node.op;
+    const L = evalExpr(node.left, ctx), R = evalExpr(node.right, ctx);
+    if (op === '||') { if (L === null || R === null) return null; return sqlStr(L) + sqlStr(R); }
+    if (op === '+' || op === '-' || op === '*' || op === '/' || op === '%') {
+      const a = num(L), b = num(R);
+      if (a === null || b === null) return null;
+      switch (op) {
+        case '+': return a + b;
+        case '-': return a - b;
+        case '*': return a * b;
+        case '/': return b === 0 ? null : a / b;
+        case '%': return b === 0 ? null : a % b;
+      }
+    }
+    if (L === null || R === null) return null;
+    const c = cmp(L, R);
+    switch (op) {
+      case '=': return c === 0;
+      case '!=': case '<>': return c !== 0;
+      case '<': return c < 0;
+      case '>': return c > 0;
+      case '<=': return c <= 0;
+      case '>=': return c >= 0;
+    }
+    throw new SqlError('未知的运算符: ' + op);
+  }
+
+  function evalFunc(node, ctx) {
+    const name = node.name.toUpperCase();
+    if (AGG.has(name)) {
+      const g = ctx.group || [];
+      if (name === 'COUNT') {
+        if (node.star) return g.length;
+        const vals = g.map((r) => evalExpr(node.args[0], Object.assign({}, ctx, { row: r }))).filter((v) => v !== null);
+        if (node.distinct) return new Set(vals.map(keyPart)).size;
+        return vals.length;
+      }
+      let vals = g.map((r) => evalExpr(node.args[0], Object.assign({}, ctx, { row: r }))).filter((v) => v !== null);
+      if (node.distinct) { const seen = new Set(); vals = vals.filter((v) => { const k = keyPart(v); if (seen.has(k)) return false; seen.add(k); return true; }); }
+      if (name === 'SUM') { const ns = vals.map(num).filter((v) => v !== null); return ns.length ? ns.reduce((a, b) => a + b, 0) : null; }
+      if (name === 'AVG') { const ns = vals.map(num).filter((v) => v !== null); return ns.length ? ns.reduce((a, b) => a + b, 0) / ns.length : null; }
+      if (name === 'MIN') { return vals.length ? vals.reduce((m, v) => (cmp(v, m) < 0 ? v : m)) : null; }
+      if (name === 'MAX') { return vals.length ? vals.reduce((m, v) => (cmp(v, m) > 0 ? v : m)) : null; }
+    }
+    const a = node.args.map((x) => evalExpr(x, ctx));
+    switch (name) {
+      case 'UPPER': return a[0] === null ? null : sqlStr(a[0]).toUpperCase();
+      case 'LOWER': return a[0] === null ? null : sqlStr(a[0]).toLowerCase();
+      case 'LENGTH': case 'LEN': return a[0] === null ? null : sqlStr(a[0]).length;
+      case 'TRIM': return a[0] === null ? null : sqlStr(a[0]).trim();
+      case 'LTRIM': return a[0] === null ? null : sqlStr(a[0]).replace(/^\s+/, '');
+      case 'RTRIM': return a[0] === null ? null : sqlStr(a[0]).replace(/\s+$/, '');
+      case 'ABS': { const nn = num(a[0]); return nn === null ? null : Math.abs(nn); }
+      case 'ROUND': { const nn = num(a[0]); if (nn === null) return null; const d = a.length > 1 ? (num(a[1]) || 0) : 0; const f = Math.pow(10, d); return Math.round(nn * f) / f; }
+      case 'FLOOR': { const nn = num(a[0]); return nn === null ? null : Math.floor(nn); }
+      case 'CEIL': case 'CEILING': { const nn = num(a[0]); return nn === null ? null : Math.ceil(nn); }
+      case 'COALESCE': { for (const v of a) if (v !== null) return v; return null; }
+      case 'IFNULL': return a[0] !== null ? a[0] : (a.length > 1 ? a[1] : null);
+      case 'NULLIF': return (a[0] !== null && a[1] !== null && cmp(a[0], a[1]) === 0) ? null : a[0];
+      case 'SUBSTR': case 'SUBSTRING': {
+        if (a[0] === null) return null;
+        const s = sqlStr(a[0]); let start = num(a[1]); if (start === null) return null; start = Math.trunc(start);
+        const idx = start > 0 ? start - 1 : (start < 0 ? Math.max(s.length + start, 0) : 0);
+        if (a.length > 2) { let len = num(a[2]); len = len === null ? 0 : Math.trunc(len); return s.substr(idx, Math.max(len, 0)); }
+        return s.substr(idx);
+      }
+      case 'REPLACE': return a[0] === null ? null : sqlStr(a[0]).split(sqlStr(a[1] == null ? '' : a[1])).join(sqlStr(a[2] == null ? '' : a[2]));
+      case 'CONCAT': return a.some((v) => v === null) ? null : a.map(sqlStr).join('');
+      default: throw new SqlError('未知的函数: ' + node.name + '()');
+    }
+  }
+
+  function expandSelect(cols, schema) {
+    const out = []; const used = new Set();
+    const push = (expr, header) => {
+      let h = header;
+      if (used.has(h.toLowerCase())) { let k = 2; while (used.has((h + '_' + k).toLowerCase())) k++; h = h + '_' + k; }
+      used.add(h.toLowerCase()); out.push({ expr, header: h });
+    };
+    for (const c of cols) {
+      if (c.expr.type === 'star') {
+        let aliases;
+        if (c.expr.table) { const al = findAlias(schema, c.expr.table); if (!al) throw new SqlError('未知的表: ' + c.expr.table); aliases = [al]; }
+        else aliases = schema.order;
+        if (!aliases.length) throw new SqlError('没有可供 * 展开的表（缺少 FROM）');
+        for (const al of aliases) for (const cn of schema.cols[al].list) push({ type: 'col', table: al, name: cn }, cn);
+      } else {
+        const header = c.alias || (c.expr.type === 'col' ? c.expr.name : astToString(c.expr));
+        push(c.expr, header);
+      }
+    }
+    return out;
+  }
+
+  function execSelect(ast, db) {
+    const schema = { order: [], cols: {} };
+    let envRows;
+    if (!ast.from) {
+      envRows = [{}];
+    } else {
+      const base = db.resolveRef(ast.from);
+      addSchema(schema, base.alias, base.colNames);
+      envRows = base.rows.map((r) => ({ [base.alias]: r }));
+      for (const j of ast.from.joins) {
+        const right = db.resolveRef(j);
+        addSchema(schema, right.alias, right.colNames);
+        const nullRow = Object.fromEntries(right.colNames.map((c) => [c, null]));
+        const out = [];
+        for (const er of envRows) {
+          let matched = false;
+          for (const rr of right.rows) {
+            const cand = Object.assign({}, er, { [right.alias]: rr });
+            if (truthy(evalExpr(j.on, { row: cand, schema, db }))) { out.push(cand); matched = true; }
+          }
+          if (j.joinType === 'LEFT' && !matched) out.push(Object.assign({}, er, { [right.alias]: nullRow }));
+        }
+        envRows = out;
+      }
+    }
+
+    let rows = envRows;
+    if (ast.where) rows = rows.filter((r) => truthy(evalExpr(ast.where, { row: r, schema, db })));
+
+    const aggQ = ast.groupBy.length > 0 || ast.columns.some((c) => hasAgg(c.expr)) || (ast.having && hasAgg(ast.having));
+    let groups;
+    if (aggQ) {
+      if (ast.groupBy.length) {
+        const map = new Map();
+        for (const r of rows) {
+          const key = ast.groupBy.map((e) => evalExpr(e, { row: r, schema, db }));
+          const ks = JSON.stringify(key);
+          if (!map.has(ks)) map.set(ks, []);
+          map.get(ks).push(r);
+        }
+        groups = [...map.values()];
+      } else {
+        groups = [rows]; // implicit single group (one row even if empty)
+      }
+    } else {
+      groups = rows.map((r) => [r]);
+    }
+
+    if (ast.having) groups = groups.filter((g) => truthy(evalExpr(ast.having, { row: g[0] || {}, group: g, schema, db })));
+
+    const selItems = expandSelect(ast.columns, schema);
+    const columns = selItems.map((s) => s.header);
+
+    let dec = groups.map((g) => {
+      const ctx = { row: g[0] || {}, group: g, schema, db };
+      return { vals: selItems.map((s) => evalExpr(s.expr, ctx)), ctx };
+    });
+
+    if (ast.distinct) {
+      const seen = new Set(); const dd = [];
+      for (const d of dec) { const k = JSON.stringify(d.vals); if (!seen.has(k)) { seen.add(k); dd.push(d); } }
+      dec = dd;
+    }
+
+    if (ast.orderBy.length) {
+      const headerLower = columns.map((c) => c.toLowerCase());
+      const keyFns = ast.orderBy.map((o) => {
+        if (o.expr.type === 'col' && !o.expr.table) { const idx = headerLower.indexOf(o.expr.name.toLowerCase()); if (idx >= 0) return (d) => d.vals[idx]; }
+        return (d) => evalExpr(o.expr, d.ctx);
+      });
+      dec.sort((a, b) => {
+        for (let k = 0; k < keyFns.length; k++) {
+          let c = cmp(keyFns[k](a), keyFns[k](b));
+          if (ast.orderBy[k].dir === 'DESC') c = -c;
+          if (c !== 0) return c;
+        }
+        return 0;
+      });
+    }
+
+    const off = ast.offset || 0;
+    let final = dec;
+    if (ast.limit != null) final = dec.slice(off, off + ast.limit);
+    else if (off) final = dec.slice(off);
+
+    return { columns, rows: final.map((d) => d.vals) };
+  }
+
+  /* =========================================================================
+   *  5. Database (in-memory table store)
+   * ========================================================================= */
+  class DB {
+    constructor() { this.tables = new Map(); } // lowerName -> {name, columns, rows}
+    setTable(t) { this.tables.set(t.name.toLowerCase(), t); }
+    getTable(name) { return this.tables.get(String(name).toLowerCase()) || null; }
+    dropTable(name) { return this.tables.delete(String(name).toLowerCase()); }
+    clear() { this.tables.clear(); }
+    list() { return [...this.tables.values()]; }
+    resolveRef(ref) {
+      const t = this.getTable(ref.name);
+      if (!t) throw new SqlError('未知的表: ' + ref.name);
+      return { alias: ref.alias || t.name, colNames: t.columns.map((c) => c.name), rows: t.rows };
+    }
+    query(sql) {
+      const t0 = (typeof performance !== 'undefined' ? performance.now() : 0);
+      const ast = parse(sql);
+      const res = execSelect(ast, this);
+      const ms = (typeof performance !== 'undefined' ? performance.now() : 0) - t0;
+      return { columns: res.columns, rows: res.rows, rowCount: res.rows.length, ms };
+    }
+  }
+
+  /* =========================================================================
+   *  6. CSV / JSON import
+   * ========================================================================= */
+  function parseCSV(text) {
+    const rows = []; let cur = []; let field = ''; let i = 0; const n = text.length; let inQ = false;
+    while (i < n) {
+      const c = text[i];
+      if (inQ) {
+        if (c === '"') { if (text[i + 1] === '"') { field += '"'; i += 2; continue; } inQ = false; i++; continue; }
+        field += c; i++; continue;
+      }
+      if (c === '"') { inQ = true; i++; continue; }
+      if (c === ',') { cur.push(field); field = ''; i++; continue; }
+      if (c === '\r') { i++; continue; }
+      if (c === '\n') { cur.push(field); rows.push(cur); cur = []; field = ''; i++; continue; }
+      field += c; i++;
+    }
+    cur.push(field); rows.push(cur);
+    if (rows.length && rows[rows.length - 1].length === 1 && rows[rows.length - 1][0] === '') rows.pop();
+    return rows;
+  }
+  function inferVal(v) {
+    if (v === undefined || v === null) return null;
+    const s = String(v).trim();
+    if (s === '') return null;
+    if (/^-?\d+(\.\d+)?$/.test(s)) { const nn = Number(s); if (String(nn) === s) return nn; }
+    const low = s.toLowerCase();
+    if (low === 'true') return true;
+    if (low === 'false') return false;
+    if (low === 'null') return null;
+    return String(v).trim();
+  }
+  function colType(rows, name) {
+    for (const r of rows) { const v = r[name]; if (v !== null && v !== undefined) return typeof v; }
+    return 'string';
+  }
+  function importCSV(name, text) {
+    const grid = parseCSV(text.trim());
+    if (!grid.length || (grid.length === 1 && grid[0].every((x) => x === ''))) throw new SqlError('CSV 内容为空');
+    const headers = grid[0].map((h, idx) => (h && h.trim()) ? h.trim() : ('col' + (idx + 1)));
+    const rows = [];
+    for (let r = 1; r < grid.length; r++) {
+      const obj = {};
+      for (let c = 0; c < headers.length; c++) obj[headers[c]] = inferVal(grid[r][c]);
+      rows.push(obj);
+    }
+    return { name, columns: headers.map((h) => ({ name: h, type: colType(rows, h) })), rows };
+  }
+  function importJSON(name, text) {
+    let data;
+    try { data = JSON.parse(text); } catch (e) { throw new SqlError('JSON 解析失败: ' + e.message); }
+    let arr;
+    if (Array.isArray(data)) arr = data;
+    else if (data && typeof data === 'object') arr = [data];
+    else throw new SqlError('JSON 需为对象数组 [{...},{...}]');
+    if (!arr.length) throw new SqlError('JSON 数组为空');
+    const cols = []; const seen = new Set();
+    for (const o of arr) {
+      if (o && typeof o === 'object' && !Array.isArray(o)) {
+        for (const k of Object.keys(o)) if (!seen.has(k)) { seen.add(k); cols.push(k); }
+      }
+    }
+    if (!cols.length) throw new SqlError('未找到任何字段（元素需为对象）');
+    const rows = arr.map((o) => {
+      const obj = {};
+      for (const k of cols) {
+        let v = (o && typeof o === 'object') ? o[k] : undefined;
+        if (v === undefined) v = null;
+        else if (v !== null && typeof v === 'object') v = JSON.stringify(v);
+        obj[k] = v;
+      }
+      return obj;
+    });
+    return { name, columns: cols.map((k) => ({ name: k, type: colType(rows, k) })), rows };
+  }
+
+  /* =========================================================================
+   *  7. Sample data
+   * ========================================================================= */
+  function sampleTables() {
+    const departments = {
+      name: 'departments',
+      columns: [{ name: 'id', type: 'number' }, { name: 'name', type: 'string' }, { name: 'budget', type: 'number' }, { name: 'location', type: 'string' }],
+      rows: [
+        { id: 1, name: 'Engineering', budget: 500000, location: 'SF' },
+        { id: 2, name: 'Sales', budget: 300000, location: 'NY' },
+        { id: 3, name: 'Marketing', budget: 200000, location: 'LA' },
+        { id: 4, name: 'Operations', budget: 150000, location: null },
+      ],
+    };
+    const employees = {
+      name: 'employees',
+      columns: [
+        { name: 'id', type: 'number' }, { name: 'name', type: 'string' }, { name: 'dept_id', type: 'number' },
+        { name: 'salary', type: 'number' }, { name: 'age', type: 'number' }, { name: 'city', type: 'string' }, { name: 'active', type: 'boolean' },
+      ],
+      rows: [
+        { id: 1, name: 'Alice', dept_id: 1, salary: 120000, age: 30, city: 'SF', active: true },
+        { id: 2, name: 'Bob', dept_id: 1, salary: 95000, age: 45, city: 'SF', active: true },
+        { id: 3, name: 'Carol', dept_id: 2, salary: 80000, age: 28, city: 'NY', active: true },
+        { id: 4, name: 'Dave', dept_id: 2, salary: 72000, age: 38, city: 'NY', active: false },
+        { id: 5, name: 'Eve', dept_id: 3, salary: 60000, age: 25, city: 'LA', active: true },
+        { id: 6, name: 'Frank', dept_id: 1, salary: 115000, age: 52, city: 'Chicago', active: true },
+        { id: 7, name: 'Grace', dept_id: null, salary: 50000, age: 41, city: 'Remote', active: false },
+      ],
+    };
+    return [employees, departments];
+  }
+
+  const DEFAULT_SQL =
+`-- 按部门统计人数与平均薪资（JOIN + GROUP BY + 聚合 + 别名排序）
+SELECT d.name AS 部门,
+       COUNT(*) AS 人数,
+       ROUND(AVG(e.salary)) AS 平均薪资
+FROM employees e
+JOIN departments d ON e.dept_id = d.id
+GROUP BY d.name
+ORDER BY 平均薪资 DESC;`;
+
+  const SAMPLE_QUERIES = [
+    { label: '连接查询 JOIN', sql: "SELECT e.name, d.name AS dept, e.salary\nFROM employees e\nJOIN departments d ON e.dept_id = d.id\nORDER BY e.salary DESC;" },
+    { label: '分组统计 GROUP BY', sql: "SELECT dept_id, COUNT(*) AS c, SUM(salary) AS total, ROUND(AVG(salary)) AS avg_sal\nFROM employees\nWHERE dept_id IS NOT NULL\nGROUP BY dept_id\nORDER BY total DESC;" },
+    { label: 'HAVING 过滤分组', sql: "SELECT dept_id, COUNT(*) AS headcount\nFROM employees\nGROUP BY dept_id\nHAVING COUNT(*) >= 2\nORDER BY headcount DESC;" },
+    { label: 'LEFT JOIN 找无部门', sql: "SELECT e.name, d.name AS dept\nFROM employees e\nLEFT JOIN departments d ON e.dept_id = d.id\nWHERE d.id IS NULL;" },
+    { label: '模糊 + 范围过滤', sql: "SELECT name, city, age\nFROM employees\nWHERE city LIKE 'S%' OR age BETWEEN 30 AND 45\nORDER BY age;" },
+    { label: '标量函数与表达式', sql: "SELECT UPPER(name) AS who,\n       salary / 1000 AS k_salary,\n       name || ' @ ' || city AS label\nFROM employees\nWHERE active = TRUE\nORDER BY k_salary DESC\nLIMIT 5;" },
+  ];
+
+  /* =========================================================================
+   *  8. UI
+   * ========================================================================= */
+  const db = new DB();
+  const LS = { tables: 'sqlwb:tables', history: 'sqlwb:history', sql: 'sqlwb:sql' };
+  let history = [];
+  let lastResult = null;
+  let persistWarned = false;
+
+  const $ = (id) => document.getElementById(id);
+  const editor = $('sql-editor');
+  const statusEl = $('status');
+  const resultEl = $('result');
+
+  function safeQuery(sql) {
+    try { return db.query(sql); }
+    catch (e) { return { error: (e && e.message) || String(e), columns: [], rows: [], rowCount: 0, ms: 0 }; }
+  }
+
+  /* ---- persistence ---- */
+  function saveTables() {
+    try {
+      const payload = db.list().map((t) => ({ name: t.name, columns: t.columns, rows: t.rows }));
+      const str = JSON.stringify(payload);
+      if (str.length > 4_500_000) { note('数据较大，未写入本地存储（本次会话内仍可查询）。'); return; }
+      localStorage.setItem(LS.tables, str);
+    } catch (e) { if (!persistWarned) { persistWarned = true; note('本地存储空间不足，表未持久化。'); } }
+  }
+  function saveHistory() { try { localStorage.setItem(LS.history, JSON.stringify(history.slice(0, 30))); } catch (e) {} }
+  function saveSQL() { try { localStorage.setItem(LS.sql, editor.value); } catch (e) {} }
+  function note(msg) { statusEl.className = 'status'; statusEl.textContent = msg; }
+
+  function loadState() {
+    try {
+      const t = localStorage.getItem(LS.tables);
+      if (t) { const arr = JSON.parse(t); if (Array.isArray(arr) && arr.length) arr.forEach((x) => db.setTable(x)); }
+    } catch (e) {}
+    try { const h = localStorage.getItem(LS.history); if (h) history = JSON.parse(h) || []; } catch (e) {}
+    try { const s = localStorage.getItem(LS.sql); if (s != null) editor.value = s; } catch (e) {}
+  }
+
+  /* ---- rendering ---- */
+  function renderTables() {
+    const list = $('table-list');
+    const tables = db.list();
+    list.innerHTML = '';
+    if (!tables.length) { list.innerHTML = '<span class="muted-empty">还没有数据表。点击「加载示例数据」或「＋ 添加表」。</span>'; }
+    for (const t of tables) {
+      const chip = document.createElement('span');
+      chip.className = 'chip'; chip.title = '插入表名到查询';
+      const nameSpan = document.createElement('span');
+      nameSpan.textContent = t.name;
+      nameSpan.style.cursor = 'pointer';
+      nameSpan.addEventListener('click', () => insertAtCursor(t.name));
+      const count = document.createElement('span');
+      count.className = 'count'; count.textContent = t.rows.length + ' 行';
+      const drop = document.createElement('button');
+      drop.className = 'drop'; drop.type = 'button'; drop.textContent = '×'; drop.title = '删除表';
+      drop.setAttribute('aria-label', '删除表 ' + t.name);
+      drop.addEventListener('click', (ev) => { ev.stopPropagation(); db.dropTable(t.name); saveTables(); renderTables(); renderSchema(); });
+      chip.append(nameSpan, count, drop);
+      list.appendChild(chip);
+    }
+  }
+
+  function renderSchema() {
+    const box = $('schema');
+    box.innerHTML = '';
+    for (const t of db.list()) {
+      const div = document.createElement('div');
+      div.className = 'schema-table';
+      const title = document.createElement('div');
+      title.className = 'tname';
+      title.innerHTML = t.name + ' <span class="rc">· ' + t.columns.length + ' 列 / ' + t.rows.length + ' 行</span>';
+      const cols = document.createElement('div');
+      cols.className = 'schema-cols';
+      for (const c of t.columns) {
+        const cc = document.createElement('span');
+        cc.className = 'col-chip'; cc.title = '插入列名 ' + c.name;
+        cc.innerHTML = c.name + '<span class="ty">' + c.type + '</span>';
+        cc.addEventListener('click', () => insertAtCursor(c.name));
+        cols.appendChild(cc);
+      }
+      div.append(title, cols);
+      box.appendChild(div);
+    }
+  }
+
+  function renderSampleQueries() {
+    const box = $('sample-queries');
+    box.innerHTML = '';
+    for (const q of SAMPLE_QUERIES) {
+      const chip = document.createElement('span');
+      chip.className = 'chip'; chip.textContent = q.label; chip.title = '载入示例查询';
+      chip.addEventListener('click', () => { editor.value = q.sql; saveSQL(); editor.focus(); run(); });
+      box.appendChild(chip);
+    }
+  }
+
+  function cellClass(v) {
+    if (v === null || v === undefined) return 'c-null';
+    if (typeof v === 'number') return 'c-num';
+    if (typeof v === 'boolean') return 'c-bool';
+    return 'c-str';
+  }
+  function cellText(v) {
+    if (v === null || v === undefined) return 'NULL';
+    if (typeof v === 'number') return fmtNum(v);
+    if (typeof v === 'boolean') return v ? 'true' : 'false';
+    return String(v);
+  }
+
+  const ROW_CAP = 500;
+  function renderResult(res) {
+    lastResult = res && !res.error ? res : null;
+    if (res.error) {
+      statusEl.className = 'status err';
+      statusEl.textContent = '✕ ' + res.error;
+      resultEl.className = 'result-wrap empty';
+      resultEl.innerHTML = '<div class="empty-note">查询未成功，请修正后重试。</div>';
+      return;
+    }
+    statusEl.className = 'status ok';
+    statusEl.textContent = '✓ ' + res.rowCount + ' 行 · ' + res.ms.toFixed(1) + ' ms';
+    resultEl.className = 'result-wrap';
+    if (!res.columns.length) { resultEl.innerHTML = '<div class="empty-note">查询没有返回任何列。</div>'; return; }
+
+    const table = document.createElement('table');
+    table.className = 'result'; table.id = 'result-table';
+    const thead = document.createElement('thead');
+    const htr = document.createElement('tr');
+    for (const c of res.columns) { const th = document.createElement('th'); th.textContent = c; htr.appendChild(th); }
+    thead.appendChild(htr); table.appendChild(thead);
+    const tbody = document.createElement('tbody');
+    const shown = Math.min(res.rows.length, ROW_CAP);
+    for (let r = 0; r < shown; r++) {
+      const tr = document.createElement('tr');
+      for (const v of res.rows[r]) { const td = document.createElement('td'); td.className = cellClass(v); td.textContent = cellText(v); tr.appendChild(td); }
+      tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+    resultEl.innerHTML = '';
+    resultEl.appendChild(table);
+    if (res.rows.length > ROW_CAP) {
+      const cap = document.createElement('div');
+      cap.className = 'cap-note';
+      cap.textContent = '为保证流畅，仅显示前 ' + ROW_CAP + ' 行(共 ' + res.rows.length + ' 行)。导出 CSV/JSON 可获得全部结果。';
+      resultEl.appendChild(cap);
+    }
+  }
+
+  function renderHistory() {
+    const box = $('history');
+    box.innerHTML = '';
+    if (!history.length) { box.innerHTML = '<span class="muted-empty">还没有历史查询。</span>'; return; }
+    for (const h of history.slice(0, 30)) {
+      const item = document.createElement('div');
+      item.className = 'hist-item'; item.title = '点击载入到编辑器';
+      const sql = document.createElement('span');
+      sql.className = 'sql'; sql.textContent = h.sql.replace(/\s+/g, ' ').trim();
+      const badge = document.createElement('span');
+      badge.className = 'badge ' + (h.ok ? 'ok' : 'err');
+      badge.textContent = h.ok ? (h.rows + ' 行') : '错误';
+      item.append(sql, badge);
+      item.addEventListener('click', () => { editor.value = h.sql; saveSQL(); editor.focus(); });
+      box.appendChild(item);
+    }
+  }
+
+  function pushHistory(sql, res) {
+    const trimmed = sql.trim();
+    if (!trimmed) return;
+    history = history.filter((h) => h.sql.trim() !== trimmed);
+    history.unshift({ sql: trimmed, ok: !res.error, rows: res.rowCount || 0, err: res.error || null });
+    history = history.slice(0, 30);
+    saveHistory(); renderHistory();
+  }
+
+  /* ---- actions ---- */
+  function insertAtCursor(text) {
+    editor.focus();
+    const s = editor.selectionStart, e = editor.selectionEnd, v = editor.value;
+    const before = v.slice(0, s), after = v.slice(e);
+    const pad = (before && !/\s$/.test(before) && !/[.(]$/.test(before)) ? ' ' : '';
+    editor.value = before + pad + text + after;
+    const pos = s + pad.length + text.length;
+    editor.selectionStart = editor.selectionEnd = pos;
+    saveSQL();
+  }
+
+  function run() {
+    const sql = editor.value;
+    if (!sql.trim()) { note('请输入一条 SQL 查询。'); return { error: '空查询' }; }
+    const res = safeQuery(sql);
+    renderResult(res);
+    pushHistory(sql, res);
+    saveSQL();
+    return res;
+  }
+
+  function loadSample() {
+    db.clear();
+    sampleTables().forEach((t) => db.setTable(t));
+    saveTables(); renderTables(); renderSchema();
+  }
+
+  function addTable(name, format, text) {
+    const nm = String(name || '').trim();
+    if (!nm) return { ok: false, error: '请填写表名' };
+    let t;
+    try { t = format === 'json' ? importJSON(nm, text) : importCSV(nm, text); }
+    catch (e) { return { ok: false, error: (e && e.message) || String(e) }; }
+    db.setTable(t);
+    saveTables(); renderTables(); renderSchema();
+    return { ok: true, rows: t.rows.length, columns: t.columns.length };
+  }
+
+  /* ---- export ---- */
+  function csvEscape(v) {
+    if (v === null || v === undefined) return '';
+    let s = typeof v === 'number' ? fmtNum(v) : (typeof v === 'boolean' ? (v ? 'true' : 'false') : String(v));
+    if (/[",\n\r]/.test(s)) s = '"' + s.replace(/"/g, '""') + '"';
+    return s;
+  }
+  function exportCSV() {
+    if (!lastResult) return '';
+    const lines = [lastResult.columns.map(csvEscape).join(',')];
+    for (const row of lastResult.rows) lines.push(row.map(csvEscape).join(','));
+    return lines.join('\n');
+  }
+  function exportJSON() {
+    if (!lastResult) return '[]';
+    const objs = lastResult.rows.map((r) => { const o = {}; lastResult.columns.forEach((c, i) => { o[c] = r[i]; }); return o; });
+    return JSON.stringify(objs, null, 2);
+  }
+  function download(filename, content, mime) {
+    try {
+      const blob = new Blob([content], { type: mime || 'text/plain;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = filename; document.body.appendChild(a); a.click();
+      setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 0);
+    } catch (e) {}
+  }
+
+  /* ---- wiring ---- */
+  $('run-btn').addEventListener('click', run);
+  $('clear-btn').addEventListener('click', () => { editor.value = ''; saveSQL(); editor.focus(); });
+  $('load-sample').addEventListener('click', () => { loadSample(); note('已加载示例数据: employees, departments。'); });
+  $('clear-history').addEventListener('click', () => { history = []; saveHistory(); renderHistory(); });
+  $('export-csv').addEventListener('click', () => { if (!lastResult) { note('先运行一次查询再导出。'); return; } download('query-result.csv', exportCSV(), 'text/csv;charset=utf-8'); });
+  $('export-json').addEventListener('click', () => { if (!lastResult) { note('先运行一次查询再导出。'); return; } download('query-result.json', exportJSON(), 'application/json'); });
+
+  editor.addEventListener('keydown', (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); run(); }
+    if (e.key === 'Tab') { e.preventDefault(); insertAtCursor('  '); }
+  });
+  editor.addEventListener('input', saveSQL);
+
+  const importPanel = $('import-panel');
+  $('toggle-import').addEventListener('click', () => {
+    importPanel.hidden = !importPanel.hidden;
+    if (!importPanel.hidden) $('import-name').focus();
+  });
+  $('import-cancel').addEventListener('click', () => { importPanel.hidden = true; });
+  $('import-btn').addEventListener('click', () => {
+    const r = addTable($('import-name').value, $('import-format').value, $('import-text').value);
+    if (r.ok) { note('已添加表 ' + $('import-name').value.trim() + '（' + r.columns + ' 列 / ' + r.rows + ' 行）。'); importPanel.hidden = true; $('import-text').value = ''; $('import-name').value = ''; }
+    else { statusEl.className = 'status err'; statusEl.textContent = '✕ ' + r.error; }
+  });
+
+  /* ---- init ---- */
+  function init() {
+    loadState();
+    if (!db.list().length) loadSample();
+    if (!editor.value.trim()) editor.value = DEFAULT_SQL;
+    renderTables(); renderSchema(); renderSampleQueries(); renderHistory();
+    // auto-run current query so the page shows a live result on open
+    const res = safeQuery(editor.value);
+    renderResult(res);
+  }
+  init();
+
+  /* =========================================================================
+   *  9. Test hook
+   * ========================================================================= */
+  window.__sql = {
+    query: safeQuery,
+    run,
+    setSQL: (s) => { editor.value = s; saveSQL(); },
+    getSQL: () => editor.value,
+    loadSample,
+    addTable,
+    dropTable: (n) => { const ok = db.dropTable(n); saveTables(); renderTables(); renderSchema(); return ok; },
+    getTables: () => db.list().map((t) => ({ name: t.name, columns: t.columns.map((c) => c.name), rowCount: t.rows.length })),
+    clearAll: () => { db.clear(); saveTables(); editor.value = ''; lastResult = null; renderTables(); renderSchema(); resultEl.className = 'result-wrap empty'; resultEl.innerHTML = '<div class="empty-note">已清空。</div>'; },
+    exportCSV, exportJSON,
+    _db: db,
+  };
+})();
+</script>
+</body>
+</html>
