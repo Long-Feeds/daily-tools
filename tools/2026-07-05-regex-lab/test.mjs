@@ -80,7 +80,9 @@ export default async function ({ page, toolURL, screenshot, assert }) {
   // ---------- DOM: live matching + highlight + diagram ----------
   await page.fill('#pattern', '(\\d{4})-(\\d{2})-(\\d{2})');
   await page.fill('#test-text', '2026-07-05, 1999-12-31, x-y-z');
-  await page.waitForTimeout(160);
+  // wait for the debounced render to settle to the final match set instead of a fixed
+  // timeout (a short fixed wait can read the stale initial-default count → flaky)
+  await page.waitForFunction(() => document.querySelectorAll('#highlight mark').length === 2, null, { timeout: 4000 });
   const countTxt = (await page.locator('#match-count').textContent()) || '';
   assert(/2/.test(countTxt), `UI shows 2 matches (got "${countTxt.trim()}")`);
   assert((await page.locator('#diagram svg').count()) === 1, 'UI renders one diagram svg');
@@ -93,7 +95,7 @@ export default async function ({ page, toolURL, screenshot, assert }) {
   // ---------- DOM: flag toggle changes match count ----------
   await page.fill('#pattern', 'abc');
   await page.fill('#test-text', 'ABC abc');
-  await page.waitForTimeout(140);
+  await page.waitForFunction(() => document.querySelectorAll('#highlight mark').length === 1, null, { timeout: 4000 });
   let cTxt = (await page.locator('#match-count').textContent()) || '';
   assert(/1/.test(cTxt) && (await page.locator('#highlight mark').count()) === 1, 'without i: 1 match (abc)');
   await page.check('#f-i');
