@@ -1,0 +1,994 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>寻路可视化 · Pathfinding Visualizer</title>
+<style>
+  :root{
+    --bg:#f6f7fb; --panel:#ffffff; --panel-2:#f0f2f8; --ink:#1a1d29; --ink-soft:#5b6172;
+    --line:#e2e5ef; --brand:#5b5bd6; --brand-ink:#ffffff; --accent:#0ea5a5;
+    --ok:#12a150; --warn:#c2410c; --danger:#dc2626;
+    --shadow:0 1px 2px rgba(20,24,40,.06),0 8px 24px rgba(20,24,40,.06);
+    --radius:14px; --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    /* canvas palette (light) */
+    --c-grid:#e6e9f2; --c-cell:#fbfcfe; --c-wall:#39405a; --c-wall-b:#2b3048;
+    --c-weight:#f0a83c; --c-start:#12a150; --c-target:#e0466e; --c-path:#f4c14e; --c-path-b:#d99a1e;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#0e1017; --panel:#171a24; --panel-2:#1f2330; --ink:#e7e9f1; --ink-soft:#9aa0b4;
+      --line:#2a2f3d; --brand:#7c7cf0; --brand-ink:#0b0d14; --accent:#2dd4bf;
+      --ok:#4ade80; --warn:#fb923c; --danger:#f87171;
+      --shadow:0 1px 2px rgba(0,0,0,.3),0 10px 30px rgba(0,0,0,.35);
+      --c-grid:#242938; --c-cell:#12151f; --c-wall:#59627e; --c-wall-b:#6f7a98;
+      --c-weight:#e59b34; --c-start:#34d17f; --c-target:#f2618c; --c-path:#f6c453; --c-path-b:#c98f1c;
+    }
+  }
+  :root[data-theme="light"]{
+    --bg:#f6f7fb; --panel:#ffffff; --panel-2:#f0f2f8; --ink:#1a1d29; --ink-soft:#5b6172;
+    --line:#e2e5ef; --brand:#5b5bd6; --brand-ink:#ffffff; --accent:#0ea5a5;
+    --ok:#12a150; --warn:#c2410c; --danger:#dc2626;
+    --shadow:0 1px 2px rgba(20,24,40,.06),0 8px 24px rgba(20,24,40,.06);
+    --c-grid:#e6e9f2; --c-cell:#fbfcfe; --c-wall:#39405a; --c-wall-b:#2b3048;
+    --c-weight:#f0a83c; --c-start:#12a150; --c-target:#e0466e; --c-path:#f4c14e; --c-path-b:#d99a1e;
+  }
+  :root[data-theme="dark"]{
+    --bg:#0e1017; --panel:#171a24; --panel-2:#1f2330; --ink:#e7e9f1; --ink-soft:#9aa0b4;
+    --line:#2a2f3d; --brand:#7c7cf0; --brand-ink:#0b0d14; --accent:#2dd4bf;
+    --ok:#4ade80; --warn:#fb923c; --danger:#f87171;
+    --shadow:0 1px 2px rgba(0,0,0,.3),0 10px 30px rgba(0,0,0,.35);
+    --c-grid:#242938; --c-cell:#12151f; --c-wall:#59627e; --c-wall-b:#6f7a98;
+    --c-weight:#e59b34; --c-start:#34d17f; --c-target:#f2618c; --c-path:#f6c453; --c-path-b:#c98f1c;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{background:var(--bg); color:var(--ink); font-family:var(--sans);
+    line-height:1.55; -webkit-font-smoothing:antialiased; padding-bottom:48px;}
+  a{color:var(--brand)}
+  .wrap{max-width:1180px; margin:0 auto; padding:0 20px}
+  header.top{display:flex; align-items:center; gap:16px; flex-wrap:wrap; padding:18px 0 6px}
+  .back{display:inline-flex; align-items:center; gap:6px; text-decoration:none; color:var(--ink-soft);
+    font-size:14px; padding:6px 12px; border:1px solid var(--line); border-radius:999px; background:var(--panel); transition:.15s}
+  .back:hover{color:var(--brand); border-color:var(--brand)}
+  .titles{flex:1; min-width:220px}
+  h1{font-size:22px; margin:0; letter-spacing:.2px}
+  h1 .em{color:var(--brand)}
+  .sub{color:var(--ink-soft); font-size:13.5px; margin-top:2px}
+  .theme-btn{border:1px solid var(--line); background:var(--panel); color:var(--ink); border-radius:999px;
+    width:40px; height:40px; cursor:pointer; font-size:17px; display:grid; place-items:center; transition:.15s}
+  .theme-btn:hover{border-color:var(--brand)}
+  .panel{background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow)}
+  main{margin-top:14px; display:flex; flex-direction:column; gap:16px}
+  .pad{padding:16px}
+  .panel h2{font-size:13px; margin:0 0 10px; color:var(--ink-soft); font-weight:600; letter-spacing:.3px; text-transform:uppercase}
+
+  /* controls */
+  .controls{display:flex; flex-direction:column; gap:12px}
+  .ctl-row{display:flex; gap:10px 14px; flex-wrap:wrap; align-items:center}
+  .field{display:flex; flex-direction:column; gap:4px}
+  .field label{font-size:11px; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.4px; font-weight:600}
+  select.sel, input.num{border:1px solid var(--line); background:var(--panel); color:var(--ink); border-radius:10px;
+    padding:8px 10px; font-size:13.5px; cursor:pointer; font-weight:600; font-family:var(--sans)}
+  select.sel{min-width:168px}
+  button.act{border:1px solid var(--line); background:var(--panel); color:var(--ink); border-radius:10px;
+    padding:9px 14px; font-size:13.5px; cursor:pointer; transition:.15s; font-weight:600; white-space:nowrap}
+  button.act:hover{border-color:var(--brand); color:var(--brand)}
+  button.act.primary{background:var(--brand); color:var(--brand-ink); border-color:var(--brand)}
+  button.act.primary:hover{filter:brightness(1.06); color:var(--brand-ink)}
+  button.act.danger:hover{border-color:var(--danger); color:var(--danger)}
+  button.act:disabled{opacity:.45; cursor:not-allowed; border-color:var(--line); color:var(--ink)}
+  button.act:focus-visible,select:focus-visible,input:focus-visible,.seg button:focus-visible,.back:focus-visible,.theme-btn:focus-visible{outline:2px solid var(--brand); outline-offset:2px}
+  .seg{display:inline-flex; border:1px solid var(--line); border-radius:10px; overflow:hidden; background:var(--panel-2)}
+  .seg button{border:0; background:transparent; color:var(--ink); padding:8px 13px; font-size:13px; cursor:pointer;
+    font-weight:600; transition:.13s; border-right:1px solid var(--line)}
+  .seg button:last-child{border-right:0}
+  .seg button:hover{color:var(--brand)}
+  .seg button[aria-pressed="true"]{background:var(--brand); color:var(--brand-ink)}
+  .toggle{display:inline-flex; align-items:center; gap:8px; font-size:13px; font-weight:600; color:var(--ink); cursor:pointer; user-select:none}
+  .toggle input{position:absolute; opacity:0; width:0; height:0}
+  .sw{width:38px; height:22px; border-radius:999px; background:var(--panel-2); border:1px solid var(--line); position:relative; transition:.15s}
+  .sw::after{content:""; position:absolute; top:2px; left:2px; width:16px; height:16px; border-radius:50%; background:var(--ink-soft); transition:.15s}
+  .toggle input:checked + .sw{background:var(--brand); border-color:var(--brand)}
+  .toggle input:checked + .sw::after{transform:translateX(16px); background:#fff}
+  .toggle input:focus-visible + .sw{outline:2px solid var(--brand); outline-offset:2px}
+  input[type=range]{accent-color:var(--brand); cursor:pointer; width:130px}
+  .spacer{flex:1 1 12px}
+
+  /* stats */
+  .stats{display:flex; gap:8px 10px; flex-wrap:wrap; align-items:stretch}
+  .stat{flex:1 1 130px; min-width:118px; border:1px solid var(--line); border-radius:12px; background:var(--panel-2); padding:9px 12px}
+  .stat .k{font-size:10.5px; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.5px; font-weight:700}
+  .stat .v{font-size:19px; font-weight:800; font-family:var(--mono); margin-top:2px; letter-spacing:.3px}
+  .stat .v small{font-size:11px; color:var(--ink-soft); font-weight:600; font-family:var(--sans)}
+  #stat-status .v{font-size:14px; font-family:var(--sans)}
+  .stat.good .v{color:var(--ok)} .stat.bad .v{color:var(--danger)}
+
+  /* stage */
+  .stage-wrap{padding:12px}
+  .stage{position:relative; border:1px solid var(--line); border-radius:12px; overflow:hidden; background:var(--c-cell); line-height:0}
+  #grid{display:block; width:100%; height:auto; touch-action:none; cursor:crosshair; user-select:none}
+  .stage.draggingnode #grid{cursor:grabbing}
+  .legend{display:flex; gap:8px 16px; flex-wrap:wrap; font-size:12px; color:var(--ink-soft); align-items:center; padding:11px 4px 2px}
+  .legend .it{display:inline-flex; align-items:center; gap:6px}
+  .legend .sw2{width:14px; height:14px; border-radius:4px; display:inline-block; border:1px solid rgba(128,128,128,.35)}
+  .legend .grad{width:52px; height:12px; border-radius:4px; background:linear-gradient(90deg,hsl(178 68% 52%),hsl(224 70% 60%),hsl(276 68% 60%))}
+  .hint{color:var(--ink-soft); font-size:12.5px; margin-top:6px}
+  .hint kbd{font-family:var(--mono); font-size:11px; background:var(--panel-2); border:1px solid var(--line); border-bottom-width:2px; border-radius:5px; padding:1px 5px}
+
+  /* saved + info grid */
+  .cols{display:grid; grid-template-columns:1fr 1fr; gap:16px}
+  @media (max-width:760px){ .cols{grid-template-columns:1fr} }
+  .saverow{display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:10px}
+  .saverow input.num{flex:1; min-width:130px}
+  .saved-list{display:flex; flex-direction:column; gap:6px; max-height:210px; overflow:auto}
+  .saved-item{display:flex; align-items:center; gap:8px; border:1px solid var(--line); border-radius:10px; padding:7px 10px; background:var(--panel-2)}
+  .saved-item .nm{flex:1; font-weight:600; font-size:13.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .saved-item .meta{font-size:11px; color:var(--ink-soft); font-family:var(--mono)}
+  .mini{border:1px solid var(--line); background:var(--panel); color:var(--ink-soft); border-radius:8px; padding:5px 9px; font-size:12px; cursor:pointer; font-weight:600; transition:.13s}
+  .mini:hover{border-color:var(--brand); color:var(--brand)}
+  .mini.del:hover{border-color:var(--danger); color:var(--danger)}
+  .empty{color:var(--ink-soft); font-size:13px; padding:6px 2px}
+  .algos{display:flex; flex-direction:column; gap:9px}
+  .algo{border:1px solid var(--line); border-radius:11px; padding:10px 12px; background:var(--panel-2)}
+  .algo .an{font-weight:700; font-size:13.5px; display:flex; align-items:center; gap:8px; flex-wrap:wrap}
+  .algo .tag{font-size:10.5px; font-weight:700; padding:2px 7px; border-radius:999px; letter-spacing:.3px}
+  .tag.opt{background:color-mix(in srgb,var(--ok) 18%,transparent); color:var(--ok)}
+  .tag.noopt{background:color-mix(in srgb,var(--warn) 20%,transparent); color:var(--warn)}
+  .tag.wt{background:color-mix(in srgb,var(--brand) 16%,transparent); color:var(--brand)}
+  .algo .ad{font-size:12.5px; color:var(--ink-soft); margin-top:3px}
+
+  .toast{position:fixed; left:50%; bottom:26px; transform:translateX(-50%) translateY(12px); background:var(--ink); color:var(--bg);
+    padding:9px 16px; border-radius:10px; font-size:13px; font-weight:600; opacity:0; pointer-events:none; transition:.22s; z-index:50; box-shadow:var(--shadow)}
+  .toast.show{opacity:1; transform:translateX(-50%) translateY(0)}
+  .sr{position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap}
+  footer{color:var(--ink-soft); font-size:12px; text-align:center; margin-top:26px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <a class="back" href="../../">← 返回工具集</a>
+    <div class="titles">
+      <h1>寻路可视化 · <span class="em">Pathfinding</span></h1>
+      <div class="sub">画墙、放权重、拖起点终点，看 BFS / DFS / Dijkstra / A* / 贪心 如何搜索并找出最短路 · 纯前端零上传</div>
+    </div>
+    <button class="theme-btn" id="theme-toggle" title="切换深/浅色" aria-label="切换深浅色">◐</button>
+  </header>
+
+  <main>
+    <!-- controls -->
+    <section class="panel pad controls" aria-label="控制区">
+      <div class="ctl-row">
+        <div class="field">
+          <label for="algo">算法</label>
+          <select class="sel" id="algo" aria-label="选择寻路算法">
+            <option value="astar">A* 搜索（带启发式，最优）</option>
+            <option value="dijkstra">Dijkstra（按代价，最优）</option>
+            <option value="bfs">广度优先 BFS（最少格数）</option>
+            <option value="greedy">贪心最佳优先（快但不最优）</option>
+            <option value="dfs">深度优先 DFS（不最优）</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="tool">画笔</label>
+          <div class="seg" id="tool" role="group" aria-label="画笔工具">
+            <button data-tool="wall" aria-pressed="true">🧱 墙</button>
+            <button data-tool="weight" aria-pressed="false">🟠 权重</button>
+            <button data-tool="erase" aria-pressed="false">🧽 擦除</button>
+          </div>
+        </div>
+        <label class="toggle" title="允许斜向移动（代价 ×√2）">
+          <input type="checkbox" id="diag" /><span class="sw"></span>斜向
+        </label>
+        <div class="field">
+          <label for="speed">速度</label>
+          <input type="range" id="speed" min="0" max="100" value="62" aria-label="动画速度" />
+        </div>
+        <label class="toggle" title="不做动画，瞬间出结果">
+          <input type="checkbox" id="instant" /><span class="sw"></span>瞬时
+        </label>
+        <div class="spacer"></div>
+        <button class="act primary" id="run">▶ 开始寻路</button>
+        <button class="act" id="stop" disabled>■ 停止</button>
+      </div>
+
+      <div class="ctl-row">
+        <div class="field">
+          <label for="maze">生成迷宫</label>
+          <select class="sel" id="maze" aria-label="迷宫生成算法">
+            <option value="division">递归分割迷宫</option>
+            <option value="backtracker">递归回溯迷宫</option>
+            <option value="random">随机散墙（30%）</option>
+          </select>
+        </div>
+        <button class="act" id="gen">🎲 生成</button>
+        <button class="act" id="clear-path">清除路径</button>
+        <button class="act" id="clear-walls">清空墙</button>
+        <button class="act danger" id="reset">全部重置</button>
+        <div class="spacer"></div>
+        <span class="hint" style="margin-top:0">拖动 <b style="color:var(--ok)">起点</b> / <b style="color:var(--target,#e0466e)">终点</b> 可实时重算 · 长按拖拽画墙</span>
+      </div>
+
+      <div class="stats" id="stats" aria-live="polite">
+        <div class="stat"><div class="k">算法</div><div class="v" id="stat-algo">A*</div></div>
+        <div class="stat"><div class="k">已访问格数</div><div class="v" id="stat-visited">—</div></div>
+        <div class="stat"><div class="k">路径长度</div><div class="v" id="stat-path">—</div></div>
+        <div class="stat"><div class="k">路径代价</div><div class="v" id="stat-cost">—</div></div>
+        <div class="stat" id="stat-status"><div class="k">状态</div><div class="v" id="stat-status-v">就绪</div></div>
+      </div>
+    </section>
+
+    <!-- stage -->
+    <section class="panel stage-wrap" aria-label="网格">
+      <div class="stage" id="stage" data-status="idle">
+        <canvas id="grid" role="img" aria-label="寻路网格：画墙、放权重、拖动起点终点，运行后显示已探索区域与最短路径"></canvas>
+      </div>
+      <div class="legend">
+        <span class="it"><span class="sw2" style="background:var(--c-start)"></span>起点</span>
+        <span class="it"><span class="sw2" style="background:var(--c-target)"></span>终点</span>
+        <span class="it"><span class="sw2" style="background:var(--c-wall)"></span>墙</span>
+        <span class="it"><span class="sw2" style="background:var(--c-weight)"></span>权重地形</span>
+        <span class="it"><span class="grad"></span>探索先后（近→远）</span>
+        <span class="it"><span class="sw2" style="background:var(--c-path)"></span>最短路径</span>
+      </div>
+      <div class="hint">在网格上按住并拖动来画墙；切到「权重」画笔可放置代价为 5 的地形（只有 Dijkstra / A* 会绕开它）。首次运行后，拖动起点或终点会实时重算路径。</div>
+    </section>
+
+    <div class="cols">
+      <!-- saved -->
+      <section class="panel pad" aria-label="保存的网格">
+        <h2>保存的网格</h2>
+        <div class="saverow">
+          <input class="num" id="save-name" placeholder="给当前网格起个名字…" aria-label="网格名称" maxlength="40" />
+          <button class="act" id="save">保存</button>
+        </div>
+        <div class="saved-list" id="saved-list"></div>
+      </section>
+
+      <!-- algo explainer -->
+      <section class="panel pad" aria-label="算法说明">
+        <h2>五种算法</h2>
+        <div class="algos">
+          <div class="algo"><div class="an">A* 搜索 <span class="tag opt">最优</span><span class="tag wt">考虑权重</span></div>
+            <div class="ad">用 f = 已走代价 g + 启发式 h（到终点的估计）排序，兼顾方向感与代价，通常访问格数最少还能保证最短路。</div></div>
+          <div class="algo"><div class="an">Dijkstra <span class="tag opt">最优</span><span class="tag wt">考虑权重</span></div>
+            <div class="ad">按累计代价 g 从小到大扩展，无方向偏好，等价于 h=0 的 A*；权重地形下给出真正的最小代价路径。</div></div>
+          <div class="algo"><div class="an">广度优先 BFS <span class="tag opt">最少格数</span></div>
+            <div class="ad">一圈圈向外扩展，忽略权重，找到的是「格子数最少」的路（等权时即最短）。</div></div>
+          <div class="algo"><div class="an">贪心最佳优先 <span class="tag noopt">不保证最优</span></div>
+            <div class="ad">只按启发式 h 排序，一头扎向终点，速度快，但可能被地形骗、绕远路。</div></div>
+          <div class="algo"><div class="an">深度优先 DFS <span class="tag noopt">不保证最优</span></div>
+            <div class="ad">一条路走到黑，碰壁再回溯；能找到一条路，但往往又长又绕，仅作对比。</div></div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <footer>寻路可视化 · 每日工具集 · 所有计算都在你的浏览器里完成，网格保存在本地</footer>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(function(){
+  "use strict";
+  var SQRT2 = Math.SQRT2;
+  function $(id){ return document.getElementById(id); }
+  var LS = { grids:"pf.grids.v1", current:"pf.current.v1", theme:"pf.theme.v1", prefs:"pf.prefs.v1" };
+
+  /* =========================================================
+     PURE ENGINE  — deterministic, no DOM, fully unit-testable
+     Cells are addressed by a single integer index r*cols+c.
+     ========================================================= */
+  function makeGrid(rows, cols){
+    return { rows:rows, cols:cols, walls:new Set(), weights:new Map(), start:0, target:rows*cols-1 };
+  }
+  function inb(g,r,c){ return r>=0 && r<g.rows && c>=0 && c<g.cols; }
+  function idOf(g,r,c){ return r*g.cols + c; }
+  function rcOf(g,i){ return { r: Math.floor(i/g.cols), c: i % g.cols }; }
+  function weightAt(g,i){ var w = g.weights.get(i); return w ? w : 1; }
+  function isWall(g,i){ return g.walls.has(i); }
+
+  // Build a grid from ASCII rows. Legend: 'S' start, 'T' target, '#' wall,
+  // '2'..'9' weighted cell, everything else (including '.') = empty (weight 1).
+  function fromAscii(lines){
+    var rows = lines.length, cols = 0, r, c;
+    for(r=0;r<rows;r++) cols = Math.max(cols, lines[r].length);
+    var g = makeGrid(rows, cols);
+    var start = -1, target = -1;
+    for(r=0;r<rows;r++){
+      var line = lines[r];
+      for(c=0;c<cols;c++){
+        var ch = c < line.length ? line.charAt(c) : ".";
+        var i = idOf(g,r,c);
+        if(ch === "#") g.walls.add(i);
+        else if(ch === "S") start = i;
+        else if(ch === "T") target = i;
+        else if(ch >= "2" && ch <= "9") g.weights.set(i, parseInt(ch,10));
+      }
+    }
+    if(start >= 0) g.start = start;
+    if(target >= 0) g.target = target;
+    return g;
+  }
+
+  var DIRS4 = [[-1,0],[0,1],[1,0],[0,-1]];
+  var DIAG   = [[-1,1],[1,1],[1,-1],[-1,-1]];
+  function neighbors(g, i, diag){
+    var p = rcOf(g,i), dirs = diag ? DIRS4.concat(DIAG) : DIRS4, out = [], k;
+    for(k=0;k<dirs.length;k++){
+      var nr = p.r + dirs[k][0], nc = p.c + dirs[k][1];
+      if(!inb(g,nr,nc)) continue;
+      var ni = idOf(g,nr,nc);
+      if(isWall(g,ni)) continue;
+      out.push({ i:ni, diag: dirs[k][0] !== 0 && dirs[k][1] !== 0 });
+    }
+    return out;
+  }
+  function heuristic(g, i, target, diag){
+    var a = rcOf(g,i), b = rcOf(g,target);
+    var dr = Math.abs(a.r-b.r), dc = Math.abs(a.c-b.c);
+    if(diag){ var lo = Math.min(dr,dc), hi = Math.max(dr,dc); return (hi-lo) + SQRT2*lo; }
+    return dr + dc;
+  }
+
+  // Binary min-heap keyed on .key, tie-broken by insertion order .seq (deterministic).
+  function Heap(){ this.a = []; }
+  Heap.prototype.size = function(){ return this.a.length; };
+  function less(x,y){ return x.key !== y.key ? x.key < y.key : x.seq < y.seq; }
+  Heap.prototype.push = function(node){
+    var a = this.a; a.push(node); var i = a.length-1;
+    while(i>0){ var p=(i-1)>>1; if(less(a[i],a[p])){ var t=a[i]; a[i]=a[p]; a[p]=t; i=p; } else break; }
+  };
+  Heap.prototype.pop = function(){
+    var a = this.a; if(!a.length) return null;
+    var top = a[0], last = a.pop();
+    if(a.length){ a[0]=last; var i=0, n=a.length;
+      while(true){ var l=2*i+1, r=2*i+2, m=i;
+        if(l<n && less(a[l],a[m])) m=l;
+        if(r<n && less(a[r],a[m])) m=r;
+        if(m===i) break; var t=a[i]; a[i]=a[m]; a[m]=t; i=m; }
+    }
+    return top;
+  };
+
+  // Core solver. Returns numeric orderI / pathI plus derived stats.
+  // cost = weighted length of the produced path (diagonal step ×√2), so BFS on
+  // weighted terrain reports a higher cost than Dijkstra — the teachable contrast.
+  function solveRaw(g, algo, opts){
+    opts = opts || {}; var diag = !!opts.diagonal;
+    var start = g.start, target = g.target;
+    var order = [], parent = new Map(), found = false, k;
+
+    if(isWall(g,start) || isWall(g,target))
+      return { found:false, orderI:[], pathI:[], cost:0 };
+    if(start === target)
+      return { found:true, orderI:[start], pathI:[start], cost:0 };
+
+    if(algo === "bfs" || algo === "dfs"){
+      var q = [start], seen = new Set([start]);
+      while(q.length){
+        var cur = algo === "bfs" ? q.shift() : q.pop();
+        order.push(cur);
+        if(cur === target){ found = true; break; }
+        var nb = neighbors(g, cur, diag);
+        for(k=0;k<nb.length;k++){ var ni = nb[k].i;
+          if(!seen.has(ni)){ seen.add(ni); parent.set(ni, cur); q.push(ni); } }
+      }
+    } else {
+      var gscore = new Map(); gscore.set(start, 0);
+      var heap = new Heap(), seq = 0, closed = new Set();
+      var h0 = heuristic(g, start, target, diag);
+      heap.push({ i:start, key: algo === "greedy" ? h0 : (algo === "astar" ? h0 : 0), seq:seq++ });
+      while(heap.size()){
+        var node = heap.pop(), c2 = node.i;
+        if(closed.has(c2)) continue;
+        closed.add(c2); order.push(c2);
+        if(c2 === target){ found = true; break; }
+        var gc = gscore.get(c2), nb2 = neighbors(g, c2, diag);
+        for(k=0;k<nb2.length;k++){
+          var m = nb2[k].i; if(closed.has(m)) continue;
+          var step = weightAt(g,m) * (nb2[k].diag ? SQRT2 : 1);
+          var ng = gc + step;
+          if(!gscore.has(m) || ng < gscore.get(m) - 1e-9){
+            gscore.set(m, ng); parent.set(m, c2);
+            var h = algo === "dijkstra" ? 0 : heuristic(g, m, target, diag);
+            heap.push({ i:m, key: algo === "greedy" ? h : ng + h, seq:seq++ });
+          }
+        }
+      }
+    }
+
+    var path = [];
+    if(found){ var cur3 = target; path.push(cur3);
+      while(cur3 !== start){ cur3 = parent.get(cur3); path.push(cur3); } path.reverse(); }
+    var cost = 0;
+    for(var pi=1; pi<path.length; pi++){
+      var a = rcOf(g, path[pi-1]), b = rcOf(g, path[pi]);
+      var dm = a.r !== b.r && a.c !== b.c;
+      cost += weightAt(g, path[pi]) * (dm ? SQRT2 : 1);
+    }
+    return { found:found, orderI:order, pathI:path, cost:cost };
+  }
+
+  // Public solve: same result but coordinates as {r,c} objects + friendly stats.
+  function solve(g, algo, opts){
+    var r = solveRaw(g, algo, opts);
+    var map = function(i){ return rcOf(g,i); };
+    return {
+      found: r.found,
+      path: r.pathI.map(map),
+      order: r.orderI.map(map),
+      cost: Math.round(r.cost * 1000) / 1000,
+      visitedCount: r.orderI.length,
+      pathLength: r.pathI.length
+    };
+  }
+
+  /* ---------- seeded RNG + maze generators ---------- */
+  function seededRng(seed){
+    var s = seed >>> 0;
+    return function(){
+      s = (s + 0x6D2B79F5) | 0;
+      var t = Math.imul(s ^ (s >>> 15), 1 | s);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  function randInt(rng, n){ return Math.floor(rng() * n); }
+  function shuffle(arr, rng){ for(var i=arr.length-1;i>0;i--){ var j=randInt(rng,i+1); var t=arr[i]; arr[i]=arr[j]; arr[j]=t; } return arr; }
+
+  // Recursive division with coordinate parity: walls fall on ODD coordinates and
+  // passages on EVEN ones, so a perpendicular child wall can never seal a parent's
+  // passage. Result: every open cell stays connected (guaranteed solvable), and the
+  // outer border stays open so corner cells are valid rooms.
+  function pick(rng, lo, hi, parity){          // random v in [lo,hi] with (v&1)===parity, or -1
+    var a = []; for(var v=lo; v<=hi; v++){ if((v & 1) === parity) a.push(v); }
+    return a.length ? a[randInt(rng, a.length)] : -1;
+  }
+  function genDivision(g, rng){
+    g.walls.clear(); g.weights.clear();
+    var stack = [[0, 0, g.cols, g.rows]];
+    while(stack.length){
+      var ch = stack.pop(), x=ch[0], y=ch[1], w=ch[2], h=ch[3];
+      var wy = pick(rng, y+1, y+h-2, 1);       // interior odd row (or -1 if none)
+      var wx = pick(rng, x+1, x+w-2, 1);       // interior odd col (or -1 if none)
+      var canH = wy >= 0, canV = wx >= 0;
+      if(!canH && !canV) continue;
+      var horiz = (canH && canV) ? (h > w ? true : (w > h ? false : rng() < 0.5)) : canH;
+      if(horiz){
+        var px = pick(rng, x, x+w-1, 0);        // hole on an even column
+        for(var cx=x; cx<x+w; cx++){ if(cx !== px) g.walls.add(idOf(g, wy, cx)); }
+        stack.push([x, y, w, wy - y]);
+        stack.push([x, wy+1, w, y + h - wy - 1]);
+      } else {
+        var py = pick(rng, y, y+h-1, 0);        // hole on an even row
+        for(var cy=y; cy<y+h; cy++){ if(cy !== py) g.walls.add(idOf(g, cy, wx)); }
+        stack.push([x, y, wx - x, h]);
+        stack.push([wx+1, y, x + w - wx - 1, h]);
+      }
+    }
+  }
+
+  // Recursive backtracker on the room-grid (even coords are rooms).
+  function genBacktracker(g, rng){
+    g.walls.clear(); g.weights.clear();
+    var R=g.rows, C=g.cols, r, c;
+    for(r=0;r<R;r++) for(c=0;c<C;c++) g.walls.add(idOf(g,r,c));
+    function open(rr,cc){ g.walls.delete(idOf(g,rr,cc)); }
+    var stack=[[0,0]]; open(0,0);
+    var dirs=[[-2,0],[2,0],[0,-2],[0,2]];
+    while(stack.length){
+      var top=stack[stack.length-1], cr=top[0], cc0=top[1];
+      var ds=shuffle(dirs.slice(), rng), moved=false;
+      for(var k=0;k<4;k++){
+        var nr=cr+ds[k][0], nc=cc0+ds[k][1];
+        if(nr<0||nc<0||nr>=R||nc>=C) continue;
+        if(!g.walls.has(idOf(g,nr,nc))) continue;
+        open((cr+nr)>>1,(cc0+nc)>>1); open(nr,nc);
+        stack.push([nr,nc]); moved=true; break;
+      }
+      if(!moved) stack.pop();
+    }
+  }
+
+  function genRandom(g, rng, p){
+    g.walls.clear(); g.weights.clear();
+    p = p == null ? 0.30 : p;
+    for(var i=0;i<g.rows*g.cols;i++){ if(rng() < p) g.walls.add(i); }
+  }
+
+  // Guarantee solvable by carving an L-path start->target if needed.
+  function ensureSolvable(g){
+    g.walls.delete(g.start); g.walls.delete(g.target);
+    if(solveRaw(g, "bfs", {}).found) return;
+    var s = rcOf(g,g.start), t = rcOf(g,g.target), c, r;
+    var lo = Math.min(s.c,t.c), hi = Math.max(s.c,t.c);
+    for(c=lo;c<=hi;c++) g.walls.delete(idOf(g,s.r,c));
+    lo = Math.min(s.r,t.r); hi = Math.max(s.r,t.r);
+    for(r=lo;r<=hi;r++) g.walls.delete(idOf(g,r,t.c));
+  }
+
+  /* =========================================================
+     LIVE STATE + RENDERING
+     ========================================================= */
+  var DEF_ROWS = 18, DEF_COLS = 30;
+  var st = {
+    rows: DEF_ROWS, cols: DEF_COLS,
+    walls: new Set(), weights: new Map(),
+    start: idOf({cols:DEF_COLS}, 8, 4),
+    target: idOf({cols:DEF_COLS}, 8, 25),
+    algo: "astar", diagonal: false, instant: false, speed: 62, tool: "wall", weightVal: 5,
+    solved: false, result: null
+  };
+  function gridView(){ return { rows:st.rows, cols:st.cols, walls:st.walls, weights:st.weights, start:st.start, target:st.target }; }
+
+  var canvas = $("grid"), ctx = canvas.getContext("2d");
+  var cs = 30, dpr = 1;               // cell size (css px), device pixel ratio
+  var css = getComputedStyle(document.documentElement);
+  function col(name){ return css.getPropertyValue(name).trim(); }
+  function refreshPalette(){ css = getComputedStyle(document.documentElement); }
+
+  function layout(){
+    var wrap = canvas.parentElement.getBoundingClientRect();
+    var avail = Math.max(240, wrap.width);
+    cs = Math.max(12, Math.floor(avail / st.cols));
+    var w = cs * st.cols, h = cs * st.rows;
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.style.width = w + "px"; canvas.style.height = h + "px";
+    canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  // exploration-order color ramp: cyan -> blue -> violet
+  function orderColor(t){
+    var hue = 178 + t * 98;                 // 178 -> 276
+    return "hsl(" + hue.toFixed(1) + " 66% " + (isDark() ? 56 : 52) + "%)";
+  }
+  function isDark(){
+    var d = document.documentElement.getAttribute("data-theme");
+    if(d === "dark") return true; if(d === "light") return false;
+    return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+  }
+
+  function draw(revealCount, pathCount){
+    var g = gridView();
+    var cGrid = col("--c-grid"), cCell = col("--c-cell"), cWall = col("--c-wall"),
+        cWallB = col("--c-wall-b"), cW = col("--c-weight"),
+        cStart = col("--c-start"), cTarget = col("--c-target"),
+        cPath = col("--c-path"), cPathB = col("--c-path-b");
+    var W = cs * st.cols, H = cs * st.rows, r, c, i;
+    ctx.clearRect(0,0,W,H);
+    ctx.fillStyle = cGrid; ctx.fillRect(0,0,W,H);       // grid lines = gaps behind cells
+
+    // base cells
+    for(r=0;r<st.rows;r++) for(c=0;c<st.cols;c++){
+      i = idOf(g,r,c);
+      var x = c*cs, y = r*cs;
+      ctx.fillStyle = cCell;
+      ctx.fillRect(x+1, y+1, cs-1, cs-1);
+      var wv = st.weights.get(i);
+      if(wv && !st.walls.has(i)){
+        ctx.fillStyle = withAlpha(cW, 0.30 + Math.min(wv,9)*0.05);
+        ctx.fillRect(x+1, y+1, cs-1, cs-1);
+        if(cs >= 20){ ctx.fillStyle = withAlpha(cW, 0.95); ctx.font = "bold " + Math.round(cs*0.42) + "px " + col("--mono");
+          ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText(String(wv), x+cs/2, y+cs/2+0.5); }
+      }
+    }
+
+    // visited (exploration order)
+    if(st.result && revealCount > 0){
+      var ord = st.result.orderI, n = ord.length, lim = Math.min(revealCount, n);
+      for(var k=0;k<lim;k++){
+        i = ord[k];
+        if(i === st.start || i === st.target) continue;
+        var p = rcOf(g,i);
+        ctx.fillStyle = withAlpha(orderColor(n>1 ? k/(n-1) : 0), 0.80);
+        ctx.fillRect(p.c*cs+1, p.r*cs+1, cs-1, cs-1);
+      }
+    }
+
+    // walls (drawn over visited so re-solve looks clean)
+    for(r=0;r<st.rows;r++) for(c=0;c<st.cols;c++){
+      i = idOf(g,r,c);
+      if(!st.walls.has(i)) continue;
+      var wx = c*cs, wy = r*cs;
+      ctx.fillStyle = cWall; ctx.fillRect(wx+1, wy+1, cs-1, cs-1);
+      ctx.fillStyle = withAlpha(cWallB, 0.9); ctx.fillRect(wx+1, wy+1, cs-1, 2);
+    }
+
+    // path
+    if(st.result && st.result.found && pathCount > 0){
+      var pth = st.result.pathI, pn = Math.min(pathCount, pth.length), q;
+      for(q=0;q<pn;q++){
+        i = pth[q]; if(i===st.start||i===st.target) continue;
+        var pp = rcOf(g,i);
+        ctx.fillStyle = cPath; ctx.fillRect(pp.c*cs+1, pp.r*cs+1, cs-1, cs-1);
+      }
+      if(pn >= 2){
+        ctx.strokeStyle = cPathB; ctx.lineWidth = Math.max(2, cs*0.17);
+        ctx.lineJoin = "round"; ctx.lineCap = "round"; ctx.beginPath();
+        for(q=0;q<pn;q++){ var c2=rcOf(g,pth[q]); var X=c2.c*cs+cs/2, Y=c2.r*cs+cs/2;
+          if(q===0) ctx.moveTo(X,Y); else ctx.lineTo(X,Y); }
+        ctx.stroke();
+      }
+    }
+
+    // endpoints
+    drawNode(st.start, cStart, "start");
+    drawNode(st.target, cTarget, "target");
+  }
+
+  function drawNode(i, color, kind){
+    var p = rcOf(gridView(), i), x = p.c*cs, y = p.r*cs, cx = x+cs/2, cy = y+cs/2, rad = cs*0.34;
+    ctx.fillStyle = color; ctx.fillRect(x+1, y+1, cs-1, cs-1);
+    ctx.fillStyle = "rgba(255,255,255,.92)";
+    if(kind === "start"){
+      ctx.beginPath();
+      ctx.moveTo(cx - rad*0.7, cy - rad); ctx.lineTo(cx + rad, cy); ctx.lineTo(cx - rad*0.7, cy + rad);
+      ctx.closePath(); ctx.fill();
+    } else {
+      ctx.beginPath(); ctx.arc(cx, cy, rad, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = color; ctx.beginPath(); ctx.arc(cx, cy, rad*0.52, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = "rgba(255,255,255,.92)"; ctx.beginPath(); ctx.arc(cx, cy, rad*0.22, 0, Math.PI*2); ctx.fill();
+    }
+  }
+
+  function withAlpha(c, a){
+    c = c.trim();
+    if(c.charAt(0) === "#"){
+      var n = c.length === 4
+        ? [parseInt(c[1]+c[1],16), parseInt(c[2]+c[2],16), parseInt(c[3]+c[3],16)]
+        : [parseInt(c.slice(1,3),16), parseInt(c.slice(3,5),16), parseInt(c.slice(5,7),16)];
+      return "rgba(" + n[0] + "," + n[1] + "," + n[2] + "," + a + ")";
+    }
+    if(c.indexOf("hsl(") === 0) return c.replace("hsl(", "hsla(").replace(")", " / " + a + ")");
+    return c;
+  }
+
+  /* =========================================================
+     ANIMATION + RUN
+     ========================================================= */
+  var anim = { raf:0, running:false };
+  function cancelAnim(){ if(anim.raf){ cancelAnimationFrame(anim.raf); anim.raf = 0; } anim.running = false; }
+
+  function setStatus(kind, text){
+    var stage = $("stage"); stage.setAttribute("data-status", kind);
+    $("stat-status-v").textContent = text;
+    var sc = $("stat-status");
+    sc.classList.toggle("good", kind === "done");
+    sc.classList.toggle("bad", kind === "nopath");
+  }
+  function updateStats(){
+    $("stat-algo").textContent = algoLabel(st.algo);
+    var res = st.result;
+    if(!res){ $("stat-visited").textContent = "—"; $("stat-path").textContent = "—"; $("stat-cost").textContent = "—"; return; }
+    $("stat-visited").textContent = res.visitedCount;
+    if(res.found){
+      $("stat-path").innerHTML = res.pathLength + " <small>格</small>";
+      $("stat-cost").textContent = fmtCost(res.cost);
+    } else { $("stat-path").textContent = "—"; $("stat-cost").textContent = "—"; }
+  }
+  function fmtCost(v){ return Math.abs(v - Math.round(v)) < 1e-6 ? String(Math.round(v)) : v.toFixed(2); }
+  function algoLabel(a){ return { astar:"A*", dijkstra:"Dijkstra", bfs:"BFS", greedy:"贪心", dfs:"DFS" }[a] || a; }
+
+  function compute(){
+    var raw = solveRaw(gridView(), st.algo, { diagonal: st.diagonal });
+    st.result = {
+      found: raw.found, orderI: raw.orderI, pathI: raw.pathI,
+      cost: Math.round(raw.cost*1000)/1000,
+      visitedCount: raw.orderI.length, pathLength: raw.pathI.length
+    };
+    st.solved = true;
+    return st.result;
+  }
+
+  function runInstant(){
+    cancelAnim(); compute(); updateStats();
+    setStatus(st.result.found ? "done" : "nopath", st.result.found ? "已找到最短路径" : "无法到达终点");
+    draw(st.result.orderI.length, st.result.pathI.length);
+    saveCurrent();
+  }
+
+  function runAnimated(){
+    cancelAnim(); compute(); updateStats();
+    var res = st.result, order = res.orderI, path = res.pathI;
+    $("run").disabled = true; $("stop").disabled = false;
+    setStatus("running", "搜索中…");
+    anim.running = true;
+    var visited = 0, pathN = 0, phase = 0;                 // 0 = explore, 1 = trace path
+    var perFrame = Math.max(1, Math.round(1 + Math.pow(st.speed/100, 2) * (order.length/28 + 6)));
+    function frame(){
+      if(!anim.running) return;
+      if(phase === 0){
+        visited = Math.min(order.length, visited + perFrame);
+        draw(visited, 0);
+        if(visited >= order.length){ phase = 1; }
+        anim.raf = requestAnimationFrame(frame);
+      } else {
+        if(!res.found){ finishAnim(); return; }
+        pathN = Math.min(path.length, pathN + Math.max(1, Math.round(perFrame/2)));
+        draw(order.length, pathN);
+        if(pathN >= path.length){ finishAnim(); return; }
+        anim.raf = requestAnimationFrame(frame);
+      }
+    }
+    function finishAnim(){
+      cancelAnim();
+      draw(order.length, res.found ? path.length : 0);
+      $("run").disabled = false; $("stop").disabled = true;
+      setStatus(res.found ? "done" : "nopath", res.found ? "已找到最短路径" : "无法到达终点");
+      saveCurrent();
+    }
+    anim.raf = requestAnimationFrame(frame);
+  }
+
+  function run(){
+    if(st.instant) runInstant(); else runAnimated();
+  }
+  // Re-solve without animation, used live while dragging endpoints / editing.
+  function liveResolve(){
+    if(!st.solved) { draw(0,0); return; }
+    cancelAnim(); compute(); updateStats();
+    setStatus(st.result.found ? "done" : "nopath", st.result.found ? "已找到最短路径" : "无法到达终点");
+    draw(st.result.orderI.length, st.result.pathI.length);
+    saveCurrent();
+  }
+
+  function clearPath(){
+    cancelAnim(); st.result = null; st.solved = false;
+    $("run").disabled = false; $("stop").disabled = true;
+    updateStats(); setStatus("idle", "就绪"); draw(0,0); saveCurrent();
+  }
+
+  /* =========================================================
+     POINTER INTERACTION (paint walls / weights, drag endpoints)
+     ========================================================= */
+  var drag = { active:false, mode:null, last:-1 };  // mode: 'paint' | 'start' | 'target'
+  function cellFromEvent(ev){
+    var rect = canvas.getBoundingClientRect();
+    var x = ev.clientX - rect.left, y = ev.clientY - rect.top;
+    var c = Math.floor(x / cs), r = Math.floor(y / cs);
+    if(r<0||c<0||r>=st.rows||c>=st.cols) return -1;
+    return idOf(gridView(), r, c);
+  }
+  function applyPaint(i){
+    if(i < 0 || i === st.start || i === st.target) return false;
+    var changed = false;
+    if(st.tool === "wall"){
+      if(!st.walls.has(i)){ st.walls.add(i); st.weights.delete(i); changed = true; }
+    } else if(st.tool === "weight"){
+      if(st.walls.has(i)) st.walls.delete(i);
+      if(st.weights.get(i) !== st.weightVal){ st.weights.set(i, st.weightVal); changed = true; }
+    } else { // erase
+      if(st.walls.has(i)){ st.walls.delete(i); changed = true; }
+      if(st.weights.has(i)){ st.weights.delete(i); changed = true; }
+    }
+    return changed;
+  }
+  function onDown(ev){
+    var i = cellFromEvent(ev); if(i < 0) return;
+    canvas.setPointerCapture && canvas.setPointerCapture(ev.pointerId);
+    if(i === st.start){ drag.active = true; drag.mode = "start"; $("stage").classList.add("draggingnode"); return; }
+    if(i === st.target){ drag.active = true; drag.mode = "target"; $("stage").classList.add("draggingnode"); return; }
+    drag.active = true; drag.mode = "paint"; drag.last = i;
+    if(applyPaint(i)) liveResolve(); else draw(st.solved?st.result.orderI.length:0, st.solved&&st.result.found?st.result.pathI.length:0);
+    ev.preventDefault();
+  }
+  function onMove(ev){
+    if(!drag.active) return;
+    var i = cellFromEvent(ev); if(i < 0) return;
+    if(drag.mode === "paint"){
+      if(i === drag.last) return; drag.last = i;
+      if(applyPaint(i)) liveResolve();
+    } else {
+      // moving an endpoint
+      if(st.walls.has(i)) return;
+      if(drag.mode === "start"){ if(i === st.target) return; st.start = i; }
+      else { if(i === st.start) return; st.target = i; }
+      liveResolve();
+    }
+    ev.preventDefault();
+  }
+  function onUp(ev){
+    if(drag.active){ drag.active = false; drag.mode = null; $("stage").classList.remove("draggingnode"); saveCurrent(); }
+  }
+
+  /* =========================================================
+     PERSISTENCE
+     ========================================================= */
+  function serialize(){
+    return { rows:st.rows, cols:st.cols, start:st.start, target:st.target,
+      diagonal:st.diagonal, algo:st.algo,
+      walls:Array.from(st.walls),
+      weights:Array.from(st.weights.entries()) };
+  }
+  function deserialize(o){
+    if(!o || !o.rows) return false;
+    st.rows = o.rows; st.cols = o.cols;
+    st.walls = new Set(o.walls || []);
+    st.weights = new Map(o.weights || []);
+    st.start = typeof o.start === "number" ? o.start : st.start;
+    st.target = typeof o.target === "number" ? o.target : st.target;
+    if(typeof o.diagonal === "boolean"){ st.diagonal = o.diagonal; $("diag").checked = o.diagonal; }
+    if(o.algo){ st.algo = o.algo; $("algo").value = o.algo; }
+    return true;
+  }
+  function saveCurrent(){ try{ localStorage.setItem(LS.current, JSON.stringify(serialize())); }catch(e){} }
+  function loadCurrent(){ try{ var o = JSON.parse(localStorage.getItem(LS.current)); return deserialize(o); }catch(e){ return false; } }
+
+  function getGrids(){ try{ return JSON.parse(localStorage.getItem(LS.grids)) || []; }catch(e){ return []; } }
+  function setGrids(a){ try{ localStorage.setItem(LS.grids, JSON.stringify(a)); }catch(e){} }
+  function saveNamed(name){
+    name = (name || "").trim(); if(!name){ toast("请输入名字"); return; }
+    var grids = getGrids(), snap = serialize(), found = false;
+    for(var i=0;i<grids.length;i++){ if(grids[i].name === name){ grids[i].grid = snap; found = true; break; } }
+    if(!found) grids.unshift({ name:name, grid:snap });
+    setGrids(grids); renderSaved(); toast(found ? "已更新「"+name+"」" : "已保存「"+name+"」");
+  }
+  function loadNamed(name){
+    var grids = getGrids();
+    for(var i=0;i<grids.length;i++){ if(grids[i].name === name){
+      deserialize(grids[i].grid); clearPath(); layout(); draw(0,0); toast("已载入「"+name+"」"); return true; } }
+    return false;
+  }
+  function delNamed(name){
+    var grids = getGrids().filter(function(x){ return x.name !== name; });
+    setGrids(grids); renderSaved(); toast("已删除「"+name+"」");
+  }
+  function renderSaved(){
+    var box = $("saved-list"), grids = getGrids();
+    box.innerHTML = "";
+    if(!grids.length){ box.innerHTML = '<div class="empty">还没有保存的网格。搭一个迷宫，起个名字保存下来吧。</div>'; return; }
+    grids.forEach(function(item){
+      var wallN = (item.grid.walls||[]).length;
+      var row = document.createElement("div"); row.className = "saved-item";
+      var nm = document.createElement("div"); nm.className = "nm"; nm.textContent = item.name;
+      var meta = document.createElement("div"); meta.className = "meta";
+      meta.textContent = item.grid.rows + "×" + item.grid.cols + " · " + wallN + "墙";
+      var load = document.createElement("button"); load.className = "mini"; load.textContent = "载入";
+      load.addEventListener("click", function(){ loadNamed(item.name); });
+      var del = document.createElement("button"); del.className = "mini del"; del.textContent = "删除";
+      del.addEventListener("click", function(){ delNamed(item.name); });
+      row.appendChild(nm); row.appendChild(meta); row.appendChild(load); row.appendChild(del);
+      box.appendChild(row);
+    });
+  }
+
+  /* =========================================================
+     MAZES + RESET
+     ========================================================= */
+  function centerEndpoints(){
+    var r = Math.floor(st.rows/2);
+    st.start = idOf(gridView(), r, Math.max(1, Math.floor(st.cols*0.13)));
+    st.target = idOf(gridView(), r, Math.min(st.cols-2, Math.ceil(st.cols*0.87)));
+  }
+  var mazeSeed = 1;
+  function generate(type, seed){
+    var g = gridView();
+    var rng = seededRng(seed == null ? (mazeSeed = (mazeSeed*1103515245 + 12345) & 0x7fffffff) : seed);
+    if(type === "backtracker") genBacktracker(g, rng);
+    else if(type === "random") genRandom(g, rng, 0.30);
+    else genDivision(g, rng);
+    st.walls = g.walls; st.weights = g.weights;
+    // keep endpoints valid + reachable
+    st.walls.delete(st.start); st.walls.delete(st.target);
+    ensureSolvable(g);
+    clearPath(); layout(); draw(0,0);
+  }
+  function clearWalls(){ st.walls.clear(); st.weights.clear(); clearPath(); }
+  function resetAll(){ st.walls.clear(); st.weights.clear(); centerEndpoints(); clearPath(); layout(); draw(0,0); }
+
+  /* =========================================================
+     WIRING
+     ========================================================= */
+  $("algo").addEventListener("change", function(){ st.algo = this.value; updateStats(); if(st.solved) liveResolve(); });
+  $("diag").addEventListener("change", function(){ st.diagonal = this.checked; savePrefs(); if(st.solved) liveResolve(); });
+  $("instant").addEventListener("change", function(){ st.instant = this.checked; savePrefs(); });
+  $("speed").addEventListener("input", function(){ st.speed = Number(this.value); savePrefs(); });
+  Array.prototype.forEach.call(document.querySelectorAll("#tool button"), function(btn){
+    btn.addEventListener("click", function(){
+      st.tool = btn.getAttribute("data-tool");
+      Array.prototype.forEach.call(document.querySelectorAll("#tool button"), function(b){
+        b.setAttribute("aria-pressed", b === btn ? "true" : "false"); });
+    });
+  });
+  $("run").addEventListener("click", run);
+  $("stop").addEventListener("click", function(){ cancelAnim(); $("run").disabled=false; $("stop").disabled=true;
+    if(st.result){ draw(st.result.orderI.length, st.result.found?st.result.pathI.length:0);
+      setStatus(st.result.found?"done":"nopath", st.result.found?"已找到最短路径":"无法到达终点"); } });
+  $("gen").addEventListener("click", function(){ generate($("maze").value); });
+  $("clear-path").addEventListener("click", clearPath);
+  $("clear-walls").addEventListener("click", clearWalls);
+  $("reset").addEventListener("click", resetAll);
+  $("save").addEventListener("click", function(){ saveNamed($("save-name").value); $("save-name").value=""; });
+  $("save-name").addEventListener("keydown", function(e){ if(e.key==="Enter"){ saveNamed($("save-name").value); $("save-name").value=""; } });
+
+  canvas.addEventListener("pointerdown", onDown);
+  canvas.addEventListener("pointermove", onMove);
+  window.addEventListener("pointerup", onUp);
+  canvas.addEventListener("contextmenu", function(e){ e.preventDefault(); });
+
+  var rz;
+  window.addEventListener("resize", function(){ clearTimeout(rz); rz = setTimeout(function(){
+    layout(); draw(st.result?st.result.orderI.length:0, st.result&&st.result.found?st.result.pathI.length:0); }, 90); });
+
+  function savePrefs(){ try{ localStorage.setItem(LS.prefs, JSON.stringify({ diagonal:st.diagonal, instant:st.instant, speed:st.speed, algo:st.algo })); }catch(e){} }
+  function loadPrefs(){ try{ var p = JSON.parse(localStorage.getItem(LS.prefs)); if(!p) return;
+    if(typeof p.instant==="boolean"){ st.instant=p.instant; $("instant").checked=p.instant; }
+    if(typeof p.speed==="number"){ st.speed=p.speed; $("speed").value=p.speed; }
+  }catch(e){} }
+
+  /* theme */
+  function initTheme(){
+    var saved=null; try{ saved=localStorage.getItem(LS.theme); }catch(e){}
+    if(saved==="light"||saved==="dark") document.documentElement.setAttribute("data-theme",saved);
+    $("theme-toggle").addEventListener("click", function(){
+      var cur=document.documentElement.getAttribute("data-theme");
+      var dark = cur ? cur==="dark" : (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
+      var next = dark ? "light" : "dark";
+      document.documentElement.setAttribute("data-theme", next);
+      try{ localStorage.setItem(LS.theme, next); }catch(e){}
+      refreshPalette();
+      draw(st.result?st.result.orderI.length:0, st.result&&st.result.found?st.result.pathI.length:0);
+    });
+  }
+
+  var toastEl=$("toast"), toastTimer=null;
+  function toast(msg){ toastEl.textContent=msg; toastEl.classList.add("show");
+    if(toastTimer) clearTimeout(toastTimer); toastTimer=setTimeout(function(){ toastEl.classList.remove("show"); },1500); }
+
+  /* ---------- boot ---------- */
+  initTheme();
+  loadPrefs();
+  $("algo").value = st.algo;
+  if(!loadCurrent()){ centerEndpoints(); generate("division", 20240707); }
+  layout();
+  updateStats(); setStatus("idle","就绪");
+  draw(0,0);
+  renderSaved();
+
+  /* ---------- test hook: pure engine + live helpers ---------- */
+  window.__pf = {
+    // pure engine
+    makeGrid: makeGrid, fromAscii: fromAscii, solve: solve, solveRaw: solveRaw,
+    idOf: idOf, rcOf: rcOf, heuristic: heuristic, neighbors: neighbors,
+    seededRng: seededRng, genDivision: genDivision, genBacktracker: genBacktracker,
+    genRandom: genRandom, ensureSolvable: ensureSolvable,
+    // live UI
+    ui: {
+      cols: function(){ return st.cols; },
+      rows: function(){ return st.rows; },
+      cellSize: function(){ return cs; },
+      state: function(){ return JSON.parse(JSON.stringify(serialize())); },
+      wallCount: function(){ return st.walls.size; },
+      isWall: function(r,c){ return st.walls.has(idOf(gridView(),r,c)); },
+      weightAt: function(r,c){ return st.weights.get(idOf(gridView(),r,c)) || 1; },
+      startRC: function(){ return rcOf(gridView(), st.start); },
+      targetRC: function(){ return rcOf(gridView(), st.target); },
+      setWall: function(r,c,on){ var i=idOf(gridView(),r,c); if(i===st.start||i===st.target) return;
+        if(on){ st.walls.add(i); st.weights.delete(i); } else st.walls.delete(i); if(st.solved) liveResolve(); else draw(0,0); },
+      setWeight: function(r,c,w){ var i=idOf(gridView(),r,c); if(i===st.start||i===st.target) return;
+        st.walls.delete(i); if(w&&w>1) st.weights.set(i,w); else st.weights.delete(i); if(st.solved) liveResolve(); else draw(0,0); },
+      setStart: function(r,c){ var i=idOf(gridView(),r,c); if(st.walls.has(i)||i===st.target) return; st.start=i; if(st.solved) liveResolve(); else draw(0,0); },
+      setTarget: function(r,c){ var i=idOf(gridView(),r,c); if(st.walls.has(i)||i===st.start) return; st.target=i; if(st.solved) liveResolve(); else draw(0,0); },
+      selectAlgo: function(a){ st.algo=a; $("algo").value=a; updateStats(); if(st.solved) liveResolve(); },
+      setDiagonal: function(b){ st.diagonal=!!b; $("diag").checked=!!b; if(st.solved) liveResolve(); },
+      setInstant: function(b){ st.instant=!!b; $("instant").checked=!!b; },
+      setTool: function(t){ st.tool=t; Array.prototype.forEach.call(document.querySelectorAll("#tool button"),
+        function(b){ b.setAttribute("aria-pressed", b.getAttribute("data-tool")===t ? "true":"false"); }); },
+      run: run, runInstant: runInstant, clearPath: clearPath, clearWalls: clearWalls, reset: resetAll,
+      generate: function(type,seed){ generate(type, seed==null?12345:seed); },
+      result: function(){ return st.result ? JSON.parse(JSON.stringify({ found:st.result.found, visitedCount:st.result.visitedCount, pathLength:st.result.pathLength, cost:st.result.cost })) : null; },
+      status: function(){ return $("stage").getAttribute("data-status"); },
+      statValues: function(){ return { algo:$("stat-algo").textContent, visited:$("stat-visited").textContent,
+        path:$("stat-path").textContent, cost:$("stat-cost").textContent, status:$("stat-status-v").textContent }; },
+      pointerAt: function(r,c){ var rect=canvas.getBoundingClientRect(); return { x: rect.left + c*cs + cs/2, y: rect.top + r*cs + cs/2 }; },
+      saveNamed: saveNamed, loadNamed: loadNamed, savedNames: function(){ return getGrids().map(function(x){return x.name;}); }
+    }
+  };
+})();
+</script>
+</body>
+</html>
