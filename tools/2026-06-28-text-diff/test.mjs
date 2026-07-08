@@ -14,6 +14,17 @@ export default async function ({ page, toolURL, screenshot, assert }) {
     await B.fill(b);
     await page.waitForTimeout(230); // debounced recompute is 130ms
   };
+  // Poll until a stat cell settles on the expected value, rather than reading a
+  // fixed time after a debounced recompute (which races under load). If it never
+  // settles the follow-up assert reports the actual value. (lesson 2026-07-06)
+  const waitStat = async (sel, val) => {
+    try {
+      await page.waitForFunction(
+        (a) => ((document.querySelector(a.s) || {}).textContent || '').trim() === a.v,
+        { s: sel, v: val }, { timeout: 3000 }
+      );
+    } catch (e) { /* fall through to the descriptive assert below */ }
+  };
 
   // ---- 1. core line diff: counts + similarity ----
   // A has 3 lines, B has 4; only "shared line" is common.
@@ -21,6 +32,7 @@ export default async function ({ page, toolURL, screenshot, assert }) {
     'the quick brown fox\nshared line\nold line two',
     'the slow brown fox\nshared line\nnew line two\nextra tail'
   );
+  await waitStat('#stat-add', '3');
   assert((await stat('#stat-add')) === '3', `additions = 3 (got "${await stat('#stat-add')}")`);
   assert((await stat('#stat-del')) === '2', `deletions = 2 (got "${await stat('#stat-del')}")`);
   // line-level LCS = 1 of max(3,4)=4 -> 25%
@@ -54,6 +66,7 @@ export default async function ({ page, toolURL, screenshot, assert }) {
 
   // ---- 5. identical inputs -> "完全相同" + 100% ----
   await setAB('alpha\nbeta\ngamma', 'alpha\nbeta\ngamma');
+  await waitStat('#stat-sim', '100%');
   assert((await stat('#stat-add')) === '0' && (await stat('#stat-del')) === '0',
     'identical inputs report 0 add / 0 del');
   assert((await stat('#stat-sim')) === '100%', 'identical inputs are 100% similar');
@@ -62,10 +75,11 @@ export default async function ({ page, toolURL, screenshot, assert }) {
 
   // ---- 6. ignore-case option flips a diff into equal ----
   await setAB('Hello World', 'hello world');
+  await waitStat('#stat-add', '1');
   assert((await stat('#stat-add')) === '1' && (await stat('#stat-del')) === '1',
     'case-sensitive: 1 add / 1 del before ignoring case');
   await page.check('#opt-case');
-  await page.waitForTimeout(150);
+  await waitStat('#stat-add', '0');
   assert((await stat('#stat-add')) === '0' && (await stat('#stat-del')) === '0',
     'ignore-case collapses the diff to 0 changes');
   assert(/相同/.test((await page.locator('#diff-out').textContent()) || ''),
@@ -75,16 +89,20 @@ export default async function ({ page, toolURL, screenshot, assert }) {
 
   // ---- 7. swap A <-> B inverts add/del ----
   await setAB('one\ntwo', 'one\ntwo\nthree');
+  await waitStat('#stat-add', '1');
   assert((await stat('#stat-add')) === '1' && (await stat('#stat-del')) === '0',
     'before swap: 1 add / 0 del');
   await page.click('#btn-swap');
-  await page.waitForTimeout(150);
+  await waitStat('#stat-del', '1');
   assert((await stat('#stat-add')) === '0' && (await stat('#stat-del')) === '1',
     'after swap: 0 add / 1 del');
 
   // ---- 8. sample button populates a real diff; settle for the thumbnail ----
   await page.click('#btn-sample');
-  await page.waitForTimeout(180);
+  await page.waitForFunction(() => {
+    const n = (s) => Number(((document.querySelector(s) || {}).textContent || '0').trim());
+    return n('#stat-add') > 0 && n('#stat-del') > 0;
+  }, null, { timeout: 3000 }).catch(() => {});
   const sAdd = Number(await stat('#stat-add'));
   const sDel = Number(await stat('#stat-del'));
   assert(sAdd > 0 && sDel > 0, `sample produces both additions and deletions (got +${sAdd}/-${sDel})`);

@@ -1,0 +1,937 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>账单分摊 · Split &amp; Settle</title>
+<style>
+  :root{
+    --bg:#f5f6fb; --panel:#ffffff; --panel-2:#f1f3f9; --ink:#1a1d29; --ink-soft:#5b6172;
+    --line:#e3e6ef; --brand:#4f46e5; --brand-ink:#ffffff; --accent:#0d9488;
+    --ok:#12a150; --ok-soft:#e7f6ec; --warn:#c2410c; --danger:#dc2626; --danger-soft:#fbeaea;
+    --pos:#0e7a43; --pos-bar:#22c55e; --neg:#c1364a; --neg-bar:#f43f5e;
+    --shadow:0 1px 2px rgba(20,24,40,.06),0 8px 24px rgba(20,24,40,.06);
+    --radius:14px;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#0e1017; --panel:#171a24; --panel-2:#1f2330; --ink:#e7e9f1; --ink-soft:#9aa0b4;
+      --line:#2a2f3d; --brand:#7c7cf0; --brand-ink:#0b0d14; --accent:#2dd4bf;
+      --ok:#4ade80; --ok-soft:#12331f; --warn:#fb923c; --danger:#f87171; --danger-soft:#3a1d1d;
+      --pos:#4ade80; --pos-bar:#22c55e; --neg:#fb7185; --neg-bar:#f43f5e;
+      --shadow:0 1px 2px rgba(0,0,0,.3),0 10px 30px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="light"]{
+    --bg:#f5f6fb; --panel:#ffffff; --panel-2:#f1f3f9; --ink:#1a1d29; --ink-soft:#5b6172;
+    --line:#e3e6ef; --brand:#4f46e5; --brand-ink:#ffffff; --accent:#0d9488;
+    --ok:#12a150; --ok-soft:#e7f6ec; --warn:#c2410c; --danger:#dc2626; --danger-soft:#fbeaea;
+    --pos:#0e7a43; --pos-bar:#22c55e; --neg:#c1364a; --neg-bar:#f43f5e;
+    --shadow:0 1px 2px rgba(20,24,40,.06),0 8px 24px rgba(20,24,40,.06);
+  }
+  :root[data-theme="dark"]{
+    --bg:#0e1017; --panel:#171a24; --panel-2:#1f2330; --ink:#e7e9f1; --ink-soft:#9aa0b4;
+    --line:#2a2f3d; --brand:#7c7cf0; --brand-ink:#0b0d14; --accent:#2dd4bf;
+    --ok:#4ade80; --ok-soft:#12331f; --warn:#fb923c; --danger:#f87171; --danger-soft:#3a1d1d;
+    --pos:#4ade80; --pos-bar:#22c55e; --neg:#fb7185; --neg-bar:#f43f5e;
+    --shadow:0 1px 2px rgba(0,0,0,.3),0 10px 30px rgba(0,0,0,.35);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{background:var(--bg);color:var(--ink);font-family:var(--sans);line-height:1.5;
+    -webkit-font-smoothing:antialiased;padding:0 0 60px}
+  a{color:var(--brand)}
+  .wrap{max-width:1120px;margin:0 auto;padding:0 18px}
+  header.top{display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap;padding:22px 0 6px}
+  .brand{flex:1;min-width:240px}
+  .back{display:inline-block;font-size:13px;color:var(--ink-soft);text-decoration:none;margin-bottom:8px}
+  .back:hover{color:var(--brand)}
+  h1{font-size:23px;margin:0 0 4px;letter-spacing:-.2px;display:flex;align-items:center;gap:9px}
+  h1 .logo{width:26px;height:26px;flex:none}
+  .tagline{margin:0;color:var(--ink-soft);font-size:14px;max-width:60ch}
+  .toolbtns{display:flex;gap:8px;align-items:center}
+  .icon-btn{background:var(--panel);border:1px solid var(--line);color:var(--ink);
+    width:38px;height:38px;border-radius:10px;cursor:pointer;font-size:16px;display:grid;place-items:center}
+  .icon-btn:hover{border-color:var(--brand);color:var(--brand)}
+
+  /* group bar */
+  .groupbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:14px 0 6px;
+    background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+    padding:12px 14px;box-shadow:var(--shadow)}
+  .groupbar label{font-size:12px;color:var(--ink-soft);font-weight:600}
+  select,input[type=text],input[type=number]{font-family:inherit;font-size:14px;color:var(--ink);
+    background:var(--panel-2);border:1px solid var(--line);border-radius:9px;padding:8px 10px;outline:none}
+  select:focus,input:focus{border-color:var(--brand);box-shadow:0 0 0 3px color-mix(in srgb,var(--brand) 22%,transparent)}
+  #group-select{min-width:170px;font-weight:600}
+  #currency{width:64px;text-align:center}
+  .btn{font-family:inherit;font-size:13.5px;font-weight:600;border-radius:9px;cursor:pointer;
+    border:1px solid var(--line);background:var(--panel-2);color:var(--ink);padding:8px 12px}
+  .btn:hover{border-color:var(--brand);color:var(--brand)}
+  .btn.primary{background:var(--brand);border-color:var(--brand);color:var(--brand-ink)}
+  .btn.primary:hover{filter:brightness(1.06);color:var(--brand-ink)}
+  .btn.ghost{background:transparent}
+  .btn.danger{color:var(--danger)}
+  .btn.danger:hover{border-color:var(--danger);background:var(--danger-soft)}
+  .btn:disabled{opacity:.5;cursor:not-allowed}
+  .spacer{flex:1}
+
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px;align-items:start}
+  @media (max-width:860px){ .cols{grid-template-columns:1fr} }
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
+    box-shadow:var(--shadow);padding:16px 16px 18px}
+  .card h2{font-size:14px;margin:0 0 12px;display:flex;align-items:center;gap:8px;letter-spacing:.2px}
+  .card h2 .pill{margin-left:auto;font-size:11px;font-weight:600;color:var(--ink-soft);
+    background:var(--panel-2);border:1px solid var(--line);border-radius:20px;padding:2px 9px}
+  .stack{display:flex;flex-direction:column;gap:14px}
+
+  /* members */
+  .chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+  .chip{display:inline-flex;align-items:center;gap:6px;background:var(--panel-2);
+    border:1px solid var(--line);border-radius:20px;padding:5px 6px 5px 12px;font-size:13px;font-weight:600}
+  .chip .av{width:20px;height:20px;border-radius:50%;display:grid;place-items:center;
+    font-size:11px;color:#fff;font-weight:700}
+  .chip .x{border:none;background:transparent;color:var(--ink-soft);cursor:pointer;font-size:15px;
+    line-height:1;width:20px;height:20px;border-radius:50%}
+  .chip .x:hover{background:var(--danger-soft);color:var(--danger)}
+  .addrow{display:flex;gap:8px}
+  .addrow input{flex:1}
+
+  /* expense form */
+  .field{display:flex;flex-direction:column;gap:5px;margin-bottom:11px}
+  .field label{font-size:12px;color:var(--ink-soft);font-weight:600}
+  .field .row{display:flex;gap:8px}
+  .field .row>*{flex:1}
+  .amount-wrap{position:relative;flex:1}
+  .amount-wrap .sym{position:absolute;left:10px;top:50%;transform:translateY(-50%);
+    color:var(--ink-soft);font-size:14px;pointer-events:none}
+  .amount-wrap input{width:100%;padding-left:24px}
+  .modes{display:flex;gap:6px;background:var(--panel-2);border:1px solid var(--line);
+    border-radius:10px;padding:4px}
+  .mode-btn{flex:1;border:none;background:transparent;color:var(--ink-soft);font-family:inherit;
+    font-size:13px;font-weight:600;padding:7px 4px;border-radius:7px;cursor:pointer}
+  .mode-btn[aria-pressed="true"]{background:var(--panel);color:var(--brand);box-shadow:var(--shadow)}
+  #split-editor{margin-top:4px;border:1px dashed var(--line);border-radius:10px;padding:10px 12px;
+    background:var(--panel-2)}
+  .split-hint{font-size:12px;color:var(--ink-soft);margin:0 0 8px}
+  .split-row{display:flex;align-items:center;gap:10px;padding:4px 0}
+  .split-row .nm{flex:1;font-size:13.5px;font-weight:600;display:flex;align-items:center;gap:7px}
+  .split-row .av{width:20px;height:20px;border-radius:50%;display:grid;place-items:center;font-size:11px;color:#fff;font-weight:700}
+  .split-row input[type=number]{width:96px;text-align:right}
+  .split-row input[type=checkbox]{width:18px;height:18px;accent-color:var(--brand)}
+  .split-sum{font-size:12px;margin-top:8px;font-weight:600}
+  .split-sum.ok{color:var(--ok)} .split-sum.bad{color:var(--danger)}
+  .formerr{color:var(--danger);font-size:13px;min-height:0;margin:2px 0 10px;font-weight:600}
+  .formerr:empty{margin:0}
+  .formbtns{display:flex;gap:8px}
+
+  /* expense list */
+  .exp{display:flex;align-items:center;gap:10px;padding:11px 2px;border-bottom:1px solid var(--line)}
+  .exp:last-child{border-bottom:none}
+  .exp .main{flex:1;min-width:0}
+  .exp .exp-desc{font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .exp .meta{font-size:12px;color:var(--ink-soft);margin-top:2px}
+  .exp .exp-amount{font-variant-numeric:tabular-nums;font-weight:700;font-size:14.5px;white-space:nowrap}
+  .exp .acts{display:flex;gap:4px}
+  .exp .acts button{border:none;background:transparent;cursor:pointer;color:var(--ink-soft);
+    width:28px;height:28px;border-radius:7px;font-size:14px}
+  .exp .acts button:hover{background:var(--panel-2);color:var(--brand)}
+  .exp .acts button.exp-del:hover{color:var(--danger);background:var(--danger-soft)}
+
+  /* balances */
+  .bal{display:flex;align-items:center;gap:12px;padding:9px 0}
+  .bal .bal-name{width:96px;font-weight:600;font-size:13.5px;display:flex;align-items:center;gap:7px;flex:none}
+  .bal .bal-name .av{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font-size:11px;color:#fff;font-weight:700;flex:none}
+  .bal .track{flex:1;height:20px;background:var(--panel-2);border-radius:6px;position:relative;overflow:hidden}
+  .bal .fill{position:absolute;top:0;bottom:0;border-radius:6px}
+  .bal.pos .fill{background:var(--pos-bar);left:50%}
+  .bal.neg .fill{background:var(--neg-bar);right:50%}
+  .bal .mid{position:absolute;left:50%;top:0;bottom:0;width:1px;background:var(--line)}
+  .bal .bal-amount{width:104px;text-align:right;font-variant-numeric:tabular-nums;font-weight:700;font-size:13.5px;flex:none}
+  .bal.pos .bal-amount{color:var(--pos)} .bal.neg .bal-amount{color:var(--neg)}
+  .bal.zero .bal-amount{color:var(--ink-soft)}
+
+  /* settlement */
+  .settle-lead{font-size:13px;color:var(--ink-soft);margin:-4px 0 12px}
+  .tx{display:flex;align-items:center;gap:10px;padding:11px 12px;border:1px solid var(--line);
+    border-radius:10px;margin-bottom:8px;background:var(--panel-2)}
+  .tx .who{display:flex;align-items:center;gap:8px;flex:1;font-weight:600;font-size:14px}
+  .tx .who .av{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;font-size:11px;color:#fff;font-weight:700;flex:none}
+  .tx .arrow{color:var(--ink-soft);font-size:16px}
+  .tx .tx-amount{font-variant-numeric:tabular-nums;font-weight:800;font-size:15px;color:var(--brand);white-space:nowrap}
+  .settle-empty{text-align:center;color:var(--ok);font-weight:600;font-size:14px;padding:14px 0}
+  .settle-empty small{display:block;color:var(--ink-soft);font-weight:400;margin-top:4px}
+
+  /* stats */
+  .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+  .stat{background:var(--panel-2);border:1px solid var(--line);border-radius:10px;padding:11px 12px;text-align:center}
+  .stat .v{font-size:19px;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:-.3px}
+  .stat .k{font-size:11.5px;color:var(--ink-soft);margin-top:2px}
+
+  .empty{color:var(--ink-soft);font-size:13.5px;text-align:center;padding:18px 0}
+  .foot{color:var(--ink-soft);font-size:12.5px;text-align:center;margin-top:28px;line-height:1.7}
+
+  #toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(16px);
+    background:var(--ink);color:var(--bg);padding:10px 18px;border-radius:10px;font-size:13.5px;font-weight:600;
+    opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;z-index:50;box-shadow:var(--shadow)}
+  #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  .sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);border:0}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="brand">
+      <a class="back" href="../../">← 返回工具集</a>
+      <h1>
+        <svg class="logo" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <rect x="2.5" y="4" width="19" height="16" rx="3" fill="var(--brand)"/>
+          <path d="M7 9.5h10M7 13h6" stroke="var(--brand-ink)" stroke-width="1.6" stroke-linecap="round"/>
+          <circle cx="16.5" cy="14.5" r="2.4" fill="var(--accent)" stroke="var(--panel)" stroke-width="1.1"/>
+        </svg>
+        账单分摊 · Split &amp; Settle
+      </h1>
+      <p class="tagline">一起吃饭旅行 AA 制？记下谁付了什么，工具自动算清每人余额，并给出<strong>转账笔数最少</strong>的结算方案。全程本地，账目不上传。</p>
+    </div>
+    <div class="toolbtns">
+      <button id="theme-toggle" class="icon-btn" title="切换深/浅色" aria-label="切换深浅色">◐</button>
+    </div>
+  </header>
+
+  <div class="groupbar">
+    <label for="group-select">群组</label>
+    <select id="group-select" aria-label="选择群组"></select>
+    <button id="new-group" class="btn ghost" title="新建群组">＋ 新建</button>
+    <button id="rename-group" class="btn ghost" title="重命名当前群组">重命名</button>
+    <button id="del-group" class="btn ghost danger" title="删除当前群组">删除</button>
+    <span class="spacer"></span>
+    <label for="currency">货币</label>
+    <input id="currency" type="text" maxlength="3" value="¥" aria-label="货币符号" />
+  </div>
+
+  <div class="cols">
+    <!-- LEFT -->
+    <div class="stack">
+      <section class="card" id="members-card">
+        <h2>👥 成员 <span class="pill" id="member-count">0 人</span></h2>
+        <div class="chips" id="members"></div>
+        <div class="addrow">
+          <input id="member-name" type="text" placeholder="添加成员，如「小林」" maxlength="16" aria-label="成员名" />
+          <button id="add-member" class="btn">添加</button>
+        </div>
+      </section>
+
+      <section class="card" id="expense-form-card">
+        <h2 id="form-title">🧾 记一笔</h2>
+        <div class="field">
+          <label for="exp-desc">项目</label>
+          <input id="exp-desc" type="text" placeholder="如「晚餐」「打车」" maxlength="40" />
+        </div>
+        <div class="field">
+          <div class="row">
+            <div class="amount-wrap">
+              <span class="sym" id="amount-sym">¥</span>
+              <input id="exp-amount" type="text" inputmode="decimal" placeholder="金额" aria-label="金额" />
+            </div>
+            <select id="exp-payer" aria-label="谁付的"></select>
+          </div>
+        </div>
+        <div class="field">
+          <label>怎么分</label>
+          <div class="modes" role="group" aria-label="分摊方式">
+            <button class="mode-btn" data-mode="equal" aria-pressed="true">均摊</button>
+            <button class="mode-btn" data-mode="shares" aria-pressed="false">按份额</button>
+            <button class="mode-btn" data-mode="percent" aria-pressed="false">按百分比</button>
+            <button class="mode-btn" data-mode="exact" aria-pressed="false">自定义</button>
+          </div>
+          <div id="split-editor"></div>
+        </div>
+        <div class="formerr" id="exp-error" role="alert"></div>
+        <div class="formbtns">
+          <button id="save-exp" class="btn primary">添加账目</button>
+          <button id="cancel-exp" class="btn ghost" hidden>取消</button>
+        </div>
+      </section>
+    </div>
+
+    <!-- RIGHT -->
+    <div class="stack">
+      <section class="card" id="settle-card">
+        <h2>🤝 最简结算 <span class="pill" id="tx-count">0 笔</span></h2>
+        <p class="settle-lead">让每个人回到零余额，所需的最少转账：</p>
+        <div id="settlement"></div>
+        <div class="formbtns" style="margin-top:4px">
+          <button id="copy-settle" class="btn ghost">复制结算方案</button>
+          <button id="export" class="btn ghost">导出全部</button>
+        </div>
+      </section>
+
+      <section class="card" id="balance-card">
+        <h2>⚖️ 余额 <span class="pill">正数应收 · 负数应付</span></h2>
+        <div id="balances"></div>
+      </section>
+
+      <section class="card" id="stats-card">
+        <h2>📊 统计</h2>
+        <div class="stats">
+          <div class="stat"><div class="v" id="stat-total">¥0.00</div><div class="k">总支出</div></div>
+          <div class="stat"><div class="v" id="stat-per">¥0.00</div><div class="k">人均</div></div>
+          <div class="stat"><div class="v" id="stat-count">0</div><div class="k">账目数</div></div>
+        </div>
+      </section>
+
+      <section class="card" id="expenses-card">
+        <h2>📒 账目 <span class="pill" id="exp-list-count">0 条</span></h2>
+        <div id="expenses"></div>
+      </section>
+    </div>
+  </div>
+
+  <p class="foot">
+    数据只保存在你自己的浏览器里（localStorage），不会上传到任何服务器。<br/>
+    结算算法把「你欠我、我欠他」的连环债化简到最少转账笔数（≤ 人数 − 1 笔）。
+  </p>
+</div>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(function(){
+  "use strict";
+  var $ = function(id){ return document.getElementById(id); };
+  var LS = { data:"dt.bill.v1", theme:"dt.bill.theme" };
+  var AVCOLORS = ["#4f46e5","#0d9488","#db2777","#d97706","#2563eb","#7c3aed","#059669","#dc2626","#0891b2","#c026d3"];
+
+  /* ---------------- pure money engine ---------------- */
+  // Parse a user amount string to integer cents (>=0), or null if invalid.
+  function parseAmount(str){
+    if(str===null||str===undefined) return null;
+    var s = String(str).trim().replace(/,/g,"");
+    if(s==="") return null;
+    var m = s.match(/^(\d+)?(?:\.(\d{1,2}))?$/);
+    if(!m || (m[1]===undefined && m[2]===undefined)) return null;
+    var intPart = m[1] ? parseInt(m[1],10) : 0;
+    var frac = m[2] ? m[2] : "";
+    frac = (frac + "00").slice(0,2);
+    return intPart*100 + parseInt(frac,10);
+  }
+  // cents -> "1,234.56" (no symbol), grouped, 2 decimals, signed.
+  function centsToStr(c){
+    var neg = c < 0; c = Math.abs(Math.round(c));
+    var d = Math.floor(c/100), r = c%100;
+    var ds = String(d).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+    return (neg?"-":"") + ds + "." + String(r).padStart(2,"0");
+  }
+  function fmt(c){ return sym() + centsToStr(c); }
+  // Distribute `total` cents across non-negative `weights`, proportional; leftover
+  // cents go to the largest fractional parts (index tie-break) — fully deterministic.
+  function distribute(total, weights){
+    var n = weights.length;
+    var out = new Array(n).fill(0);
+    if(n===0) return out;
+    var sum = weights.reduce(function(a,b){ return a + (b>0?b:0); }, 0);
+    if(sum<=0) return out;
+    var raw = weights.map(function(w){ return total * (w>0?w:0) / sum; });
+    var floor = raw.map(function(x){ return Math.floor(x); });
+    var used = floor.reduce(function(a,b){ return a+b; }, 0);
+    var rem = total - used;
+    var order = raw.map(function(x,i){ return { i:i, f:x - Math.floor(x) }; });
+    order.sort(function(a,b){ return (b.f - a.f) || (a.i - b.i); });
+    for(var k=0;k<n;k++) out[k] = floor[k];
+    for(var j=0;j<rem;j++) out[order[j].i] += 1;
+    return out;
+  }
+  // Owed cents per member id for one expense.
+  function computeOwed(exp){
+    var mode = exp.split.mode, out = {}, ids, weights, cents, i;
+    if(mode==="exact"){
+      var a = exp.split.amounts || {};
+      for(var id in a){ if(a[id]>0) out[id] = a[id]; }
+      return out;
+    }
+    if(mode==="equal"){
+      ids = (exp.split.among||[]).slice();
+      weights = ids.map(function(){ return 1; });
+    } else if(mode==="shares"){
+      var sh = exp.split.shares || {};
+      ids = Object.keys(sh).filter(function(k){ return sh[k]>0; });
+      weights = ids.map(function(k){ return sh[k]; });
+    } else { // percent
+      var pc = exp.split.percents || {};
+      ids = Object.keys(pc).filter(function(k){ return pc[k]>0; });
+      weights = ids.map(function(k){ return pc[k]; });
+    }
+    cents = distribute(exp.amountCents, weights);
+    for(i=0;i<ids.length;i++) out[ids[i]] = cents[i];
+    return out;
+  }
+  // Net balance per member: +paid, -owed. Positive = should receive.
+  function computeBalances(group){
+    var net = {};
+    group.members.forEach(function(m){ net[m.id] = 0; });
+    group.expenses.forEach(function(exp){
+      if(net[exp.payer]!==undefined) net[exp.payer] += exp.amountCents;
+      var owed = computeOwed(exp);
+      for(var id in owed){ if(net[id]!==undefined) net[id] -= owed[id]; }
+    });
+    return net;
+  }
+  // Greedy min-transaction settle-up. Returns [{from,to,amountCents}]; count <= n-1.
+  function settleUp(balances){
+    var C = [], D = [], id;
+    for(id in balances){
+      var v = balances[id];
+      if(v>0) C.push({ id:id, amt:v });
+      else if(v<0) D.push({ id:id, amt:-v });
+    }
+    var tx = [];
+    while(true){
+      var ci=-1, di=-1, k;
+      for(k=0;k<C.length;k++){
+        if(C[k].amt>0 && (ci<0 || C[k].amt>C[ci].amt || (C[k].amt===C[ci].amt && C[k].id<C[ci].id))) ci=k;
+      }
+      for(k=0;k<D.length;k++){
+        if(D[k].amt>0 && (di<0 || D[k].amt>D[di].amt || (D[k].amt===D[di].amt && D[k].id<D[di].id))) di=k;
+      }
+      if(ci<0 || di<0) break;
+      var m = Math.min(C[ci].amt, D[di].amt);
+      tx.push({ from:D[di].id, to:C[ci].id, amountCents:m });
+      C[ci].amt -= m; D[di].amt -= m;
+    }
+    return tx;
+  }
+
+  /* ---------------- state ---------------- */
+  var state = { groups:[], currentId:null };
+  var editingId = null;          // expense id being edited (or null)
+  var splitMode = "equal";
+  var splitSel = {};             // working split selection while form open
+  var _idc = 0;
+  function uid(pfx){ _idc++; var t; try{ t = Date.now().toString(36); }catch(e){ t=""; } return pfx + t + "-" + _idc; }
+  function group(){ return state.groups.find(function(g){ return g.id===state.currentId; }) || null; }
+  function sym(){ var g = group(); return (g && g.currency) ? g.currency : "¥"; }
+  function memberById(id){ var g=group(); if(!g) return null; return g.members.find(function(m){ return m.id===id; })||null; }
+  function memberName(id){ var m=memberById(id); return m?m.name:"?"; }
+  function avColor(id){ var g=group(); if(!g) return AVCOLORS[0]; var i=g.members.findIndex(function(m){return m.id===id;}); return AVCOLORS[((i<0?0:i)%AVCOLORS.length)]; }
+  function initials(name){ name=(name||"").trim(); if(!name) return "?"; var cp=Array.from(name); return cp.slice(0,1).join("").toUpperCase(); }
+
+  function save(){ try{ localStorage.setItem(LS.data, JSON.stringify(state)); }catch(e){} }
+  function load(){
+    try{
+      var raw = localStorage.getItem(LS.data);
+      if(raw){ var s = JSON.parse(raw); if(s && Array.isArray(s.groups)){ state = s; return true; } }
+    }catch(e){}
+    return false;
+  }
+
+  function newGroup(name, members, currency){
+    var g = { id:uid("g"), name:name||"新群组", currency:currency||"¥", members:[], expenses:[] };
+    (members||[]).forEach(function(nm){ g.members.push({ id:uid("m"), name:nm }); });
+    return g;
+  }
+  function seedDemo(){
+    var g = newGroup("周末聚餐", ["我","小林","阿杰"], "¥");
+    var ids = g.members.map(function(m){ return m.id; });
+    g.expenses.push({ id:uid("e"), desc:"晚餐 · 火锅", payer:ids[0], amountCents:33000,
+      split:{ mode:"equal", among:ids.slice() }, ts:1 });
+    g.expenses.push({ id:uid("e"), desc:"打车回家", payer:ids[1], amountCents:6000,
+      split:{ mode:"equal", among:ids.slice() }, ts:2 });
+    g.expenses.push({ id:uid("e"), desc:"奶茶(只有我和阿杰喝)", payer:ids[2], amountCents:4600,
+      split:{ mode:"equal", among:[ids[0], ids[2]] }, ts:3 });
+    state = { groups:[g], currentId:g.id };
+  }
+
+  /* ---------------- rendering ---------------- */
+  function render(){
+    renderGroupBar();
+    renderMembers();
+    renderPayer();
+    renderSplitEditor();
+    renderExpenses();
+    renderBalances();
+    renderSettlement();
+    renderStats();
+  }
+
+  function renderGroupBar(){
+    var sel = $("group-select");
+    sel.innerHTML = "";
+    state.groups.forEach(function(g){
+      var o = document.createElement("option");
+      o.value = g.id; o.textContent = g.name + " (" + g.members.length + ")";
+      if(g.id===state.currentId) o.selected = true;
+      sel.appendChild(o);
+    });
+    var g = group();
+    $("currency").value = g ? g.currency : "¥";
+    $("amount-sym").textContent = sym();
+    $("del-group").disabled = state.groups.length<=1;
+  }
+
+  function renderMembers(){
+    var g = group(), box = $("members");
+    box.innerHTML = "";
+    if(!g) return;
+    g.members.forEach(function(m){
+      var chip = document.createElement("span");
+      chip.className = "chip"; chip.dataset.id = m.id;
+      var av = document.createElement("span"); av.className="av"; av.style.background=avColor(m.id); av.textContent=initials(m.name);
+      var nm = document.createElement("span"); nm.className="member-name"; nm.textContent=m.name;
+      var x = document.createElement("button"); x.className="x"; x.type="button";
+      x.setAttribute("aria-label","移除 "+m.name); x.textContent="×";
+      x.addEventListener("click", function(){ removeMember(m.id); });
+      chip.appendChild(av); chip.appendChild(nm); chip.appendChild(x);
+      box.appendChild(chip);
+    });
+    $("member-count").textContent = g.members.length + " 人";
+  }
+
+  function renderPayer(){
+    var g = group(), sel = $("exp-payer");
+    var prev = sel.value;
+    sel.innerHTML = "";
+    if(!g) return;
+    g.members.forEach(function(m){
+      var o = document.createElement("option"); o.value=m.id; o.textContent=m.name; sel.appendChild(o);
+    });
+    if(g.members.some(function(m){ return m.id===prev; })) sel.value = prev;
+  }
+
+  function renderSplitEditor(){
+    var g = group(), box = $("split-editor");
+    box.innerHTML = "";
+    if(!g || g.members.length===0){ box.innerHTML = '<p class="split-hint">先在上方添加成员。</p>'; return; }
+    var hint = document.createElement("p"); hint.className="split-hint";
+    if(splitMode==="equal") hint.textContent = "勾选参与分摊的人，账单在他们之间平均分。";
+    else if(splitMode==="shares") hint.textContent = "按份额分：填每人占几份（如 1、2），空或 0 表示不参与。";
+    else if(splitMode==="percent") hint.textContent = "按百分比分：每人一个百分比，合计需为 100。";
+    else hint.textContent = "自定义每人应摊的具体金额，合计需等于总额。";
+    box.appendChild(hint);
+
+    g.members.forEach(function(m){
+      var row = document.createElement("div"); row.className="split-row"; row.dataset.id=m.id;
+      var nm = document.createElement("span"); nm.className="nm";
+      var av = document.createElement("span"); av.className="av"; av.style.background=avColor(m.id); av.textContent=initials(m.name);
+      var tn = document.createElement("span"); tn.textContent=m.name;
+      nm.appendChild(av); nm.appendChild(tn);
+      row.appendChild(nm);
+      if(splitMode==="equal"){
+        var cb = document.createElement("input"); cb.type="checkbox"; cb.className="eq-check"; cb.dataset.id=m.id;
+        cb.checked = splitSel.equal[m.id] !== false;
+        cb.addEventListener("change", function(){ splitSel.equal[m.id]=cb.checked; updateSplitSum(); });
+        row.appendChild(cb);
+      } else {
+        var inp = document.createElement("input"); inp.type="number"; inp.min="0"; inp.step= (splitMode==="exact")?"0.01":"1";
+        inp.className = splitMode==="shares"?"sh-amt":(splitMode==="percent"?"pc-amt":"ex-amt");
+        inp.dataset.id=m.id; inp.placeholder="0";
+        var store = splitMode==="shares"?splitSel.shares:(splitMode==="percent"?splitSel.percents:splitSel.amounts);
+        if(store[m.id]!==undefined && store[m.id]!=="") inp.value = store[m.id];
+        inp.addEventListener("input", function(){ store[m.id]=inp.value; updateSplitSum(); });
+        row.appendChild(inp);
+      }
+      box.appendChild(row);
+    });
+    var sumEl = document.createElement("div"); sumEl.className="split-sum"; sumEl.id="split-sum";
+    box.appendChild(sumEl);
+    updateSplitSum();
+  }
+
+  // Live "合计" indicator for exact/percent modes; returns validity.
+  function updateSplitSum(){
+    var el = $("split-sum"); if(!el) return true;
+    if(splitMode==="equal"){
+      var cnt = countEqual();
+      el.className="split-sum"; el.textContent = "参与 "+cnt+" 人" + (cnt? " · 每人约 "+fmt(Math.round(curAmount()/Math.max(cnt,1))) : "");
+      return cnt>0;
+    }
+    if(splitMode==="shares"){
+      var tot = sumStore(splitSel.shares);
+      el.className="split-sum"; el.textContent = "共 "+tot+" 份";
+      return tot>0;
+    }
+    if(splitMode==="percent"){
+      var p = sumStore(splitSel.percents);
+      var okp = Math.abs(p-100) < 1e-9;
+      el.className = "split-sum " + (okp?"ok":"bad");
+      el.textContent = "合计 "+ (Math.round(p*100)/100) +"%" + (okp?" ✓":" · 需为 100%");
+      return okp;
+    }
+    // exact
+    var totc = 0, ok=true;
+    for(var id in splitSel.amounts){
+      var c = parseAmount(splitSel.amounts[id]);
+      if(splitSel.amounts[id]!=="" && splitSel.amounts[id]!==undefined && c===null) ok=false;
+      totc += (c||0);
+    }
+    var target = curAmount();
+    var good = ok && totc===target && target>0;
+    el.className = "split-sum " + (good?"ok":"bad");
+    el.textContent = "合计 "+fmt(totc)+" / 总额 "+fmt(target) + (good?" ✓":"");
+    return good;
+  }
+  function curAmount(){ var c = parseAmount($("exp-amount").value); return c===null?0:c; }
+  function countEqual(){
+    var g=group(), n=0; if(!g) return 0;
+    g.members.forEach(function(m){ if(splitSel.equal[m.id]!==false) n++; });
+    return n;
+  }
+  function sumStore(store){
+    var t=0; for(var id in store){ var v=Number(store[id]); if(isFinite(v)&&v>0) t+=v; } return t;
+  }
+
+  function renderExpenses(){
+    var g=group(), box=$("expenses"); box.innerHTML="";
+    if(!g) return;
+    if(g.expenses.length===0){ box.innerHTML='<div class="empty">还没有账目，在左边「记一笔」添加第一条。</div>'; }
+    var list = g.expenses.slice().sort(function(a,b){ return (b.ts||0)-(a.ts||0); });
+    list.forEach(function(exp){
+      var row=document.createElement("div"); row.className="exp"; row.dataset.id=exp.id;
+      var main=document.createElement("div"); main.className="main";
+      var d=document.createElement("div"); d.className="exp-desc"; d.textContent = exp.desc || "未命名";
+      var meta=document.createElement("div"); meta.className="meta";
+      meta.textContent = memberName(exp.payer) + " 付 · " + splitLabel(exp);
+      main.appendChild(d); main.appendChild(meta);
+      var amt=document.createElement("div"); amt.className="exp-amount"; amt.textContent = fmt(exp.amountCents);
+      var acts=document.createElement("div"); acts.className="acts";
+      var eb=document.createElement("button"); eb.className="exp-edit"; eb.title="编辑"; eb.setAttribute("aria-label","编辑"); eb.textContent="✎";
+      eb.addEventListener("click", function(){ startEdit(exp.id); });
+      var db=document.createElement("button"); db.className="exp-del"; db.title="删除"; db.setAttribute("aria-label","删除"); db.textContent="🗑";
+      db.addEventListener("click", function(){ delExpense(exp.id); });
+      acts.appendChild(eb); acts.appendChild(db);
+      row.appendChild(main); row.appendChild(amt); row.appendChild(acts);
+      box.appendChild(row);
+    });
+    $("exp-list-count").textContent = g.expenses.length + " 条";
+  }
+  function splitLabel(exp){
+    var m=exp.split.mode;
+    if(m==="equal") return "均摊 " + (exp.split.among?exp.split.among.length:0) + " 人";
+    if(m==="shares") return "按份额";
+    if(m==="percent") return "按百分比";
+    return "自定义";
+  }
+
+  function renderBalances(){
+    var g=group(), box=$("balances"); box.innerHTML="";
+    if(!g || g.members.length===0){ box.innerHTML='<div class="empty">添加成员后显示余额。</div>'; return; }
+    var bal=computeBalances(g);
+    var max=1;
+    g.members.forEach(function(m){ max=Math.max(max, Math.abs(bal[m.id]||0)); });
+    g.members.forEach(function(m){
+      var v=bal[m.id]||0;
+      var row=document.createElement("div"); row.className="bal " + (v>0?"pos":(v<0?"neg":"zero")); row.dataset.id=m.id;
+      var nm=document.createElement("div"); nm.className="bal-name";
+      var av=document.createElement("span"); av.className="av"; av.style.background=avColor(m.id); av.textContent=initials(m.name);
+      var tn=document.createElement("span"); tn.textContent=m.name;
+      nm.appendChild(av); nm.appendChild(tn);
+      var track=document.createElement("div"); track.className="track";
+      var mid=document.createElement("div"); mid.className="mid"; track.appendChild(mid);
+      var fill=document.createElement("div"); fill.className="fill";
+      fill.style.width = (Math.abs(v)/max*50) + "%";
+      track.appendChild(fill);
+      var amt=document.createElement("div"); amt.className="bal-amount"; amt.dataset.cents=v;
+      amt.textContent = (v>0?"+":"") + fmt(v);
+      row.appendChild(nm); row.appendChild(track); row.appendChild(amt);
+      box.appendChild(row);
+    });
+  }
+
+  function renderSettlement(){
+    var g=group(), box=$("settlement"); box.innerHTML="";
+    if(!g || g.members.length===0){ box.innerHTML='<div class="empty">添加成员后显示结算方案。</div>'; $("tx-count").textContent="0 笔"; return; }
+    var tx = settleUp(computeBalances(g));
+    $("tx-count").textContent = tx.length + " 笔";
+    if(tx.length===0){
+      var e=document.createElement("div"); e.className="settle-empty";
+      e.innerHTML = "🎉 已经两清！<small>没有人需要转账。</small>";
+      box.appendChild(e); return;
+    }
+    tx.forEach(function(t){
+      var row=document.createElement("div"); row.className="tx";
+      row.dataset.from=t.from; row.dataset.to=t.to; row.dataset.cents=t.amountCents;
+      var who=document.createElement("div"); who.className="who";
+      var fa=document.createElement("span"); fa.className="av"; fa.style.background=avColor(t.from); fa.textContent=initials(memberName(t.from));
+      var fn=document.createElement("span"); fn.className="tx-from"; fn.textContent=memberName(t.from);
+      var ar=document.createElement("span"); ar.className="arrow"; ar.textContent="→";
+      var ta=document.createElement("span"); ta.className="av"; ta.style.background=avColor(t.to); ta.textContent=initials(memberName(t.to));
+      var tnm=document.createElement("span"); tnm.className="tx-to"; tnm.textContent=memberName(t.to);
+      who.appendChild(fa); who.appendChild(fn); who.appendChild(ar); who.appendChild(ta); who.appendChild(tnm);
+      var amt=document.createElement("div"); amt.className="tx-amount"; amt.textContent = fmt(t.amountCents);
+      row.appendChild(who); row.appendChild(amt);
+      box.appendChild(row);
+    });
+  }
+
+  function renderStats(){
+    var g=group();
+    var total=0, cnt=0, people=g?g.members.length:0;
+    if(g){ g.expenses.forEach(function(e){ total+=e.amountCents; cnt++; }); }
+    $("stat-total").textContent = fmt(total);
+    $("stat-per").textContent = fmt(people? Math.round(total/people) : 0);
+    $("stat-count").textContent = String(cnt);
+  }
+
+  /* ---------------- actions ---------------- */
+  function resetSplitSel(){
+    splitSel = { equal:{}, shares:{}, percents:{}, amounts:{} };
+    var g=group(); if(g){ g.members.forEach(function(m){ splitSel.equal[m.id]=true; splitSel.shares[m.id]="1"; }); }
+  }
+  function setMode(mode){
+    splitMode = mode;
+    Array.prototype.forEach.call(document.querySelectorAll(".mode-btn"), function(b){
+      b.setAttribute("aria-pressed", b.dataset.mode===mode ? "true":"false");
+    });
+    renderSplitEditor();
+  }
+
+  function addMember(){
+    var g=group(); if(!g) return;
+    var inp=$("member-name"); var name=inp.value.trim();
+    if(!name){ toast("请输入成员名"); inp.focus(); return; }
+    if(g.members.some(function(m){ return m.name===name; })){ toast("已有同名成员"); return; }
+    var m={ id:uid("m"), name:name };
+    g.members.push(m);
+    splitSel.equal[m.id]=true; splitSel.shares[m.id]="1";
+    inp.value=""; save(); render(); inp.focus();
+  }
+  function removeMember(id){
+    var g=group(); if(!g) return;
+    var used = g.expenses.some(function(e){
+      if(e.payer===id) return true;
+      var o=computeOwed(e); return o[id]!==undefined;
+    });
+    if(used){ toast("该成员已在账目中，先删相关账目"); return; }
+    g.members = g.members.filter(function(m){ return m.id!==id; });
+    delete splitSel.equal[id]; delete splitSel.shares[id]; delete splitSel.percents[id]; delete splitSel.amounts[id];
+    save(); render();
+  }
+
+  function buildSplit(amountCents){
+    var g=group();
+    if(splitMode==="equal"){
+      var among = g.members.filter(function(m){ return splitSel.equal[m.id]!==false; }).map(function(m){ return m.id; });
+      if(among.length===0) return { err:"至少选一个参与分摊的人" };
+      return { split:{ mode:"equal", among:among } };
+    }
+    if(splitMode==="shares"){
+      var shares={}, tot=0;
+      g.members.forEach(function(m){ var v=Number(splitSel.shares[m.id]); if(isFinite(v)&&v>0){ shares[m.id]=v; tot+=v; } });
+      if(tot<=0) return { err:"至少给一个人填正份额" };
+      return { split:{ mode:"shares", shares:shares } };
+    }
+    if(splitMode==="percent"){
+      var pc={}, tp=0;
+      g.members.forEach(function(m){ var v=Number(splitSel.percents[m.id]); if(isFinite(v)&&v>0){ pc[m.id]=v; tp+=v; } });
+      if(Math.abs(tp-100)>1e-9) return { err:"百分比合计需为 100（当前 "+(Math.round(tp*100)/100)+"）" };
+      return { split:{ mode:"percent", percents:pc } };
+    }
+    // exact
+    var amounts={}, sumc=0, bad=false;
+    g.members.forEach(function(m){
+      var raw=splitSel.amounts[m.id];
+      if(raw===undefined||raw==="") return;
+      var c=parseAmount(raw); if(c===null){ bad=true; return; }
+      if(c>0){ amounts[m.id]=c; sumc+=c; }
+    });
+    if(bad) return { err:"自定义金额里有非法数字" };
+    if(sumc!==amountCents) return { err:"自定义金额合计需等于总额（"+fmt(sumc)+" ≠ "+fmt(amountCents)+"）" };
+    return { split:{ mode:"exact", amounts:amounts } };
+  }
+
+  function saveExpense(){
+    var g=group(); if(!g){ return; }
+    var errEl=$("exp-error"); errEl.textContent="";
+    if(g.members.length===0){ errEl.textContent="请先添加成员"; return; }
+    var amountCents = parseAmount($("exp-amount").value);
+    if(amountCents===null || amountCents<=0){ errEl.textContent="请输入有效金额（大于 0）"; $("exp-amount").focus(); return; }
+    var payer = $("exp-payer").value;
+    if(!payer || !memberById(payer)){ errEl.textContent="请选择付款人"; return; }
+    var built = buildSplit(amountCents);
+    if(built.err){ errEl.textContent=built.err; return; }
+    var desc = $("exp-desc").value.trim() || "未命名";
+
+    if(editingId){
+      var ex = g.expenses.find(function(e){ return e.id===editingId; });
+      if(ex){ ex.desc=desc; ex.payer=payer; ex.amountCents=amountCents; ex.split=built.split; }
+      toast("已保存修改");
+    } else {
+      var ts; try{ ts=Date.now(); }catch(e){ ts=g.expenses.length+1; }
+      g.expenses.push({ id:uid("e"), desc:desc, payer:payer, amountCents:amountCents, split:built.split, ts:ts });
+      toast("已添加");
+    }
+    clearForm();
+    save(); render();
+  }
+
+  function startEdit(id){
+    var g=group(); var ex=g.expenses.find(function(e){ return e.id===id; }); if(!ex) return;
+    editingId=id;
+    $("exp-desc").value = ex.desc==="未命名"?"":ex.desc;
+    $("exp-amount").value = centsToStr(ex.amountCents).replace(/,/g,"");
+    $("exp-payer").value = ex.payer;
+    resetSplitSel();
+    if(ex.split.mode==="equal"){
+      g.members.forEach(function(m){ splitSel.equal[m.id] = ex.split.among.indexOf(m.id)>=0; });
+    } else if(ex.split.mode==="shares"){
+      g.members.forEach(function(m){ splitSel.shares[m.id] = ex.split.shares[m.id]!==undefined?String(ex.split.shares[m.id]):""; });
+    } else if(ex.split.mode==="percent"){
+      g.members.forEach(function(m){ splitSel.percents[m.id] = ex.split.percents[m.id]!==undefined?String(ex.split.percents[m.id]):""; });
+    } else {
+      g.members.forEach(function(m){ splitSel.amounts[m.id] = ex.split.amounts[m.id]!==undefined?centsToStr(ex.split.amounts[m.id]).replace(/,/g,""):""; });
+    }
+    setMode(ex.split.mode);
+    $("form-title").textContent = "✏️ 编辑账目";
+    $("save-exp").textContent = "保存修改";
+    $("cancel-exp").hidden = false;
+    $("exp-error").textContent="";
+    $("expense-form-card").scrollIntoView({ behavior:"smooth", block:"start" });
+    $("exp-desc").focus();
+  }
+  function clearForm(){
+    editingId=null;
+    $("exp-desc").value=""; $("exp-amount").value="";
+    resetSplitSel(); setMode("equal");
+    $("form-title").textContent="🧾 记一笔";
+    $("save-exp").textContent="添加账目";
+    $("cancel-exp").hidden=true;
+    $("exp-error").textContent="";
+  }
+  function delExpense(id){
+    var g=group(); g.expenses = g.expenses.filter(function(e){ return e.id!==id; });
+    if(editingId===id) clearForm();
+    save(); render(); toast("已删除");
+  }
+
+  function doNewGroup(){
+    var name = prompt("新群组名称", "新群组");
+    if(name===null) return;
+    var g = newGroup(name.trim()||"新群组", [], sym());
+    state.groups.push(g); state.currentId=g.id;
+    resetSplitSel(); clearForm(); save(); render();
+    $("member-name").focus();
+  }
+  function doRename(){
+    var g=group(); if(!g) return;
+    var name = prompt("重命名群组", g.name);
+    if(name===null) return;
+    g.name = name.trim()||g.name; save(); render();
+  }
+  function doDelGroup(){
+    if(state.groups.length<=1){ toast("至少保留一个群组"); return; }
+    var g=group(); if(!g) return;
+    if(!confirm("删除群组「"+g.name+"」及其所有账目？")) return;
+    state.groups = state.groups.filter(function(x){ return x.id!==g.id; });
+    state.currentId = state.groups[0].id;
+    resetSplitSel(); clearForm(); save(); render();
+  }
+
+  function switchGroup(id){
+    state.currentId=id; resetSplitSel(); clearForm(); save(); render();
+  }
+
+  function settlementText(){
+    var g=group(); if(!g) return "";
+    var tx=settleUp(computeBalances(g));
+    var lines=["【"+g.name+"】最简结算方案"];
+    if(tx.length===0){ lines.push("已经两清，无需转账。"); }
+    else { tx.forEach(function(t){ lines.push("· "+memberName(t.from)+" → "+memberName(t.to)+"  "+fmt(t.amountCents)); }); }
+    return lines.join("\n");
+  }
+  function exportText(){
+    var g=group(); if(!g) return "";
+    var L=["# "+g.name, ""];
+    L.push("## 账目 ("+g.expenses.length+" 条)");
+    g.expenses.slice().sort(function(a,b){return (a.ts||0)-(b.ts||0);}).forEach(function(e){
+      L.push("- "+(e.desc||"未命名")+"："+fmt(e.amountCents)+"（"+memberName(e.payer)+" 付，"+splitLabel(e)+"）");
+    });
+    var total=0; g.expenses.forEach(function(e){ total+=e.amountCents; });
+    L.push(""); L.push("总支出 "+fmt(total)+"，人均 "+fmt(g.members.length?Math.round(total/g.members.length):0));
+    L.push(""); var bal=computeBalances(g);
+    L.push("## 余额"); g.members.forEach(function(m){ var v=bal[m.id]||0; L.push("- "+m.name+"："+(v>0?"应收 ":v<0?"应付 ":"")+fmt(Math.abs(v))); });
+    L.push(""); L.push("## "+settlementText().split("\n").slice(1).join("\n"));
+    return L.join("\n");
+  }
+  function copyText(txt){
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(txt).then(function(){ toast("已复制到剪贴板"); }, function(){ fallbackCopy(txt); });
+    } else fallbackCopy(txt);
+  }
+  function fallbackCopy(txt){
+    var ta=document.createElement("textarea"); ta.value=txt; ta.style.position="fixed"; ta.style.opacity="0";
+    document.body.appendChild(ta); ta.select();
+    try{ document.execCommand("copy"); toast("已复制到剪贴板"); }catch(e){ toast("复制失败"); }
+    document.body.removeChild(ta);
+  }
+
+  var toastTimer=null;
+  function toast(msg){
+    var t=$("toast"); t.textContent=msg; t.classList.add("show");
+    if(toastTimer) clearTimeout(toastTimer);
+    toastTimer=setTimeout(function(){ t.classList.remove("show"); }, 1600);
+  }
+
+  /* ---------------- theme ---------------- */
+  function initTheme(){
+    var saved=null; try{ saved=localStorage.getItem(LS.theme); }catch(e){}
+    if(saved==="light"||saved==="dark") document.documentElement.setAttribute("data-theme", saved);
+    $("theme-toggle").addEventListener("click", function(){
+      var cur=document.documentElement.getAttribute("data-theme");
+      var dark = cur ? cur==="dark" : (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
+      var next = dark ? "light":"dark";
+      document.documentElement.setAttribute("data-theme", next);
+      try{ localStorage.setItem(LS.theme, next); }catch(e){}
+    });
+  }
+
+  /* ---------------- wiring ---------------- */
+  function wire(){
+    $("add-member").addEventListener("click", addMember);
+    $("member-name").addEventListener("keydown", function(e){ if(e.key==="Enter"){ e.preventDefault(); addMember(); } });
+    $("save-exp").addEventListener("click", saveExpense);
+    $("cancel-exp").addEventListener("click", clearForm);
+    $("exp-amount").addEventListener("input", updateSplitSum);
+    $("exp-amount").addEventListener("keydown", function(e){ if(e.key==="Enter"){ e.preventDefault(); saveExpense(); } });
+    $("exp-desc").addEventListener("keydown", function(e){ if(e.key==="Enter"){ e.preventDefault(); $("exp-amount").focus(); } });
+    Array.prototype.forEach.call(document.querySelectorAll(".mode-btn"), function(b){
+      b.addEventListener("click", function(){ setMode(b.dataset.mode); });
+    });
+    $("group-select").addEventListener("change", function(){ switchGroup(this.value); });
+    $("new-group").addEventListener("click", doNewGroup);
+    $("rename-group").addEventListener("click", doRename);
+    $("del-group").addEventListener("click", doDelGroup);
+    $("currency").addEventListener("input", function(){
+      var g=group(); if(!g) return; g.currency=this.value||"¥"; $("amount-sym").textContent=g.currency; save();
+      renderExpenses(); renderBalances(); renderSettlement(); renderStats(); updateSplitSum();
+    });
+    $("copy-settle").addEventListener("click", function(){ copyText(settlementText()); });
+    $("export").addEventListener("click", function(){ copyText(exportText()); });
+  }
+
+  /* ---------------- boot ---------------- */
+  initTheme();
+  if(!load()) seedDemo();
+  if(!group() && state.groups.length){ state.currentId=state.groups[0].id; }
+  resetSplitSel();
+  wire();
+  setMode("equal");
+  render();
+
+  /* ---------------- test hook ---------------- */
+  window.__split = {
+    // pure engine
+    parseAmount:parseAmount, centsToStr:centsToStr, distribute:distribute,
+    computeOwed:computeOwed, computeBalances:computeBalances, settleUp:settleUp,
+    // live introspection / control
+    state:function(){ return state; },
+    group:group,
+    balances:function(){ var g=group(); return g?computeBalances(g):{}; },
+    settlement:function(){ var g=group(); return g?settleUp(computeBalances(g)):[]; },
+    memberName:memberName,
+    loadState:function(s){ state=s; state.currentId = state.currentId || (s.groups[0]&&s.groups[0].id); resetSplitSel(); clearForm(); save(); render(); },
+    newGroup:newGroup,
+    reset:function(){ try{ localStorage.removeItem(LS.data); }catch(e){} seedDemo(); resetSplitSel(); clearForm(); save(); render(); }
+  };
+})();
+</script>
+</body>
+</html>
