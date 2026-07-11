@@ -1,0 +1,1165 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>函数绘图 · Grapher</title>
+<meta name="description" content="浏览器内函数绘图器:输入 y=f(x) 即时绘制,多函数叠加、参数滑块、拖拽平移 + 滚轮缩放、取值追踪。自研 tokenizer→递归下降 parser→求值器,自动断开渐近线;纯前端本地保存。" />
+<style>
+  :root{
+    /* Linear design system tokens */
+    --canvas:#010102; --s1:#0f1011; --s2:#141516; --s3:#18191a; --s4:#191a1b;
+    --hair:#23252a; --hair-strong:#34343a; --hair-3:#3e3e44;
+    --ink:#f7f8f8; --ink-muted:#d0d6e0; --ink-subtle:#8a8f98; --ink-3:#62666d;
+    --accent:#5e6ad2; --accent-hover:#828fff; --accent-focus:#5e69d1; --on-accent:#ffffff;
+    --success:#27a644; --danger:#eb5757;
+    --sans:-apple-system,BlinkMacSystemFont,"SF Pro Display","Inter","Segoe UI",Roboto,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+    --r-xs:4px; --r-sm:6px; --r-md:8px; --r-lg:12px; --r-xl:16px; --pill:9999px;
+    --edge:inset 0 1px 0 rgba(255,255,255,.045);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    background:var(--canvas); color:var(--ink); font-family:var(--sans);
+    font-size:15px; line-height:1.5; letter-spacing:-.05px;
+    -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
+    min-height:100vh;
+  }
+  a{color:inherit}
+  button{font-family:inherit}
+  ::selection{background:rgba(94,106,210,.35)}
+
+  /* focus */
+  a:focus-visible,button:focus-visible,input:focus-visible,summary:focus-visible{
+    outline:2px solid var(--accent-focus); outline-offset:2px; border-radius:var(--r-xs);
+  }
+
+  /* ---------- top bar ---------- */
+  .topbar{
+    display:flex; align-items:center; gap:16px; height:56px; padding:0 20px;
+    border-bottom:1px solid var(--hair); background:var(--canvas);
+    position:sticky; top:0; z-index:20;
+  }
+  .back{
+    display:inline-flex; align-items:center; gap:6px; text-decoration:none;
+    color:var(--ink-subtle); font-size:13px; font-weight:500; padding:6px 10px;
+    border-radius:var(--r-md); border:1px solid transparent; transition:.15s;
+    white-space:nowrap;
+  }
+  .back:hover{color:var(--ink); background:var(--s1); border-color:var(--hair)}
+  .brand{display:flex; align-items:center; gap:10px; min-width:0}
+  .mark{
+    width:22px; height:22px; border-radius:6px; flex:none; position:relative;
+    background:linear-gradient(150deg,var(--accent-hover),var(--accent) 55%,#3f4aa8);
+    box-shadow:var(--edge);
+  }
+  .mark::after{
+    content:""; position:absolute; inset:5px 5px auto 5px; height:2px; border-radius:2px;
+    background:rgba(255,255,255,.85);
+    box-shadow:0 4px 0 rgba(255,255,255,.5),0 8px 0 rgba(255,255,255,.28);
+  }
+  .wordmark{font-weight:600; letter-spacing:-.4px; font-size:16px}
+  .tagline{color:var(--ink-3); font-size:12.5px; letter-spacing:0; padding-left:10px; border-left:1px solid var(--hair); white-space:nowrap}
+  .topbar .grow{flex:1}
+  .ghost-link{
+    color:var(--ink-subtle); font-size:12.5px; font-weight:500; text-decoration:none;
+    padding:6px 10px; border-radius:var(--r-md); border:1px solid var(--hair); background:var(--s1);
+  }
+  .ghost-link:hover{color:var(--ink); border-color:var(--hair-strong)}
+
+  /* ---------- app grid ---------- */
+  .app{
+    max-width:1320px; margin:0 auto; padding:20px;
+    display:grid; grid-template-columns:344px minmax(0,1fr); gap:16px; align-items:start;
+  }
+  .panel{
+    background:var(--s1); border:1px solid var(--hair); border-radius:var(--r-xl);
+    box-shadow:var(--edge);
+  }
+  .sidebar{padding:6px 6px 10px; display:flex; flex-direction:column; max-height:calc(100vh - 96px); overflow:auto}
+  .sect{padding:12px 12px 14px; border-top:1px solid var(--hair)}
+  .sect:first-child{border-top:0}
+  .sect-head{
+    display:flex; align-items:center; gap:8px; margin:2px 2px 10px;
+  }
+  .sect-head h2{
+    margin:0; font-size:11px; font-weight:600; letter-spacing:.5px; text-transform:uppercase;
+    color:var(--ink-subtle);
+  }
+  .sect-head .count{color:var(--ink-3); font-size:11px; font-family:var(--mono)}
+  .sect-head .grow{flex:1}
+
+  /* buttons */
+  .btn{
+    display:inline-flex; align-items:center; justify-content:center; gap:6px;
+    font-size:13px; font-weight:500; line-height:1.2; cursor:pointer;
+    padding:8px 12px; border-radius:var(--r-md); border:1px solid var(--hair);
+    background:var(--s2); color:var(--ink); transition:.14s; white-space:nowrap;
+  }
+  .btn:hover{background:var(--s3); border-color:var(--hair-strong)}
+  .btn:active{transform:translateY(.5px)}
+  .btn.accent{background:var(--accent); border-color:var(--accent); color:var(--on-accent)}
+  .btn.accent:hover{background:var(--accent-hover); border-color:var(--accent-hover)}
+  .btn.sm{padding:5px 9px; font-size:12px; border-radius:var(--r-sm)}
+  .btn.icon{padding:6px; width:30px; height:30px}
+
+  /* function rows */
+  .fn-row{
+    display:grid; grid-template-columns:22px 22px 1fr 28px; align-items:center; gap:7px;
+    padding:6px; border-radius:var(--r-md); margin-bottom:6px;
+    background:var(--s2); border:1px solid var(--hair);
+  }
+  .fn-row.invalid{border-color:rgba(235,87,87,.5)}
+  .swatch{
+    width:22px; height:22px; border-radius:6px; border:1px solid rgba(255,255,255,.14);
+    cursor:pointer; padding:0; position:relative; flex:none;
+  }
+  .swatch[aria-pressed="false"]{background:transparent !important; opacity:.9}
+  .swatch[aria-pressed="false"]::after{
+    content:""; position:absolute; inset:6px; border-radius:3px; border:1.5px solid currentColor; opacity:.6;
+  }
+  .eq{font-family:var(--mono); font-size:12px; color:var(--ink-subtle); text-align:center; user-select:none}
+  .fn-input{
+    width:100%; min-width:0; background:transparent; border:0; color:var(--ink);
+    font-family:var(--mono); font-size:13.5px; padding:6px 4px; letter-spacing:0;
+  }
+  .fn-input::placeholder{color:var(--ink-3)}
+  .fn-input:focus{outline:none}
+  .fn-input.bad{color:#f19a9a}
+  .del{
+    background:transparent; border:0; color:var(--ink-3); cursor:pointer; font-size:14px;
+    width:28px; height:28px; border-radius:var(--r-sm); line-height:1;
+  }
+  .del:hover{color:var(--danger); background:rgba(235,87,87,.1)}
+  .fn-err{
+    grid-column:3 / 5; font-size:11.5px; color:#f19a9a; font-family:var(--mono);
+    padding:0 4px 2px; line-height:1.35; word-break:break-word;
+  }
+  .fn-err:empty{display:none}
+  .add-fn{width:100%; margin-top:2px}
+
+  .hint{color:var(--ink-3); font-size:11.5px; padding:2px 4px; line-height:1.4}
+
+  /* params */
+  #param-section .param{
+    display:grid; grid-template-columns:auto 1fr 62px; align-items:center; gap:9px;
+    padding:7px 4px;
+  }
+  .param-name{font-family:var(--mono); font-size:13px; color:var(--accent-hover); width:16px}
+  .param-name b{color:var(--ink-subtle); font-weight:400}
+  input[type=range].param-range{
+    -webkit-appearance:none; appearance:none; width:100%; height:4px; border-radius:var(--pill);
+    background:var(--s4); outline:none; cursor:pointer; margin:0;
+  }
+  input[type=range].param-range::-webkit-slider-thumb{
+    -webkit-appearance:none; width:14px; height:14px; border-radius:50%;
+    background:var(--accent); border:2px solid #0b0c14; cursor:pointer; box-shadow:0 0 0 1px var(--accent);
+  }
+  input[type=range].param-range::-moz-range-thumb{
+    width:14px; height:14px; border-radius:50%; background:var(--accent); border:2px solid #0b0c14; cursor:pointer;
+  }
+  .param-num{
+    width:62px; background:var(--s1); border:1px solid var(--hair); color:var(--ink);
+    font-family:var(--mono); font-size:12.5px; padding:5px 7px; border-radius:var(--r-sm); text-align:right;
+  }
+  .param-num:focus{outline:none; border-color:var(--accent-focus)}
+
+  /* trace */
+  .trace-x-row{display:flex; align-items:center; gap:9px; margin-bottom:10px}
+  .trace-x-row label{font-family:var(--mono); font-size:13px; color:var(--ink-subtle)}
+  #trace-x{
+    flex:1; background:var(--s1); border:1px solid var(--hair); color:var(--ink);
+    font-family:var(--mono); font-size:14px; padding:7px 10px; border-radius:var(--r-md);
+  }
+  #trace-x:focus{outline:none; border-color:var(--accent-focus); box-shadow:0 0 0 3px rgba(94,105,209,.35)}
+  .trace-row{
+    display:grid; grid-template-columns:10px auto 1fr; align-items:center; gap:9px;
+    padding:6px 6px; border-radius:var(--r-sm); font-family:var(--mono); font-size:13px;
+  }
+  .trace-row+.trace-row{border-top:1px solid var(--hair)}
+  .trace-row.hidden-fn{opacity:.45}
+  .dot{width:10px; height:10px; border-radius:50%; flex:none}
+  .trace-eq{color:var(--ink-subtle)}
+  .trace-val{color:var(--ink); text-align:right; font-variant-numeric:tabular-nums; letter-spacing:0}
+  .trace-val.nan{color:var(--ink-3)}
+  .trace-empty{color:var(--ink-3); font-size:12px; padding:4px}
+
+  /* examples */
+  .chips{display:flex; flex-wrap:wrap; gap:6px}
+  .example-chip{
+    font-size:12px; font-weight:500; color:var(--ink-muted); cursor:pointer;
+    background:var(--s2); border:1px solid var(--hair); border-radius:var(--pill);
+    padding:5px 11px; transition:.14s;
+  }
+  .example-chip:hover{color:var(--ink); border-color:var(--accent-focus); background:var(--s3)}
+
+  /* help */
+  details.help{margin-top:2px}
+  details.help summary{
+    cursor:pointer; color:var(--ink-subtle); font-size:12px; font-weight:500;
+    list-style:none; padding:4px; user-select:none;
+  }
+  details.help summary::-webkit-details-marker{display:none}
+  details.help summary::before{content:"› "; color:var(--ink-3)}
+  details.help[open] summary::before{content:"⌄ "}
+  .help-body{font-size:12px; color:var(--ink-subtle); line-height:1.6; padding:4px 4px 2px}
+  .help-body code{
+    font-family:var(--mono); font-size:11.5px; color:var(--accent-hover);
+    background:var(--s2); padding:1px 5px; border-radius:var(--r-xs); border:1px solid var(--hair);
+  }
+  .help-body b{color:var(--ink-muted); font-weight:600}
+
+  /* ---------- plot ---------- */
+  .plot-wrap{
+    display:flex; flex-direction:column; overflow:hidden;
+    height:clamp(460px, calc(100vh - 104px), 860px);
+  }
+  .plot-toolbar{
+    display:flex; align-items:center; gap:10px; padding:10px 14px;
+    border-bottom:1px solid var(--hair); background:var(--s1); flex:none;
+  }
+  .view-info{font-family:var(--mono); font-size:12px; color:var(--ink-subtle); letter-spacing:0}
+  .cursor-readout{
+    font-family:var(--mono); font-size:12px; color:var(--ink-3); letter-spacing:0;
+    min-height:16px; white-space:nowrap;
+  }
+  .plot-toolbar .grow{flex:1}
+  .zoom-group{display:flex; align-items:center; gap:6px}
+  .zoom-group .btn{padding:6px 10px}
+  .canvas-holder{position:relative; flex:1; min-height:0}
+  #plot{position:absolute; inset:0; width:100%; height:100%; display:block; cursor:crosshair; touch-action:none}
+  #plot:focus-visible{outline:2px solid var(--accent-focus); outline-offset:-2px}
+
+  footer{
+    max-width:1320px; margin:0 auto; padding:14px 20px 40px;
+    color:var(--ink-3); font-size:12px; display:flex; gap:8px; flex-wrap:wrap; align-items:center;
+  }
+  footer .sep{color:var(--hair-strong)}
+  footer a{color:var(--ink-subtle); text-decoration:none}
+  footer a:hover{color:var(--ink)}
+
+  @media (max-width:880px){
+    .app{grid-template-columns:1fr; padding:12px}
+    .sidebar{order:2; max-height:none}
+    .plot-wrap{order:1; height:clamp(360px, 60vh, 560px)}
+    .tagline{display:none}
+  }
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <a class="back" href="../../">← 返回工具集</a>
+    <div class="brand">
+      <span class="mark" aria-hidden="true"></span>
+      <span class="wordmark">Grapher</span>
+      <span class="tagline">函数绘图 · f(x) 即时可视化</span>
+    </div>
+    <span class="grow"></span>
+    <a class="ghost-link" id="clear-all" role="button" tabindex="0" title="清空并恢复默认示例">重置全部</a>
+  </header>
+
+  <main class="app">
+    <!-- ================= sidebar ================= -->
+    <aside class="panel sidebar">
+      <section class="sect">
+        <div class="sect-head">
+          <h2>函数</h2>
+          <span class="grow"></span>
+          <span class="count" id="fn-count"></span>
+        </div>
+        <div id="fn-list"></div>
+        <button class="btn add-fn" id="add-fn">+ 添加函数</button>
+        <p class="hint">写 <code style="font-family:var(--mono)">y =</code> 右边的表达式,如 <b>sin(x)</b>、<b>x^2/4-3</b>、<b>a*e^(-x^2)</b>。单个字母(x 除外)自动成为可调参数。</p>
+      </section>
+
+      <section class="sect" id="param-section" hidden>
+        <div class="sect-head"><h2>参数</h2></div>
+        <div id="param-list"></div>
+      </section>
+
+      <section class="sect">
+        <div class="sect-head"><h2>取值 · Trace</h2></div>
+        <div class="trace-x-row">
+          <label for="trace-x">x =</label>
+          <input id="trace-x" type="text" inputmode="decimal" value="1" spellcheck="false" autocomplete="off" aria-label="追踪的 x 值" />
+        </div>
+        <div id="trace-list"></div>
+      </section>
+
+      <section class="sect">
+        <div class="sect-head"><h2>示例</h2></div>
+        <div class="chips" id="examples"></div>
+      </section>
+
+      <section class="sect">
+        <details class="help">
+          <summary>支持的语法与函数</summary>
+          <div class="help-body">
+            <p><b>运算:</b> <code>+ - * / ^</code>,支持隐式乘法(<code>2x</code>、<code>3(x+1)</code>、<code>a x</code>)与一元负号。</p>
+            <p><b>常量:</b> <code>pi</code> <code>tau</code> <code>e</code>。</p>
+            <p><b>函数(需带括号):</b> sin cos tan · asin acos atan · sinh cosh tanh · sqrt cbrt abs · exp ln log(底10) log2 · floor ceil round sign · min max mod(a,b) pow(a,b) atan2 hypot。</p>
+            <p><b>变量:</b> <code>x</code> 为自变量;其余单个字母(a…z)成为参数并生成滑块。函数名要写括号,如 <code>sin(x)</code> 而非 <code>sinx</code>。</p>
+          </div>
+        </details>
+      </section>
+    </aside>
+
+    <!-- ================= plot ================= -->
+    <section class="panel plot-wrap">
+      <div class="plot-toolbar">
+        <span class="view-info" id="view-info" data-xspan="20">x ∈ [−10, 10]</span>
+        <span class="grow"></span>
+        <span class="cursor-readout" id="cursor-readout"></span>
+        <span class="zoom-group">
+          <button class="btn icon" id="zoom-out" aria-label="缩小" title="缩小">−</button>
+          <button class="btn icon" id="zoom-in" aria-label="放大" title="放大">+</button>
+          <button class="btn sm" id="view-reset" title="重置视图">重置视图</button>
+        </span>
+      </div>
+      <div class="canvas-holder">
+        <canvas id="plot" tabindex="0" role="img" aria-label="函数图像画布,可拖拽平移、滚轮缩放"></canvas>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <span>函数绘图 · Grapher</span>
+    <span class="sep">·</span>
+    <span>自研解析引擎 · 纯前端 · 本地保存</span>
+    <span class="sep">·</span>
+    <span>设计语言:Linear</span>
+    <span class="sep">·</span>
+    <a href="../../">← 返回每日工具集</a>
+  </footer>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ============================================================
+   * 1. Math engine — tokenizer → recursive-descent parser → compiler
+   * ============================================================ */
+  var CONSTS = { pi: Math.PI, e: Math.E, tau: 2 * Math.PI };
+  var FUNCS = {
+    sin:{a:1,f:Math.sin}, cos:{a:1,f:Math.cos}, tan:{a:1,f:Math.tan},
+    asin:{a:1,f:Math.asin}, acos:{a:1,f:Math.acos}, atan:{a:1,f:Math.atan},
+    sinh:{a:1,f:Math.sinh}, cosh:{a:1,f:Math.cosh}, tanh:{a:1,f:Math.tanh},
+    asinh:{a:1,f:Math.asinh}, acosh:{a:1,f:Math.acosh}, atanh:{a:1,f:Math.atanh},
+    sqrt:{a:1,f:Math.sqrt}, cbrt:{a:1,f:Math.cbrt}, abs:{a:1,f:Math.abs},
+    exp:{a:1,f:Math.exp}, ln:{a:1,f:Math.log},
+    log:{a:1,f:function(x){return Math.log(x)/Math.LN10;}},
+    log2:{a:1,f:function(x){return Math.log(x)/Math.LN2;}},
+    log10:{a:1,f:function(x){return Math.log(x)/Math.LN10;}},
+    floor:{a:1,f:Math.floor}, ceil:{a:1,f:Math.ceil}, round:{a:1,f:Math.round},
+    sign:{a:1,f:Math.sign}, trunc:{a:1,f:Math.trunc},
+    min:{a:-1,f:Math.min}, max:{a:-1,f:Math.max}, hypot:{a:-1,f:Math.hypot},
+    pow:{a:2,f:Math.pow}, atan2:{a:2,f:Math.atan2},
+    mod:{a:2,f:function(a,b){return ((a % b) + b) % b;}}
+  };
+
+  function ParseError(msg){ this.message = msg; }
+
+  function tokenize(s){
+    var T = [], i = 0, n = s.length;
+    function isDigit(c){ return c >= '0' && c <= '9'; }
+    function isAlpha(c){ return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'); }
+    while(i < n){
+      var c = s[i];
+      if(c === ' ' || c === '\t'){ i++; continue; }
+      if(isDigit(c) || (c === '.' && isDigit(s[i+1]))){
+        var j = i;
+        while(j < n && isDigit(s[j])) j++;
+        if(s[j] === '.'){ j++; while(j < n && isDigit(s[j])) j++; }
+        if(s[j] === 'e' || s[j] === 'E'){
+          var k = j + 1;
+          if(s[k] === '+' || s[k] === '-') k++;
+          if(isDigit(s[k])){ j = k + 1; while(j < n && isDigit(s[j])) j++; }
+        }
+        var num = parseFloat(s.slice(i, j));
+        if(!isFinite(num)) throw new ParseError('数字无法解析');
+        T.push({ t:'num', v:num }); i = j; continue;
+      }
+      if(isAlpha(c)){
+        var p = i + 1;
+        while(p < n && isAlpha(s[p])) p++;
+        var word = s.slice(i, p);
+        if((word === 'log' || word === 'atan') && s[p] === '2'){ word += '2'; p++; }
+        i = p;
+        var lw = word.toLowerCase();
+        if(FUNCS[lw]) T.push({ t:'func', v:lw });
+        else if(CONSTS[lw] !== undefined) T.push({ t:'const', v:lw });
+        else {
+          // unknown multi-letter run -> sequence of single-letter variables
+          for(var q = 0; q < word.length; q++) T.push({ t:'var', v:word[q].toLowerCase() });
+        }
+        continue;
+      }
+      if('+-*/^'.indexOf(c) >= 0){ T.push({ t:'op', v:c }); i++; continue; }
+      if(c === '('){ T.push({ t:'lp' }); i++; continue; }
+      if(c === ')'){ T.push({ t:'rp' }); i++; continue; }
+      if(c === ','){ T.push({ t:'comma' }); i++; continue; }
+      throw new ParseError('无法识别的字符 “' + c + '”');
+    }
+    return T;
+  }
+
+  function parse(tokens){
+    var p = 0;
+    function peek(){ return tokens[p]; }
+    function next(){ return tokens[p++]; }
+
+    function parseExpr(){ return parseAdd(); }
+
+    function parseAdd(){
+      var node = parseMul();
+      while(peek() && peek().t === 'op' && (peek().v === '+' || peek().v === '-')){
+        var op = next().v; node = { type:'bin', op:op, a:node, b:parseMul() };
+      }
+      return node;
+    }
+    function parseMul(){
+      var node = parseUnary();
+      while(true){
+        var tk = peek();
+        if(!tk) break;
+        if(tk.t === 'op' && (tk.v === '*' || tk.v === '/')){
+          var op = next().v; node = { type:'bin', op:op, a:node, b:parseUnary() }; continue;
+        }
+        // implicit multiplication when a primary follows directly
+        if(tk.t === 'num' || tk.t === 'var' || tk.t === 'const' || tk.t === 'func' || tk.t === 'lp'){
+          node = { type:'bin', op:'*', a:node, b:parseUnary() }; continue;
+        }
+        break;
+      }
+      return node;
+    }
+    function parseUnary(){
+      var tk = peek();
+      if(tk && tk.t === 'op' && tk.v === '-'){ next(); return { type:'neg', a:parseUnary() }; }
+      if(tk && tk.t === 'op' && tk.v === '+'){ next(); return parseUnary(); }
+      return parsePow();
+    }
+    function parsePow(){
+      var base = parsePrimary();
+      var tk = peek();
+      if(tk && tk.t === 'op' && tk.v === '^'){ next(); return { type:'bin', op:'^', a:base, b:parseUnary() }; }
+      return base;
+    }
+    function parsePrimary(){
+      var tk = next();
+      if(!tk) throw new ParseError('表达式不完整');
+      if(tk.t === 'num') return { type:'num', v:tk.v };
+      if(tk.t === 'const') return { type:'const', v:tk.v };
+      if(tk.t === 'var') return { type:'var', v:tk.v };
+      if(tk.t === 'func'){
+        if(!peek() || peek().t !== 'lp') throw new ParseError('函数 ' + tk.v + ' 后需要括号');
+        next();
+        var args = [ parseExpr() ];
+        while(peek() && peek().t === 'comma'){ next(); args.push(parseExpr()); }
+        if(!peek() || peek().t !== 'rp') throw new ParseError('缺少右括号');
+        next();
+        var spec = FUNCS[tk.v];
+        if(spec.a !== -1 && args.length !== spec.a) throw new ParseError(tk.v + ' 需要 ' + spec.a + ' 个参数');
+        if(spec.a === -1 && args.length < 1) throw new ParseError(tk.v + ' 至少需要 1 个参数');
+        return { type:'call', name:tk.v, args:args };
+      }
+      if(tk.t === 'lp'){
+        var e = parseExpr();
+        if(!peek() || peek().t !== 'rp') throw new ParseError('缺少右括号');
+        next();
+        return e;
+      }
+      if(tk.t === 'rp') throw new ParseError('多余的右括号');
+      if(tk.t === 'op') throw new ParseError('运算符 “' + tk.v + '” 缺少操作数');
+      throw new ParseError('意外的符号');
+    }
+
+    var ast = parseExpr();
+    if(p < tokens.length) throw new ParseError('多余的符号');
+    return ast;
+  }
+
+  function collectVars(node, set){
+    if(!node) return;
+    if(node.type === 'var') set[node.v] = true;
+    else if(node.type === 'neg') collectVars(node.a, set);
+    else if(node.type === 'bin'){ collectVars(node.a, set); collectVars(node.b, set); }
+    else if(node.type === 'call'){ for(var i = 0; i < node.args.length; i++) collectVars(node.args[i], set); }
+  }
+
+  function compile(node){
+    switch(node.type){
+      case 'num': { var v = node.v; return function(){ return v; }; }
+      case 'const': { var cv = CONSTS[node.v]; return function(){ return cv; }; }
+      case 'var': { var name = node.v; return function(s){ var r = s[name]; return r === undefined ? NaN : r; }; }
+      case 'neg': { var a = compile(node.a); return function(s){ return -a(s); }; }
+      case 'bin': {
+        var la = compile(node.a), lb = compile(node.b);
+        switch(node.op){
+          case '+': return function(s){ return la(s) + lb(s); };
+          case '-': return function(s){ return la(s) - lb(s); };
+          case '*': return function(s){ return la(s) * lb(s); };
+          case '/': return function(s){ return la(s) / lb(s); };
+          case '^': return function(s){ return Math.pow(la(s), lb(s)); };
+        }
+        break;
+      }
+      case 'call': {
+        var fn = FUNCS[node.name].f;
+        var cargs = node.args.map(compile);
+        if(cargs.length === 1){ var c0 = cargs[0]; return function(s){ return fn(c0(s)); }; }
+        if(cargs.length === 2){ var d0 = cargs[0], d1 = cargs[1]; return function(s){ return fn(d0(s), d1(s)); }; }
+        return function(s){ var vals = []; for(var i = 0; i < cargs.length; i++) vals.push(cargs[i](s)); return fn.apply(null, vals); };
+      }
+    }
+    return function(){ return NaN; };
+  }
+
+  function makeFunction(src){
+    var trimmed = (src || '').trim();
+    if(!trimmed) return { ok:false, empty:true, fn:null, vars:{}, error:'' };
+    try{
+      var toks = tokenize(trimmed);
+      if(!toks.length) return { ok:false, empty:true, fn:null, vars:{}, error:'' };
+      var ast = parse(toks);
+      var vars = {}; collectVars(ast, vars);
+      return { ok:true, empty:false, fn:compile(ast), vars:vars, error:'' };
+    }catch(err){
+      return { ok:false, empty:false, fn:null, vars:{}, error:(err && err.message) ? err.message : '表达式错误' };
+    }
+  }
+
+  /* ============================================================
+   * 2. State
+   * ============================================================ */
+  var PALETTE = ['#5e6ad2','#4cb782','#eb5757','#f2994a','#f2c94c','#26b5ce','#b59aff','#ec6cb9'];
+  var STORE_KEY = 'daily-tools.grapher.v1';
+
+  var EXAMPLES = [
+    { label:'三角', fns:['sin(x)','cos(x)'] },
+    { label:'抛物线', fns:['x^2/4 - 3'] },
+    { label:'高斯', fns:['e^(-x^2)'] },
+    { label:'逻辑斯蒂', fns:['1/(1+e^(-x))'] },
+    { label:'阻尼振荡', fns:['e^(-abs(x)/4) sin(4x)'] },
+    { label:'双曲线', fns:['1/x'] },
+    { label:'正弦调幅', fns:['a sin(b x)'] },
+    { label:'多项式', fns:['x^3/12 - x'] }
+  ];
+
+  var state = {
+    functions: [],   // { expr, color, visible, compiled }
+    params: {},      // name -> value
+    view: null,      // { cx, cy, ppu }
+    traceX: '1'
+  };
+  var uidCounter = 1;
+
+  function seed(){
+    state.functions = [
+      { expr:'a sin(x)', color:0, visible:true },
+      { expr:'0.25 x^2 - 3', color:1, visible:true }
+    ];
+    state.params = { a: 2 };
+    state.view = null;
+    state.traceX = '1';
+  }
+
+  function load(){
+    try{
+      var raw = localStorage.getItem(STORE_KEY);
+      if(!raw){ seed(); return; }
+      var d = JSON.parse(raw);
+      if(!d || !Array.isArray(d.functions) || !d.functions.length){ seed(); return; }
+      state.functions = d.functions.map(function(f, i){
+        return { expr:String(f.expr || ''), color:(typeof f.color === 'number' ? f.color : i % PALETTE.length), visible:f.visible !== false };
+      });
+      state.params = (d.params && typeof d.params === 'object') ? d.params : {};
+      state.view = (d.view && isFinite(d.view.ppu) && d.view.ppu > 0) ? d.view : null;
+      state.traceX = (d.traceX !== undefined && d.traceX !== null) ? String(d.traceX) : '1';
+    }catch(e){ seed(); }
+  }
+
+  var saveTimer = null;
+  function scheduleSave(){
+    if(saveTimer) clearTimeout(saveTimer);
+    saveTimer = setTimeout(save, 250);
+  }
+  function save(){
+    try{
+      var out = {
+        functions: state.functions.map(function(f){ return { expr:f.expr, color:f.color, visible:f.visible }; }),
+        params: state.params,
+        view: state.view,
+        traceX: state.traceX
+      };
+      localStorage.setItem(STORE_KEY, JSON.stringify(out));
+    }catch(e){ /* ignore quota / private mode */ }
+  }
+
+  /* ============================================================
+   * 3. DOM refs
+   * ============================================================ */
+  var $ = function(id){ return document.getElementById(id); };
+  var fnList = $('fn-list'), fnCount = $('fn-count'),
+      paramSection = $('param-section'), paramList = $('param-list'),
+      traceList = $('trace-list'), traceXInput = $('trace-x'),
+      examplesBox = $('examples'), viewInfo = $('view-info'),
+      cursorReadout = $('cursor-readout'), canvas = $('plot');
+  var ctx = canvas.getContext('2d');
+  var W = 0, H = 0, dpr = 1;
+
+  /* ============================================================
+   * 4. Recompile / param sync
+   * ============================================================ */
+  function recompile(){
+    for(var i = 0; i < state.functions.length; i++){
+      state.functions[i].compiled = makeFunction(state.functions[i].expr);
+    }
+    // gather needed params = union of vars across functions, minus x
+    var needed = {};
+    for(var j = 0; j < state.functions.length; j++){
+      var vs = state.functions[j].compiled.vars;
+      for(var k in vs){ if(k !== 'x') needed[k] = true; }
+    }
+    // ensure a value exists for each needed param (keep prior values)
+    for(var name in needed){ if(!(name in state.params) || !isFinite(state.params[name])) state.params[name] = 1; }
+    state._neededParams = Object.keys(needed).sort();
+  }
+
+  function scope(x){
+    var s = { x: x };
+    for(var k in state.params) s[k] = state.params[k];
+    return s;
+  }
+
+  /* ============================================================
+   * 5. Number formatting
+   * ============================================================ */
+  function fmtValue(v){
+    if(typeof v !== 'number' || isNaN(v)) return { disp:'—', val:'NaN', nan:true };
+    if(!isFinite(v)) return { disp:(v > 0 ? '∞' : '−∞'), val:(v > 0 ? 'Infinity' : '-Infinity'), nan:true };
+    var r = Math.round(v * 1e6) / 1e6;
+    if(r === 0) r = 0; // normalize -0
+    var a = Math.abs(r), disp;
+    if(a !== 0 && (a >= 1e6 || a < 1e-4)) disp = v.toExponential(3);
+    else disp = String(r);
+    return { disp:disp, val:String(r), nan:false };
+  }
+
+  function fmtTick(v, step){
+    if(v === 0) return '0';
+    var a = Math.abs(v);
+    if(a >= 1e5 || a < 1e-4) return v.toExponential(0).replace('e+','e');
+    var dec = Math.max(0, Math.ceil(-Math.log10(step)));
+    if(dec > 6) dec = 6;
+    var s = v.toFixed(dec);
+    if(s.indexOf('.') >= 0) s = s.replace(/0+$/,'').replace(/\.$/,'');
+    return s;
+  }
+
+  function niceStep(raw){
+    if(!(raw > 0) || !isFinite(raw)) return 1;
+    var p = Math.pow(10, Math.floor(Math.log10(raw)));
+    var f = raw / p, nf;
+    if(f < 1.5) nf = 1; else if(f < 3) nf = 2; else if(f < 7) nf = 5; else nf = 10;
+    return nf * p;
+  }
+
+  /* ============================================================
+   * 6. Sidebar rendering
+   * ============================================================ */
+  function colorOf(f){ return PALETTE[((f.color % PALETTE.length) + PALETTE.length) % PALETTE.length]; }
+
+  function renderFnList(){
+    fnList.innerHTML = '';
+    state.functions.forEach(function(f, idx){
+      var comp = f.compiled || makeFunction(f.expr);
+      var row = document.createElement('div');
+      row.className = 'fn-row' + (comp.error ? ' invalid' : '');
+      row.setAttribute('data-idx', idx);
+
+      var color = colorOf(f);
+      var sw = document.createElement('button');
+      sw.className = 'swatch'; sw.style.background = color; sw.style.color = color;
+      sw.setAttribute('aria-pressed', f.visible ? 'true' : 'false');
+      sw.setAttribute('aria-label', (f.visible ? '隐藏' : '显示') + '第 ' + (idx+1) + ' 条函数');
+      sw.title = f.visible ? '点击隐藏' : '点击显示';
+      sw.addEventListener('click', function(){ f.visible = !f.visible; onChange(); });
+
+      var eq = document.createElement('span');
+      eq.className = 'eq'; eq.textContent = 'y' + subscript(idx+1) + '=';
+
+      var input = document.createElement('input');
+      input.className = 'fn-input' + (comp.error ? ' bad' : '');
+      input.type = 'text'; input.value = f.expr; input.spellcheck = false;
+      input.autocomplete = 'off'; input.setAttribute('placeholder', '例如 sin(x)');
+      input.setAttribute('aria-label', '第 ' + (idx+1) + ' 条函数表达式');
+      input.addEventListener('input', function(){
+        f.expr = input.value;
+        f.compiled = makeFunction(f.expr);
+        // live-update error style + params + trace + plot without full rebuild
+        var bad = !!f.compiled.error;
+        input.classList.toggle('bad', bad);
+        row.classList.toggle('invalid', bad);
+        errEl.textContent = f.compiled.error || '';
+        syncParamsAndDraw();
+      });
+
+      var del = document.createElement('button');
+      del.className = 'del'; del.innerHTML = '✕'; del.title = '删除'; del.setAttribute('aria-label', '删除第 ' + (idx+1) + ' 条函数');
+      del.addEventListener('click', function(){
+        state.functions.splice(idx, 1); onChange();
+      });
+
+      var errEl = document.createElement('div');
+      errEl.className = 'fn-err'; errEl.textContent = comp.error || '';
+
+      row.appendChild(sw); row.appendChild(eq); row.appendChild(input); row.appendChild(del); row.appendChild(errEl);
+      fnList.appendChild(row);
+    });
+    fnCount.textContent = state.functions.length + ' 条';
+  }
+
+  function subscript(n){
+    var map = {'0':'₀','1':'₁','2':'₂','3':'₃','4':'₄','5':'₅','6':'₆','7':'₇','8':'₈','9':'₉'};
+    return String(n).split('').map(function(d){ return map[d] || d; }).join('');
+  }
+
+  function renderParams(){
+    var names = state._neededParams || [];
+    if(!names.length){ paramSection.hidden = true; paramList.innerHTML = ''; return; }
+    paramSection.hidden = false;
+    paramList.innerHTML = '';
+    names.forEach(function(name){
+      var val = state.params[name];
+      if(!isFinite(val)) val = 1;
+      var wrap = document.createElement('div');
+      wrap.className = 'param';
+
+      var lab = document.createElement('span');
+      lab.className = 'param-name'; lab.innerHTML = name;
+
+      var range = document.createElement('input');
+      range.type = 'range'; range.className = 'param-range';
+      range.min = '-10'; range.max = '10'; range.step = '0.1';
+      range.value = String(Math.max(-10, Math.min(10, val)));
+      range.setAttribute('data-name', name);
+      range.setAttribute('aria-label', '参数 ' + name);
+
+      var num = document.createElement('input');
+      num.type = 'text'; num.inputMode = 'decimal'; num.className = 'param-num';
+      num.value = String(val); num.setAttribute('data-name', name);
+      num.setAttribute('aria-label', '参数 ' + name + ' 的值');
+
+      range.addEventListener('input', function(){
+        var v = parseFloat(range.value);
+        if(isFinite(v)){ state.params[name] = v; num.value = String(v); renderTrace(); redraw(); scheduleSave(); }
+      });
+      num.addEventListener('input', function(){
+        var v = parseFloat(num.value);
+        if(isFinite(v)){ state.params[name] = v; range.value = String(Math.max(-10, Math.min(10, v))); renderTrace(); redraw(); scheduleSave(); }
+      });
+
+      wrap.appendChild(lab); wrap.appendChild(range); wrap.appendChild(num);
+      paramList.appendChild(wrap);
+    });
+  }
+
+  function renderTrace(){
+    var x = parseFloat(state.traceX);
+    traceList.innerHTML = '';
+    var any = false;
+    state.functions.forEach(function(f, idx){
+      var comp = f.compiled || makeFunction(f.expr);
+      if(!comp.ok) return;
+      any = true;
+      var y = isFinite(x) ? comp.fn(scope(x)) : NaN;
+      var fv = fmtValue(y);
+      var row = document.createElement('div');
+      row.className = 'trace-row' + (f.visible ? '' : ' hidden-fn');
+      row.setAttribute('data-fn', idx);
+
+      var dot = document.createElement('span');
+      dot.className = 'dot'; dot.style.background = colorOf(f);
+
+      var eq = document.createElement('span');
+      eq.className = 'trace-eq'; eq.textContent = 'y' + subscript(idx+1) + ' =';
+
+      var val = document.createElement('span');
+      val.className = 'trace-val' + (fv.nan ? ' nan' : '');
+      val.textContent = fv.disp;
+      val.setAttribute('data-val', fv.val);
+
+      row.appendChild(dot); row.appendChild(eq); row.appendChild(val);
+      traceList.appendChild(row);
+    });
+    if(!any){
+      var empty = document.createElement('div');
+      empty.className = 'trace-empty';
+      empty.textContent = '暂无有效函数';
+      traceList.appendChild(empty);
+    }
+  }
+
+  function renderExamples(){
+    examplesBox.innerHTML = '';
+    EXAMPLES.forEach(function(ex){
+      var chip = document.createElement('button');
+      chip.className = 'example-chip'; chip.type = 'button'; chip.textContent = ex.label;
+      chip.addEventListener('click', function(){
+        state.functions = ex.fns.map(function(expr, i){ return { expr:expr, color:i, visible:true }; });
+        // reset params referenced by the example to pleasant defaults
+        recompile();
+        (state._neededParams || []).forEach(function(nm){ if(!isFinite(state.params[nm])) state.params[nm] = 1; });
+        if(ex.label === '正弦调幅'){ state.params.a = 2; state.params.b = 1; }
+        state.view = null; // refit to default
+        fullRender();
+        scheduleSave();
+      });
+      examplesBox.appendChild(chip);
+    });
+  }
+
+  /* ============================================================
+   * 7. Canvas view + drawing
+   * ============================================================ */
+  function sizeCanvas(){
+    var holder = canvas.parentNode;
+    W = holder.clientWidth; H = holder.clientHeight;
+    dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.max(1, Math.round(W * dpr));
+    canvas.height = Math.max(1, Math.round(H * dpr));
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  function defaultView(){
+    var ppu = (W > 0) ? W / 20 : 44; // ~20 units across width
+    return { cx:0, cy:0, ppu:ppu };
+  }
+  function ensureView(){
+    if(!state.view || !isFinite(state.view.ppu) || state.view.ppu <= 0) state.view = defaultView();
+  }
+  function xToPx(wx){ return W/2 + (wx - state.view.cx) * state.view.ppu; }
+  function yToPx(wy){ return H/2 - (wy - state.view.cy) * state.view.ppu; }
+  function pxToX(px){ return state.view.cx + (px - W/2) / state.view.ppu; }
+  function pxToY(py){ return state.view.cy - (py - H/2) / state.view.ppu; }
+
+  function bounds(){
+    return { xmin:pxToX(0), xmax:pxToX(W), ymin:pxToY(H), ymax:pxToY(0) };
+  }
+
+  function updateViewInfo(){
+    var b = bounds();
+    var span = b.xmax - b.xmin;
+    viewInfo.setAttribute('data-xspan', span.toFixed(6));
+    viewInfo.setAttribute('data-xmin', b.xmin.toFixed(6));
+    viewInfo.setAttribute('data-xmax', b.xmax.toFixed(6));
+    viewInfo.textContent = 'x ∈ [' + fmtAxis(b.xmin) + ', ' + fmtAxis(b.xmax) + ']';
+  }
+  function fmtAxis(v){
+    var s = Math.abs(v) >= 1000 ? v.toFixed(0) : v.toFixed(2);
+    return s.replace('-', '−');
+  }
+
+  function draw(){
+    if(W <= 0 || H <= 0) return;
+    ensureView();
+    var v = state.view;
+    var b = bounds();
+
+    // background
+    ctx.clearRect(0, 0, W, H);
+    ctx.fillStyle = '#08090b';
+    ctx.fillRect(0, 0, W, H);
+
+    var major = niceStep(84 / v.ppu);
+    var minor = major / 5;
+
+    // --- minor grid ---
+    if((b.xmax - b.xmin) / minor < 500){
+      ctx.lineWidth = 1; ctx.strokeStyle = '#141518';
+      ctx.beginPath();
+      var xi0 = Math.ceil(b.xmin / minor), xi1 = Math.floor(b.xmax / minor);
+      for(var xi = xi0; xi <= xi1; xi++){ var gx = Math.round(xToPx(xi * minor)) + 0.5; ctx.moveTo(gx, 0); ctx.lineTo(gx, H); }
+      var yi0 = Math.ceil(b.ymin / minor), yi1 = Math.floor(b.ymax / minor);
+      for(var yi = yi0; yi <= yi1; yi++){ var gy = Math.round(yToPx(yi * minor)) + 0.5; ctx.moveTo(0, gy); ctx.lineTo(W, gy); }
+      ctx.stroke();
+    }
+    // --- major grid ---
+    ctx.lineWidth = 1; ctx.strokeStyle = '#24262c';
+    ctx.beginPath();
+    var mx0 = Math.ceil(b.xmin / major), mx1 = Math.floor(b.xmax / major);
+    for(var mx = mx0; mx <= mx1; mx++){ var gmx = Math.round(xToPx(mx * major)) + 0.5; ctx.moveTo(gmx, 0); ctx.lineTo(gmx, H); }
+    var my0 = Math.ceil(b.ymin / major), my1 = Math.floor(b.ymax / major);
+    for(var my = my0; my <= my1; my++){ var gmy = Math.round(yToPx(my * major)) + 0.5; ctx.moveTo(0, gmy); ctx.lineTo(W, gmy); }
+    ctx.stroke();
+
+    // --- axes ---
+    ctx.strokeStyle = '#50535c'; ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    var axisX = xToPx(0), axisY = yToPx(0);
+    var showY = axisX >= -1 && axisX <= W + 1;
+    var showX = axisY >= -1 && axisY <= H + 1;
+    if(showY){ var ax = Math.round(axisX) + 0.5; ctx.moveTo(ax, 0); ctx.lineTo(ax, H); }
+    if(showX){ var ay = Math.round(axisY) + 0.5; ctx.moveTo(0, ay); ctx.lineTo(W, ay); }
+    ctx.stroke();
+
+    // --- tick labels ---
+    ctx.fillStyle = '#8a8f98';
+    ctx.font = '11px ' + getComputedStyle(document.body).getPropertyValue('--mono');
+    ctx.textBaseline = 'top'; ctx.textAlign = 'center';
+    var labelY = showX ? Math.min(H - 14, Math.max(2, axisY + 5)) : H - 14;
+    for(var lx = mx0; lx <= mx1; lx++){
+      if(lx === 0) continue;
+      var val = lx * major, px = xToPx(val);
+      if(px < 14 || px > W - 6) continue;
+      ctx.fillText(fmtTick(val, major).replace('-', '−'), px, labelY);
+    }
+    ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+    var labelX = showY ? Math.min(W - 4, Math.max(28, axisX - 6)) : W - 4;
+    for(var ly = my0; ly <= my1; ly++){
+      if(ly === 0) continue;
+      var vy = ly * major, py = yToPx(vy);
+      if(py < 8 || py > H - 8) continue;
+      ctx.fillText(fmtTick(vy, major).replace('-', '−'), labelX, py);
+    }
+    // origin label
+    if(showX && showY){
+      ctx.textAlign = 'right'; ctx.textBaseline = 'top';
+      ctx.fillText('0', axisX - 6, Math.min(H - 14, axisY + 5));
+    }
+
+    // --- curves ---
+    for(var fi = 0; fi < state.functions.length; fi++){
+      var f = state.functions[fi];
+      if(!f.visible) continue;
+      var comp = f.compiled || makeFunction(f.expr);
+      if(!comp.ok) continue;
+      drawCurve(comp.fn, colorOf(f));
+    }
+
+    // --- trace overlay ---
+    drawTrace();
+  }
+
+  function drawCurve(fn, color){
+    var v = state.view;
+    var worldH = H / v.ppu;
+    var s = { x:0 };
+    for(var k in state.params) s[k] = state.params[k];
+
+    ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+    ctx.beginPath();
+    var penDown = false, prevY = NaN, prevPy = 0;
+    var step = 1; // px per sample
+    for(var px = 0; px <= W; px += step){
+      var wx = pxToX(px);
+      s.x = wx;
+      var y = fn(s);
+      if(typeof y !== 'number' || isNaN(y) || !isFinite(y)){ penDown = false; prevY = NaN; continue; }
+      var py = yToPx(y);
+      // clamp far-off values to keep canvas coords sane
+      if(py < -1e5) py = -1e5; else if(py > H + 1e5) py = H + 1e5;
+      if(!penDown){ ctx.moveTo(px, py); penDown = true; }
+      else {
+        // asymptote / pole detection: sign flip across a large magnitude => break
+        var pole = ((prevY > 0) !== (y > 0)) && (Math.abs(prevY) > 2 * worldH && Math.abs(y) > 2 * worldH);
+        if(pole) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      prevY = y; prevPy = py;
+    }
+    ctx.stroke();
+  }
+
+  function drawTrace(){
+    var x = parseFloat(state.traceX);
+    if(!isFinite(x)) return;
+    var px = xToPx(x);
+    if(px < 0 || px > W) return;
+    // vertical guide
+    ctx.save();
+    ctx.strokeStyle = 'rgba(208,214,224,.28)'; ctx.lineWidth = 1; ctx.setLineDash([4,4]);
+    ctx.beginPath(); ctx.moveTo(Math.round(px)+0.5, 0); ctx.lineTo(Math.round(px)+0.5, H); ctx.stroke();
+    ctx.setLineDash([]);
+    // dots
+    for(var i = 0; i < state.functions.length; i++){
+      var f = state.functions[i];
+      if(!f.visible) continue;
+      var comp = f.compiled || makeFunction(f.expr);
+      if(!comp.ok) continue;
+      var y = comp.fn(scope(x));
+      if(typeof y !== 'number' || isNaN(y) || !isFinite(y)) continue;
+      var py = yToPx(y);
+      if(py < -20 || py > H + 20) continue;
+      ctx.fillStyle = colorOf(f);
+      ctx.strokeStyle = '#08090b'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(px, py, 4.5, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  /* ============================================================
+   * 8. Orchestration
+   * ============================================================ */
+  function redraw(){
+    try{ draw(); updateViewInfo(); }catch(e){ /* never throw to page */ }
+  }
+  // light update path: params/trace/plot only (no fn-list rebuild)
+  function syncParamsAndDraw(){
+    recompile();
+    renderParams();
+    renderTrace();
+    redraw();
+    scheduleSave();
+  }
+  // full update: rebuild every panel
+  function fullRender(){
+    recompile();
+    renderFnList();
+    renderParams();
+    renderTrace();
+    redraw();
+  }
+  // change coming from list mutations (add/delete/visibility)
+  function onChange(){ fullRender(); scheduleSave(); }
+
+  /* ============================================================
+   * 9. Events
+   * ============================================================ */
+  $('add-fn').addEventListener('click', function(){
+    var color = state.functions.length % PALETTE.length;
+    state.functions.push({ expr:'', color:color, visible:true });
+    onChange();
+    // focus the new input
+    var inputs = fnList.querySelectorAll('.fn-input');
+    if(inputs.length) inputs[inputs.length - 1].focus();
+  });
+
+  traceXInput.addEventListener('input', function(){
+    state.traceX = traceXInput.value;
+    renderTrace(); redraw(); scheduleSave();
+  });
+
+  function zoomBy(factor, ax, ay){
+    ensureView();
+    var v = state.view;
+    if(ax === undefined) ax = W/2;
+    if(ay === undefined) ay = H/2;
+    var wx = pxToX(ax), wy = pxToY(ay);
+    var np = v.ppu * factor;
+    np = Math.max(1e-6, Math.min(1e7, np));
+    v.ppu = np;
+    v.cx = wx - (ax - W/2) / np;
+    v.cy = wy + (ay - H/2) / np;
+    redraw(); scheduleSave();
+  }
+  $('zoom-in').addEventListener('click', function(){ zoomBy(1.25); });
+  $('zoom-out').addEventListener('click', function(){ zoomBy(0.8); });
+  $('view-reset').addEventListener('click', function(){ state.view = defaultView(); redraw(); scheduleSave(); });
+
+  function clearAll(){
+    try{ localStorage.removeItem(STORE_KEY); }catch(e){}
+    seed(); fullRender(); scheduleSave();
+    traceXInput.value = state.traceX;
+  }
+  var clearBtn = $('clear-all');
+  clearBtn.addEventListener('click', clearAll);
+  clearBtn.addEventListener('keydown', function(e){ if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); clearAll(); } });
+
+  // canvas pan
+  var dragging = false, lastX = 0, lastY = 0, moved = false;
+  canvas.addEventListener('pointerdown', function(e){
+    dragging = true; moved = false; lastX = e.clientX; lastY = e.clientY;
+    try{ canvas.setPointerCapture(e.pointerId); }catch(_){}
+    canvas.style.cursor = 'grabbing';
+  });
+  canvas.addEventListener('pointermove', function(e){
+    var rect = canvas.getBoundingClientRect();
+    if(dragging){
+      var dx = e.clientX - lastX, dy = e.clientY - lastY;
+      if(Math.abs(dx) + Math.abs(dy) > 2) moved = true;
+      lastX = e.clientX; lastY = e.clientY;
+      ensureView();
+      state.view.cx -= dx / state.view.ppu;
+      state.view.cy += dy / state.view.ppu;
+      redraw();
+    }
+    // cursor readout
+    var mx = e.clientX - rect.left, my = e.clientY - rect.top;
+    var wx = pxToX(mx), wy = pxToY(my);
+    cursorReadout.textContent = '(' + fmtAxis(wx) + ', ' + fmtAxis(wy) + ')';
+  });
+  function endDrag(e){
+    if(dragging){ dragging = false; canvas.style.cursor = 'crosshair'; if(moved) scheduleSave(); }
+    try{ if(e && e.pointerId !== undefined) canvas.releasePointerCapture(e.pointerId); }catch(_){}
+  }
+  canvas.addEventListener('pointerup', endDrag);
+  canvas.addEventListener('pointercancel', endDrag);
+  canvas.addEventListener('pointerleave', function(){ cursorReadout.textContent = ''; });
+
+  canvas.addEventListener('wheel', function(e){
+    e.preventDefault();
+    var rect = canvas.getBoundingClientRect();
+    var ax = e.clientX - rect.left, ay = e.clientY - rect.top;
+    var factor = Math.pow(1.0015, -e.deltaY);
+    factor = Math.max(0.2, Math.min(5, factor));
+    zoomBy(factor, ax, ay);
+  }, { passive:false });
+
+  // keyboard on canvas
+  canvas.addEventListener('keydown', function(e){
+    ensureView();
+    var panStep = 40 / state.view.ppu;
+    var handled = true;
+    switch(e.key){
+      case '+': case '=': zoomBy(1.25); break;
+      case '-': case '_': zoomBy(0.8); break;
+      case 'ArrowLeft': state.view.cx -= panStep; redraw(); scheduleSave(); break;
+      case 'ArrowRight': state.view.cx += panStep; redraw(); scheduleSave(); break;
+      case 'ArrowUp': state.view.cy += panStep; redraw(); scheduleSave(); break;
+      case 'ArrowDown': state.view.cy -= panStep; redraw(); scheduleSave(); break;
+      case '0': state.view = defaultView(); redraw(); scheduleSave(); break;
+      default: handled = false;
+    }
+    if(handled) e.preventDefault();
+  });
+
+  // resize
+  var resizeRAF = null;
+  function onResize(){
+    if(resizeRAF) cancelAnimationFrame(resizeRAF);
+    resizeRAF = requestAnimationFrame(function(){ sizeCanvas(); redraw(); });
+  }
+  window.addEventListener('resize', onResize);
+  if(window.ResizeObserver){
+    try{ new ResizeObserver(onResize).observe(canvas.parentNode); }catch(_){}
+  }
+
+  /* ============================================================
+   * 10. Init
+   * ============================================================ */
+  function init(){
+    load();
+    renderExamples();
+    recompile();
+    renderFnList();
+    renderParams();
+    traceXInput.value = state.traceX;
+    renderTrace();
+    // size after layout settles
+    requestAnimationFrame(function(){
+      sizeCanvas();
+      ensureView();
+      redraw();
+    });
+  }
+  init();
+
+  // expose a tiny hook for debugging / tests (read-only)
+  window.__grapher = { state:state, makeFunction:makeFunction };
+})();
+</script>
+</body>
+</html>
