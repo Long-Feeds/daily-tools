@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>关键路径 · Critical Path — 项目甘特与关键路径</title>
+<meta name="description" content="输入任务、工期与依赖，自动排出最早/最晚时间、总浮动与关键路径，并画成甘特图。纯前端，本地保存，零后端。" />
+<style>
+  /* ===== Stripe-inspired design language ===== */
+  :root{
+    --primary:#533afd; --primary-deep:#4434d4; --primary-press:#2e2b8c; --primary-soft:#665efd;
+    --primary-subdued:#b9b9f9; --brand-dark:#1c1e54;
+    --ink:#0d253d; --ink-2:#273951; --ink-mute:#64748d;
+    --canvas:#ffffff; --canvas-soft:#f6f9fc; --canvas-cream:#f5e9d4;
+    --hairline:#e3e8ee; --hairline-input:#a8c3de;
+    --ruby:#ea2261; --ruby-soft:#f5487f; --magenta:#f96bee;
+    --sh1:rgba(0,55,112,.08) 0 1px 3px;
+    --sh2:rgba(0,55,112,.08) 0 8px 24px, rgba(0,55,112,.04) 0 2px 6px;
+    --colw:42px; --rowh:46px;
+    --font:'SF Pro Display','Segoe UI',system-ui,-apple-system,'Helvetica Neue',Arial,'PingFang SC','Microsoft YaHei',sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    font-family:var(--font); font-weight:300; color:var(--ink);
+    background:var(--canvas-soft);
+    font-feature-settings:'ss01';
+    -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
+    line-height:1.4;
+  }
+  .tnum{font-variant-numeric:tabular-nums; font-feature-settings:'tnum';}
+  a{color:var(--primary); text-decoration:none;}
+  a:hover{text-decoration:underline;}
+
+  /* ===== Hero: signature gradient mesh ===== */
+  .hero{
+    position:relative; overflow:hidden;
+    padding:22px 24px 64px;
+    background:
+      radial-gradient(60% 130% at 12% 8%, #f5e9d4 0%, rgba(245,233,212,0) 46%),
+      radial-gradient(48% 110% at 34% -6%, #f96bee 0%, rgba(249,107,238,0) 42%),
+      radial-gradient(60% 130% at 66% 6%, #665efd 0%, rgba(102,94,253,0) 48%),
+      radial-gradient(52% 120% at 96% -8%, #ea2261 0%, rgba(234,34,97,0) 42%),
+      linear-gradient(180deg,#eef1fb 0%,#f6f9fc 62%,#f6f9fc 100%);
+  }
+  .wrap{max-width:1180px; margin:0 auto;}
+  .back{display:inline-flex; align-items:center; gap:6px; font-size:14px; color:var(--ink-2); font-weight:400;}
+  .back:hover{color:var(--primary); text-decoration:none;}
+  .eyebrow{
+    display:inline-block; margin:26px 0 14px; padding:4px 10px;
+    background:rgba(255,255,255,.72); border:1px solid rgba(83,58,253,.18);
+    color:var(--primary-deep); font-size:10px; font-weight:500; letter-spacing:.12em;
+    text-transform:uppercase; border-radius:9999px; backdrop-filter:blur(4px);
+  }
+  h1{
+    margin:0; font-size:52px; font-weight:300; letter-spacing:-1.3px; line-height:1.03; color:var(--ink);
+  }
+  h1 .en{color:var(--ink-mute); font-size:.5em; letter-spacing:-.02em; margin-left:.5em; vertical-align:middle;}
+  .lede{margin:16px 0 0; max-width:640px; font-size:17px; color:var(--ink-2); font-weight:300;}
+
+  /* ===== Layout ===== */
+  main{max-width:1180px; margin:-40px auto 72px; padding:0 24px;}
+  .card{
+    background:var(--canvas); border:1px solid var(--hairline); border-radius:12px;
+    box-shadow:var(--sh2); padding:22px;
+  }
+  .card + .card{margin-top:20px;}
+  .card-title{display:flex; align-items:baseline; gap:10px; margin:0 0 4px;}
+  .card-title h2{margin:0; font-size:20px; font-weight:300; letter-spacing:-.2px;}
+  .card-title .hint{font-size:13px; color:var(--ink-mute); font-weight:400;}
+
+  /* ===== Toolbar ===== */
+  .toolbar{display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end;}
+  .field{display:flex; flex-direction:column; gap:5px;}
+  .field label{font-size:10px; font-weight:500; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-mute);}
+  input[type=text], input[type=number], input[type=date], select{
+    font-family:var(--font); font-weight:300; font-size:15px; color:var(--ink);
+    background:var(--canvas); border:1px solid var(--hairline-input); border-radius:6px;
+    padding:8px 12px; height:40px; outline:none; transition:border-color .12s, box-shadow .12s;
+  }
+  input:focus, select:focus{border-color:var(--primary); box-shadow:0 0 0 3px rgba(83,58,253,.14);}
+  select{cursor:pointer; -webkit-appearance:none; appearance:none;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2 4l4 4 4-4' stroke='%2364748d' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat:no-repeat; background-position:right 10px center; padding-right:30px;}
+  .grow-fill{flex:1 1 160px; min-width:130px;}
+  .toolbar-spacer{flex:1 1 auto;}
+
+  .btn{
+    font-family:var(--font); font-weight:400; font-size:15px; cursor:pointer;
+    border-radius:9999px; padding:9px 17px; height:40px; border:1px solid transparent;
+    display:inline-flex; align-items:center; gap:7px; transition:background .12s, border-color .12s, transform .05s;
+    white-space:nowrap;
+  }
+  .btn:active{transform:translateY(1px);}
+  .btn-primary{background:var(--primary); color:#fff;}
+  .btn-primary:hover{background:var(--primary-deep);}
+  .btn-primary:active{background:var(--primary-press);}
+  .btn-ghost{background:var(--canvas); color:var(--primary); border-color:rgba(83,58,253,.35);}
+  .btn-ghost:hover{background:#f5f3ff;}
+  .btn-quiet{background:var(--canvas-soft); color:var(--ink-2); border-color:var(--hairline);}
+  .btn-quiet:hover{background:#eef1f6;}
+
+  /* ===== Stat tiles ===== */
+  .stats{display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:14px;}
+  .stat{
+    background:var(--canvas); border:1px solid var(--hairline); border-radius:12px; padding:16px 18px;
+    box-shadow:var(--sh1);
+  }
+  .stat .k{font-size:10px; font-weight:500; letter-spacing:.11em; text-transform:uppercase; color:var(--ink-mute);}
+  .stat .v{margin-top:7px; font-size:30px; font-weight:300; letter-spacing:-.6px; color:var(--ink); line-height:1;}
+  .stat .v small{font-size:15px; color:var(--ink-mute); margin-left:3px; letter-spacing:0;}
+  .stat.accent .v{color:var(--ruby);}
+  .critpath-line{margin-top:14px; font-size:14px; color:var(--ink-2);}
+  .critpath-line .lbl{font-size:10px; font-weight:500; letter-spacing:.11em; text-transform:uppercase; color:var(--ink-mute); margin-right:8px;}
+  .critpath-line b{color:var(--ruby); font-weight:400;}
+
+  /* ===== Error banner ===== */
+  .error{
+    display:none; margin-top:14px; padding:12px 16px; border-radius:8px;
+    background:#fdeef3; border:1px solid #f7c6d7; color:#b0164a; font-size:14px; font-weight:400;
+  }
+  .error.show{display:block;}
+  .error ul{margin:6px 0 0; padding-left:20px;}
+  .error li{margin:2px 0;}
+
+  /* ===== Task table ===== */
+  .table-scroll{overflow-x:auto; margin:6px -4px 0; padding:0 4px;}
+  table{border-collapse:collapse; width:100%; min-width:720px; font-size:14px;}
+  thead th{
+    text-align:left; font-size:10px; font-weight:500; letter-spacing:.09em; text-transform:uppercase;
+    color:var(--ink-mute); padding:8px 10px; border-bottom:1px solid var(--hairline); white-space:nowrap;
+  }
+  thead th.num{text-align:right;}
+  tbody td{padding:6px 10px; border-bottom:1px solid var(--hairline); vertical-align:middle;}
+  tbody tr:hover{background:var(--canvas-soft);}
+  tbody tr.is-critical{background:rgba(234,34,97,.045);}
+  tbody tr.is-critical:hover{background:rgba(234,34,97,.075);}
+  .id-badge{
+    display:inline-flex; align-items:center; justify-content:center; min-width:26px; height:26px; padding:0 7px;
+    border-radius:7px; background:var(--primary-subdued); color:var(--primary-press);
+    font-size:13px; font-weight:500; letter-spacing:0;
+  }
+  tr.is-critical .id-badge{background:#fbd7e3; color:#b0164a;}
+  .name-input{width:100%; min-width:120px;}
+  .dur-input{width:66px; text-align:right;}
+  .deps-input{width:112px;}
+  td.num{text-align:right; color:var(--ink-2);}
+  td.num.muted{color:var(--ink-mute);}
+  .float-0{color:var(--ruby); font-weight:400;}
+  .crit-badge{
+    display:none; padding:3px 9px; border-radius:9999px; background:var(--ruby); color:#fff;
+    font-size:10px; font-weight:500; letter-spacing:.06em; text-transform:uppercase;
+  }
+  tr.is-critical .crit-badge{display:inline-block;}
+  .cell-crit{text-align:center;}
+  .del-btn{
+    width:28px; height:28px; border-radius:7px; border:1px solid var(--hairline); background:var(--canvas);
+    color:var(--ink-mute); cursor:pointer; font-size:16px; line-height:1; padding:0;
+    display:inline-flex; align-items:center; justify-content:center; transition:all .12s;
+  }
+  .del-btn:hover{color:var(--ruby); border-color:#f7c6d7; background:#fdeef3;}
+  .table-actions{display:flex; gap:10px; margin-top:14px; flex-wrap:wrap;}
+  .empty-note{color:var(--ink-mute); font-size:14px; padding:18px 4px; font-weight:400;}
+
+  /* ===== Gantt ===== */
+  .legend{display:flex; gap:18px; flex-wrap:wrap; margin:2px 0 16px; font-size:12.5px; color:var(--ink-2);}
+  .legend span{display:inline-flex; align-items:center; gap:7px;}
+  .swatch{width:22px; height:12px; border-radius:4px; display:inline-block;}
+  .sw-normal{background:linear-gradient(180deg,var(--primary-soft),var(--primary));}
+  .sw-crit{background:linear-gradient(180deg,var(--ruby-soft),var(--ruby));}
+  .sw-slack{background:repeating-linear-gradient(45deg,#cfd8e6 0 4px,#e7edf5 4px 8px); border:1px solid var(--hairline);}
+  .gantt-scroll{overflow-x:auto; overflow-y:hidden; padding-bottom:6px;}
+  .gantt-inner{position:relative; min-width:max-content;}
+  .gantt-head{display:flex; align-items:flex-end; border-bottom:1px solid var(--hairline);}
+  .gantt-corner{width:190px; flex:0 0 190px;}
+  .gantt-days{display:flex; position:relative;}
+  .gday{
+    width:var(--colw); flex:0 0 var(--colw); text-align:center; padding-bottom:6px;
+    border-left:1px solid var(--hairline);
+  }
+  .gday .d-date{font-size:10px; color:var(--ink-mute); display:block; letter-spacing:-.02em;}
+  .gday .d-idx{font-size:11px; color:var(--ink-2);}
+  .gday.wk .d-date{color:var(--ruby);}
+  .gantt-body{position:relative;}
+  .grow{display:flex; align-items:center; height:var(--rowh); border-bottom:1px solid #f0f3f8;}
+  .grow-label{
+    width:190px; flex:0 0 190px; padding-right:14px; display:flex; align-items:center; gap:8px;
+    font-size:14px; color:var(--ink); overflow:hidden;
+  }
+  .grow-label .nm{white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .gtrack{
+    position:relative; height:var(--rowh); flex:0 0 auto;
+    background:repeating-linear-gradient(90deg,transparent 0,transparent calc(var(--colw) - 1px),var(--hairline) calc(var(--colw) - 1px),var(--hairline) var(--colw));
+  }
+  .gbar{
+    position:absolute; top:50%; transform:translateY(-50%); height:26px; border-radius:7px;
+    display:flex; align-items:center; padding:0 9px; color:#fff; font-size:12.5px; font-weight:400;
+    box-shadow:var(--sh1); overflow:hidden; white-space:nowrap; z-index:2;
+    background:linear-gradient(180deg,var(--primary-soft),var(--primary));
+  }
+  .gbar.crit{background:linear-gradient(180deg,var(--ruby-soft),var(--ruby));}
+  .gbar .bar-dur{opacity:.8; margin-left:6px; font-variant-numeric:tabular-nums;}
+  .gslack{
+    position:absolute; top:50%; transform:translateY(-50%); height:12px; border-radius:3px; z-index:1;
+    background:repeating-linear-gradient(45deg,#cfd8e6 0 4px,#e7edf5 4px 8px);
+    border:1px solid var(--hairline);
+  }
+  .gmile{
+    position:absolute; top:50%; width:18px; height:18px; transform:translate(-50%,-50%) rotate(45deg);
+    background:var(--brand-dark); z-index:3; border-radius:3px;
+  }
+  .gmile.crit{background:var(--ruby);}
+  .gantt-links{position:absolute; left:190px; top:0; pointer-events:none; z-index:1; overflow:visible;}
+  .gantt-empty{color:var(--ink-mute); font-size:14px; padding:26px 4px; font-weight:400;}
+
+  .footnote{margin-top:26px; font-size:12.5px; color:var(--ink-mute); text-align:center; font-weight:400;}
+  .footnote a{color:var(--ink-mute); text-decoration:underline;}
+
+  @media (max-width:720px){
+    h1{font-size:38px; letter-spacing:-.9px;}
+    .hero{padding-bottom:56px;}
+    main{margin-top:-32px;}
+    .card{padding:18px;}
+  }
+</style>
+</head>
+<body>
+  <header class="hero">
+    <div class="wrap">
+      <a class="back" href="../../">← 返回工具集</a>
+      <span class="eyebrow">项目管理 · CPM</span>
+      <h1>关键路径<span class="en">Critical Path</span></h1>
+      <p class="lede">列出任务、工期与依赖，自动排出最早/最晚开始、总浮动与<strong>关键路径</strong>，并画成甘特图。改一处，全网络实时重算。纯前端 · 本地保存 · 零后端。</p>
+    </div>
+  </header>
+
+  <main>
+    <!-- Toolbar -->
+    <section class="card">
+      <div class="toolbar">
+        <div class="field">
+          <label for="proj-select">项目</label>
+          <select id="proj-select" style="min-width:170px;"></select>
+        </div>
+        <div class="field grow-fill">
+          <label for="proj-name">项目名称</label>
+          <input type="text" id="proj-name" placeholder="未命名项目" />
+        </div>
+        <div class="field">
+          <label for="start-date">开始日期</label>
+          <input type="date" id="start-date" />
+        </div>
+        <div class="toolbar-spacer"></div>
+        <button class="btn btn-ghost" id="new-proj">＋ 新建项目</button>
+        <button class="btn btn-quiet" id="del-proj">删除项目</button>
+      </div>
+    </section>
+
+    <!-- Summary stats -->
+    <section class="card" aria-label="项目概览">
+      <div class="stats">
+        <div class="stat"><div class="k">总工期</div><div class="v tnum" id="total-duration">0<small>天</small></div></div>
+        <div class="stat"><div class="k">预计完成</div><div class="v tnum" id="finish-date" style="font-size:22px;">—</div></div>
+        <div class="stat"><div class="k">任务数</div><div class="v tnum" id="task-count">0</div></div>
+        <div class="stat accent"><div class="k">关键任务</div><div class="v tnum" id="crit-count">0</div></div>
+      </div>
+      <div class="critpath-line"><span class="lbl">关键路径</span><b id="crit-path">—</b></div>
+      <div class="error" id="error"></div>
+    </section>
+
+    <!-- Task table -->
+    <section class="card">
+      <div class="card-title"><h2>任务清单</h2><span class="hint">工期以自然日计；依赖填任务编号（如 <code>A D</code>），空格或逗号分隔</span></div>
+      <div class="table-scroll">
+        <table id="task-table">
+          <thead>
+            <tr>
+              <th style="width:44px;">编号</th>
+              <th>任务名称</th>
+              <th class="num" style="width:78px;">工期</th>
+              <th style="width:124px;">依赖</th>
+              <th class="num" title="最早开始">ES</th>
+              <th class="num" title="最早完成">EF</th>
+              <th class="num" title="最晚开始">LS</th>
+              <th class="num" title="最晚完成">LF</th>
+              <th class="num" title="总浮动 / 时差">浮动</th>
+              <th style="width:64px; text-align:center;">状态</th>
+              <th style="width:44px;"></th>
+            </tr>
+          </thead>
+          <tbody id="task-body"></tbody>
+        </table>
+      </div>
+      <div class="table-actions">
+        <button class="btn btn-primary" id="add-task">＋ 添加任务</button>
+        <button class="btn btn-ghost" id="load-sample">载入示例</button>
+        <button class="btn btn-quiet" id="clear-tasks">清空</button>
+      </div>
+    </section>
+
+    <!-- Gantt -->
+    <section class="card">
+      <div class="card-title"><h2>甘特图</h2><span class="hint">红色为关键任务，条形右侧斜纹为可用浮动</span></div>
+      <div class="legend">
+        <span><i class="swatch sw-crit"></i>关键任务（浮动 0）</span>
+        <span><i class="swatch sw-normal"></i>普通任务</span>
+        <span><i class="swatch sw-slack"></i>浮动 / 时差</span>
+        <span><i class="swatch" style="width:12px;height:12px;transform:rotate(45deg);background:var(--brand-dark);border-radius:2px;"></i>里程碑（工期 0）</span>
+      </div>
+      <div class="gantt-scroll">
+        <div class="gantt-inner" id="gantt"></div>
+      </div>
+    </section>
+
+    <p class="footnote">全部计算在你的浏览器本地完成，数据仅存于 localStorage，不上传任何服务器。 · 设计语言参考 Stripe。 · <a href="../../">← 返回每日工具集</a></p>
+  </main>
+
+<script>
+(function(){
+  "use strict";
+  var COLW = 42, ROWH = 46, LABELW = 190, EPS = 1e-9;
+  var STORE_KEY = "criticalpath.v1";
+
+  // ---------- helpers ----------
+  function $(sel, root){ return (root||document).querySelector(sel); }
+  function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g, function(c){
+    return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]; }); }
+  function idxToLabel(n){ var s=""; n=n+1; while(n>0){ n--; s=String.fromCharCode(65+(n%26))+s; n=Math.floor(n/26);} return s; }
+  function nextId(existing){ var i=0; while(existing.has(idxToLabel(i))) i++; return idxToLabel(i); }
+  function parseDeps(str){
+    return String(str||"").toUpperCase().split(/[^A-Z0-9]+/).filter(Boolean);
+  }
+  function todayISO(){
+    var d=new Date();
+    return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+  }
+  function addDays(iso, n){
+    var p=String(iso||todayISO()).split("-").map(Number);
+    if(p.length!==3 || p.some(isNaN)) p=todayISO().split("-").map(Number);
+    var t=Date.UTC(p[0],p[1]-1,p[2])+n*86400000, d=new Date(t);
+    return { iso:d.getUTCFullYear()+"-"+String(d.getUTCMonth()+1).padStart(2,"0")+"-"+String(d.getUTCDate()).padStart(2,"0"),
+             md:(d.getUTCMonth()+1)+"/"+d.getUTCDate(), dow:d.getUTCDay() };
+  }
+
+  // ---------- CPM engine ----------
+  // tasks: [{id, name, duration, deps:[ids]}]
+  function computeCPM(tasks){
+    var byId=new Map(), ids=[], errors=[], i, t, d;
+    for(i=0;i<tasks.length;i++){ byId.set(tasks[i].id, tasks[i]); ids.push(tasks[i].id); }
+    // validation
+    for(i=0;i<tasks.length;i++){
+      t=tasks[i];
+      if(!(typeof t.duration==="number") || isNaN(t.duration) || t.duration<0)
+        errors.push("任务 "+t.id+"（"+(t.name||"未命名")+"）的工期必须是 ≥ 0 的数字");
+      for(var j=0;j<t.deps.length;j++){
+        d=t.deps[j];
+        if(d===t.id) errors.push("任务 "+t.id+" 不能依赖自己");
+        else if(!byId.has(d)) errors.push("任务 "+t.id+" 依赖了不存在的编号 "+d);
+      }
+    }
+    if(errors.length) return { ok:false, errors:dedupe(errors) };
+
+    // build dependents adjacency + indegree, Kahn topo (also detects cycle)
+    var indeg=new Map(), adj=new Map();
+    ids.forEach(function(id){ indeg.set(id,0); adj.set(id,[]); });
+    tasks.forEach(function(t){
+      t.deps.forEach(function(d){ adj.get(d).push(t.id); indeg.set(t.id, indeg.get(t.id)+1); });
+    });
+    var queue=ids.filter(function(id){ return indeg.get(id)===0; }).slice();
+    var order=[], indeg2=new Map(indeg);
+    while(queue.length){
+      var n=queue.shift(); order.push(n);
+      adj.get(n).forEach(function(m){ indeg2.set(m, indeg2.get(m)-1); if(indeg2.get(m)===0) queue.push(m); });
+    }
+    if(order.length!==ids.length){
+      var inOrder=new Set(order);
+      var cyc=ids.filter(function(id){ return !inOrder.has(id); });
+      return { ok:false, errors:["存在循环依赖，无法排期：涉及 "+cyc.join("、")] };
+    }
+
+    // forward pass
+    var ES={}, EF={};
+    order.forEach(function(id){
+      var t=byId.get(id);
+      var es = t.deps.length ? Math.max.apply(null, t.deps.map(function(d){ return EF[d]; })) : 0;
+      ES[id]=es; EF[id]=es + t.duration;
+    });
+    var projEnd = ids.length ? Math.max.apply(null, ids.map(function(id){ return EF[id]; })) : 0;
+
+    // backward pass (reverse topo)
+    var LS={}, LF={};
+    for(var k=order.length-1;k>=0;k--){
+      var id=order[k], t=byId.get(id), succ=adj.get(id);
+      var lf = succ.length ? Math.min.apply(null, succ.map(function(s){ return LS[s]; })) : projEnd;
+      LF[id]=lf; LS[id]=lf - t.duration;
+    }
+
+    var res={};
+    ids.forEach(function(id){
+      var fl = LS[id]-ES[id];
+      res[id]={ ES:ES[id], EF:EF[id], LS:LS[id], LF:LF[id], float:fl, critical:Math.abs(fl)<EPS };
+    });
+    return { ok:true, res:res, projEnd:projEnd, order:order, adj:adj, byId:byId };
+  }
+  function dedupe(arr){ var seen={}, out=[]; arr.forEach(function(x){ if(!seen[x]){ seen[x]=1; out.push(x); } }); return out; }
+
+  // trace one critical path (deterministic: successors sorted by id)
+  function criticalPath(cpm, tasks){
+    if(!cpm.ok) return [];
+    var res=cpm.res, adj=cpm.adj;
+    // start = critical task with ES 0 and no critical predecessor
+    var predCrit={};
+    tasks.forEach(function(t){
+      t.deps.forEach(function(d){
+        if(res[d] && res[d].critical && res[t.id] && res[t.id].critical && Math.abs(res[d].EF-res[t.id].ES)<EPS)
+          predCrit[t.id]=true;
+      });
+    });
+    var starts=tasks.filter(function(t){ return res[t.id].critical && res[t.id].ES===0 && !predCrit[t.id]; })
+                    .map(function(t){ return t.id; }).sort();
+    if(!starts.length) return [];
+    var path=[starts[0]], guard=0;
+    while(guard++ < 1000){
+      var cur=path[path.length-1];
+      var nexts=(adj.get(cur)||[]).filter(function(s){
+        return res[s] && res[s].critical && Math.abs(res[s].ES - res[cur].EF)<EPS;
+      }).sort();
+      if(!nexts.length) break;
+      path.push(nexts[0]);
+    }
+    return path;
+  }
+
+  // ---------- state ----------
+  var state=null;
+  function sampleTasks(){
+    return [
+      {id:"A", name:"需求调研",  duration:3, deps:[]},
+      {id:"B", name:"原型设计",  duration:4, deps:[]},
+      {id:"C", name:"技术选型",  duration:2, deps:["A"]},
+      {id:"D", name:"后端开发",  duration:5, deps:["A"]},
+      {id:"E", name:"前端开发",  duration:1, deps:["B","C"]},
+      {id:"F", name:"联调上线",  duration:2, deps:["D","E"]}
+    ];
+  }
+  function newProject(name){
+    return { id:"p"+Math.random().toString(36).slice(2,9), name:name||"未命名项目",
+             startDate:todayISO(), tasks:[] };
+  }
+  function defaultState(){
+    var p=newProject("示例：网站上线"); p.tasks=sampleTasks();
+    return { projects:[p], currentId:p.id };
+  }
+  function load(){
+    try{
+      var raw=localStorage.getItem(STORE_KEY);
+      if(raw){
+        var s=JSON.parse(raw);
+        if(s && Array.isArray(s.projects) && s.projects.length){
+          // sanitize
+          s.projects.forEach(function(p){
+            p.tasks=(p.tasks||[]).map(function(t){
+              return { id:String(t.id), name:String(t.name||""), duration:Number(t.duration)||0,
+                       deps:Array.isArray(t.deps)?t.deps.map(String):[] };
+            });
+            if(!p.startDate) p.startDate=todayISO();
+          });
+          if(!s.projects.some(function(p){ return p.id===s.currentId; })) s.currentId=s.projects[0].id;
+          return s;
+        }
+      }
+    }catch(e){}
+    return defaultState();
+  }
+  function save(){ try{ localStorage.setItem(STORE_KEY, JSON.stringify(state)); }catch(e){} }
+  function currentProject(){
+    return state.projects.filter(function(p){ return p.id===state.currentId; })[0] || state.projects[0];
+  }
+
+  // ---------- DOM refs ----------
+  var elBody=$("#task-body"), elGantt=$("#gantt"), elError=$("#error"),
+      elTotal=$("#total-duration"), elFinish=$("#finish-date"), elCount=$("#task-count"),
+      elCrit=$("#crit-count"), elCritPath=$("#crit-path"),
+      elProjSel=$("#proj-select"), elProjName=$("#proj-name"), elStart=$("#start-date");
+
+  // ---------- render: project switcher ----------
+  function renderSwitcher(){
+    elProjSel.innerHTML = state.projects.map(function(p){
+      return '<option value="'+esc(p.id)+'"'+(p.id===state.currentId?" selected":"")+'>'+esc(p.name||"未命名项目")+"</option>";
+    }).join("");
+    var p=currentProject();
+    elProjName.value=p.name||"";
+    elStart.value=p.startDate||todayISO();
+  }
+
+  // ---------- render: table (structural) ----------
+  function buildTable(){
+    var p=currentProject(), tasks=p.tasks;
+    if(!tasks.length){
+      elBody.innerHTML='<tr><td colspan="11" class="empty-note">还没有任务。点「添加任务」新建，或「载入示例」看一个排好期的项目。</td></tr>';
+      recompute();
+      return;
+    }
+    elBody.innerHTML = tasks.map(function(t){
+      return '<tr data-tid="'+esc(t.id)+'">'
+        + '<td><span class="id-badge">'+esc(t.id)+'</span></td>'
+        + '<td><input class="name-input f-name" type="text" value="'+esc(t.name)+'" placeholder="任务名称" aria-label="任务 '+esc(t.id)+' 名称" /></td>'
+        + '<td class="num"><input class="dur-input f-dur tnum" type="number" min="0" step="1" value="'+esc(t.duration)+'" aria-label="任务 '+esc(t.id)+' 工期" /></td>'
+        + '<td><input class="deps-input f-deps" type="text" value="'+esc(t.deps.join(" "))+'" placeholder="—" aria-label="任务 '+esc(t.id)+' 依赖" /></td>'
+        + '<td class="num tnum cell-es">—</td>'
+        + '<td class="num tnum cell-ef">—</td>'
+        + '<td class="num tnum muted cell-ls">—</td>'
+        + '<td class="num tnum muted cell-lf">—</td>'
+        + '<td class="num tnum cell-float">—</td>'
+        + '<td class="cell-crit"><span class="crit-badge">关键</span></td>'
+        + '<td><button class="del-btn f-del" title="删除任务" aria-label="删除任务 '+esc(t.id)+'">×</button></td>'
+        + '</tr>';
+    }).join("");
+    recompute();
+  }
+
+  // ---------- recompute + refresh computed cells ----------
+  function recompute(){
+    var p=currentProject(), tasks=p.tasks;
+    var cpm=computeCPM(tasks);
+
+    // error banner
+    if(!cpm.ok){
+      elError.className="error show";
+      elError.innerHTML="<strong>无法排期：</strong><ul>"+cpm.errors.map(function(e){ return "<li>"+esc(e)+"</li>"; }).join("")+"</ul>";
+    }else{
+      elError.className="error"; elError.innerHTML="";
+    }
+
+    // computed cells
+    Array.prototype.forEach.call(elBody.querySelectorAll("tr[data-tid]"), function(row){
+      var id=row.getAttribute("data-tid"), r=cpm.ok?cpm.res[id]:null;
+      var es=$(".cell-es",row), ef=$(".cell-ef",row), ls=$(".cell-ls",row), lf=$(".cell-lf",row), fl=$(".cell-float",row);
+      if(r){
+        es.textContent=r.ES; ef.textContent=r.EF; ls.textContent=r.LS; lf.textContent=r.LF;
+        fl.textContent=r.float;
+        fl.className="num tnum cell-float"+(r.critical?" float-0":"");
+        row.classList.toggle("is-critical", r.critical);
+      }else{
+        es.textContent=ef.textContent=ls.textContent=lf.textContent=fl.textContent="—";
+        fl.className="num tnum cell-float";
+        row.classList.remove("is-critical");
+      }
+    });
+
+    // summary
+    var critCount = cpm.ok ? Object.keys(cpm.res).filter(function(k){ return cpm.res[k].critical; }).length : 0;
+    elTotal.innerHTML = (cpm.ok?cpm.projEnd:0)+'<small>天</small>';
+    elCount.textContent = tasks.length;
+    elCrit.textContent = critCount;
+    if(cpm.ok && tasks.length){
+      elFinish.textContent = addDays(p.startDate, cpm.projEnd).iso;
+      var path=criticalPath(cpm, tasks);
+      elCritPath.textContent = path.length ? path.join("  →  ") : "（多条并行关键链）";
+    }else{
+      elFinish.textContent="—"; elCritPath.textContent="—";
+    }
+
+    renderGantt(cpm, p);
+  }
+
+  // ---------- render: gantt ----------
+  function renderGantt(cpm, p){
+    var tasks=p.tasks;
+    if(!cpm.ok || !tasks.length){
+      elGantt.innerHTML='<div class="gantt-empty">'+(!tasks.length?"添加任务后，这里会画出甘特图。":"修正上方的错误后，甘特图会重新出现。")+"</div>";
+      return;
+    }
+    var days=Math.max(1, cpm.projEnd);
+    var trackW=days*COLW;
+
+    // header
+    var head='<div class="gantt-head"><div class="gantt-corner"></div><div class="gantt-days">';
+    for(var i=0;i<days;i++){
+      var dt=addDays(p.startDate, i);
+      var wk=(dt.dow===0||dt.dow===6)?" wk":"";
+      head+='<div class="gday'+wk+'"><span class="d-date">'+esc(dt.md)+'</span><span class="d-idx tnum">'+i+'</span></div>';
+    }
+    head+='</div></div>';
+
+    // rows
+    var rows='<div class="gantt-body">';
+    tasks.forEach(function(t){
+      var r=cpm.res[t.id], crit=r.critical?" crit":"";
+      rows+='<div class="grow"><div class="grow-label"><span class="id-badge">'+esc(t.id)+'</span><span class="nm">'+esc(t.name||"未命名")+'</span></div>';
+      rows+='<div class="gtrack" style="width:'+trackW+'px;">';
+      if(t.duration<=0){
+        rows+='<div class="gmile'+crit+'" style="left:'+(r.ES*COLW)+'px;" title="里程碑 '+esc(t.name)+'"></div>';
+      }else{
+        var slack=r.float;
+        if(slack>0){
+          rows+='<div class="gslack" style="left:'+(r.EF*COLW)+'px; width:'+(slack*COLW)+'px;" title="浮动 '+slack+' 天"></div>';
+        }
+        rows+='<div class="gbar'+crit+'" style="left:'+(r.ES*COLW)+'px; width:'+(t.duration*COLW)+'px;" title="'+esc(t.name)+' · ES '+r.ES+' → EF '+r.EF+'">'
+             +'<span>'+esc(t.id)+'</span><span class="bar-dur">'+t.duration+'d</span></div>';
+      }
+      rows+='</div></div>';
+    });
+
+    // dependency connectors (SVG overlay)
+    var idxOf={}; tasks.forEach(function(t,ix){ idxOf[t.id]=ix; });
+    var svgH=tasks.length*ROWH, paths="", arrow=6;
+    tasks.forEach(function(t){
+      var rt=cpm.res[t.id], ti=idxOf[t.id];
+      var x2=rt.ES*COLW, y2=ti*ROWH+ROWH/2;
+      t.deps.forEach(function(d){
+        if(idxOf[d]==null||!cpm.res[d]) return;
+        var rd=cpm.res[d], di=idxOf[d];
+        var x1=rd.EF*COLW, y1=di*ROWH+ROWH/2;
+        var isCrit=rt.critical&&rd.critical&&Math.abs(rd.EF-rt.ES)<EPS;
+        var col=isCrit?"var(--ruby)":"#9fb0c6";
+        var midx=Math.max(x1+10, x2-10);
+        var dArr=(x2>=x1)?("M "+x1+" "+y1+" H "+midx+" V "+y2+" H "+(x2-arrow)):("M "+x1+" "+y1+" H "+(x1+10)+" V "+y2+" H "+(x2-arrow));
+        paths+='<path d="'+dArr+'" fill="none" stroke="'+col+'" stroke-width="'+(isCrit?2:1.4)+'" opacity="'+(isCrit?.9:.55)+'"/>';
+        paths+='<path d="M '+(x2-arrow)+' '+(y2-4)+' L '+x2+' '+y2+' L '+(x2-arrow)+' '+(y2+4)+' Z" fill="'+col+'" opacity="'+(isCrit?.9:.55)+'"/>';
+      });
+    });
+    rows+='<svg class="gantt-links" width="'+trackW+'" height="'+svgH+'" viewBox="0 0 '+trackW+' '+svgH+'">'+paths+'</svg>';
+    rows+='</div>';
+
+    elGantt.style.setProperty("--colw", COLW+"px");
+    elGantt.innerHTML=head+rows;
+  }
+
+  // ---------- events ----------
+  elBody.addEventListener("input", function(e){
+    var row=e.target.closest("tr[data-tid]"); if(!row) return;
+    var id=row.getAttribute("data-tid"), p=currentProject();
+    var t=p.tasks.filter(function(x){ return x.id===id; })[0]; if(!t) return;
+    if(e.target.classList.contains("f-name")) t.name=e.target.value;
+    else if(e.target.classList.contains("f-dur")){
+      var v=e.target.value.trim();
+      t.duration = v==="" ? 0 : Number(v);
+    }
+    else if(e.target.classList.contains("f-deps")) t.deps=parseDeps(e.target.value);
+    save(); recompute();
+  });
+  elBody.addEventListener("click", function(e){
+    if(!e.target.classList.contains("f-del")) return;
+    var row=e.target.closest("tr[data-tid]"); if(!row) return;
+    var id=row.getAttribute("data-tid"), p=currentProject();
+    p.tasks=p.tasks.filter(function(x){ return x.id!==id; });
+    p.tasks.forEach(function(x){ x.deps=x.deps.filter(function(d){ return d!==id; }); });
+    save(); buildTable();
+  });
+
+  $("#add-task").addEventListener("click", function(){
+    var p=currentProject(), used=new Set(p.tasks.map(function(t){ return t.id; }));
+    p.tasks.push({ id:nextId(used), name:"新任务", duration:1, deps:[] });
+    save(); buildTable();
+    // focus the new row's name input
+    var rows=elBody.querySelectorAll("tr[data-tid] .f-name");
+    if(rows.length){ var last=rows[rows.length-1]; last.focus(); last.select(); }
+  });
+  $("#load-sample").addEventListener("click", function(){
+    var p=currentProject();
+    p.tasks=sampleTasks();
+    if(!p.name||p.name==="未命名项目") { p.name="示例：网站上线"; }
+    save(); renderSwitcher(); buildTable();
+  });
+  $("#clear-tasks").addEventListener("click", function(){
+    var p=currentProject();
+    if(p.tasks.length && !confirm("清空当前项目的全部任务？")) return;
+    p.tasks=[]; save(); buildTable();
+  });
+
+  elProjSel.addEventListener("change", function(){
+    state.currentId=elProjSel.value; save(); renderSwitcher(); buildTable();
+  });
+  elProjName.addEventListener("input", function(){
+    var p=currentProject(); p.name=elProjName.value;
+    var opt=elProjSel.querySelector('option[value="'+p.id+'"]'); if(opt) opt.textContent=p.name||"未命名项目";
+    save();
+  });
+  elStart.addEventListener("input", function(){
+    var p=currentProject(); p.startDate=elStart.value||todayISO(); save(); recompute();
+  });
+  $("#new-proj").addEventListener("click", function(){
+    var p=newProject("未命名项目"); state.projects.push(p); state.currentId=p.id;
+    save(); renderSwitcher(); buildTable(); elProjName.focus(); elProjName.select();
+  });
+  $("#del-proj").addEventListener("click", function(){
+    if(state.projects.length<=1){
+      if(!confirm("这是唯一的项目，删除后会重置为空白项目。继续？")) return;
+      var np=newProject("未命名项目"); state.projects=[np]; state.currentId=np.id;
+    }else{
+      if(!confirm("删除项目「"+(currentProject().name||"未命名项目")+"」？")) return;
+      var cur=state.currentId;
+      state.projects=state.projects.filter(function(p){ return p.id!==cur; });
+      state.currentId=state.projects[0].id;
+    }
+    save(); renderSwitcher(); buildTable();
+  });
+
+  // ---------- init ----------
+  state=load();
+  renderSwitcher();
+  buildTable();
+})();
+</script>
+</body>
+</html>
