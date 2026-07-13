@@ -1,0 +1,754 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>分形工作室 · L-System Studio</title>
+<meta name="description" content="用 L-系统重写文法 + 海龟绘图引擎生成分形艺术:Koch 雪花、龙形曲线、Hilbert、分形植物…改文法/角度/迭代即时重绘,导出 SVG/PNG,纯前端本地保存。">
+<style>
+  /* ── Design language: Runway ─────────────────────────────────────────
+     Dark, cinematic, editorial. The generated artwork is the "photography"
+     that carries all the color; the interface itself recedes into cool
+     monochrome slate on true black. One geometric sans, tight display type,
+     uppercase micro-labels with tracking, zero shadows, hairline borders. */
+  :root {
+    --bg: #000000;
+    --surface: #0a0a0b;
+    --surface-2: #131315;
+    --field: #101012;
+    --border: #27272a;
+    --border-2: #3f3f46;
+    --white: #ffffff;
+    --text: #e9ecf2;   /* cool cloud */
+    --slate: #767d88;  /* cool slate — secondary */
+    --slate-2: #8b929c;
+    --muted: #a7a7a7;
+    --silver: #c9ccd1;
+    --sans: 'Inter','DM Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;
+    --mono: ui-monospace,'SF Mono','JetBrains Mono',Menlo,Consolas,'Liberation Mono',monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 15px;
+    line-height: 1.45;
+    letter-spacing: -0.16px;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  a { color: inherit; }
+  ::selection { background: #2a2a2e; color: #fff; }
+
+  .eyebrow {
+    font-size: 11px; font-weight: 450; text-transform: uppercase;
+    letter-spacing: 1.6px; color: var(--slate);
+  }
+
+  /* ── Top bar ── */
+  .topbar {
+    height: 54px; display: flex; align-items: center; justify-content: space-between;
+    padding: 0 18px; border-bottom: 1px solid var(--border); background: var(--bg);
+    position: sticky; top: 0; z-index: 20;
+  }
+  .brand { display: flex; align-items: baseline; gap: 12px; min-width: 0; }
+  .brand .mark {
+    font-size: 15px; font-weight: 600; letter-spacing: -0.4px; color: var(--white);
+    white-space: nowrap;
+  }
+  .brand .mark b { color: var(--slate); font-weight: 600; }
+  .back {
+    font-size: 11px; font-weight: 500; text-transform: uppercase; letter-spacing: 1.2px;
+    color: var(--slate); text-decoration: none; padding: 7px 10px; border-radius: 6px;
+    border: 1px solid transparent; transition: color .15s, border-color .15s;
+    white-space: nowrap;
+  }
+  .back:hover { color: var(--white); border-color: var(--border); }
+
+  /* ── App shell ── */
+  .app { display: flex; height: calc(100vh - 54px); min-height: 480px; }
+  .stage { position: relative; flex: 1 1 auto; background: #000; overflow: hidden; min-width: 0; }
+  #stage-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  .stats {
+    position: absolute; left: 16px; bottom: 14px; display: flex; flex-wrap: wrap; gap: 4px 18px;
+    pointer-events: none; user-select: none;
+  }
+  .stats .stat { font-size: 11px; font-weight: 450; text-transform: uppercase; letter-spacing: 1.1px; color: var(--slate); }
+  .stats .stat b { color: var(--text); font-weight: 500; font-variant-numeric: tabular-nums; }
+  .stage-title {
+    position: absolute; left: 18px; top: 16px; max-width: 60%;
+  }
+  .stage-title h1 { margin: 4px 0 0; font-size: 26px; font-weight: 400; line-height: 1.0; letter-spacing: -1.1px; color: var(--white); }
+  #warn {
+    position: absolute; right: 16px; top: 16px; max-width: 44%;
+    font-size: 11px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.6px;
+    color: #d8b46a; text-align: right; display: none;
+  }
+  #warn.show { display: block; }
+
+  /* ── Control panel ── */
+  .panel {
+    width: 372px; flex: 0 0 372px; background: var(--surface);
+    border-left: 1px solid var(--border); overflow-y: auto; overscroll-behavior: contain;
+  }
+  .panel::-webkit-scrollbar { width: 10px; }
+  .panel::-webkit-scrollbar-thumb { background: #1e1e21; border-radius: 6px; border: 3px solid var(--surface); }
+  .section { padding: 18px 20px; border-bottom: 1px solid var(--border); }
+  .section > .eyebrow { display: block; margin-bottom: 14px; }
+  .row { display: flex; align-items: center; gap: 10px; }
+  .row + .row { margin-top: 12px; }
+  label.field { display: block; }
+  .field .lab { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: var(--slate); margin-bottom: 6px; }
+
+  input[type="text"], select {
+    width: 100%; background: var(--field); color: var(--text);
+    border: 1px solid var(--border); border-radius: 6px; padding: 9px 10px;
+    font-family: var(--sans); font-size: 14px; letter-spacing: -0.1px; outline: none;
+    transition: border-color .15s, background .15s;
+  }
+  input.mono, textarea.mono { font-family: var(--mono); font-size: 13px; letter-spacing: 0; }
+  input[type="text"]:focus, select:focus { border-color: var(--border-2); background: #141416; }
+  select { -webkit-appearance: none; appearance: none; cursor: pointer;
+    background-image: linear-gradient(45deg, transparent 50%, var(--slate) 50%), linear-gradient(135deg, var(--slate) 50%, transparent 50%);
+    background-position: right 14px center, right 9px center; background-size: 5px 5px, 5px 5px; background-repeat: no-repeat; padding-right: 30px; }
+
+  /* Presets */
+  .presets { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .preset {
+    text-align: left; background: var(--field); color: var(--slate-2);
+    border: 1px solid var(--border); border-radius: 6px; padding: 9px 11px;
+    font-family: var(--sans); font-size: 12.5px; font-weight: 500; letter-spacing: -0.1px;
+    cursor: pointer; transition: color .14s, border-color .14s, background .14s;
+  }
+  .preset:hover { color: var(--white); border-color: var(--border-2); }
+  .preset.active { color: var(--white); border-color: var(--silver); background: #17171a; }
+
+  /* Rules editor */
+  .rule-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .rule-sym { width: 42px; flex: 0 0 42px; text-align: center; }
+  .rule-arrow { color: var(--slate); font-size: 13px; flex: 0 0 auto; }
+  .rule-rep { flex: 1 1 auto; min-width: 0; }
+  .rule-del {
+    flex: 0 0 auto; width: 30px; height: 30px; border-radius: 6px; background: transparent;
+    border: 1px solid var(--border); color: var(--slate); cursor: pointer; font-size: 15px; line-height: 1;
+    transition: color .14s, border-color .14s;
+  }
+  .rule-del:hover { color: #e08a8a; border-color: #4a2c2c; }
+  .linkbtn {
+    background: none; border: none; color: var(--slate); font-family: var(--sans);
+    font-size: 12px; text-transform: uppercase; letter-spacing: 1px; cursor: pointer; padding: 4px 0;
+  }
+  .linkbtn:hover { color: var(--white); }
+
+  /* Sliders */
+  .slider { display: flex; align-items: center; gap: 12px; }
+  .slider .lab { flex: 0 0 78px; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: var(--slate); }
+  input[type="range"] {
+    -webkit-appearance: none; appearance: none; flex: 1 1 auto; height: 2px; background: var(--border-2);
+    border-radius: 2px; outline: none; margin: 0;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none; width: 14px; height: 14px; border-radius: 50%;
+    background: var(--white); cursor: pointer; border: 0; margin-top: 0;
+  }
+  input[type="range"]::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: var(--white); cursor: pointer; border: 0; }
+  .numin {
+    flex: 0 0 60px; width: 60px; background: var(--field); color: var(--text);
+    border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; text-align: right;
+    font-family: var(--mono); font-size: 12.5px; font-variant-numeric: tabular-nums; outline: none;
+  }
+  .numin:focus { border-color: var(--border-2); }
+
+  /* Color controls */
+  .swatch-row { display: flex; align-items: center; gap: 10px; }
+  .swatch { display: flex; align-items: center; gap: 8px; }
+  .swatch .lab { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: var(--slate); }
+  input[type="color"] {
+    -webkit-appearance: none; appearance: none; width: 32px; height: 26px; padding: 0;
+    border: 1px solid var(--border); border-radius: 6px; background: none; cursor: pointer;
+  }
+  input[type="color"]::-webkit-color-swatch-wrapper { padding: 2px; }
+  input[type="color"]::-webkit-color-swatch { border: none; border-radius: 4px; }
+
+  /* Buttons */
+  .btnrow { display: flex; gap: 8px; }
+  .btn {
+    flex: 1 1 auto; text-align: center; background: var(--field); color: var(--text);
+    border: 1px solid var(--border); border-radius: 6px; padding: 10px 12px;
+    font-family: var(--sans); font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px;
+    cursor: pointer; transition: border-color .14s, background .14s, color .14s;
+  }
+  .btn:hover { border-color: var(--silver); background: #17171a; }
+  .btn.ghost { background: transparent; }
+
+  /* Saved library */
+  .saved-item {
+    display: flex; align-items: center; gap: 8px; padding: 9px 10px; border: 1px solid var(--border);
+    border-radius: 6px; margin-bottom: 8px; background: var(--field);
+  }
+  .saved-item .nm { flex: 1 1 auto; min-width: 0; font-size: 13px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .saved-item .meta { font-size: 10.5px; text-transform: uppercase; letter-spacing: .6px; color: var(--slate); flex: 0 0 auto; }
+  .saved-item button { background: none; border: none; color: var(--slate); cursor: pointer; font-size: 11px; text-transform: uppercase; letter-spacing: .8px; padding: 3px 4px; }
+  .saved-item button:hover { color: var(--white); }
+  .saved-item button.del:hover { color: #e08a8a; }
+  .empty { font-size: 12.5px; color: var(--slate); }
+
+  details.expanded-wrap { margin-top: 12px; }
+  details.expanded-wrap > summary { cursor: pointer; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: var(--slate); list-style: none; }
+  details.expanded-wrap > summary::-webkit-details-marker { display: none; }
+  details.expanded-wrap > summary:hover { color: var(--white); }
+  #expanded {
+    display: block; margin-top: 8px; max-height: 120px; overflow: auto; padding: 10px;
+    background: var(--field); border: 1px solid var(--border); border-radius: 6px;
+    font-family: var(--mono); font-size: 11.5px; line-height: 1.6; color: var(--slate-2);
+    word-break: break-all; white-space: pre-wrap;
+  }
+  .hint { font-size: 12px; color: var(--slate); margin-top: 10px; line-height: 1.5; }
+  kbd { font-family: var(--mono); font-size: 11px; background: #17171a; border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; color: var(--text); }
+
+  @media (max-width: 900px) {
+    .app { flex-direction: column; height: auto; }
+    .stage { flex: none; height: 58vh; min-height: 340px; }
+    .panel { width: auto; flex: none; border-left: 0; border-top: 1px solid var(--border); max-height: none; }
+    .stage-title { max-width: 70%; }
+  }
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="brand">
+      <span class="eyebrow">Generative</span>
+      <span class="mark">L‑System&nbsp;<b>Studio</b></span>
+    </div>
+    <a class="back" href="../../">← 返回工具集</a>
+  </div>
+
+  <div class="app">
+    <!-- Cinematic stage: the fractal is the content -->
+    <section class="stage" aria-label="分形画布">
+      <canvas id="stage-canvas" role="img" aria-label="L-系统生成的分形图形"></canvas>
+      <div class="stage-title">
+        <span class="eyebrow">Fractal · L-system</span>
+        <h1 id="art-name">Koch Snowflake</h1>
+      </div>
+      <div id="warn" role="status"></div>
+      <div class="stats" aria-live="off">
+        <span class="stat">Segments <b id="stat-segments">0</b></span>
+        <span class="stat">Depth <b id="stat-depth">0</b></span>
+        <span class="stat">Symbols <b id="stat-chars">0</b></span>
+        <span class="stat">Render <b id="stat-ms">0</b>ms</span>
+      </div>
+    </section>
+
+    <!-- Editorial control panel -->
+    <aside class="panel" aria-label="控制面板">
+      <div class="section">
+        <span class="eyebrow">Preset</span>
+        <div class="presets" id="presets"></div>
+      </div>
+
+      <div class="section">
+        <span class="eyebrow">Grammar</span>
+        <label class="field" style="margin-bottom:14px">
+          <span class="lab">Axiom · 公理</span>
+          <input type="text" id="axiom" class="mono" spellcheck="false" autocomplete="off" value="F++F++F">
+        </label>
+        <span class="lab" style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--slate);margin-bottom:8px;display:block">Rules · 产生式</span>
+        <div id="rules"></div>
+        <button class="linkbtn" id="add-rule" type="button">+ 添加规则</button>
+        <p class="hint">画笔:<kbd>F</kbd><kbd>G</kbd> 前进画线,<kbd>f</kbd> 移动不画。转向:<kbd>+</kbd> 左转 <kbd>-</kbd> 右转 <kbd>|</kbd> 掉头。分支:<kbd>[</kbd> 压栈 <kbd>]</kbd> 出栈。其它字母(A/B/X/Y…)只参与重写、不画。</p>
+      </div>
+
+      <div class="section">
+        <span class="eyebrow">Form</span>
+        <div class="slider"><span class="lab">Angle 角度</span><input type="range" id="angle-range" min="0" max="180" step="0.5" value="60"><input type="text" class="numin" id="angle" value="60"></div>
+        <div class="slider" style="margin-top:12px"><span class="lab">Iterations 迭代</span><input type="range" id="iter-range" min="0" max="12" step="1" value="4"><input type="text" class="numin" id="iterations" value="4"></div>
+        <div class="slider" style="margin-top:12px"><span class="lab">Heading 朝向</span><input type="range" id="heading-range" min="-180" max="180" step="1" value="0"><input type="text" class="numin" id="heading" value="0"></div>
+        <div class="slider" style="margin-top:12px"><span class="lab">Stroke 线宽</span><input type="range" id="width-range" min="0.3" max="6" step="0.1" value="1.4"><input type="text" class="numin" id="width" value="1.4"></div>
+      </div>
+
+      <div class="section">
+        <span class="eyebrow">Color</span>
+        <label class="field" style="margin-bottom:12px">
+          <span class="lab">Mode 上色</span>
+          <select id="mode">
+            <option value="depth">Depth · 按分支深度渐变</option>
+            <option value="path">Path · 沿路径渐变</option>
+            <option value="mono">Mono · 单色</option>
+            <option value="spectrum">Spectrum · 光谱</option>
+          </select>
+        </label>
+        <div class="swatch-row" id="swatches">
+          <span class="swatch"><span class="lab">From</span><input type="color" id="colorA" value="#f4f5f7"></span>
+          <span class="swatch"><span class="lab">To</span><input type="color" id="colorB" value="#767d88"></span>
+        </div>
+      </div>
+
+      <div class="section">
+        <span class="eyebrow">Output</span>
+        <div class="btnrow">
+          <button class="btn" id="export-svg" type="button">导出 SVG</button>
+          <button class="btn" id="export-png" type="button">导出 PNG</button>
+        </div>
+        <details class="expanded-wrap">
+          <summary>查看展开串 · Expanded string</summary>
+          <code id="expanded"></code>
+        </details>
+      </div>
+
+      <div class="section">
+        <span class="eyebrow">Library · 本地保存</span>
+        <div class="row" style="margin-bottom:12px">
+          <input type="text" id="save-name" placeholder="给这个分形起个名字…" autocomplete="off">
+          <button class="btn ghost" id="save-btn" type="button" style="flex:0 0 auto">保存</button>
+        </div>
+        <div id="saved-list"></div>
+      </div>
+    </aside>
+  </div>
+
+<script>
+"use strict";
+(function () {
+  // ─────────────────────────────────────────────────────────────────────
+  //  L-System engine
+  //  1) expand(): deterministic context-free string rewriting.
+  //  2) turtle(): interpret the string into line segments (with a stack
+  //     for branching), tracking bounding box + branch depth.
+  //  Both are pure & deterministic — the whole thing is unit-testable.
+  // ─────────────────────────────────────────────────────────────────────
+  var MAX_LEN = 2_000_000;   // cap the rewritten string (anti-explosion)
+  var MAX_SEG = 700_000;     // cap drawn segments (keeps rendering snappy)
+
+  function expand(axiom, rulesMap, iters) {
+    var str = String(axiom || "");
+    var capped = false, done = 0;
+    for (var i = 0; i < iters; i++) {
+      var out = [];
+      var len = 0, blew = false;
+      for (var c = 0; c < str.length; c++) {
+        var ch = str[c];
+        var rep = rulesMap[ch];
+        var piece = (rep === undefined) ? ch : rep;
+        len += piece.length;
+        if (len > MAX_LEN) { blew = true; break; }
+        out.push(piece);
+      }
+      if (blew) { capped = true; break; }
+      str = out.join("");
+      done = i + 1;
+      if (str.length === 0) break;
+    }
+    return { str: str, iterationsDone: done, capped: capped };
+  }
+
+  function turtle(str, angleDeg, headingDeg) {
+    var a = angleDeg * Math.PI / 180;
+    // segment endpoints stored as parallel numeric arrays (memory-lean)
+    var sx = [], sy = [], ex = [], ey = [], sd = [];
+    var x = 0, y = 0, ang = headingDeg * Math.PI / 180, depth = 0;
+    var minX = 0, minY = 0, maxX = 0, maxY = 0, maxDepth = 0;
+    var stack = [];
+    var capped = false;
+    function seen(px, py) {
+      if (px < minX) minX = px; if (px > maxX) maxX = px;
+      if (py < minY) minY = py; if (py > maxY) maxY = py;
+    }
+    for (var i = 0; i < str.length; i++) {
+      var ch = str[i];
+      if (ch === "F" || ch === "G") {
+        var nx = x + Math.cos(ang), ny = y + Math.sin(ang);
+        if (sx.length >= MAX_SEG) { capped = true; break; }
+        sx.push(x); sy.push(y); ex.push(nx); ey.push(ny); sd.push(depth);
+        x = nx; y = ny; seen(x, y);
+      } else if (ch === "f") {
+        x += Math.cos(ang); y += Math.sin(ang); seen(x, y);
+      } else if (ch === "+") { ang += a; }
+      else if (ch === "-") { ang -= a; }
+      else if (ch === "|") { ang += Math.PI; }
+      else if (ch === "[") { stack.push([x, y, ang, depth]); depth++; if (depth > maxDepth) maxDepth = depth; }
+      else if (ch === "]") { var s = stack.pop(); if (s) { x = s[0]; y = s[1]; ang = s[2]; depth = s[3]; } }
+      // any other symbol: no drawing effect (rewrite-only)
+    }
+    return { sx: sx, sy: sy, ex: ex, ey: ey, sd: sd, n: sx.length,
+             bbox: { minX: minX, minY: minY, maxX: maxX, maxY: maxY },
+             maxDepth: maxDepth, capped: capped };
+  }
+
+  // ── color helpers ──
+  function hex2rgb(h) {
+    h = h.replace("#", "");
+    if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+    return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+  }
+  function lerpColor(a, b, t) {
+    return "rgb(" + Math.round(a[0] + (b[0] - a[0]) * t) + "," +
+                    Math.round(a[1] + (b[1] - a[1]) * t) + "," +
+                    Math.round(a[2] + (b[2] - a[2]) * t) + ")";
+  }
+
+  // ─────────────────────────────────────────────────────────────────────
+  //  Presets
+  // ─────────────────────────────────────────────────────────────────────
+  var PRESETS = {
+    "koch-snowflake": { name: "Koch Snowflake", axiom: "F++F++F", rules: [["F", "F-F++F-F"]], angle: 60, iters: 4, heading: 0 },
+    "koch-curve":     { name: "Koch Curve",     axiom: "F", rules: [["F", "F+F-F-F+F"]], angle: 90, iters: 4, heading: 0 },
+    "sierpinski":     { name: "Sierpiński",     axiom: "F-G-G", rules: [["F", "F-G+F+G-F"], ["G", "GG"]], angle: 120, iters: 6, heading: 0 },
+    "dragon":         { name: "Dragon Curve",   axiom: "F", rules: [["F", "F+G"], ["G", "F-G"]], angle: 90, iters: 12, heading: 0 },
+    "hilbert":        { name: "Hilbert Curve",  axiom: "A", rules: [["A", "+BF-AFA-FB+"], ["B", "-AF+BFB+FA-"]], angle: 90, iters: 5, heading: 0 },
+    "gosper":         { name: "Gosper Curve",   axiom: "F", rules: [["F", "F-G--G+F++FF+G-"], ["G", "+F-GG--G-F++F+G"]], angle: 60, iters: 4, heading: 0 },
+    "levy":           { name: "Lévy C Curve",   axiom: "F", rules: [["F", "+F--F+"]], angle: 45, iters: 12, heading: 0 },
+    "plant":          { name: "Fractal Plant",  axiom: "X", rules: [["X", "F+[[X]-X]-F[-FX]+X"], ["F", "FF"]], angle: 25, iters: 5, heading: -90 },
+    "tree":           { name: "Fractal Tree",   axiom: "F", rules: [["F", "FF+[+F-F-F]-[-F+F+F]"]], angle: 22.5, iters: 4, heading: -90 },
+    "custom":         { name: "Custom",         axiom: "F", rules: [["F", "F+F"]], angle: 90, iters: 4, heading: 0 }
+  };
+
+  // ─────────────────────────────────────────────────────────────────────
+  //  DOM refs
+  // ─────────────────────────────────────────────────────────────────────
+  var $ = function (id) { return document.getElementById(id); };
+  var canvas = $("stage-canvas"), ctx = canvas.getContext("2d");
+  var elAxiom = $("axiom"), elRules = $("rules"), elAngle = $("angle"), elAngleR = $("angle-range"),
+      elIter = $("iterations"), elIterR = $("iter-range"), elHeading = $("heading"), elHeadingR = $("heading-range"),
+      elWidth = $("width"), elWidthR = $("width-range"), elMode = $("mode"), elA = $("colorA"), elB = $("colorB"),
+      elWarn = $("warn"), elExpanded = $("expanded"), elArtName = $("art-name");
+  var statSeg = $("stat-segments"), statDepth = $("stat-depth"), statChars = $("stat-chars"), statMs = $("stat-ms");
+
+  var LS_CUR = "lsystem.current.v1", LS_LIB = "lsystem.library.v1";
+  var activePreset = "koch-snowflake";
+  var lastGeom = null;   // cache turtle result for export
+
+  // ── build preset buttons ──
+  (function buildPresets() {
+    var wrap = $("presets"), html = "";
+    Object.keys(PRESETS).forEach(function (k) {
+      html += '<button class="preset" type="button" data-preset="' + k + '">' + PRESETS[k].name + '</button>';
+    });
+    wrap.innerHTML = html;
+    wrap.addEventListener("click", function (e) {
+      var b = e.target.closest(".preset"); if (!b) return;
+      loadPreset(b.getAttribute("data-preset"));
+    });
+  })();
+
+  // ── rules editor ──
+  function ruleRowHTML(sym, rep) {
+    return '<div class="rule-row">' +
+      '<input type="text" class="rule-sym mono" maxlength="1" spellcheck="false" autocomplete="off" value="' + escAttr(sym) + '">' +
+      '<span class="rule-arrow">→</span>' +
+      '<input type="text" class="rule-rep mono" spellcheck="false" autocomplete="off" value="' + escAttr(rep) + '">' +
+      '<button class="rule-del" type="button" title="删除规则" aria-label="删除规则">×</button>' +
+      '</div>';
+  }
+  function escAttr(s) { return String(s).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+  function setRules(rulesArr) {
+    elRules.innerHTML = rulesArr.map(function (r) { return ruleRowHTML(r[0], r[1]); }).join("");
+  }
+  function readRules() {
+    var arr = [], map = {};
+    elRules.querySelectorAll(".rule-row").forEach(function (row) {
+      var sym = (row.querySelector(".rule-sym").value || "").slice(0, 1);
+      var rep = row.querySelector(".rule-rep").value || "";
+      if (!sym) return;
+      arr.push([sym, rep]); map[sym] = rep;   // last write wins on dup
+    });
+    return { arr: arr, map: map };
+  }
+  elRules.addEventListener("input", schedule);
+  elRules.addEventListener("click", function (e) {
+    if (e.target.classList.contains("rule-del")) {
+      var row = e.target.closest(".rule-row"); if (row) row.remove();
+      markCustom(); schedule();
+    }
+  });
+  $("add-rule").addEventListener("click", function () {
+    elRules.insertAdjacentHTML("beforeend", ruleRowHTML("", ""));
+    var last = elRules.lastElementChild; if (last) last.querySelector(".rule-sym").focus();
+    markCustom();
+  });
+
+  // ── slider ↔ number sync ──
+  function bindPair(numEl, rangeEl, opts) {
+    function clamp(v) {
+      v = parseFloat(v); if (!isFinite(v)) v = opts.def;
+      v = Math.min(opts.max, Math.max(opts.min, v));
+      if (opts.int) v = Math.round(v);
+      return v;
+    }
+    numEl.addEventListener("input", function () { var v = clamp(numEl.value); rangeEl.value = v; markCustom(); schedule(); });
+    numEl.addEventListener("blur", function () { var v = clamp(numEl.value); numEl.value = v; rangeEl.value = v; schedule(); });
+    rangeEl.addEventListener("input", function () { numEl.value = rangeEl.value; markCustom(); schedule(); });
+  }
+  bindPair(elAngle, elAngleR, { min: 0, max: 360, def: 60, int: false });
+  bindPair(elIter, elIterR, { min: 0, max: 12, def: 4, int: true });
+  bindPair(elHeading, elHeadingR, { min: -360, max: 360, def: 0, int: true });
+  bindPair(elWidth, elWidthR, { min: 0.2, max: 8, def: 1.4, int: false });
+
+  elAxiom.addEventListener("input", function () { markCustom(); schedule(); });
+  elMode.addEventListener("change", function () { syncSwatches(); schedule(); });
+  elA.addEventListener("input", schedule);
+  elB.addEventListener("input", schedule);
+
+  function syncSwatches() { $("swatches").style.display = (elMode.value === "spectrum") ? "none" : "flex"; }
+
+  function markCustom() {
+    if (activePreset !== "custom") { activePreset = "custom"; highlightPreset(); elArtName.textContent = "Custom"; }
+  }
+  function highlightPreset() {
+    document.querySelectorAll(".preset").forEach(function (b) {
+      b.classList.toggle("active", b.getAttribute("data-preset") === activePreset);
+    });
+  }
+
+  // ── load a preset into the UI ──
+  function loadPreset(key) {
+    var p = PRESETS[key]; if (!p) return;
+    activePreset = key;
+    elAxiom.value = p.axiom;
+    setRules(p.rules);
+    elAngle.value = p.angle; elAngleR.value = p.angle;
+    elIter.value = p.iters; elIterR.value = p.iters;
+    elHeading.value = p.heading; elHeadingR.value = p.heading;
+    elArtName.textContent = p.name;
+    highlightPreset();
+    schedule();
+  }
+
+  // ── gather current config (for persistence / export) ──
+  function currentConfig() {
+    var rr = readRules();
+    return {
+      preset: activePreset, axiom: elAxiom.value, rules: rr.arr,
+      angle: parseFloat(elAngle.value), iters: parseInt(elIter.value, 10) || 0,
+      heading: parseFloat(elHeading.value), width: parseFloat(elWidth.value),
+      mode: elMode.value, colorA: elA.value, colorB: elB.value, name: elArtName.textContent
+    };
+  }
+  function applyConfig(c) {
+    activePreset = c.preset || "custom";
+    elAxiom.value = c.axiom || "";
+    setRules(c.rules && c.rules.length ? c.rules : [["F", "F"]]);
+    elAngle.value = elAngleR.value = (c.angle != null ? c.angle : 60);
+    elIter.value = elIterR.value = (c.iters != null ? c.iters : 4);
+    elHeading.value = elHeadingR.value = (c.heading != null ? c.heading : 0);
+    elWidth.value = elWidthR.value = (c.width != null ? c.width : 1.4);
+    elMode.value = c.mode || "depth";
+    if (c.colorA) elA.value = c.colorA;
+    if (c.colorB) elB.value = c.colorB;
+    elArtName.textContent = c.name || (PRESETS[activePreset] ? PRESETS[activePreset].name : "Custom");
+    highlightPreset(); syncSwatches();
+  }
+
+  // ─────────────────────────────────────────────────────────────────────
+  //  Render pipeline (coalesced via requestAnimationFrame)
+  // ─────────────────────────────────────────────────────────────────────
+  var rafId = 0;
+  function schedule() { if (rafId) return; rafId = requestAnimationFrame(function () { rafId = 0; render(); }); }
+
+  function fitCanvas() {
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    var w = canvas.clientWidth || 800, h = canvas.clientHeight || 600;
+    canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    return { w: w, h: h };
+  }
+
+  function render() {
+    var t0 = performance.now();
+    var cfg = currentConfig();
+    var rr = readRules();
+    var warnings = [];
+
+    var ex = expand(cfg.axiom, rr.map, cfg.iters);
+    if (ex.capped) warnings.push("已达展开上限,在第 " + ex.iterationsDone + " 代停止");
+
+    var geom = turtle(ex.str, cfg.angle, cfg.heading);
+    if (geom.capped) warnings.push("图元过多,已截断至 " + MAX_SEG.toLocaleString() + " 段");
+    lastGeom = { geom: geom, cfg: cfg };
+
+    var dim = fitCanvas();
+    drawGeom(geom, cfg, dim);
+
+    // stats
+    statSeg.textContent = String(geom.n);
+    statDepth.textContent = String(geom.maxDepth);
+    statChars.textContent = ex.str.length.toLocaleString();
+    var ms = Math.max(0, Math.round(performance.now() - t0));
+    statMs.textContent = String(ms);
+
+    // expose deterministic outputs for tests / debugging
+    var bb = geom.bbox;
+    canvas.dataset.segments = String(geom.n);
+    canvas.dataset.depth = String(geom.maxDepth);
+    canvas.dataset.chars = String(ex.str.length);
+    canvas.dataset.bbox = [round2(bb.minX), round2(bb.minY), round2(bb.maxX), round2(bb.maxY)].join(",");
+
+    // expanded string preview (truncate huge)
+    elExpanded.textContent = ex.str.length > 20000 ? (ex.str.slice(0, 20000) + " …(" + ex.str.length.toLocaleString() + " chars)") : ex.str;
+
+    // warnings
+    if (warnings.length) { elWarn.textContent = warnings.join(" · "); elWarn.classList.add("show"); }
+    else { elWarn.textContent = ""; elWarn.classList.remove("show"); }
+
+    persistCurrent(cfg);
+  }
+  function round2(v) { return Math.round(v * 100) / 100; }
+
+  // ── draw segments, bucketing by color for performance ──
+  function drawGeom(geom, cfg, dim) {
+    ctx.fillStyle = "#000"; ctx.fillRect(0, 0, dim.w, dim.h);
+    ctx.lineCap = "round"; ctx.lineJoin = "round"; ctx.lineWidth = cfg.width;
+    var n = geom.n; if (!n) return;
+
+    var bb = geom.bbox, bw = bb.maxX - bb.minX, bh = bb.maxY - bb.minY;
+    var pad = 34;
+    var sc = Math.min((dim.w - pad * 2) / (bw || 1), (dim.h - pad * 2) / (bh || 1));
+    if (!isFinite(sc) || sc <= 0) sc = 1;
+    var offX = (dim.w - bw * sc) / 2 - bb.minX * sc;
+    var offY = (dim.h - bh * sc) / 2 - bb.minY * sc;
+    var TX = function (x) { return x * sc + offX; };
+    var TY = function (y) { return y * sc + offY; };
+
+    var A = hex2rgb(cfg.colorA), B = hex2rgb(cfg.colorB);
+    var mode = cfg.mode, sx = geom.sx, sy = geom.sy, ex = geom.ex, ey = geom.ey, sd = geom.sd;
+
+    if (mode === "mono") {
+      ctx.strokeStyle = cfg.colorA;
+      var p = new Path2D();
+      for (var i = 0; i < n; i++) { p.moveTo(TX(sx[i]), TY(sy[i])); p.lineTo(TX(ex[i]), TY(ey[i])); }
+      ctx.stroke(p);
+      return;
+    }
+
+    // bucketed: one Path2D per color band → few stroke() calls even for 100k+ segs
+    var NB, keyOf, colorOf;
+    if (mode === "depth") {
+      NB = Math.max(1, geom.maxDepth + 1);
+      keyOf = function (i) { return sd[i]; };
+      colorOf = function (k) { return lerpColor(A, B, NB > 1 ? k / (NB - 1) : 0); };
+    } else if (mode === "spectrum") {
+      NB = 128;
+      keyOf = function (i) { return Math.min(NB - 1, (i / n * NB) | 0); };
+      colorOf = function (k) { return "hsl(" + Math.round(k / NB * 320) + ",72%,62%)"; };
+    } else { // path
+      NB = Math.min(160, Math.max(2, n));
+      keyOf = function (i) { return Math.min(NB - 1, (i / n * NB) | 0); };
+      colorOf = function (k) { return lerpColor(A, B, NB > 1 ? k / (NB - 1) : 0); };
+    }
+    var paths = new Array(NB);
+    for (var b = 0; b < NB; b++) paths[b] = new Path2D();
+    for (var j = 0; j < n; j++) {
+      var pp = paths[keyOf(j)];
+      pp.moveTo(TX(sx[j]), TY(sy[j])); pp.lineTo(TX(ex[j]), TY(ey[j]));
+    }
+    for (var c = 0; c < NB; c++) { ctx.strokeStyle = colorOf(c); ctx.stroke(paths[c]); }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────
+  //  Export
+  // ─────────────────────────────────────────────────────────────────────
+  function buildSVG() {
+    if (!lastGeom) return "";
+    var geom = lastGeom.geom, cfg = lastGeom.cfg;
+    var W = 1600, H = 1000, pad = 60;
+    var bb = geom.bbox, bw = bb.maxX - bb.minX, bh = bb.maxY - bb.minY;
+    var sc = Math.min((W - pad * 2) / (bw || 1), (H - pad * 2) / (bh || 1));
+    if (!isFinite(sc) || sc <= 0) sc = 1;
+    var offX = (W - bw * sc) / 2 - bb.minX * sc, offY = (H - bh * sc) / 2 - bb.minY * sc;
+    var A = hex2rgb(cfg.colorA), B = hex2rgb(cfg.colorB);
+    var mode = cfg.mode, n = geom.n, sx = geom.sx, sy = geom.sy, ex = geom.ex, ey = geom.ey, sd = geom.sd;
+    function fx(x) { return (x * sc + offX).toFixed(2); }
+    function fy(y) { return (y * sc + offY).toFixed(2); }
+
+    var NB, keyOf, colorOf;
+    if (mode === "mono") { NB = 1; keyOf = function () { return 0; }; colorOf = function () { return cfg.colorA; }; }
+    else if (mode === "depth") { NB = Math.max(1, geom.maxDepth + 1); keyOf = function (i) { return sd[i]; }; colorOf = function (k) { return lerpColor(A, B, NB > 1 ? k / (NB - 1) : 0); }; }
+    else if (mode === "spectrum") { NB = 128; keyOf = function (i) { return Math.min(NB - 1, (i / n * NB) | 0); }; colorOf = function (k) { return "hsl(" + Math.round(k / NB * 320) + ",72%,62%)"; }; }
+    else { NB = Math.min(160, Math.max(2, n)); keyOf = function (i) { return Math.min(NB - 1, (i / n * NB) | 0); }; colorOf = function (k) { return lerpColor(A, B, NB > 1 ? k / (NB - 1) : 0); }; }
+
+    var buckets = new Array(NB); for (var b = 0; b < NB; b++) buckets[b] = [];
+    for (var i = 0; i < n; i++) buckets[keyOf(i)].push("M" + fx(sx[i]) + " " + fy(sy[i]) + "L" + fx(ex[i]) + " " + fy(ey[i]));
+    var body = "";
+    for (var c = 0; c < NB; c++) { if (!buckets[c].length) continue; body += '<path d="' + buckets[c].join("") + '" stroke="' + colorOf(c) + '"/>'; }
+    return '<?xml version="1.0" encoding="UTF-8"?>\n' +
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + W + ' ' + H + '" width="' + W + '" height="' + H + '">' +
+      '<rect width="' + W + '" height="' + H + '" fill="#000000"/>' +
+      '<g fill="none" stroke-width="' + cfg.width + '" stroke-linecap="round" stroke-linejoin="round">' + body + '</g></svg>';
+  }
+  function download(blob, filename) {
+    var url = URL.createObjectURL(blob), a = document.createElement("a");
+    a.href = url; a.download = filename; document.body.appendChild(a); a.click();
+    setTimeout(function () { URL.revokeObjectURL(url); a.remove(); }, 100);
+  }
+  function slugName() { return (elArtName.textContent || "fractal").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "fractal"; }
+  $("export-svg").addEventListener("click", function () {
+    var svg = buildSVG(); if (!svg) return;
+    this.dataset.bytes = String(svg.length);   // testable signal
+    download(new Blob([svg], { type: "image/svg+xml" }), slugName() + ".svg");
+  });
+  $("export-png").addEventListener("click", function () {
+    var self = this;
+    canvas.toBlob(function (blob) { if (blob) { self.dataset.bytes = String(blob.size); download(blob, slugName() + ".png"); } }, "image/png");
+  });
+
+  // ─────────────────────────────────────────────────────────────────────
+  //  Persistence + library
+  // ─────────────────────────────────────────────────────────────────────
+  function persistCurrent(cfg) { try { localStorage.setItem(LS_CUR, JSON.stringify(cfg)); } catch (e) {} }
+  function loadLibrary() { try { return JSON.parse(localStorage.getItem(LS_LIB) || "[]"); } catch (e) { return []; } }
+  function saveLibrary(lib) { try { localStorage.setItem(LS_LIB, JSON.stringify(lib)); } catch (e) {} }
+
+  function renderLibrary() {
+    var lib = loadLibrary(), host = $("saved-list");
+    if (!lib.length) { host.innerHTML = '<p class="empty">还没有保存的分形。调好参数后点「保存」,下次回来即可载入。</p>'; return; }
+    host.innerHTML = lib.map(function (it, idx) {
+      return '<div class="saved-item" data-idx="' + idx + '">' +
+        '<span class="nm" title="' + escAttr(it.name) + '">' + escAttr(it.name) + '</span>' +
+        '<span class="meta">' + escAttr((it.cfg && PRESETS[it.cfg.preset] ? "" : "") + (it.cfg ? it.cfg.iters : "?")) + '×</span>' +
+        '<button class="load" type="button">载入</button>' +
+        '<button class="del" type="button">删除</button>' +
+        '</div>';
+    }).join("");
+  }
+  $("saved-list").addEventListener("click", function (e) {
+    var item = e.target.closest(".saved-item"); if (!item) return;
+    var idx = parseInt(item.getAttribute("data-idx"), 10);
+    var lib = loadLibrary();
+    if (e.target.classList.contains("load")) {
+      if (lib[idx]) { applyConfig(lib[idx].cfg); schedule(); }
+    } else if (e.target.classList.contains("del")) {
+      lib.splice(idx, 1); saveLibrary(lib); renderLibrary();
+    }
+  });
+  $("save-btn").addEventListener("click", function () {
+    var nm = ($("save-name").value || "").trim();
+    var cfg = currentConfig();
+    if (!nm) nm = cfg.name || "未命名分形";
+    var lib = loadLibrary();
+    lib.unshift({ name: nm, cfg: cfg });
+    if (lib.length > 60) lib = lib.slice(0, 60);
+    saveLibrary(lib); $("save-name").value = ""; renderLibrary();
+  });
+  $("save-name").addEventListener("keydown", function (e) { if (e.key === "Enter") $("save-btn").click(); });
+
+  // ─────────────────────────────────────────────────────────────────────
+  //  Boot
+  // ─────────────────────────────────────────────────────────────────────
+  var ro = new ResizeObserver(function () { schedule(); });
+  ro.observe(canvas);
+  window.addEventListener("resize", schedule);
+
+  (function boot() {
+    var restored = null;
+    try { restored = JSON.parse(localStorage.getItem(LS_CUR) || "null"); } catch (e) {}
+    if (restored && restored.axiom !== undefined) applyConfig(restored);
+    else loadPreset("koch-snowflake");
+    syncSwatches(); renderLibrary(); highlightPreset();
+    schedule();
+  })();
+})();
+</script>
+</body>
+</html>
