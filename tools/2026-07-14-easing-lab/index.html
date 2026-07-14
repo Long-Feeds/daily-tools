@@ -1,0 +1,897 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>缓动实验室 · Easing Lab</title>
+<meta name="description" content="可视化调 cubic-bézier、弹簧物理与 steps 缓动曲线:拖控制点、实时预览多属性动画、A/B 对比,一键导出 CSS cubic-bezier() / linear() 与 JS 函数。纯前端本地保存。">
+<style>
+  /* ── Design language: Framer ───────────────────────────────────────────
+     Near-pure-black artboard. White display type with aggressive negative
+     tracking, set like a poster. A single confident sky-blue (#0099ff) used
+     ONLY for links / focus / selection. Surface hierarchy carries depth
+     (canvas → surface-1 → surface-2), never opacity on white. Every CTA is a
+     pill; secondary actions are charcoal pills. Exactly ONE gradient spotlight
+     card — the motion stage — dropped into the otherwise monochrome grid.
+     Dark only: the brand IS dark. */
+  :root{
+    --canvas:#090909;
+    --surface-1:#141414;
+    --surface-2:#1c1c1c;
+    --field:#141414;
+    --hairline:#262626;
+    --hairline-soft:#1a1a1a;
+    --ink:#ffffff;
+    --ink-muted:#999999;
+    --blue:#0099ff;
+    --g-magenta:#d44df0;
+    --g-violet:#6a4cf5;
+    --g-orange:#ff7a3d;
+    --g-coral:#ff5577;
+    --success:#22c55e;
+    --sans:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,Roboto,'Helvetica Neue',Arial,sans-serif;
+    --mono:ui-monospace,'SF Mono','JetBrains Mono',Menlo,Consolas,'Liberation Mono',monospace;
+    --font-feat:"cv01" 1,"cv05" 1,"cv09" 1,"cv11" 1,"ss03" 1,"tnum" 1;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  html{background:var(--canvas)}
+  body{
+    background:var(--canvas); color:var(--ink);
+    font-family:var(--sans); font-size:15px; line-height:1.3;
+    letter-spacing:-0.15px; font-feature-settings:var(--font-feat);
+    -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
+    min-height:100vh;
+  }
+  a{color:var(--blue); text-decoration:none}
+  ::selection{background:rgba(0,153,255,.28); color:#fff}
+  code{font-family:var(--mono); font-size:.92em}
+  button{font-family:inherit}
+  :focus-visible{outline:none; box-shadow:0 0 0 1px var(--blue), 0 0 0 4px rgba(0,153,255,.15); border-radius:8px}
+  .eyebrow{font-size:12px; font-weight:500; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-muted)}
+
+  /* ── Top nav ── */
+  .topbar{
+    height:56px; display:flex; align-items:center; justify-content:space-between;
+    padding:0 20px; border-bottom:1px solid var(--hairline);
+    position:sticky; top:0; z-index:30; background:rgba(9,9,9,.82);
+    backdrop-filter:saturate(140%) blur(10px);
+  }
+  .brand{display:flex; align-items:baseline; gap:14px; min-width:0}
+  .brand .mark{font-size:16px; font-weight:600; letter-spacing:-.4px; color:var(--ink); white-space:nowrap}
+  .brand .mark b{color:var(--ink-muted); font-weight:600}
+  .brand .eyebrow{white-space:nowrap}
+  @media(max-width:560px){ .brand .eyebrow{display:none} }
+  .back{
+    font-size:14px; font-weight:500; letter-spacing:-.14px; color:var(--ink);
+    background:var(--surface-1); padding:9px 15px; border-radius:100px;
+    border:1px solid var(--hairline); white-space:nowrap; transition:background .15s,border-color .15s;
+  }
+  .back:hover{background:var(--surface-2); border-color:#333}
+
+  /* ── Shell ── */
+  .wrap{max-width:1200px; margin:0 auto; padding:34px 20px 88px}
+  .intro{max-width:760px; margin:6px 0 30px}
+  h1.display{
+    margin:0 0 14px; font-weight:600; font-size:clamp(38px,7vw,72px); line-height:.9;
+    letter-spacing:-.045em; color:var(--ink);
+  }
+  .intro .lead{margin:0; font-size:clamp(15px,2.2vw,19px); line-height:1.4; color:var(--ink-muted); letter-spacing:-.18px; max-width:640px}
+  .intro .lead code{color:var(--ink); background:var(--surface-1); padding:2px 6px; border-radius:6px; border:1px solid var(--hairline)}
+
+  .grid{display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:20px; align-items:start}
+  @media(max-width:920px){ .grid{grid-template-columns:1fr} }
+
+  .panel{background:var(--surface-1); border:1px solid var(--hairline); border-radius:20px; padding:20px}
+  .stage-col{display:flex; flex-direction:column; gap:16px; background:none; border:none; padding:0}
+
+  /* ── Mode tabs (pill toggle) ── */
+  .tabs{display:inline-flex; gap:4px; padding:4px; background:var(--canvas); border:1px solid var(--hairline); border-radius:100px; margin-bottom:18px}
+  .tab{
+    appearance:none; border:none; cursor:pointer; color:var(--ink-muted);
+    background:transparent; font-size:14px; font-weight:500; letter-spacing:-.14px;
+    padding:8px 15px; border-radius:100px; transition:background .15s,color .15s; min-height:36px;
+  }
+  .tab:hover{color:var(--ink)}
+  .tab.active{background:var(--surface-2); color:var(--ink)}
+
+  /* ── Plot ── */
+  .plotwrap{position:relative; width:100%; background:var(--canvas); border:1px solid var(--hairline); border-radius:15px; padding:8px}
+  #plot{display:block; width:100%; height:auto; touch-action:none; cursor:crosshair}
+  #plot .grid-line{stroke:var(--hairline); stroke-width:1}
+  #plot .grid-line.strong{stroke:#333}
+  #plot .axis-label{fill:var(--ink-muted); font:500 11px var(--sans); letter-spacing:.04em}
+  #plot .curve{fill:none; stroke:var(--ink); stroke-width:2.5; stroke-linecap:round; stroke-linejoin:round}
+  #plot .curve-b{fill:none; stroke:var(--g-coral); stroke-width:2; stroke-dasharray:5 5; opacity:.9}
+  #plot .guide{stroke:var(--ink-muted); stroke-width:1.25; stroke-dasharray:3 4; opacity:.75}
+  #plot .anchor{fill:var(--ink)}
+  #plot .handle{fill:var(--surface-2); stroke:var(--blue); stroke-width:2; cursor:grab}
+  #plot .handle:active{cursor:grabbing}
+  #plot .handle-hit{fill:transparent; cursor:grab}
+  #plot .playhead{fill:var(--blue)}
+  #plot .playhead-ring{fill:none; stroke:var(--blue); stroke-width:1.5; opacity:.5}
+
+  /* ── Controls ── */
+  .controls{margin-top:18px}
+  .controls.hidden{display:none}
+  .field-row{display:grid; grid-template-columns:repeat(4,1fr); gap:10px}
+  @media(max-width:420px){ .field-row{grid-template-columns:repeat(2,1fr)} }
+  .field{display:flex; flex-direction:column; gap:6px}
+  .field label{font-size:12px; font-weight:500; color:var(--ink-muted); letter-spacing:.02em}
+  .field input[type=number], .field select{
+    background:var(--field); color:var(--ink); border:1px solid var(--hairline);
+    border-radius:10px; padding:10px 12px; font-size:15px; font-family:var(--mono); width:100%;
+    -webkit-font-smoothing:antialiased;
+  }
+  .field input:focus, .field select:focus{outline:none; box-shadow:0 0 0 1px var(--blue), 0 0 0 4px rgba(0,153,255,.15)}
+
+  .slider-row{display:flex; flex-direction:column; gap:16px}
+  .slider{display:grid; grid-template-columns:96px 1fr 62px; align-items:center; gap:12px}
+  .slider label{font-size:13px; color:var(--ink-muted)}
+  .slider .val{font-family:var(--mono); font-size:13px; color:var(--ink); text-align:right}
+  input[type=range]{
+    -webkit-appearance:none; appearance:none; width:100%; height:4px; border-radius:100px;
+    background:var(--hairline); outline:none; cursor:pointer;
+  }
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none; appearance:none; width:16px; height:16px; border-radius:50%; background:var(--ink); border:none; box-shadow:0 1px 4px rgba(0,0,0,.5)}
+  input[type=range]::-moz-range-thumb{width:16px; height:16px; border-radius:50%; background:var(--ink); border:none}
+  input[type=range]:focus-visible{box-shadow:0 0 0 4px rgba(0,153,255,.2)}
+
+  .stat-row{display:flex; gap:10px; margin-top:16px; flex-wrap:wrap}
+  .stat{flex:1; min-width:120px; background:var(--canvas); border:1px solid var(--hairline); border-radius:12px; padding:12px 14px}
+  .stat .k{font-size:12px; color:var(--ink-muted); letter-spacing:.02em}
+  .stat .v{font-size:20px; font-weight:600; letter-spacing:-.5px; margin-top:3px; font-family:var(--mono)}
+
+  /* ── Presets ── */
+  .presets{margin-top:20px; display:flex; flex-wrap:wrap; gap:8px}
+  .sect-label{font-size:12px; font-weight:500; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-muted); width:100%; margin-bottom:2px}
+  .preset{
+    appearance:none; cursor:pointer; background:var(--surface-2); color:var(--ink);
+    border:1px solid var(--hairline); border-radius:100px; padding:7px 13px; font-size:13px; font-weight:500;
+    letter-spacing:-.13px; transition:border-color .15s, background .15s; font-family:var(--mono);
+  }
+  .preset:hover{border-color:#3a3a3a; background:#232323}
+  .preset.on{border-color:var(--blue); box-shadow:0 0 0 1px var(--blue)}
+
+  /* ── Gradient spotlight stage (Framer signature — the ONE gradient card) ── */
+  .spotlight{
+    position:relative; border-radius:30px; padding:26px 24px 30px; overflow:hidden; color:#fff;
+    background:radial-gradient(120% 140% at 12% 0%, var(--g-violet) 0%, var(--g-magenta) 46%, var(--g-coral) 100%);
+    box-shadow:0 20px 60px rgba(106,76,245,.28), inset 0 1px 0 rgba(255,255,255,.14);
+  }
+  .stage-head{display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:20px}
+  .stage-head .eyebrow{color:rgba(255,255,255,.85)}
+  .readouts{display:flex; gap:18px}
+  .ro{line-height:1}
+  .ro .k{font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:rgba(255,255,255,.75)}
+  .ro .v{font-size:24px; font-weight:600; letter-spacing:-1px; font-family:var(--mono); margin-top:4px}
+  .cmp-badge{font-size:11px; font-weight:600; letter-spacing:.06em; color:#fff; background:rgba(0,0,0,.28); border:1px solid rgba(255,255,255,.35); padding:5px 10px; border-radius:100px}
+  .cmp-badge.hidden{display:none}
+
+  .tracks{display:flex; flex-direction:column; gap:15px}
+  .track{position:relative}
+  .track .tlabel{font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:rgba(255,255,255,.8); margin-bottom:7px}
+  .rail{position:relative; height:34px; border-radius:100px; background:rgba(0,0,0,.22); border:1px solid rgba(255,255,255,.22)}
+  .dot{position:absolute; top:50%; left:0; width:26px; height:26px; margin-top:-13px; margin-left:4px; border-radius:50%; background:#fff; box-shadow:0 3px 10px rgba(0,0,0,.35)}
+  .dot.b{background:transparent; border:2px solid rgba(0,0,0,.55); box-shadow:none}
+  .dot.b.hidden{display:none}
+  .demo-row{display:grid; grid-template-columns:1fr 1fr; gap:15px}
+  .demo{background:rgba(0,0,0,.2); border:1px solid rgba(255,255,255,.22); border-radius:16px; height:96px; display:flex; align-items:center; justify-content:center; overflow:hidden; position:relative}
+  .demo .tlabel{position:absolute; top:9px; left:12px; margin:0}
+  #box-scale{width:42px; height:42px; border-radius:10px; background:#fff; box-shadow:0 4px 12px rgba(0,0,0,.3)}
+  #box-rotate{width:40px; height:40px; border-radius:9px; background:#fff; box-shadow:0 4px 12px rgba(0,0,0,.3)}
+  .opa-wrap{display:flex; gap:8px}
+  .opa-wrap span{width:16px; height:44px; border-radius:5px; background:#fff}
+  .barwrap{position:absolute; left:12px; right:12px; bottom:14px; height:12px; border-radius:100px; background:rgba(0,0,0,.25)}
+  #bar-fill{height:100%; width:0%; border-radius:100px; background:#fff}
+
+  /* ── Playbar ── */
+  .playbar{display:flex; align-items:center; gap:12px; background:var(--surface-1); border:1px solid var(--hairline); border-radius:16px; padding:12px 14px; flex-wrap:wrap}
+  .iconbtn{
+    appearance:none; cursor:pointer; border:none; background:var(--ink); color:#000;
+    width:40px; height:40px; border-radius:100px; display:inline-flex; align-items:center; justify-content:center;
+    font-size:15px; font-weight:600; flex:0 0 auto; transition:transform .12s;
+  }
+  .iconbtn:active{transform:scale(.92)}
+  .iconbtn.ghost{background:var(--surface-2); color:var(--ink); border:1px solid var(--hairline); width:auto; padding:0 15px; height:40px; font-size:13px; font-weight:500}
+  .iconbtn.ghost.on{color:var(--ink); border-color:var(--blue); box-shadow:0 0 0 1px var(--blue)}
+  .scrub-wrap{flex:1 1 180px; display:flex; align-items:center; gap:10px; min-width:150px}
+  .scrub-wrap #scrub{flex:1}
+  .dur{display:flex; align-items:center; gap:7px; color:var(--ink-muted); font-size:13px}
+  .dur input{width:74px; background:var(--field); color:var(--ink); border:1px solid var(--hairline); border-radius:9px; padding:8px 10px; font-family:var(--mono); font-size:14px}
+
+  /* ── Export ── */
+  .export{background:var(--surface-1); border:1px solid var(--hairline); border-radius:16px; padding:16px}
+  .export h3{margin:0 0 12px; font-size:13px; font-weight:600; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-muted)}
+  .out-block{margin-bottom:12px}
+  .out-block:last-child{margin-bottom:0}
+  .out-top{display:flex; align-items:center; justify-content:space-between; margin-bottom:6px}
+  .out-top .lbl{font-size:12px; color:var(--ink-muted); font-family:var(--mono)}
+  .copy{appearance:none; cursor:pointer; background:var(--surface-2); color:var(--ink); border:1px solid var(--hairline); border-radius:100px; padding:5px 12px; font-size:12px; font-weight:500; transition:border-color .15s}
+  .copy:hover{border-color:#3a3a3a}
+  .copy.done{color:var(--success); border-color:var(--success)}
+  pre.code{margin:0; background:var(--canvas); border:1px solid var(--hairline); border-radius:10px; padding:12px 14px; overflow-x:auto; font-family:var(--mono); font-size:13px; line-height:1.5; color:var(--ink); white-space:pre-wrap; word-break:break-word}
+  pre.code .tok{color:var(--blue)}
+
+  /* ── Saved presets ── */
+  .saved{background:var(--surface-1); border:1px solid var(--hairline); border-radius:16px; padding:16px}
+  .saved h3{margin:0 0 12px; font-size:13px; font-weight:600; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-muted)}
+  .save-form{display:flex; gap:8px; margin-bottom:14px}
+  .save-form input{flex:1; background:var(--field); color:var(--ink); border:1px solid var(--hairline); border-radius:10px; padding:10px 12px; font-size:14px}
+  .save-form input:focus{outline:none; box-shadow:0 0 0 1px var(--blue), 0 0 0 4px rgba(0,153,255,.15)}
+  .save-form button{appearance:none; cursor:pointer; background:var(--ink); color:#000; border:none; border-radius:100px; padding:0 18px; font-size:14px; font-weight:600; transition:transform .12s}
+  .save-form button:active{transform:scale(.95)}
+  #saved-list{display:flex; flex-direction:column; gap:8px}
+  .saved-empty{color:var(--ink-muted); font-size:13px}
+  .saved-item{display:flex; align-items:center; gap:10px; background:var(--canvas); border:1px solid var(--hairline); border-radius:12px; padding:10px 12px}
+  .saved-item .si-main{flex:1; min-width:0; cursor:pointer}
+  .saved-item .si-name{font-size:14px; font-weight:500; color:var(--ink)}
+  .saved-item .si-sub{font-size:12px; color:var(--ink-muted); font-family:var(--mono); margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .saved-item .si-del{appearance:none; cursor:pointer; background:transparent; border:1px solid var(--hairline); color:var(--ink-muted); border-radius:100px; width:30px; height:30px; flex:0 0 auto; font-size:15px; line-height:1; transition:color .15s,border-color .15s}
+  .saved-item .si-del:hover{color:var(--g-coral); border-color:var(--g-coral)}
+
+  .foot{margin-top:34px; color:var(--ink-muted); font-size:13px; line-height:1.6; max-width:760px}
+  .foot b{color:var(--ink); font-weight:600}
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="mark">Easing<b>Lab</b></span>
+      <span class="eyebrow">Motion&nbsp;Curves</span>
+    </div>
+    <a class="back" href="../../">← 返回工具集</a>
+  </header>
+
+  <main class="wrap">
+    <section class="intro">
+      <h1 class="display">把动效曲线<br>调到刚刚好。</h1>
+      <p class="lead">拖控制点画 <code>cubic-bézier</code>、用弹簧物理生成有回弹的 <code>linear()</code>、或排 <code>steps()</code> 阶梯 —— 五个属性实时预览、A/B 对比,一键导出 CSS 与 JS。零后端,本地保存。</p>
+    </section>
+
+    <div class="grid">
+      <!-- LEFT: editor -->
+      <section class="panel editor">
+        <div class="tabs" role="tablist" aria-label="缓动类型">
+          <button class="tab active" data-mode="bezier" role="tab" aria-selected="true">Cubic Bézier</button>
+          <button class="tab" data-mode="spring" role="tab" aria-selected="false">弹簧 Spring</button>
+          <button class="tab" data-mode="steps" role="tab" aria-selected="false">阶梯 Steps</button>
+        </div>
+
+        <div class="plotwrap">
+          <svg id="plot" viewBox="0 0 320 360" aria-label="缓动曲线图">
+            <!-- grid -->
+            <line class="grid-line strong" x1="40" y1="290" x2="290" y2="290"/>
+            <line class="grid-line strong" x1="40" y1="110" x2="290" y2="110"/>
+            <line class="grid-line" x1="40" y1="200" x2="290" y2="200" stroke-dasharray="2 5"/>
+            <line class="grid-line" x1="40" y1="20" x2="40" y2="344"/>
+            <line class="grid-line" x1="165" y1="20" x2="165" y2="344" stroke-dasharray="2 6"/>
+            <line class="grid-line" x1="290" y1="20" x2="290" y2="344"/>
+            <text class="axis-label" x="30" y="294" text-anchor="end">0</text>
+            <text class="axis-label" x="30" y="114" text-anchor="end">1</text>
+            <text class="axis-label" x="40" y="358" text-anchor="middle">t=0</text>
+            <text class="axis-label" x="290" y="358" text-anchor="middle">t=1</text>
+            <!-- curves -->
+            <path id="curve-b" class="curve-b" d="" style="display:none"/>
+            <path id="curve" class="curve" d=""/>
+            <!-- bezier handles -->
+            <g id="handles">
+              <line id="guide1" class="guide" x1="40" y1="290" x2="40" y2="290"/>
+              <line id="guide2" class="guide" x1="290" y1="110" x2="290" y2="110"/>
+              <circle class="anchor" cx="40" cy="290" r="4"/>
+              <circle class="anchor" cx="290" cy="110" r="4"/>
+              <circle id="h1" class="handle" cx="40" cy="290" r="7.5"/>
+              <circle id="h2" class="handle" cx="290" cy="110" r="7.5"/>
+              <circle id="h1-hit" class="handle-hit" data-h="1" cx="40" cy="290" r="18"/>
+              <circle id="h2-hit" class="handle-hit" data-h="2" cx="290" cy="110" r="18"/>
+            </g>
+            <!-- playhead -->
+            <circle id="playhead-ring" class="playhead-ring" cx="40" cy="290" r="8"/>
+            <circle id="playhead" class="playhead" cx="40" cy="290" r="4.5"/>
+          </svg>
+        </div>
+
+        <!-- bezier controls -->
+        <div class="controls ctl-bezier">
+          <div class="field-row">
+            <div class="field"><label for="x1">x1</label><input id="x1" type="number" step="0.01" min="0" max="1" value="0.25"></div>
+            <div class="field"><label for="y1">y1</label><input id="y1" type="number" step="0.01" value="0.1"></div>
+            <div class="field"><label for="x2">x2</label><input id="x2" type="number" step="0.01" min="0" max="1" value="0.25"></div>
+            <div class="field"><label for="y2">y2</label><input id="y2" type="number" step="0.01" value="1"></div>
+          </div>
+        </div>
+
+        <!-- spring controls -->
+        <div class="controls ctl-spring hidden">
+          <div class="slider-row">
+            <div class="slider"><label for="stiffness">刚度 Stiffness</label><input id="stiffness" type="range" min="20" max="600" step="1" value="180"><span class="val" id="stiffness-v">180</span></div>
+            <div class="slider"><label for="damping">阻尼 Damping</label><input id="damping" type="range" min="1" max="60" step="0.5" value="12"><span class="val" id="damping-v">12</span></div>
+            <div class="slider"><label for="mass">质量 Mass</label><input id="mass" type="range" min="0.2" max="5" step="0.1" value="1"><span class="val" id="mass-v">1</span></div>
+            <div class="slider"><label for="velocity">初速度 Velocity</label><input id="velocity" type="range" min="-25" max="25" step="0.5" value="0"><span class="val" id="velocity-v">0</span></div>
+          </div>
+          <div class="stat-row">
+            <div class="stat"><div class="k">建议时长 Duration</div><div class="v" id="spring-duration">—</div></div>
+            <div class="stat"><div class="k">回弹峰值 Overshoot</div><div class="v" id="spring-peak">—</div></div>
+          </div>
+        </div>
+
+        <!-- steps controls -->
+        <div class="controls ctl-steps hidden">
+          <div class="field-row" style="grid-template-columns:1fr 1.4fr">
+            <div class="field"><label for="steps-count">步数 Steps</label><input id="steps-count" type="number" min="1" max="20" step="1" value="5"></div>
+            <div class="field"><label for="steps-jump">跳变位置 Jump</label>
+              <select id="steps-jump">
+                <option value="end">jump-end (默认)</option>
+                <option value="start">jump-start</option>
+                <option value="both">jump-both</option>
+                <option value="none">jump-none</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div class="presets" id="presets">
+          <span class="sect-label">预设 · 点击载入</span>
+        </div>
+      </section>
+
+      <!-- RIGHT: stage + output -->
+      <section class="stage-col">
+        <div class="spotlight">
+          <div class="stage-head">
+            <span class="eyebrow">Live Preview</span>
+            <div class="readouts">
+              <div class="ro"><div class="k">Progress</div><div class="v" id="scrub-progress">0%</div></div>
+              <div class="ro"><div class="k">Output</div><div class="v" id="scrub-output">0%</div></div>
+            </div>
+          </div>
+          <div class="tracks">
+            <div class="track">
+              <div class="tlabel">translateX <span id="cmp-badge" class="cmp-badge hidden">A 实线 · B 虚线</span></div>
+              <div class="rail" id="rail">
+                <div class="dot b hidden" id="dot-b"></div>
+                <div class="dot" id="dot-a"></div>
+              </div>
+            </div>
+            <div class="demo-row">
+              <div class="demo"><span class="tlabel">scale</span><div id="box-scale"></div></div>
+              <div class="demo"><span class="tlabel">rotate</span><div id="box-rotate"></div></div>
+            </div>
+            <div class="demo-row">
+              <div class="demo"><span class="tlabel">opacity</span><div class="opa-wrap"><span></span><span></span><span></span><span></span></div></div>
+              <div class="demo"><span class="tlabel">width</span><div class="barwrap"><div id="bar-fill"></div></div></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="playbar">
+          <button class="iconbtn" id="play" aria-label="播放/暂停">▶</button>
+          <div class="scrub-wrap">
+            <input id="scrub" type="range" min="0" max="1000" step="1" value="0" aria-label="进度拖拽">
+          </div>
+          <div class="dur"><label for="duration">时长</label><input id="duration" type="number" min="100" max="6000" step="50" value="1000"> ms</div>
+          <button class="iconbtn ghost on" id="loop" aria-pressed="true">循环</button>
+        </div>
+
+        <div class="export">
+          <h3>导出</h3>
+          <div class="out-block">
+            <div class="out-top"><span class="lbl" id="css-prop">transition-timing-function</span><button class="copy" id="copy-css">复制</button></div>
+            <pre class="code"><span id="css-output">cubic-bezier(0.25, 0.1, 0.25, 1)</span></pre>
+          </div>
+          <div class="out-block">
+            <div class="out-top"><span class="lbl">JavaScript easing(t)</span><button class="copy" id="copy-js">复制</button></div>
+            <pre class="code" id="js-output"></pre>
+          </div>
+        </div>
+
+        <div class="saved">
+          <h3>我的曲线</h3>
+          <div class="save-form">
+            <input id="preset-name" type="text" placeholder="给这条曲线起个名字…" maxlength="40" aria-label="预设名称">
+            <button id="save-btn">保存</button>
+          </div>
+          <div id="saved-list"></div>
+          <div style="margin-top:12px; display:flex; gap:8px">
+            <button class="iconbtn ghost" id="pin-b">📌 钉为对比 B</button>
+            <button class="iconbtn ghost" id="clear-b" style="display:none">清除对比</button>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <p class="foot">
+      <b>三种引擎,都是真算的。</b> Bézier 用 Newton–Raphson 解 x(t)=进度(WebKit UnitBezier 同款);Spring 对二阶弹簧微分方程数值积分求整条位移曲线并自动判定收敛时长;Steps 按 CSS <code>steps()</code> 规范逐段取值。弹簧/自定义曲线导出为现代 CSS <code>linear()</code>,回弹也能纯 CSS 还原。全程在你浏览器里运行,曲线保存在 localStorage。
+    </p>
+  </main>
+
+<script>
+"use strict";
+(function(){
+  const $ = (s,r)=> (r||document).querySelector(s);
+  const $$ = (s,r)=> Array.from((r||document).querySelectorAll(s));
+  const clamp = (v,a,b)=> v<a?a:(v>b?b:v);
+  const LS_KEY = 'easing-lab:v1';
+
+  // plot geometry (viewBox coords)
+  const PX0=40, PX1=290, PW=250;          // x: t=0 .. t=1
+  const PY0=290, VUNIT=180;               // y: value 0 at 290, value 1 at 110
+  const tToPx = t => PX0 + clamp(t,0,1)*PW;
+  const vToPy = v => PY0 - v*VUNIT;
+  const pxToT = px => clamp((px-PX0)/PW, 0, 1);
+  const pyToV = py => (PY0-py)/VUNIT;
+
+  // ---------- ENGINES ----------
+
+  // Cubic Bézier — WebKit UnitBezier: solve x(t)=x then eval y.
+  function makeCubicBezier(x1,y1,x2,y2){
+    const cx=3*x1, bx=3*(x2-x1)-cx, ax=1-cx-bx;
+    const cy=3*y1, by=3*(y2-y1)-cy, ay=1-cy-by;
+    const sampleX = t => ((ax*t+bx)*t+cx)*t;
+    const sampleY = t => ((ay*t+by)*t+cy)*t;
+    const sampleDX = t => (3*ax*t+2*bx)*t+cx;
+    function solveX(x){
+      if(x<=0) return 0; if(x>=1) return 1;
+      let t=x;
+      for(let i=0;i<8;i++){
+        const xe=sampleX(t)-x;
+        if(Math.abs(xe)<1e-7) return t;
+        const d=sampleDX(t);
+        if(Math.abs(d)<1e-7) break;
+        t-=xe/d;
+      }
+      let lo=0, hi=1; t=x;
+      for(let i=0;i<40;i++){
+        const xe=sampleX(t)-x;
+        if(Math.abs(xe)<1e-7) return t;
+        if(xe>0) hi=t; else lo=t;
+        t=(lo+hi)/2;
+      }
+      return t;
+    }
+    const ease = x => { if(x<=0) return 0; if(x>=1) return 1; return sampleY(solveX(x)); };
+    ease.kind='bezier';
+    ease.sampleX=sampleX; ease.sampleY=sampleY;   // param plot handles overshoot
+    return ease;
+  }
+
+  // Spring — numeric integration of m·x'' = -k(x-1) - c·x', from x=0.
+  function makeSpring(stiffness, damping, mass, velocity){
+    const k=stiffness, c=damping, m=Math.max(0.05,mass);
+    const dt=1/360, maxT=12, restX=0.0008, restV=0.0008;
+    let x=0, v=velocity, t=0, settleT=maxT, peak=0;
+    const S=[{t:0,x:0}];
+    while(t<maxT){
+      const a=(-k*(x-1) - c*v)/m;   // semi-implicit Euler
+      v += a*dt; x += v*dt; t += dt;
+      if(x>peak) peak=x;
+      S.push({t,x});
+      if(Math.abs(x-1)<restX && Math.abs(v)<restV){ settleT=t; break; }
+    }
+    const dur=settleT;
+    const ease = p => {
+      if(p<=0) return 0; if(p>=1) return 1;
+      const tt=p*dur;
+      let lo=0, hi=S.length-1;
+      while(lo<hi){ const mid=(lo+hi)>>1; if(S[mid].t<tt) lo=mid+1; else hi=mid; }
+      const s2=S[lo], s1=S[Math.max(0,lo-1)];
+      if(s2.t===s1.t) return s2.x;
+      return s1.x + (s2.x-s1.x)*((tt-s1.t)/(s2.t-s1.t));
+    };
+    ease.kind='spring';
+    ease.duration=dur; ease.peak=peak;
+    return ease;
+  }
+
+  // Steps — CSS steps(n, jump-*).
+  function makeSteps(n, jump){
+    n=Math.max(1, Math.round(n));
+    if(jump==='none' && n<2) n=2;
+    const jumps = jump==='none' ? n-1 : (jump==='both' ? n+1 : n);
+    const bump = (jump==='start'||jump==='both') ? 1 : 0;
+    const ease = p => {
+      p=clamp(p,0,1);
+      let step=Math.floor(p*n)+bump;
+      step=clamp(step,0,jumps);
+      return step/jumps;
+    };
+    ease.kind='steps';
+    return ease;
+  }
+
+  // custom/spring/steps -> CSS linear()
+  function toLinearCSS(ease, n){
+    n=n||30;
+    const pts=[];
+    for(let i=0;i<=n;i++){ const p=i/n; pts.push({p, y:ease(p)}); }
+    const keep=[pts[0]];
+    for(let i=1;i<pts.length-1;i++){
+      const a=keep[keep.length-1], b=pts[i], c=pts[i+1];
+      const s1=(b.y-a.y)/(b.p-a.p), s2=(c.y-a.y)/(c.p-a.p);
+      if(Math.abs(s1-s2)>0.0025) keep.push(b);
+    }
+    keep.push(pts[pts.length-1]);
+    const f=v=>{ const r=Math.round(v*10000)/10000; return String(r); };
+    const parts=keep.map((pt,i)=>{
+      if(i===0 || i===keep.length-1) return f(pt.y);
+      return f(pt.y)+' '+ (Math.round(pt.p*1000)/10)+'%';
+    });
+    return 'linear('+parts.join(', ')+')';
+  }
+
+  const fmt = v => { const r=Math.round(v*10000)/10000; return String(r); };
+
+  // ---------- PRESET LIBRARY ----------
+  const PRESETS = [
+    {name:'linear',        mode:'bezier', v:[0,0,1,1]},
+    {name:'ease',          mode:'bezier', v:[0.25,0.1,0.25,1]},
+    {name:'ease-in',       mode:'bezier', v:[0.42,0,1,1]},
+    {name:'ease-out',      mode:'bezier', v:[0,0,0.58,1]},
+    {name:'ease-in-out',   mode:'bezier', v:[0.42,0,0.58,1]},
+    {name:'in-out-cubic',  mode:'bezier', v:[0.65,0,0.35,1]},
+    {name:'out-back',      mode:'bezier', v:[0.34,1.56,0.64,1]},
+    {name:'in-out-back',   mode:'bezier', v:[0.68,-0.6,0.32,1.6]},
+    {name:'out-expo',      mode:'bezier', v:[0.16,1,0.3,1]},
+    {name:'in-out-circ',   mode:'bezier', v:[0.85,0,0.15,1]},
+    {name:'anticipate',    mode:'bezier', v:[0.82,-0.4,0.3,1]},
+    {name:'gentle spring', mode:'spring', v:[120,16,1,0]},
+    {name:'bouncy spring', mode:'spring', v:[260,9,1,0]},
+    {name:'stiff spring',  mode:'spring', v:[420,26,1,0]},
+    {name:'steps(5)',      mode:'steps',  v:[5,'end']},
+    {name:'stair(8,both)', mode:'steps',  v:[8,'both']},
+  ];
+
+  // ---------- STATE ----------
+  const state = {
+    mode:'bezier',
+    bezier:[0.25,0.1,0.25,1],
+    spring:[180,12,1,0],
+    steps:[5,'end'],
+    progress:0,
+    duration:1000,
+    loop:true,
+    playing:false,
+    b:null,        // compare curve {mode, v, ease}
+  };
+
+  // build the active easing function from state
+  function buildEase(mode, v){
+    if(mode==='bezier') return makeCubicBezier(v[0],v[1],v[2],v[3]);
+    if(mode==='spring') return makeSpring(v[0],v[1],v[2],v[3]);
+    return makeSteps(v[0], v[1]);
+  }
+  let ease = buildEase('bezier', state.bezier);
+  function curVals(){ return state[state.mode]; }
+
+  // ---------- DOM refs ----------
+  const plot=$('#plot'), curveEl=$('#curve'), curveBEl=$('#curve-b');
+  const h1=$('#h1'), h2=$('#h2'), h1hit=$('#h1-hit'), h2hit=$('#h2-hit');
+  const guide1=$('#guide1'), guide2=$('#guide2');
+  const playhead=$('#playhead'), playheadRing=$('#playhead-ring'), handlesG=$('#handles');
+  const scrub=$('#scrub'), scrubProg=$('#scrub-progress'), scrubOut=$('#scrub-output');
+  const cssOut=$('#css-output'), cssProp=$('#css-prop'), jsOut=$('#js-output');
+  const dotA=$('#dot-a'), dotB=$('#dot-b'), boxScale=$('#box-scale'), boxRotate=$('#box-rotate');
+  const opaEls=$$('.opa-wrap span'), barFill=$('#bar-fill'), rail=$('#rail');
+  const cmpBadge=$('#cmp-badge');
+  const playBtn=$('#play'), loopBtn=$('#loop'), durInput=$('#duration');
+  const savedList=$('#saved-list');
+
+  // ---------- CURVE PATH ----------
+  function pathFor(e, mode){
+    const N=90; let d='';
+    if(mode==='bezier'){
+      for(let i=0;i<=N;i++){ const t=i/N; const px=tToPx(e.sampleX(t)); const py=vToPy(e.sampleY(t)); d+=(i?'L':'M')+px.toFixed(2)+' '+py.toFixed(2); }
+    } else if(mode==='steps'){
+      // draw literal staircase
+      const vals=curVals(); let n=Math.max(1,Math.round(vals[0])); const jump=vals[1];
+      const M=Math.max(120, n*8);
+      let prev=null;
+      for(let i=0;i<=M;i++){ const p=i/M; const px=tToPx(p); const py=vToPy(e(p));
+        if(i===0){ d='M'+px.toFixed(2)+' '+py.toFixed(2); }
+        else { if(prev!==null && Math.abs(py-prev)>0.01){ d+='L'+px.toFixed(2)+' '+prev.toFixed(2); } d+='L'+px.toFixed(2)+' '+py.toFixed(2); }
+        prev=py;
+      }
+    } else {
+      for(let i=0;i<=N;i++){ const p=i/N; const px=tToPx(p); const py=vToPy(e(p)); d+=(i?'L':'M')+px.toFixed(2)+' '+py.toFixed(2); }
+    }
+    return d;
+  }
+
+  function renderCurve(){
+    curveEl.setAttribute('d', pathFor(ease, state.mode));
+    // bezier handles
+    const showHandles = state.mode==='bezier';
+    handlesG.style.display = showHandles ? '' : 'none';
+    if(showHandles){
+      const v=state.bezier;
+      const p1x=tToPx(v[0]), p1y=vToPy(v[1]);
+      const p2x=tToPx(v[2]), p2y=vToPy(v[3]);
+      h1.setAttribute('cx',p1x); h1.setAttribute('cy',p1y);
+      h1hit.setAttribute('cx',p1x); h1hit.setAttribute('cy',p1y);
+      h2.setAttribute('cx',p2x); h2.setAttribute('cy',p2y);
+      h2hit.setAttribute('cx',p2x); h2hit.setAttribute('cy',p2y);
+      guide1.setAttribute('x2',p1x); guide1.setAttribute('y2',p1y);
+      guide2.setAttribute('x2',p2x); guide2.setAttribute('y2',p2y);
+    }
+    // compare curve
+    if(state.b){
+      curveBEl.style.display='';
+      curveBEl.setAttribute('d', pathFor(state.b.ease, state.b.mode));
+    } else {
+      curveBEl.style.display='none';
+    }
+  }
+
+  // ---------- EXPORT ----------
+  function cssValue(){
+    if(state.mode==='bezier'){ const v=state.bezier; return 'cubic-bezier('+fmt(v[0])+', '+fmt(v[1])+', '+fmt(v[2])+', '+fmt(v[3])+')'; }
+    if(state.mode==='steps'){ const v=state.steps; let n=Math.max(1,Math.round(v[0])); if(v[1]==='none'&&n<2)n=2; return 'steps('+n+', jump-'+v[1]+')'; }
+    return toLinearCSS(ease);
+  }
+  function jsSnippet(){
+    if(state.mode==='bezier'){
+      const v=state.bezier;
+      return 'const ease = cubicBezier('+fmt(v[0])+', '+fmt(v[1])+', '+fmt(v[2])+', '+fmt(v[3])+');\n'+
+        'function cubicBezier(x1,y1,x2,y2){\n'+
+        '  const cx=3*x1,bx=3*(x2-x1)-cx,ax=1-cx-bx;\n'+
+        '  const cy=3*y1,by=3*(y2-y1)-cy,ay=1-cy-by;\n'+
+        '  const X=t=>((ax*t+bx)*t+cx)*t, Y=t=>((ay*t+by)*t+cy)*t;\n'+
+        '  const DX=t=>(3*ax*t+2*bx)*t+cx;\n'+
+        '  return x=>{ if(x<=0)return 0; if(x>=1)return 1; let t=x;\n'+
+        '    for(let i=0;i<8;i++){const e=X(t)-x;if(Math.abs(e)<1e-6)break;t-=e/DX(t);}\n'+
+        '    return Y(t); };\n}';
+    }
+    if(state.mode==='steps'){
+      const v=state.steps; let n=Math.max(1,Math.round(v[0])); const j=v[1]; if(j==='none'&&n<2)n=2;
+      const jumps = j==='none'?n-1:(j==='both'?n+1:n);
+      const bump = (j==='start'||j==='both')?1:0;
+      return 'const N='+n+', JUMPS='+jumps+', BUMP='+bump+';\n'+
+        'const ease = p => {\n'+
+        '  p = Math.min(1, Math.max(0, p));\n'+
+        '  let s = Math.floor(p*N) + BUMP;\n'+
+        '  s = Math.min(JUMPS, Math.max(0, s));\n'+
+        '  return s / JUMPS;\n};';
+    }
+    // spring -> emit sampled points + lookup
+    const N=24; const pts=[];
+    for(let i=0;i<=N;i++){ const p=i/N; pts.push('['+ (Math.round(p*1000)/1000) +','+ (Math.round(ease(p)*10000)/10000) +']'); }
+    return '// spring, '+Math.round(ease.duration*1000)+'ms — piecewise-linear samples\n'+
+      'const PTS = ['+pts.join(',')+'];\n'+
+      'const ease = p => {\n'+
+      '  p = Math.min(1, Math.max(0, p));\n'+
+      '  for(let i=1;i<PTS.length;i++){ if(p<=PTS[i][0]){\n'+
+      '    const [x0,y0]=PTS[i-1], [x1,y1]=PTS[i];\n'+
+      '    return y0 + (y1-y0)*((p-x0)/(x1-x0||1)); } }\n'+
+      '  return 1;\n};';
+  }
+  function renderExport(){
+    cssOut.textContent = cssValue();
+    cssProp.textContent = state.mode==='steps' ? 'animation-timing-function' : 'transition-timing-function';
+    jsOut.textContent = jsSnippet();
+  }
+
+  // ---------- PREVIEW ----------
+  function applyProgress(p){
+    const eOut = ease(p);
+    const railW = rail.clientWidth || 300;
+    const travel = railW - 34;            // dot 26 + margins
+    dotA.style.transform = 'translateX('+ (eOut*travel).toFixed(2) +'px)';
+    if(state.b){ const eb=state.b.ease(p); dotB.style.transform='translateX('+ (eb*travel).toFixed(2)+'px)'; }
+    boxScale.style.transform = 'scale('+ (0.35 + eOut*0.95).toFixed(3) +')';
+    boxRotate.style.transform = 'rotate('+ (eOut*270).toFixed(1) +'deg)';
+    opaEls.forEach((el,i)=>{ el.style.opacity = clamp(eOut - i*0.02, 0.06, 1).toFixed(3); });
+    barFill.style.width = clamp(eOut,0,1.02)*100 + '%';
+    scrubProg.textContent = Math.round(p*100)+'%';
+    scrubOut.textContent = Math.round(eOut*100)+'%';
+    // playhead on curve
+    playhead.setAttribute('cx', tToPx(p)); playhead.setAttribute('cy', vToPy(eOut));
+    playheadRing.setAttribute('cx', tToPx(p)); playheadRing.setAttribute('cy', vToPy(eOut));
+  }
+  function setProgress(p, fromScrub){
+    state.progress = clamp(p,0,1);
+    if(!fromScrub) scrub.value = Math.round(state.progress*1000);
+    applyProgress(state.progress);
+  }
+
+  // rAF animation
+  let rafId=null, animStart=null, animFrom=0;
+  function tick(now){
+    if(state.playing){
+      if(animStart===null){ animStart=now; }
+      let el = now-animStart;
+      let p = animFrom + el/state.duration;
+      if(p>=1){
+        if(state.loop){ animStart=now; animFrom=0; p=0; }
+        else { p=1; state.playing=false; playBtn.textContent='▶'; }
+      }
+      setProgress(p, false);
+    }
+    rafId=requestAnimationFrame(tick);
+  }
+  function play(){ if(state.progress>=1) setProgress(0,false); state.playing=true; animStart=null; animFrom=state.progress; playBtn.textContent='❚❚'; }
+  function pause(){ state.playing=false; playBtn.textContent='▶'; }
+
+  // ---------- MASTER RECOMPUTE ----------
+  function recompute(){
+    ease = buildEase(state.mode, curVals());
+    if(state.mode==='spring'){
+      $('#spring-duration').textContent = Math.round(ease.duration*1000)+' ms';
+      $('#spring-peak').textContent = Math.round(ease.peak*100)+'%';
+    }
+    renderCurve();
+    renderExport();
+    applyProgress(state.progress);
+    markActivePreset();
+  }
+
+  // ---------- MODE SWITCH ----------
+  function setMode(mode){
+    state.mode=mode;
+    $$('.tab').forEach(t=>{ const on=t.dataset.mode===mode; t.classList.toggle('active',on); t.setAttribute('aria-selected', on?'true':'false'); });
+    $('.ctl-bezier').classList.toggle('hidden', mode!=='bezier');
+    $('.ctl-spring').classList.toggle('hidden', mode!=='spring');
+    $('.ctl-steps').classList.toggle('hidden', mode!=='steps');
+    recompute();
+  }
+
+  // ---------- INPUT SYNC ----------
+  function syncBezierInputs(){ const v=state.bezier; $('#x1').value=v[0]; $('#y1').value=v[1]; $('#x2').value=v[2]; $('#y2').value=v[3]; }
+  function syncSpringInputs(){ const v=state.spring; $('#stiffness').value=v[0]; $('#damping').value=v[1]; $('#mass').value=v[2]; $('#velocity').value=v[3];
+    $('#stiffness-v').textContent=v[0]; $('#damping-v').textContent=v[1]; $('#mass-v').textContent=v[2]; $('#velocity-v').textContent=v[3]; }
+  function syncStepsInputs(){ const v=state.steps; $('#steps-count').value=v[0]; $('#steps-jump').value=v[1]; }
+
+  // bezier number inputs
+  ['x1','y1','x2','y2'].forEach((id,idx)=>{
+    $('#'+id).addEventListener('input',()=>{
+      let val=parseFloat($('#'+id).value);
+      if(isNaN(val)) return;
+      if(idx===0||idx===2) val=clamp(val,0,1);       // x in [0,1]
+      else val=clamp(val,-2,3);                       // y free (overshoot)
+      state.bezier[idx]=Math.round(val*10000)/10000;
+      recompute();
+    });
+  });
+  // spring sliders
+  [['stiffness',0],['damping',1],['mass',2],['velocity',3]].forEach(([id,idx])=>{
+    $('#'+id).addEventListener('input',()=>{
+      const val=parseFloat($('#'+id).value);
+      state.spring[idx]=val;
+      $('#'+id+'-v').textContent=val;
+      recompute();
+    });
+  });
+  // steps
+  $('#steps-count').addEventListener('input',()=>{ let n=parseInt($('#steps-count').value,10); if(isNaN(n))return; n=clamp(n,1,20); state.steps[0]=n; recompute(); });
+  $('#steps-jump').addEventListener('change',()=>{ state.steps[1]=$('#steps-jump').value; recompute(); });
+
+  // tabs
+  $$('.tab').forEach(t=> t.addEventListener('click',()=> setMode(t.dataset.mode)));
+
+  // ---------- DRAG HANDLES ----------
+  function svgPoint(evt){
+    const r=plot.getBoundingClientRect();
+    const vb=plot.viewBox.baseVal;
+    const x=(evt.clientX-r.left)/r.width*vb.width;
+    const y=(evt.clientY-r.top)/r.height*vb.height;
+    return {x,y};
+  }
+  let dragging=null;
+  function startDrag(which){ dragging=which; }
+  function moveDrag(evt){
+    if(!dragging) return;
+    evt.preventDefault();
+    const pt=svgPoint(evt);
+    const t=pxToT(pt.x); const v=clamp(pyToV(pt.y), -2, 3);
+    const idx = dragging==='1'?0:2;
+    state.bezier[idx]=Math.round(t*100)/100;
+    state.bezier[idx+1]=Math.round(v*100)/100;
+    syncBezierInputs();
+    recompute();
+  }
+  function endDrag(){ dragging=null; }
+  h1hit.addEventListener('pointerdown', e=>{ e.preventDefault(); h1hit.setPointerCapture(e.pointerId); startDrag('1'); });
+  h2hit.addEventListener('pointerdown', e=>{ e.preventDefault(); h2hit.setPointerCapture(e.pointerId); startDrag('2'); });
+  window.addEventListener('pointermove', moveDrag);
+  window.addEventListener('pointerup', endDrag);
+
+  // ---------- PLAYBAR ----------
+  playBtn.addEventListener('click',()=>{ state.playing?pause():play(); });
+  loopBtn.addEventListener('click',()=>{ state.loop=!state.loop; loopBtn.classList.toggle('on',state.loop); loopBtn.setAttribute('aria-pressed',state.loop?'true':'false'); });
+  durInput.addEventListener('input',()=>{ let d=parseInt(durInput.value,10); if(!isNaN(d)) state.duration=clamp(d,50,20000); });
+  scrub.addEventListener('input',()=>{ pause(); setProgress(parseInt(scrub.value,10)/1000, true); });
+
+  // ---------- COMPARE ----------
+  const pinBtn=$('#pin-b'), clearBtn=$('#clear-b');
+  pinBtn.addEventListener('click',()=>{
+    const v=curVals().slice();
+    state.b={ mode:state.mode, v, ease: buildEase(state.mode,v) };
+    dotB.classList.remove('hidden'); cmpBadge.classList.remove('hidden');
+    clearBtn.style.display='';
+    renderCurve(); applyProgress(state.progress);
+  });
+  clearBtn.addEventListener('click',()=>{
+    state.b=null; dotB.classList.add('hidden'); cmpBadge.classList.add('hidden'); clearBtn.style.display='none';
+    renderCurve();
+  });
+
+  // ---------- PRESETS ----------
+  const presetWrap=$('#presets');
+  PRESETS.forEach(p=>{
+    const b=document.createElement('button');
+    b.className='preset'; b.textContent=p.name; b.dataset.name=p.name; b.dataset.mode=p.mode;
+    b.addEventListener('click',()=>{ loadPreset(p); });
+    presetWrap.appendChild(b);
+  });
+  function loadPreset(p){
+    state[p.mode] = p.v.slice();
+    if(p.mode==='bezier') syncBezierInputs();
+    if(p.mode==='spring') syncSpringInputs();
+    if(p.mode==='steps') syncStepsInputs();
+    setMode(p.mode);
+  }
+  function markActivePreset(){
+    const cur=JSON.stringify([state.mode, curVals()]);
+    $$('.preset').forEach(el=>{
+      const p=PRESETS.find(x=>x.name===el.dataset.name);
+      el.classList.toggle('on', p && JSON.stringify([p.mode,p.v])===cur);
+    });
+  }
+
+  // ---------- COPY ----------
+  function doCopy(text, btn){
+    const done=()=>{ const o=btn.textContent; btn.textContent='已复制'; btn.classList.add('done'); setTimeout(()=>{btn.textContent=o; btn.classList.remove('done');},1100); };
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(text).then(done).catch(()=>fallbackCopy(text,done));
+    } else fallbackCopy(text,done);
+  }
+  function fallbackCopy(text,done){
+    try{ const ta=document.createElement('textarea'); ta.value=text; ta.style.position='fixed'; ta.style.opacity='0'; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); done(); }catch(e){}
+  }
+  $('#copy-css').addEventListener('click',e=> doCopy( (cssProp.textContent+': '+cssValue()+';'), e.currentTarget));
+  $('#copy-js').addEventListener('click',e=> doCopy(jsSnippet(), e.currentTarget));
+
+  // ---------- SAVED PRESETS (localStorage) ----------
+  function loadSaved(){ try{ return JSON.parse(localStorage.getItem(LS_KEY)||'[]'); }catch(e){ return []; } }
+  function storeSaved(list){ try{ localStorage.setItem(LS_KEY, JSON.stringify(list)); }catch(e){} }
+  function renderSaved(){
+    const list=loadSaved();
+    savedList.innerHTML='';
+    if(!list.length){ const d=document.createElement('div'); d.className='saved-empty'; d.textContent='还没有保存的曲线。调一条满意的,起个名字存下来 —— 明天回来它还在。'; savedList.appendChild(d); return; }
+    list.forEach((item,i)=>{
+      const row=document.createElement('div'); row.className='saved-item';
+      const main=document.createElement('div'); main.className='si-main';
+      const nm=document.createElement('div'); nm.className='si-name'; nm.textContent=item.name;
+      const sub=document.createElement('div'); sub.className='si-sub'; sub.textContent=item.css;
+      main.appendChild(nm); main.appendChild(sub);
+      main.addEventListener('click',()=>{ state[item.mode]=item.v.slice(); if(item.mode==='bezier')syncBezierInputs(); if(item.mode==='spring')syncSpringInputs(); if(item.mode==='steps')syncStepsInputs(); setMode(item.mode); });
+      const del=document.createElement('button'); del.className='si-del'; del.textContent='×'; del.title='删除'; del.setAttribute('aria-label','删除 '+item.name);
+      del.addEventListener('click',ev=>{ ev.stopPropagation(); const l=loadSaved(); l.splice(i,1); storeSaved(l); renderSaved(); });
+      row.appendChild(main); row.appendChild(del);
+      savedList.appendChild(row);
+    });
+  }
+  function saveCurrent(){
+    const nameEl=$('#preset-name'); let name=(nameEl.value||'').trim();
+    if(!name) name = state.mode+' '+cssValue().slice(0,18);
+    const list=loadSaved();
+    list.unshift({ name, mode:state.mode, v:curVals().slice(), css:cssValue() });
+    if(list.length>50) list.length=50;
+    storeSaved(list); nameEl.value=''; renderSaved();
+  }
+  $('#save-btn').addEventListener('click', saveCurrent);
+  $('#preset-name').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); saveCurrent(); } });
+
+  // ---------- INIT ----------
+  syncBezierInputs(); syncSpringInputs(); syncStepsInputs();
+  renderSaved();
+  setMode('bezier');
+  setProgress(0,false);
+  rafId=requestAnimationFrame(tick);
+  // autoplay unless reduced motion
+  if(!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches)){
+    play();
+  }
+})();
+</script>
+</body>
+</html>
