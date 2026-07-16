@@ -1,0 +1,947 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>元胞自动机实验室 · Cellular Lab</title>
+<meta name="description" content="生命游戏与 life-like 元胞自动机工作台：自定义 B/S 规则、图案库、RLE 导入导出、种群曲线，纯前端本地运行。" />
+<style>
+  /* ============ NVIDIA design language ============
+     Single violent-green accent (#76b900) on a black / white / gray field.
+     Aggressively angular: 2px radius everywhere. Hairline #ccc card borders,
+     no drop shadows. Weight-driven hierarchy in a tight sans-serif. */
+  :root{
+    --green:#76b900; --green-dark:#5a8d00; --green-pale:#bff230;
+    --ink:#000000; --canvas:#ffffff; --dark:#000000; --soft:#f7f7f7;
+    --elevated:#1a1a1a; --hairline:#cccccc; --hairline-strong:#5e5e5e;
+    --body:#1a1a1a; --mute:#757575; --stone:#898989; --ash:#a7a7a7;
+    --on-dark:#ffffff; --on-dark-mute:rgba(255,255,255,.7);
+    --error:#e52020; --warning:#df6500;
+    --grid-line:#161616; --cell-dead:#000000;
+    --r:2px;
+    --font:"Inter","Helvetica Neue",Arial,Helvetica,"PingFang SC","Microsoft YaHei",sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    font-family:var(--font); color:var(--ink); background:var(--canvas);
+    font-size:16px; line-height:1.5; -webkit-font-smoothing:antialiased;
+  }
+  a{color:inherit}
+  button,input,select,textarea{font-family:inherit}
+  /* focus: the green border is the system's only focus signal */
+  :focus-visible{outline:2px solid var(--green); outline-offset:2px}
+
+  /* ---- utility bar (black, 32px) ---- */
+  .utilbar{
+    background:var(--dark); color:var(--on-dark); height:32px;
+    display:flex; align-items:center; justify-content:space-between;
+    padding:0 20px; font-size:11px; font-weight:700; letter-spacing:.5px;
+    text-transform:uppercase;
+  }
+  .utilbar a{color:var(--on-dark); text-decoration:none; display:inline-flex; align-items:center; gap:6px}
+  .utilbar a:hover{color:var(--green)}
+  .utilbar .u-right{color:var(--on-dark-mute); letter-spacing:1px}
+
+  /* ---- header chapter (black) ---- */
+  header.hero{
+    background:var(--dark); color:var(--on-dark);
+    padding:34px 20px 30px; position:relative;
+    border-bottom:1px solid var(--elevated);
+  }
+  .hero-inner{max-width:1280px; margin:0 auto; position:relative}
+  .eyebrow{
+    font-size:11px; font-weight:700; letter-spacing:2px; text-transform:uppercase;
+    color:var(--green); display:flex; align-items:center; gap:10px; margin:0 0 12px;
+  }
+  .eyebrow::before{content:""; width:12px; height:12px; background:var(--green); display:inline-block}
+  h1.wordmark{
+    font-size:40px; font-weight:700; line-height:1.1; margin:0; letter-spacing:-.5px;
+  }
+  h1.wordmark .lab{color:var(--green)}
+  .hero p.tag{
+    margin:14px 0 0; max-width:720px; font-size:16px; line-height:1.55;
+    color:var(--on-dark-mute);
+  }
+
+  /* ---- body ---- */
+  main{max-width:1280px; margin:0 auto; padding:28px 20px 56px}
+  .grid{display:grid; grid-template-columns:minmax(0,1fr) 344px; gap:24px; align-items:start}
+  @media(max-width:1000px){ .grid{grid-template-columns:1fr} }
+
+  /* ---- toolbar row ---- */
+  .toolbar{
+    display:flex; flex-wrap:wrap; align-items:center; gap:10px; margin-bottom:16px;
+  }
+  .stats{
+    display:flex; gap:22px; margin-left:auto; align-items:baseline; flex-wrap:wrap;
+  }
+  .stat{display:flex; flex-direction:column; align-items:flex-end; line-height:1.1}
+  .stat b{font-size:24px; font-weight:700; font-variant-numeric:tabular-nums; color:var(--ink)}
+  .stat span{font-size:10px; font-weight:700; letter-spacing:1.2px; text-transform:uppercase; color:var(--mute)}
+
+  /* ---- buttons ---- */
+  .btn{
+    display:inline-flex; align-items:center; justify-content:center; gap:7px;
+    height:44px; padding:0 20px; border-radius:var(--r); cursor:pointer;
+    font-size:15px; font-weight:700; border:2px solid transparent; background:transparent;
+    color:var(--ink); transition:background .12s,border-color .12s,color .12s; white-space:nowrap;
+  }
+  .btn:hover{background:var(--soft)}
+  .btn-primary{background:var(--green); color:var(--ink); border-color:var(--green)}
+  .btn-primary:hover{background:var(--green-dark); border-color:var(--green-dark)}
+  .btn-primary[aria-pressed="true"]{background:var(--green-dark); border-color:var(--green-dark)}
+  .btn-outline{border-color:var(--green); color:var(--ink); background:transparent}
+  .btn-outline:hover{background:rgba(118,185,0,.10)}
+  .btn-sm{height:36px; padding:0 13px; font-size:13.5px}
+  .btn:disabled{background:var(--soft); color:var(--ash); border-color:transparent; cursor:not-allowed}
+  .ico{width:14px; height:14px; display:inline-block; flex:0 0 auto}
+
+  /* ---- compute surface (black hero-style canvas frame) ---- */
+  .stage{
+    background:var(--dark); border:1px solid var(--elevated); border-radius:var(--r);
+    padding:14px; position:relative;
+  }
+  .stage::after{content:""; position:absolute; top:8px; right:8px; width:10px; height:10px; background:var(--green)}
+  .canvas-wrap{display:flex; justify-content:center; align-items:center; min-height:120px}
+  canvas#board{display:block; cursor:crosshair; image-rendering:pixelated; touch-action:none; max-width:100%}
+  .stage-foot{
+    display:flex; align-items:center; justify-content:space-between; gap:12px;
+    margin-top:12px; padding-top:10px; border-top:1px solid var(--hairline-strong);
+    color:var(--on-dark-mute); font-size:11px; font-weight:700; letter-spacing:.6px; text-transform:uppercase;
+  }
+  .stage-foot .hint{color:var(--on-dark-mute); text-transform:none; letter-spacing:0; font-weight:400; font-size:12px}
+  /* population sparkline */
+  .popgraph{margin-top:14px}
+  .popgraph .cap{
+    font-size:10px; font-weight:700; letter-spacing:1.2px; text-transform:uppercase;
+    color:var(--mute); margin:0 0 6px; display:flex; justify-content:space-between;
+  }
+  canvas#pop{display:block; width:100%; height:66px; background:var(--soft); border:1px solid var(--hairline); border-radius:var(--r)}
+
+  /* ---- sidebar cards ---- */
+  aside{display:flex; flex-direction:column; gap:20px}
+  .card{
+    background:var(--canvas); border:1px solid var(--hairline); border-radius:var(--r);
+    padding:20px 18px 18px; position:relative;
+  }
+  .card::before{content:""; position:absolute; top:0; left:0; width:12px; height:12px; background:var(--green)}
+  .card > h2{
+    font-size:12px; font-weight:700; letter-spacing:1.4px; text-transform:uppercase;
+    margin:0 0 14px; color:var(--ink);
+  }
+  .card .sub{font-size:12px; color:var(--mute); margin:-8px 0 14px; line-height:1.5}
+
+  .field{margin-bottom:14px}
+  .field:last-child{margin-bottom:0}
+  label.lbl{
+    display:block; font-size:10px; font-weight:700; letter-spacing:1px; text-transform:uppercase;
+    color:var(--mute); margin-bottom:6px;
+  }
+  input[type=text], textarea, select{
+    width:100%; background:var(--canvas); color:var(--ink); border:1px solid var(--hairline);
+    border-radius:var(--r); padding:11px 12px; font-size:14px; line-height:1.4;
+  }
+  input[type=text]:focus, textarea:focus, select:focus{outline:none; border:2px solid var(--green); padding:10px 11px}
+  textarea{resize:vertical; min-height:78px; font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace; font-size:12.5px; line-height:1.5}
+  .mono{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace}
+
+  .presets{display:flex; flex-wrap:wrap; gap:6px}
+  .chip{
+    font-size:12px; font-weight:700; letter-spacing:.2px; padding:7px 11px; cursor:pointer;
+    border:1px solid var(--hairline); border-radius:var(--r); background:var(--canvas); color:var(--ink);
+    transition:background .12s,border-color .12s,color .12s;
+  }
+  .chip:hover{border-color:var(--ink)}
+  .chip[aria-pressed="true"]{background:var(--ink); color:var(--on-dark); border-color:var(--ink)}
+
+  .patgrid{display:grid; grid-template-columns:1fr 1fr; gap:6px}
+  .patgrid .chip{text-align:left; display:flex; flex-direction:column; gap:2px; line-height:1.15}
+  .patgrid .chip small{font-weight:400; font-size:10px; color:var(--mute); letter-spacing:0}
+  .patgrid .chip[aria-pressed] small{color:inherit}
+
+  .row{display:flex; gap:8px; align-items:center}
+  .row .grow{flex:1 1 auto}
+
+  input[type=range]{width:100%; accent-color:var(--green); height:22px}
+  .switch{display:flex; align-items:center; justify-content:space-between; gap:10px}
+  .switch input{width:auto; accent-color:var(--green); width:18px; height:18px}
+
+  .msg{font-size:12px; margin-top:8px; line-height:1.45; min-height:0}
+  .msg.err{color:var(--error); font-weight:700}
+  .msg.ok{color:var(--green-dark); font-weight:700}
+  .msg.info{color:var(--mute)}
+
+  .saved-list{display:flex; flex-direction:column; gap:6px; margin-top:4px}
+  .saved-item{
+    display:flex; align-items:center; gap:8px; border:1px solid var(--hairline);
+    border-radius:var(--r); padding:8px 8px 8px 10px;
+  }
+  .saved-item .nm{flex:1 1 auto; font-size:13px; font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .saved-item .meta{font-size:11px; color:var(--mute); font-weight:400}
+  .saved-empty{font-size:12px; color:var(--stone); padding:2px 0}
+  .link-danger{color:var(--mute); background:none; border:none; cursor:pointer; font-size:11px; font-weight:700; letter-spacing:.5px; text-transform:uppercase; padding:4px}
+  .link-danger:hover{color:var(--error)}
+
+  /* legend */
+  .legend{display:flex; gap:16px; flex-wrap:wrap; font-size:12px; color:var(--body); margin-top:2px}
+  .legend span{display:inline-flex; align-items:center; gap:6px}
+  .swatch{width:12px; height:12px; display:inline-block; border:1px solid var(--hairline)}
+
+  /* ---- footer (black) ---- */
+  footer{
+    background:var(--dark); color:var(--on-dark-mute); margin-top:8px;
+    border-top:1px solid var(--elevated);
+  }
+  .foot-inner{
+    max-width:1280px; margin:0 auto; padding:34px 20px; display:flex;
+    justify-content:space-between; gap:20px; flex-wrap:wrap; align-items:flex-start;
+  }
+  .foot-inner .bk a{color:var(--green); text-decoration:none; font-weight:700; font-size:14px}
+  .foot-inner p{margin:6px 0 0; font-size:12px; max-width:560px; line-height:1.6}
+  .foot-legal{font-size:10px; font-weight:700; letter-spacing:1px; text-transform:uppercase; color:var(--mute)}
+
+  .kbd{font-family:ui-monospace,Menlo,monospace; font-size:11px; background:var(--elevated); color:var(--on-dark); padding:2px 6px; border-radius:var(--r)}
+</style>
+</head>
+<body>
+  <div class="utilbar">
+    <a href="../../" id="back-link">&larr; 返回工具集</a>
+    <span class="u-right">Cellular Automata Studio</span>
+  </div>
+
+  <header class="hero">
+    <div class="hero-inner">
+      <p class="eyebrow">模拟 · SIMULATION LAB</p>
+      <h1 class="wordmark">CELLULAR <span class="lab">LAB</span></h1>
+      <p class="tag">生命游戏与 life-like 元胞自动机工作台。自定义 <b style="color:#fff">B/S 出生·存活规则</b>、拖拽绘制、内置图案库、标准 <b style="color:#fff">RLE</b> 导入导出与实时种群曲线——纯前端本地运行，一颗像素都不上传。</p>
+    </div>
+  </header>
+
+  <main>
+    <div class="grid">
+      <!-- ============ MAIN COLUMN ============ -->
+      <section>
+        <div class="toolbar">
+          <button class="btn btn-primary" id="btn-play" aria-pressed="false" title="运行 / 暂停 (空格)">
+            <svg class="ico" id="play-ico" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M3 2l11 6L3 14z"/></svg>
+            <span id="play-label">运行</span>
+          </button>
+          <button class="btn btn-outline" id="btn-step" title="单步 (S)">
+            <svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M3 2l8 6-8 6zM12 2h2v12h-2z"/></svg>
+            单步
+          </button>
+          <button class="btn btn-outline btn-sm" id="btn-random" title="随机填充 (R)">随机</button>
+          <button class="btn btn-outline btn-sm" id="btn-clear" title="清空 (C)">清空</button>
+          <div class="stats">
+            <div class="stat"><b id="stat-gen">0</b><span>世代</span></div>
+            <div class="stat"><b id="stat-pop">0</b><span>存活胞</span></div>
+            <div class="stat"><b id="stat-rule">B3/S23</b><span>规则</span></div>
+          </div>
+        </div>
+
+        <div class="stage">
+          <div class="canvas-wrap">
+            <canvas id="board" role="img" aria-label="元胞自动机网格，点击或拖拽绘制细胞"></canvas>
+          </div>
+          <div class="stage-foot">
+            <span>COMPUTE&nbsp;SURFACE</span>
+            <span class="hint">左键绘制 · 右键 / 拖拽擦除 · 空格运行 · <span class="kbd">S</span> 单步</span>
+          </div>
+        </div>
+
+        <div class="popgraph">
+          <p class="cap"><span>种群曲线 · POPULATION</span><span id="pop-range">—</span></p>
+          <canvas id="pop" aria-hidden="true"></canvas>
+        </div>
+
+        <div class="legend">
+          <span><i class="swatch" style="background:#76b900"></i> 存活</span>
+          <span><i class="swatch" style="background:#000"></i> 死亡</span>
+          <span>Moore 8-邻域 · <span id="edge-mode">环面（边界回绕）</span></span>
+        </div>
+      </section>
+
+      <!-- ============ SIDEBAR ============ -->
+      <aside>
+        <div class="card">
+          <h2>规则 · Rule</h2>
+          <p class="sub">B = 出生所需邻居数，S = 存活所需邻居数（0–8）。</p>
+          <div class="presets" id="rule-presets"></div>
+          <div class="field" style="margin-top:14px">
+            <label class="lbl" for="rule-input">自定义规则串</label>
+            <input type="text" id="rule-input" class="mono" spellcheck="false" autocomplete="off" value="B3/S23" aria-describedby="rule-msg" />
+            <div class="msg info" id="rule-msg">康威生命游戏（Conway's Life）。</div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>图案库 · Patterns</h2>
+          <p class="sub">点击将图案盖到网格中心，并自动暂停。</p>
+          <div class="patgrid" id="pat-grid"></div>
+        </div>
+
+        <div class="card">
+          <h2>模拟设置 · Sim</h2>
+          <div class="field">
+            <label class="lbl" for="speed">速度 · <span id="speed-val">12</span> 代/秒</label>
+            <input type="range" id="speed" min="1" max="60" step="1" value="12" />
+          </div>
+          <div class="field">
+            <label class="lbl" for="grid-size">网格尺寸</label>
+            <select id="grid-size">
+              <option value="48x30">小 · 48 × 30</option>
+              <option value="80x50" selected>中 · 80 × 50</option>
+              <option value="120x74">大 · 120 × 74</option>
+            </select>
+          </div>
+          <div class="field switch">
+            <label class="lbl" for="wrap" style="margin:0">环面边界（回绕）</label>
+            <input type="checkbox" id="wrap" checked />
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>RLE 导入 / 导出</h2>
+          <p class="sub">兼容 LifeWiki 标准 RLE 图案格式。</p>
+          <textarea id="rle-text" class="mono" spellcheck="false" placeholder="x = 3, y = 3, rule = B3/S23&#10;bo$2bo$3o!"></textarea>
+          <div class="row" style="margin-top:8px">
+            <button class="btn btn-outline btn-sm grow" id="rle-export">导出当前</button>
+            <button class="btn btn-primary btn-sm grow" id="rle-import">导入盖印</button>
+          </div>
+          <div class="msg info" id="rle-msg"></div>
+        </div>
+
+        <div class="card">
+          <h2>我的图案 · Library</h2>
+          <p class="sub">存到浏览器本地，下次回来还在。</p>
+          <div class="row">
+            <input type="text" id="save-name" class="grow" placeholder="给当前布局起个名字…" maxlength="40" autocomplete="off" />
+            <button class="btn btn-primary btn-sm" id="save-btn">保存</button>
+          </div>
+          <div class="msg info" id="save-msg"></div>
+          <div class="saved-list" id="saved-list"></div>
+        </div>
+      </aside>
+    </div>
+  </main>
+
+  <footer>
+    <div class="foot-inner">
+      <div>
+        <div class="bk"><a href="../../">&larr; 返回每日工具集</a></div>
+        <p>元胞自动机实验室 · 每日工具集之一。设计语言取自 <b style="color:#fff">NVIDIA</b> 品牌系统（单一 NVIDIA-Green 强调色、2px 硬角、发丝级分隔线、角标绿方块）。引擎、渲染与存储全部在浏览器本地完成。</p>
+      </div>
+      <div class="foot-legal">Conway's Life · Life-like CA · RLE I/O · Local-only</div>
+    </div>
+  </footer>
+
+<script>
+"use strict";
+(function(){
+  // ============================================================
+  //  Cellular Lab — a deterministic life-like cellular-automaton engine.
+  //  Grid stored as a flat Uint8Array; Moore (8) neighbourhood; configurable
+  //  B/S rulestrings; toroidal or bounded edges. Real RLE parser + serializer.
+  // ============================================================
+
+  // ---------- DOM ----------
+  const $ = (id) => document.getElementById(id);
+  const board = $('board'), boardCtx = board.getContext('2d');
+  const popC = $('pop'), popCtx = popC.getContext('2d');
+
+  // ---------- state ----------
+  let W = 80, H = 50;
+  let cells = new Uint8Array(W * H);
+  let scratch = new Uint8Array(W * H);
+  let gen = 0;
+  let running = false;
+  let wrap = true;
+  let speed = 12;                 // generations per second
+  let cellPx = 10;                // css px per cell (computed on fit)
+  let rule = { birth: new Set([3]), survival: new Set([2, 3]) };
+  let popHistory = [];
+  const POP_MAX = 240;
+  const LS_SAVED = 'cellular-lab:saved';
+  const LS_SETTINGS = 'cellular-lab:settings';
+
+  // ---------- rule presets ----------
+  const RULE_PRESETS = [
+    { name: 'Life',        rule: 'B3/S23',        desc: "康威生命游戏（Conway's Life）。" },
+    { name: 'HighLife',    rule: 'B36/S23',       desc: '高生命：会自我复制的 replicator。' },
+    { name: 'Day & Night', rule: 'B3678/S34678',  desc: '昼与夜：生死对称，团块生长。' },
+    { name: 'Seeds',       rule: 'B2/S',          desc: '种子：无存活，爆炸式蔓延。' },
+    { name: 'Replicator',  rule: 'B1357/S1357',   desc: '复制器：任何图案都会自我复制。' },
+    { name: 'Maze',        rule: 'B3/S12345',     desc: '迷宫：生长成蜿蜒的走廊。' },
+    { name: 'Diamoeba',    rule: 'B35678/S5678',  desc: '钻石虫：边界不断变形的团块。' },
+    { name: '34 Life',     rule: 'B34/S34',       desc: '34 生命：混沌的振荡群落。' }
+  ];
+
+  // ---------- pattern library (relative coords) ----------
+  // small ones as coordinate lists; big ones parsed from RLE (dogfoods the parser)
+  const RLE_GUN = 'x=36,y=9,rule=B3/S23\n24bo$22bobo$12b2o6b2o12b2o$11bo3bo4b2o12b2o$2o8bo5bo3b2o$2o8bo3bob2o4bobo$10bo5bo7bo$11bo3bo$12b2o!';
+  const RLE_PULSAR = 'x=13,y=13,rule=B3/S23\n2b3o3b3o2b2$o4bobo4bo$o4bobo4bo$o4bobo4bo2$2b3o3b3o2b2$2b3o3b3o2b$o4bobo4bo$o4bobo4bo$o4bobo4bo2$2b3o3b3o2b!';
+  const PATTERNS = [
+    { key:'glider',  label:'滑翔机',   note:'Glider · 飞行',   cells:[[1,0],[2,1],[0,2],[1,2],[2,2]] },
+    { key:'blinker', label:'闪灯',     note:'Blinker · 周期2', cells:[[0,0],[1,0],[2,0]] },
+    { key:'toad',    label:'蟾蜍',     note:'Toad · 周期2',    cells:[[1,0],[2,0],[3,0],[0,1],[1,1],[2,1]] },
+    { key:'beacon',  label:'信标',     note:'Beacon · 周期2',  cells:[[0,0],[1,0],[0,1],[3,2],[2,3],[3,3]] },
+    { key:'block',   label:'方块',     note:'Block · 静物',    cells:[[0,0],[1,0],[0,1],[1,1]] },
+    { key:'lwss',    label:'轻型飞船', note:'LWSS · 飞行',     cells:[[0,0],[3,0],[4,1],[0,2],[4,2],[1,3],[2,3],[3,3],[4,3]] },
+    { key:'pulsar',  label:'脉冲星',   note:'Pulsar · 周期3',  rle:RLE_PULSAR },
+    { key:'rpento',  label:'R-五格',   note:'R-pentomino',     cells:[[1,0],[2,0],[0,1],[1,1],[1,2]] },
+    { key:'acorn',   label:'橡实',     note:'Acorn · 长演化',  cells:[[1,0],[3,1],[0,2],[1,2],[4,2],[5,2],[6,2]] },
+    { key:'gun',     label:'滑翔机枪', note:'Gosper Gun',      rle:RLE_GUN }
+  ];
+
+  // ============================================================
+  //  Rule parsing / formatting
+  // ============================================================
+  function parseRule(str){
+    if (typeof str !== 'string') return null;
+    const m = str.trim().toUpperCase().match(/^B([0-8]*)\/S([0-8]*)$/);
+    if (!m) return null;
+    const uniq = (s) => new Set(s.split('').map(Number));
+    // reject duplicate digits (e.g. B33) to keep input honest
+    if (new Set(m[1].split('')).size !== m[1].length) return null;
+    if (new Set(m[2].split('')).size !== m[2].length) return null;
+    return { birth: uniq(m[1]), survival: uniq(m[2]) };
+  }
+  function ruleToString(r){
+    const b = [...r.birth].sort((a,c)=>a-c).join('');
+    const s = [...r.survival].sort((a,c)=>a-c).join('');
+    return 'B' + b + '/S' + s;
+  }
+
+  // ============================================================
+  //  RLE parser + serializer (LifeWiki standard)
+  // ============================================================
+  function parseRLE(text){
+    if (typeof text !== 'string') throw new Error('空输入');
+    let rleRule = null, bodyLines = [];
+    const lines = text.replace(/\r/g,'').split('\n');
+    for (const raw of lines){
+      const line = raw.trim();
+      if (!line || line[0] === '#') continue;           // comments
+      if (/^x\s*=/i.test(line)){                         // header line
+        const rm = line.match(/rule\s*=\s*([^,\s]+)/i);
+        if (rm) rleRule = rm[1];
+        continue;
+      }
+      bodyLines.push(line);
+    }
+    const body = bodyLines.join('');
+    if (!body) throw new Error('未找到图案数据');
+    const coords = [];
+    let x = 0, y = 0, count = 0, seenBang = false;
+    for (let i = 0; i < body.length; i++){
+      const ch = body[i];
+      if (ch >= '0' && ch <= '9'){ count = count * 10 + (ch.charCodeAt(0) - 48); continue; }
+      const n = count || 1; count = 0;
+      if (ch === 'b' || ch === '.'){ x += n; }
+      else if (ch === 'o' || (ch >= 'A' && ch <= 'X')){ for (let k = 0; k < n; k++) coords.push([x++, y]); }
+      else if (ch === '$'){ y += n; x = 0; }
+      else if (ch === '!'){ seenBang = true; break; }
+      else { throw new Error('非法 RLE 符号: "' + ch + '"'); }
+    }
+    if (!coords.length) throw new Error('图案为空');
+    return { cells: coords, rule: rleRule };
+  }
+
+  // Serialize the current live cells (bounding-box relative) to RLE text.
+  function exportRLE(){
+    const live = liveCoords();
+    if (!live.length) return 'x = 0, y = 0, rule = ' + ruleToString(rule) + '\n!';
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const [x, y] of live){ if (x<minX)minX=x; if (y<minY)minY=y; if (x>maxX)maxX=x; if (y>maxY)maxY=y; }
+    const w = maxX - minX + 1, h = maxY - minY + 1;
+    const on = new Set(live.map(([x,y]) => (y-minY) * w + (x-minX)));
+    // build token stream row by row, then run-length encode
+    const tokens = [];
+    for (let ry = 0; ry < h; ry++){
+      let run = [];                 // sequence of 'o'/'b' for this row (trailing 'b' trimmed)
+      for (let rx = 0; rx < w; rx++) run.push(on.has(ry * w + rx) ? 'o' : 'b');
+      while (run.length && run[run.length-1] === 'b') run.pop();   // trim trailing dead
+      // RLE the row
+      let rx = 0;
+      while (rx < run.length){
+        let j = rx; while (j < run.length && run[j] === run[rx]) j++;
+        const c = j - rx; tokens.push((c > 1 ? c : '') + run[rx]); rx = j;
+      }
+      if (ry < h - 1) tokens.push('$');
+    }
+    tokens.push('!');
+    // wrap body at ~70 chars
+    let bodyStr = tokens.join(''), out = '', col = 0;
+    for (const part of bodyStr.match(/\d*[bo$!]/g) || []){
+      if (col + part.length > 70){ out += '\n'; col = 0; }
+      out += part; col += part.length;
+    }
+    return 'x = ' + w + ', y = ' + h + ', rule = ' + ruleToString(rule) + '\n' + out;
+  }
+
+  // ============================================================
+  //  Grid helpers
+  // ============================================================
+  function idx(x, y){ return y * W + x; }
+  function liveCoords(){
+    const out = [];
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (cells[idx(x,y)]) out.push([x, y]);
+    return out;
+  }
+  function population(){ let n = 0; for (let i = 0; i < cells.length; i++) n += cells[i]; return n; }
+
+  function clearGrid(resetGen){
+    cells.fill(0);
+    if (resetGen !== false){ gen = 0; popHistory = []; }
+    render(); updateStats(); drawPop();
+  }
+
+  function randomFill(density){
+    const d = density == null ? 0.28 : density;
+    for (let i = 0; i < cells.length; i++) cells[i] = Math.random() < d ? 1 : 0;
+    gen = 0; popHistory = [];
+    render(); updateStats(); drawPop();
+  }
+
+  // Place a set of relative cells centred on the grid (clipped to bounds).
+  function stampCells(rel, opts){
+    opts = opts || {};
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const [x, y] of rel){ if (x<minX)minX=x; if (y<minY)minY=y; if (x>maxX)maxX=x; if (y>maxY)maxY=y; }
+    const pw = maxX - minX + 1, ph = maxY - minY + 1;
+    const offX = (opts.x != null) ? opts.x : Math.floor((W - pw) / 2);
+    const offY = (opts.y != null) ? opts.y : Math.floor((H - ph) / 2);
+    if (opts.replace !== false){ cells.fill(0); gen = 0; popHistory = []; }
+    for (const [x, y] of rel){
+      const gx = offX + (x - minX), gy = offY + (y - minY);
+      if (gx >= 0 && gx < W && gy >= 0 && gy < H) cells[idx(gx, gy)] = 1;
+    }
+    render(); updateStats(); drawPop();
+  }
+
+  function stampPattern(key){
+    const p = PATTERNS.find(q => q.key === key);
+    if (!p) return false;
+    const rel = p.rle ? parseRLE(p.rle).cells : p.cells;
+    pause();
+    stampCells(rel, { replace: true });
+    return true;
+  }
+
+  // ============================================================
+  //  The engine — one generation
+  // ============================================================
+  function step(){
+    const B = rule.birth, S = rule.survival;
+    for (let y = 0; y < H; y++){
+      for (let x = 0; x < W; x++){
+        let n = 0;
+        for (let dy = -1; dy <= 1; dy++){
+          for (let dx = -1; dx <= 1; dx++){
+            if (!dx && !dy) continue;
+            let nx = x + dx, ny = y + dy;
+            if (wrap){ nx = (nx + W) % W; ny = (ny + H) % H; }
+            else if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+            n += cells[ny * W + nx];
+          }
+        }
+        const alive = cells[y * W + x];
+        scratch[y * W + x] = alive ? (S.has(n) ? 1 : 0) : (B.has(n) ? 1 : 0);
+      }
+    }
+    const tmp = cells; cells = scratch; scratch = tmp;
+    gen++;
+    pushPop(population());
+    render(); updateStats();
+  }
+  function stepN(n){ for (let i = 0; i < (n||1); i++) step(); drawPop(); }
+
+  function pushPop(p){ popHistory.push(p); if (popHistory.length > POP_MAX) popHistory.shift(); }
+
+  // ============================================================
+  //  Rendering
+  // ============================================================
+  function fit(){
+    const wrapEl = board.parentElement;
+    const avail = Math.max(120, wrapEl.clientWidth);
+    cellPx = Math.max(3, Math.min(22, Math.floor(avail / W)));
+    const cssW = W * cellPx, cssH = H * cellPx;
+    const dpr = window.devicePixelRatio || 1;
+    board.style.width = cssW + 'px'; board.style.height = cssH + 'px';
+    board.width = Math.round(cssW * dpr); board.height = Math.round(cssH * dpr);
+    boardCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    render();
+  }
+  function render(){
+    const cssW = W * cellPx, cssH = H * cellPx;
+    boardCtx.fillStyle = '#000000';
+    boardCtx.fillRect(0, 0, cssW, cssH);
+    // live cells (leave a 1px gutter for the grid feel when cells are large)
+    boardCtx.fillStyle = '#76b900';
+    const gap = cellPx >= 6 ? 1 : 0;
+    for (let y = 0; y < H; y++){
+      const base = y * W;
+      for (let x = 0; x < W; x++){
+        if (cells[base + x]) boardCtx.fillRect(x * cellPx, y * cellPx, cellPx - gap, cellPx - gap);
+      }
+    }
+    // faint grid lines when zoomed in enough
+    if (cellPx >= 9){
+      boardCtx.strokeStyle = 'rgba(255,255,255,0.05)';
+      boardCtx.lineWidth = 1;
+      boardCtx.beginPath();
+      for (let x = 1; x < W; x++){ boardCtx.moveTo(x * cellPx + 0.5, 0); boardCtx.lineTo(x * cellPx + 0.5, cssH); }
+      for (let y = 1; y < H; y++){ boardCtx.moveTo(0, y * cellPx + 0.5); boardCtx.lineTo(cssW, y * cellPx + 0.5); }
+      boardCtx.stroke();
+    }
+  }
+  function drawPop(){
+    const dpr = window.devicePixelRatio || 1;
+    const cssW = popC.clientWidth || 300, cssH = 66;
+    popC.width = Math.round(cssW * dpr); popC.height = Math.round(cssH * dpr);
+    popCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    popCtx.clearRect(0, 0, cssW, cssH);
+    const range = $('pop-range');
+    if (popHistory.length < 2){ if (range) range.textContent = '—'; return; }
+    let max = 1; for (const v of popHistory) if (v > max) max = v;
+    if (range) range.textContent = '峰值 ' + max;
+    const n = popHistory.length, pad = 4;
+    const sx = (i) => pad + (i / (POP_MAX - 1)) * (cssW - pad * 2);
+    const sy = (v) => cssH - pad - (v / max) * (cssH - pad * 2);
+    // area fill
+    popCtx.beginPath();
+    popCtx.moveTo(sx(0), cssH - pad);
+    for (let i = 0; i < n; i++) popCtx.lineTo(sx(i), sy(popHistory[i]));
+    popCtx.lineTo(sx(n - 1), cssH - pad); popCtx.closePath();
+    popCtx.fillStyle = 'rgba(118,185,0,0.14)'; popCtx.fill();
+    // line
+    popCtx.beginPath();
+    for (let i = 0; i < n; i++){ const X = sx(i), Y = sy(popHistory[i]); i ? popCtx.lineTo(X, Y) : popCtx.moveTo(X, Y); }
+    popCtx.strokeStyle = '#76b900'; popCtx.lineWidth = 2; popCtx.lineJoin = 'round'; popCtx.stroke();
+  }
+
+  function updateStats(){
+    $('stat-gen').textContent = gen;
+    $('stat-pop').textContent = population();
+    $('stat-rule').textContent = ruleToString(rule);
+    $('edge-mode').textContent = wrap ? '环面（边界回绕）' : '固定边界';
+  }
+
+  // ============================================================
+  //  Playback loop (rAF, throttled to `speed` gen/sec)
+  // ============================================================
+  let rafId = null, lastT = 0, acc = 0;
+  function loop(t){
+    if (!running) return;
+    if (!lastT) lastT = t;
+    acc += (t - lastT) / 1000; lastT = t;
+    const interval = 1 / speed;
+    let steps = 0;
+    while (acc >= interval && steps < 8){ step(); acc -= interval; steps++; }
+    if (steps) drawPop();
+    rafId = requestAnimationFrame(loop);
+  }
+  function play(){
+    if (running) return;
+    running = true; lastT = 0; acc = 0;
+    setPlayUI(true);
+    rafId = requestAnimationFrame(loop);
+  }
+  function pause(){
+    running = false; setPlayUI(false);
+    if (rafId){ cancelAnimationFrame(rafId); rafId = null; }
+  }
+  function toggle(){ running ? pause() : play(); }
+  function setPlayUI(on){
+    const b = $('btn-play');
+    b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    $('play-label').textContent = on ? '暂停' : '运行';
+    $('play-ico').innerHTML = on
+      ? '<rect x="3" y="2" width="4" height="12" fill="currentColor"/><rect x="9" y="2" width="4" height="12" fill="currentColor"/>'
+      : '<path fill="currentColor" d="M3 2l11 6L3 14z"/>';
+  }
+
+  // ============================================================
+  //  Pointer drawing
+  // ============================================================
+  let drawing = false, drawVal = 1;
+  function cellAt(clientX, clientY){
+    const r = board.getBoundingClientRect();
+    const x = Math.floor((clientX - r.left) / cellPx);
+    const y = Math.floor((clientY - r.top) / cellPx);
+    if (x < 0 || y < 0 || x >= W || y >= H) return null;
+    return [x, y];
+  }
+  function paint(clientX, clientY, val){
+    const c = cellAt(clientX, clientY);
+    if (!c) return;
+    cells[idx(c[0], c[1])] = val;
+    render(); updateStats();
+  }
+  board.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    const c = cellAt(e.clientX, e.clientY);
+    if (!c) return;
+    drawing = true;
+    drawVal = (e.button === 2 || e.buttons === 2) ? 0 : (cells[idx(c[0], c[1])] ? 0 : 1);
+    paint(e.clientX, e.clientY, drawVal);
+    try { board.setPointerCapture(e.pointerId); } catch (_) {}
+  });
+  board.addEventListener('pointermove', (e) => { if (drawing) paint(e.clientX, e.clientY, drawVal); });
+  const endDraw = () => { drawing = false; drawPop(); };
+  board.addEventListener('pointerup', endDraw);
+  board.addEventListener('pointercancel', endDraw);
+  board.addEventListener('contextmenu', (e) => e.preventDefault());
+
+  // ============================================================
+  //  Rule UI
+  // ============================================================
+  function buildRulePresets(){
+    const host = $('rule-presets');
+    RULE_PRESETS.forEach(p => {
+      const b = document.createElement('button');
+      b.className = 'chip'; b.type = 'button'; b.textContent = p.name;
+      b.dataset.rule = p.rule; b.dataset.desc = p.desc;
+      b.addEventListener('click', () => applyRule(p.rule, p.desc, true));
+      host.appendChild(b);
+    });
+  }
+  function syncRuleChips(){
+    const cur = ruleToString(rule);
+    document.querySelectorAll('#rule-presets .chip').forEach(b => {
+      const match = parseRule(b.dataset.rule);
+      b.setAttribute('aria-pressed', (match && ruleToString(match) === cur) ? 'true' : 'false');
+    });
+  }
+  function applyRule(str, desc, fromPreset){
+    const parsed = parseRule(str);
+    const msg = $('rule-msg');
+    if (!parsed){
+      msg.className = 'msg err';
+      msg.textContent = '规则串无效：需形如 B3/S23（B/S 后各 0–8 且不重复）。';
+      return false;
+    }
+    rule = parsed;
+    const norm = ruleToString(rule);
+    if (fromPreset) $('rule-input').value = norm;
+    const known = RULE_PRESETS.find(p => ruleToString(parseRule(p.rule)) === norm);
+    msg.className = 'msg ' + (fromPreset ? 'ok' : 'info');
+    msg.textContent = desc || (known ? known.desc : ('自定义规则 ' + norm + '。'));
+    updateStats(); syncRuleChips(); persist();
+    return true;
+  }
+  $('rule-input').addEventListener('input', () => applyRule($('rule-input').value, null, false));
+
+  // ============================================================
+  //  Pattern UI
+  // ============================================================
+  function buildPatterns(){
+    const host = $('pat-grid');
+    PATTERNS.forEach(p => {
+      const b = document.createElement('button');
+      b.className = 'chip'; b.type = 'button'; b.id = 'pat-' + p.key; b.dataset.pattern = p.key;
+      b.innerHTML = '<span>' + p.label + '</span><small>' + p.note + '</small>';
+      b.addEventListener('click', () => {
+        stampPattern(p.key);
+        flash($('save-msg'), '', 'info');
+      });
+      host.appendChild(b);
+    });
+  }
+
+  // ============================================================
+  //  RLE UI
+  // ============================================================
+  $('rle-export').addEventListener('click', () => {
+    $('rle-text').value = exportRLE();
+    flash($('rle-msg'), '已导出当前布局为 RLE（含边界框与规则）。', 'ok');
+  });
+  $('rle-import').addEventListener('click', () => {
+    const txt = $('rle-text').value;
+    try {
+      const res = parseRLE(txt);
+      pause();
+      stampCells(res.cells, { replace: true });
+      if (res.rule && parseRule(res.rule)) applyRule(res.rule, null, true);
+      flash($('rle-msg'), '已导入 ' + res.cells.length + ' 个细胞。', 'ok');
+    } catch (err){
+      flash($('rle-msg'), '导入失败：' + err.message, 'err');
+    }
+  });
+
+  // ============================================================
+  //  Saved-pattern library (localStorage)
+  // ============================================================
+  function loadSaved(){
+    try { const v = JSON.parse(localStorage.getItem(LS_SAVED) || '[]'); return Array.isArray(v) ? v : []; }
+    catch (_) { return []; }
+  }
+  function writeSaved(list){ try { localStorage.setItem(LS_SAVED, JSON.stringify(list)); } catch (_){} }
+  function renderSaved(){
+    const list = loadSaved(), host = $('saved-list');
+    host.innerHTML = '';
+    if (!list.length){ host.innerHTML = '<div class="saved-empty">还没有保存的图案。</div>'; return; }
+    list.forEach((item, i) => {
+      const row = document.createElement('div');
+      row.className = 'saved-item';
+      const nm = document.createElement('span');
+      nm.className = 'nm'; nm.textContent = item.name;
+      const meta = document.createElement('span');
+      meta.className = 'meta'; meta.textContent = (item.pop || 0) + ' 胞';
+      const load = document.createElement('button');
+      load.className = 'btn btn-outline btn-sm'; load.textContent = '载入'; load.dataset.load = i;
+      load.addEventListener('click', () => {
+        try {
+          const res = parseRLE(item.rle); pause();
+          stampCells(res.cells, { replace: true });
+          if (item.rule && parseRule(item.rule)) applyRule(item.rule, null, true);
+          flash($('save-msg'), '已载入「' + item.name + '」。', 'ok');
+        } catch (err){ flash($('save-msg'), '载入失败：' + err.message, 'err'); }
+      });
+      const del = document.createElement('button');
+      del.className = 'link-danger'; del.textContent = '删除'; del.dataset.del = i;
+      del.addEventListener('click', () => {
+        const l = loadSaved(); l.splice(i, 1); writeSaved(l); renderSaved();
+        flash($('save-msg'), '已删除。', 'info');
+      });
+      row.append(nm, meta, load, del);
+      host.appendChild(row);
+    });
+  }
+  $('save-btn').addEventListener('click', () => {
+    const name = ($('save-name').value || '').trim();
+    if (!name){ flash($('save-msg'), '请先给图案起个名字。', 'err'); $('save-name').focus(); return; }
+    const pop = population();
+    if (!pop){ flash($('save-msg'), '网格是空的，没什么可保存。', 'err'); return; }
+    const list = loadSaved();
+    list.unshift({ name: name, rle: exportRLE(), rule: ruleToString(rule), pop: pop, ts: Date.now() });
+    writeSaved(list.slice(0, 50));
+    $('save-name').value = '';
+    renderSaved();
+    flash($('save-msg'), '已保存「' + name + '」到本地。', 'ok');
+  });
+
+  function flash(el, text, kind){
+    if (!el) return;
+    el.className = 'msg ' + (kind || 'info');
+    el.textContent = text;
+  }
+
+  // ============================================================
+  //  Settings persistence
+  // ============================================================
+  function persist(){
+    try {
+      localStorage.setItem(LS_SETTINGS, JSON.stringify({
+        rule: ruleToString(rule), wrap: wrap, speed: speed, size: W + 'x' + H
+      }));
+    } catch (_){}
+  }
+  function restore(){
+    let s = null;
+    try { s = JSON.parse(localStorage.getItem(LS_SETTINGS) || 'null'); } catch (_){}
+    if (!s) return;
+    if (s.size && /^\d+x\d+$/.test(s.size)){
+      const [w, h] = s.size.split('x').map(Number);
+      if (w >= 10 && h >= 10 && w <= 400 && h <= 300){ W = w; H = h; }
+      const sel = $('grid-size');
+      if ([...sel.options].some(o => o.value === s.size)) sel.value = s.size;
+    }
+    cells = new Uint8Array(W * H); scratch = new Uint8Array(W * H);
+    if (typeof s.speed === 'number'){ speed = Math.min(60, Math.max(1, s.speed)); $('speed').value = speed; $('speed-val').textContent = speed; }
+    if (typeof s.wrap === 'boolean'){ wrap = s.wrap; $('wrap').checked = wrap; }
+    if (s.rule && parseRule(s.rule)){ rule = parseRule(s.rule); $('rule-input').value = ruleToString(rule); }
+  }
+
+  // ============================================================
+  //  Grid-size / speed / wrap controls
+  // ============================================================
+  $('grid-size').addEventListener('change', (e) => {
+    const [nw, nh] = e.target.value.split('x').map(Number);
+    const old = cells, ow = W, oh = H;
+    W = nw; H = nh;
+    cells = new Uint8Array(W * H); scratch = new Uint8Array(W * H);
+    const cw = Math.min(ow, W), ch = Math.min(oh, H);            // preserve overlap
+    for (let y = 0; y < ch; y++) for (let x = 0; x < cw; x++) cells[y * W + x] = old[y * ow + x];
+    gen = 0; popHistory = [];
+    fit(); updateStats(); drawPop(); persist();
+  });
+  $('speed').addEventListener('input', (e) => {
+    speed = Number(e.target.value); $('speed-val').textContent = speed; persist();
+  });
+  $('wrap').addEventListener('change', (e) => { wrap = e.target.checked; updateStats(); persist(); });
+
+  // ============================================================
+  //  Toolbar + keyboard
+  // ============================================================
+  $('btn-play').addEventListener('click', toggle);
+  $('btn-step').addEventListener('click', () => { pause(); step(); drawPop(); });
+  $('btn-clear').addEventListener('click', () => { pause(); clearGrid(true); });
+  $('btn-random').addEventListener('click', () => { pause(); randomFill(); });
+  document.addEventListener('keydown', (e) => {
+    const t = e.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT')) return;
+    const k = e.key.toLowerCase();
+    if (e.key === ' '){ e.preventDefault(); toggle(); }
+    else if (k === 's'){ e.preventDefault(); pause(); step(); drawPop(); }
+    else if (k === 'c'){ clearGrid(true); }
+    else if (k === 'r'){ pause(); randomFill(); }
+  });
+
+  window.addEventListener('resize', () => { fit(); drawPop(); });
+  if (window.ResizeObserver){
+    try { new ResizeObserver(() => { fit(); drawPop(); }).observe(board.parentElement); } catch (_){}
+  }
+
+  // ============================================================
+  //  Boot
+  // ============================================================
+  function boot(){
+    buildRulePresets();
+    buildPatterns();
+    restore();
+    syncRuleChips();
+    fit();
+    // seed with a glider so the first paint is alive, not empty
+    stampCells(PATTERNS[0].cells, { replace: true });
+    pushPop(population());
+    updateStats(); drawPop(); renderSaved();
+  }
+  boot();
+
+  // ============================================================
+  //  Test / automation facade — reflects the REAL running engine.
+  // ============================================================
+  window.CellularLab = {
+    getPopulation: population,
+    getGeneration: () => gen,
+    getRuleString: () => ruleToString(rule),
+    getLiveCells: liveCoords,
+    // live cells normalized to their bounding-box top-left, sorted — a
+    // translation-invariant fingerprint of the pattern shape.
+    getNormalizedKey: () => {
+      const live = liveCoords();
+      if (!live.length) return '';
+      let minX = Infinity, minY = Infinity;
+      for (const [x, y] of live){ if (x<minX)minX=x; if (y<minY)minY=y; }
+      return live.map(([x,y]) => (x-minX) + ',' + (y-minY)).sort().join(' ');
+    },
+    isRunning: () => running,
+    dims: () => ({ W: W, H: H, cellPx: cellPx }),
+    cellCenterClient: (x, y) => {
+      const r = board.getBoundingClientRect();
+      return { x: r.left + (x + 0.5) * cellPx, y: r.top + (y + 0.5) * cellPx };
+    },
+    step: stepN,
+    clear: () => clearGrid(true),
+    stamp: stampPattern,
+    setRuleString: (s) => applyRule(s, null, true),
+    exportRLE: exportRLE,
+    importRLE: (s) => { const r = parseRLE(s); stampCells(r.cells, { replace: true }); return r.cells.length; },
+    savedCount: () => loadSaved().length
+  };
+})();
+</script>
+</body>
+</html>
