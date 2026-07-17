@@ -1,0 +1,1196 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>再平衡 · Portfolio Rebalancer</title>
+<meta name="description" content="输入持仓与目标权重,算出把组合拉回目标所需的最少交易。水填法 + 整股优化,纯本地计算,持仓数据不上传。">
+<style>
+  :root{
+    /* Coinbase design language */
+    --primary:#0052ff; --primary-active:#003ecc; --primary-disabled:#a8b8cc;
+    --ink:#0a0b0d; --body:#5b616e; --muted:#7c828a; --muted-soft:#a8acb3;
+    --hairline:#dee1e6; --hairline-soft:#eef0f3;
+    --canvas:#ffffff; --surface-soft:#f7f7f7; --surface-strong:#eef0f3;
+    --surface-dark:#0a0b0d; --surface-dark-el:#16181c;
+    --on-dark:#ffffff; --on-dark-soft:#a8acb3;
+    --up:#05b169; --down:#cf202f; --yellow:#f4b000;
+    --r-xs:4px; --r-sm:8px; --r-md:12px; --r-lg:16px; --r-xl:24px; --r-pill:100px;
+    --sans:'Inter',-apple-system,BlinkMacSystemFont,system-ui,'Segoe UI',Roboto,'PingFang SC','Hiragino Sans GB','Microsoft YaHei',Helvetica,Arial,sans-serif;
+    --mono:'JetBrains Mono','Geist Mono','SF Mono',ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    background:var(--canvas); color:var(--ink); font-family:var(--sans);
+    font-size:16px; line-height:1.5; -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1200px; margin:0 auto; padding:0 24px}
+  .num{font-family:var(--mono); font-weight:500; font-variant-numeric:tabular-nums}
+
+  /* ---------- top nav ---------- */
+  .nav{height:64px; display:flex; align-items:center; gap:20px; background:var(--surface-dark); color:var(--on-dark)}
+  .nav .wrap{display:flex; align-items:center; gap:20px; width:100%}
+  .back{color:var(--on-dark); text-decoration:none; font-size:14px; font-weight:500; opacity:.75}
+  .back:hover{opacity:1}
+  .wordmark{display:flex; align-items:center; gap:10px; font-size:14px; font-weight:600; letter-spacing:-.1px}
+  .wordmark .glyph{width:22px;height:22px;border-radius:9999px;background:var(--primary);display:grid;place-items:center;flex:none}
+  .wordmark .glyph span{width:8px;height:8px;border-radius:2px;background:#fff;display:block}
+  .nav .sep{width:1px;height:24px;background:rgba(255,255,255,.14)}
+  .nav .spacer{flex:1}
+
+  /* ---------- buttons ---------- */
+  .btn{
+    height:40px; padding:0 18px; border:0; border-radius:var(--r-pill); cursor:pointer;
+    font-family:var(--sans); font-size:14px; font-weight:600; line-height:1;
+    display:inline-flex; align-items:center; gap:8px; justify-content:center;
+    background:var(--surface-strong); color:var(--ink); transition:background .12s ease;
+  }
+  .btn:hover{background:#e3e6eb}
+  .btn.primary{background:var(--primary); color:#fff}
+  .btn.primary:hover{background:var(--primary-active)}
+  .btn.primary:disabled{background:var(--primary-disabled); cursor:not-allowed}
+  .btn.on-dark{background:var(--surface-dark-el); color:var(--on-dark)}
+  .btn.on-dark:hover{background:#22252b}
+  .btn.ghost{background:transparent; color:var(--primary); padding:0 8px}
+  .btn.ghost:hover{background:var(--hairline-soft)}
+  .btn.sm{height:32px; padding:0 14px; font-size:13px}
+  .btn:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible{
+    outline:2px solid var(--primary); outline-offset:2px
+  }
+
+  /* ---------- hero (signature dark band) ---------- */
+  .hero{background:var(--surface-dark); color:var(--on-dark); padding:40px 0 48px}
+  .hero .wrap{display:grid; grid-template-columns:minmax(0,0.82fr) minmax(0,1fr); gap:48px; align-items:center}
+  .badge{
+    display:inline-block; background:rgba(255,255,255,.09); color:var(--on-dark);
+    font-size:12px; font-weight:600; letter-spacing:.02em; padding:5px 12px; border-radius:var(--r-pill);
+  }
+  h1{
+    font-size:44px; font-weight:400; line-height:1.09; letter-spacing:-1px;
+    margin:16px 0 12px;
+  }
+  .lede{color:var(--on-dark-soft); font-size:16px; max-width:44ch}
+  .stats{display:flex; gap:32px; margin-top:24px}
+  .stat .k{font-size:12px; font-weight:600; color:var(--on-dark-soft); letter-spacing:.02em}
+  .stat .v{font-family:var(--mono); font-weight:500; font-size:20px; line-height:1.4; margin-top:2px; font-variant-numeric:tabular-nums}
+
+  /* layered product-ui cards */
+  .stack{position:relative}
+  .stack::before{
+    content:""; position:absolute; inset:14px -14px -14px 30px; border-radius:var(--r-xl);
+    background:var(--surface-dark-el); opacity:.55;
+  }
+  .panel{
+    position:relative; background:var(--surface-dark-el); border-radius:var(--r-xl); padding:24px 28px;
+  }
+  .panel-head{display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin-bottom:18px}
+  .panel-head h2{font-size:16px; font-weight:600; letter-spacing:0}
+  .panel-head .hint{font-size:12px; color:var(--on-dark-soft)}
+
+  /* allocation chart */
+  .alloc-row{display:grid; grid-template-columns:30px 60px 1fr 62px; align-items:center; gap:12px; padding:9px 0}
+  .alloc-row + .alloc-row{border-top:1px solid rgba(255,255,255,.07)}
+  .coin{
+    width:30px;height:30px;border-radius:9999px;background:rgba(255,255,255,.09);
+    display:grid;place-items:center;font-size:11px;font-weight:600;letter-spacing:0
+  }
+  .coin.cash{background:rgba(244,176,0,.16); color:var(--yellow)}
+  .alloc-tk{font-size:13px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .track{position:relative; height:10px; border-radius:var(--r-pill); background:rgba(255,255,255,.08); overflow:visible}
+  .fill{position:absolute; left:0; top:0; bottom:0; border-radius:var(--r-pill); background:var(--primary); transition:width .35s cubic-bezier(.2,.8,.2,1)}
+  .fill.cashfill{background:var(--yellow)}
+  /* post-trade overlay segment on an allocation bar. Deliberately NOT called
+     .ghost — that name belongs to the tertiary text button variant. */
+  .delta-bar{position:absolute; top:0; bottom:0; border-radius:var(--r-pill); background:rgba(0,82,255,.42); transition:all .35s cubic-bezier(.2,.8,.2,1)}
+  .delta-bar.sell{background:rgba(255,255,255,.16)}
+  .tick{position:absolute; top:-4px; bottom:-4px; width:2px; background:#fff; border-radius:2px; transition:left .35s cubic-bezier(.2,.8,.2,1)}
+  .alloc-drift{font-family:var(--mono); font-weight:500; font-size:13px; text-align:right; font-variant-numeric:tabular-nums}
+  .up{color:var(--up)} .down{color:var(--down)} .flat{color:var(--on-dark-soft)}
+  .legend{display:flex; gap:16px; margin-top:16px; font-size:11px; color:var(--on-dark-soft); flex-wrap:wrap}
+  .legend i{display:inline-block; width:10px; height:10px; border-radius:3px; margin-right:6px; vertical-align:-1px}
+  .empty-alloc{color:var(--on-dark-soft); font-size:14px; padding:24px 0; text-align:center}
+
+  /* ---------- main grid ---------- */
+  main{padding:48px 0 64px}
+  .grid{display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.05fr); gap:24px; align-items:start}
+  .card{background:var(--canvas); border:1px solid var(--hairline); border-radius:var(--r-xl); padding:24px}
+  .card + .card{margin-top:24px}
+  .card-head{display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:4px}
+  .card-head h2{font-size:18px; font-weight:600; line-height:1.33}
+  .card-sub{color:var(--body); font-size:13px; margin-bottom:16px}
+
+  /* holdings table */
+  table{width:100%; border-collapse:collapse}
+  thead th{
+    font-size:12px; font-weight:600; color:var(--muted); text-align:right; padding:0 0 8px; letter-spacing:.01em;
+    border-bottom:1px solid var(--hairline);
+  }
+  thead th:first-child{text-align:left}
+  tbody td{padding:8px 0; border-bottom:1px solid var(--hairline-soft); vertical-align:middle}
+  tbody tr:last-child td{border-bottom:0}
+  .h-row td:first-child{padding-right:8px}
+  input[type=text], input[type=number]{
+    width:100%; height:38px; padding:0 10px; border:1px solid var(--hairline); border-radius:var(--r-md);
+    font-family:var(--mono); font-weight:500; font-size:13px; color:var(--ink); background:var(--canvas);
+    text-align:right; font-variant-numeric:tabular-nums;
+  }
+  input[type=text].tk{text-align:left; font-weight:600; text-transform:uppercase}
+  input:focus{outline:none; border:2px solid var(--primary); padding:0 9px}
+  input::-webkit-outer-spin-button, input::-webkit-inner-spin-button{-webkit-appearance:none; margin:0}
+  input[type=number]{-moz-appearance:textfield}
+  .col-tk{width:23%} .col-n{width:20%} .col-p{width:22%} .col-t{width:19%} .col-x{width:36px}
+  .del{
+    width:28px;height:28px;border:0;border-radius:9999px;background:transparent;color:var(--muted-soft);
+    cursor:pointer; font-size:16px; line-height:1; display:grid; place-items:center
+  }
+  .del:hover{background:var(--surface-strong); color:var(--down)}
+  .row-actions{display:flex; gap:8px; margin-top:14px; flex-wrap:wrap}
+  .tsum{font-size:12px; color:var(--muted); margin-top:10px; font-family:var(--mono); font-variant-numeric:tabular-nums}
+  .tsum.bad{color:var(--down)}
+
+  /* money inputs */
+  .money-grid{display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin-top:4px}
+  .field label{display:block; font-size:12px; font-weight:600; color:var(--muted); margin-bottom:6px}
+  .field .unit{position:relative}
+  .field .unit::before{
+    content:"$"; position:absolute; left:10px; top:50%; transform:translateY(-50%);
+    font-family:var(--mono); font-size:13px; color:var(--muted-soft); pointer-events:none
+  }
+  .field .unit input{padding-left:22px}
+  .field .hint{font-size:11px; color:var(--muted-soft); margin-top:5px}
+
+  /* mode pills + options */
+  .seg{display:inline-flex; background:var(--surface-strong); border-radius:var(--r-pill); padding:4px; gap:2px; flex-wrap:wrap}
+  .seg button{
+    border:0; background:transparent; border-radius:var(--r-pill); height:34px; padding:0 16px; cursor:pointer;
+    font-family:var(--sans); font-size:13px; font-weight:600; color:var(--body);
+  }
+  .seg button[aria-pressed=true]{background:var(--canvas); color:var(--ink); box-shadow:0 1px 2px rgba(0,0,0,.06)}
+  .opts{display:flex; flex-direction:column; gap:12px; margin-top:16px}
+  .opt{display:flex; align-items:center; gap:10px; font-size:14px; color:var(--ink)}
+  .opt input[type=checkbox]{width:18px;height:18px;accent-color:var(--primary); flex:none; margin:0}
+  .opt .mini{width:64px; height:32px; padding:0 8px; font-size:12px}
+  .opt .lbl{color:var(--body); font-size:13px}
+  .note{font-size:12px; color:var(--muted); background:var(--surface-soft); border-radius:var(--r-md); padding:10px 12px; margin-top:12px}
+
+  /* plan / trades */
+  .trade{
+    display:grid; grid-template-columns:32px 1fr 64px 92px 110px; align-items:center; gap:12px;
+    padding:12px 0; border-bottom:1px solid var(--hairline-soft)
+  }
+  .trade:last-child{border-bottom:0}
+  .coin-l{width:32px;height:32px;border-radius:9999px;background:var(--surface-strong);display:grid;place-items:center;font-size:12px;font-weight:600}
+  .trade-name{font-size:15px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .trade-name small{display:block; font-size:12px; font-weight:400; color:var(--muted)}
+  .pill{
+    background:var(--surface-strong); border-radius:var(--r-pill); padding:4px 10px;
+    font-size:12px; font-weight:600; text-align:center; letter-spacing:.02em
+  }
+  .pill.buy{color:var(--up)} .pill.sell{color:var(--down)}
+  .trade-shares, .trade-amount{font-family:var(--mono); font-weight:500; font-size:14px; text-align:right; font-variant-numeric:tabular-nums}
+  .trade-amount{font-size:15px}
+  .plan-empty{
+    text-align:center; padding:28px 12px; color:var(--body); font-size:14px;
+    background:var(--surface-soft); border-radius:var(--r-lg)
+  }
+  .plan-empty b{display:block; color:var(--ink); font-size:16px; font-weight:600; margin-bottom:4px}
+  .err{
+    background:#fdf0f1; color:var(--down); border-radius:var(--r-md); padding:12px 14px; font-size:14px; font-weight:600
+  }
+  .warn{background:#fff8e6; color:#8a6100; border-radius:var(--r-md); padding:10px 14px; font-size:13px; margin-bottom:12px}
+  .totals{display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; margin-top:20px; padding-top:20px; border-top:1px solid var(--hairline)}
+  .totals .k{font-size:12px; font-weight:600; color:var(--muted)}
+  .totals .v{font-family:var(--mono); font-weight:500; font-size:16px; margin-top:3px; font-variant-numeric:tabular-nums}
+
+  /* after table */
+  .after th, .after td{font-size:13px}
+  .after td{padding:10px 0}
+  .after .tk{font-weight:600; font-size:14px}
+  .after .n{font-family:var(--mono); font-weight:500; text-align:right; font-variant-numeric:tabular-nums}
+  .arrow{color:var(--muted-soft); padding:0 4px}
+  .band-dot{display:inline-block;width:6px;height:6px;border-radius:9999px;background:var(--down);margin-left:6px;vertical-align:1px}
+
+  /* portfolios + import */
+  .toolbar{display:flex; gap:8px; align-items:center; flex-wrap:wrap}
+  select{
+    height:32px; border:1px solid var(--hairline); border-radius:var(--r-pill); padding:0 12px; background:var(--canvas);
+    font-family:var(--sans); font-size:13px; font-weight:500; color:var(--ink); cursor:pointer; max-width:170px
+  }
+  textarea{
+    width:100%; min-height:96px; border:1px solid var(--hairline); border-radius:var(--r-md); padding:12px;
+    font-family:var(--mono); font-size:13px; line-height:1.6; color:var(--ink); resize:vertical; background:var(--canvas)
+  }
+  textarea:focus{outline:none; border:2px solid var(--primary); padding:11px}
+  details{margin-top:16px; border-top:1px solid var(--hairline-soft); padding-top:16px}
+  summary{cursor:pointer; font-size:13px; font-weight:600; color:var(--primary); list-style:none}
+  summary::-webkit-details-marker{display:none}
+  summary::before{content:"+ "; font-family:var(--mono)}
+  details[open] summary::before{content:"− "}
+  .imp-hint{font-size:12px; color:var(--muted); margin:10px 0}
+
+  footer{border-top:1px solid var(--hairline); padding:32px 0 48px; color:var(--muted); font-size:13px}
+  footer a{color:var(--body)}
+  .legal{color:var(--muted-soft); font-size:12px; margin-top:8px; max-width:70ch}
+  .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+  @media (max-width:1040px){
+    .hero .wrap{grid-template-columns:1fr; gap:32px}
+    .stack::before{display:none}
+    .grid{grid-template-columns:1fr}
+    h1{font-size:36px; letter-spacing:-.5px}
+  }
+  @media (max-width:720px){
+    .wrap{padding:0 16px}
+    h1{font-size:30px}
+    .hero{padding:28px 0 32px}
+    main{padding:28px 0 40px}
+    .stats{gap:20px}
+    .money-grid{grid-template-columns:1fr}
+    .totals{grid-template-columns:repeat(2,minmax(0,1fr))}
+    .trade{grid-template-columns:28px 1fr 76px; grid-template-areas:"c n a" "c p s"; gap:6px 10px}
+    .trade .coin-l{grid-area:c} .trade-name{grid-area:n} .pill{grid-area:p; justify-self:start}
+    .trade-shares{grid-area:s; text-align:left} .trade-amount{grid-area:a}
+    .card{padding:18px}
+    .panel{padding:18px}
+    .alloc-row{grid-template-columns:26px 52px 1fr 56px; gap:8px}
+  }
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <div class="wrap">
+    <a class="back" href="../../">← 返回工具集</a>
+    <span class="sep" aria-hidden="true"></span>
+    <span class="wordmark"><span class="glyph" aria-hidden="true"><span></span></span>再平衡 · Rebalancer</span>
+    <span class="spacer"></span>
+    <button class="btn on-dark sm" id="load-sample" type="button">载入示例</button>
+  </div>
+</nav>
+
+<section class="hero">
+  <div class="wrap">
+    <div>
+      <span class="badge">本地计算 · 持仓不上传</span>
+      <h1>把组合拉回目标。</h1>
+      <p class="lede">填入持仓、现价与目标权重,算出所需的最少交易。水填法求最优配置 + 整股优化,替代你那张再平衡电子表格。</p>
+      <div class="stats">
+        <div class="stat"><div class="k">组合总值</div><div class="v" id="stat-total">$0.00</div></div>
+        <div class="stat"><div class="k">最大偏离</div><div class="v" id="stat-maxdrift">0.0%</div></div>
+        <div class="stat"><div class="k">建议交易</div><div class="v" id="stat-trades">0 笔</div></div>
+      </div>
+    </div>
+    <div class="stack">
+      <div class="panel">
+        <div class="panel-head">
+          <h2>配置偏离</h2>
+          <span class="hint" id="alloc-hint">白线 = 目标权重</span>
+        </div>
+        <div id="alloc-rows"></div>
+        <div class="legend">
+          <span><i style="background:#0052ff"></i>当前</span>
+          <span><i style="background:rgba(0,82,255,.42)"></i>买入后</span>
+          <span><i style="background:rgba(255,255,255,.16)"></i>卖出部分</span>
+          <span><i style="background:#f4b000"></i>闲置现金</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<main>
+  <div class="wrap grid">
+    <!-- ---------------- left: inputs ---------------- -->
+    <div>
+      <section class="card">
+        <div class="card-head">
+          <h2>持仓与目标</h2>
+          <div class="toolbar">
+            <select id="portfolio-select" aria-label="已保存的组合">
+              <option value="">未保存的组合</option>
+            </select>
+            <button class="btn sm" id="save-portfolio" type="button">保存</button>
+            <button class="btn sm" id="delete-portfolio" type="button">删除</button>
+          </div>
+        </div>
+        <p class="card-sub">价格手动填写(无联网行情)。目标权重合计应为 100%。</p>
+        <table>
+          <thead>
+            <tr>
+              <th class="col-tk" scope="col">代码</th>
+              <th class="col-n" scope="col">持股数</th>
+              <th class="col-p" scope="col">现价</th>
+              <th class="col-t" scope="col">目标 %</th>
+              <th class="col-x"><span class="sr">删除</span></th>
+            </tr>
+          </thead>
+          <tbody id="holdings-body"></tbody>
+        </table>
+        <div class="row-actions">
+          <button class="btn sm" id="add-row" type="button">+ 添加持仓</button>
+          <button class="btn sm" id="normalize" type="button">归一化到 100%</button>
+          <button class="btn sm" id="clear-all" type="button">清空</button>
+        </div>
+        <div class="tsum" id="target-sum">目标合计 0.0%</div>
+
+        <details>
+          <summary>粘贴导入(CSV / 表格)</summary>
+          <p class="imp-hint">每行一个持仓:<code>代码, 持股数, 现价, 目标%</code>。支持逗号 / 制表符 / 空格分隔,可直接从表格粘贴。</p>
+          <textarea id="import-text" spellcheck="false" placeholder="VTI, 120, 285.40, 50&#10;VXUS, 180, 68.20, 30&#10;BND, 210, 72.50, 20"></textarea>
+          <div class="row-actions">
+            <button class="btn sm primary" id="import-btn" type="button">导入并替换</button>
+            <span class="tsum" id="import-msg"></span>
+          </div>
+        </details>
+      </section>
+
+      <section class="card">
+        <div class="card-head"><h2>现金</h2></div>
+        <div class="money-grid">
+          <div class="field">
+            <label for="cash">账户现金</label>
+            <div class="unit"><input type="number" id="cash" step="any" value="0" inputmode="decimal"></div>
+            <div class="hint">已在账户里的闲置现金</div>
+          </div>
+          <div class="field">
+            <label for="contribution">追加 / 提取</label>
+            <div class="unit"><input type="number" id="contribution" step="any" value="0" inputmode="decimal"></div>
+            <div class="hint">负数 = 提取现金</div>
+          </div>
+          <div class="field">
+            <label for="reserve">现金保留</label>
+            <div class="unit"><input type="number" id="reserve" step="any" value="0" min="0" inputmode="decimal"></div>
+            <div class="hint">先划走、不参与配置</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-head"><h2>再平衡方式</h2></div>
+        <p class="card-sub">选择允许的交易方向,以及取整与触发规则。</p>
+        <div class="seg" role="group" aria-label="再平衡方式">
+          <button type="button" id="mode-full" aria-pressed="true">全面再平衡</button>
+          <button type="button" id="mode-buy" aria-pressed="false">只买不卖</button>
+          <button type="button" id="mode-sell" aria-pressed="false">只卖不买</button>
+        </div>
+        <div class="opts">
+          <label class="opt"><input type="checkbox" id="whole-shares" checked>整股交易<span class="lbl">(不足一股的部分留作现金)</span></label>
+          <label class="opt">
+            <input type="checkbox" id="use-bands">容忍带触发
+            <input type="number" class="mini num" id="band-abs" value="5" step="any" min="0" aria-label="绝对容忍带(百分点)">
+            <span class="lbl">个百分点 或</span>
+            <input type="number" class="mini num" id="band-rel" value="25" step="any" min="0" aria-label="相对容忍带(%)">
+            <span class="lbl">% 相对</span>
+          </label>
+          <label class="opt">
+            最小交易额
+            <div class="unit" style="position:relative"><input type="number" class="mini num" id="min-trade" value="0" step="any" min="0" style="width:84px;padding-left:8px" aria-label="最小交易额"></div>
+            <span class="lbl">低于此金额的交易会被略过</span>
+          </label>
+        </div>
+        <div class="note" id="mode-note">全面再平衡:买入 + 卖出,把每个标的拉到目标权重。</div>
+      </section>
+    </div>
+
+    <!-- ---------------- right: plan ---------------- -->
+    <div>
+      <section class="card">
+        <div class="card-head">
+          <h2>交易计划</h2>
+          <button class="btn sm ghost" id="copy-plan" type="button">复制</button>
+        </div>
+        <p class="card-sub" id="plan-sub">按当前设置需要执行的交易。</p>
+        <div id="warnings"></div>
+        <div id="plan-error" class="err" style="display:none" role="alert"></div>
+        <div id="trades" aria-live="polite"></div>
+        <div id="plan-empty" class="plan-empty" style="display:none"></div>
+        <div class="totals">
+          <div><div class="k">买入</div><div class="v up" id="sum-buy">$0.00</div></div>
+          <div><div class="k">卖出</div><div class="v down" id="sum-sell">$0.00</div></div>
+          <div><div class="k">交易后现金</div><div class="v" id="sum-cash-after">$0.00</div></div>
+          <div><div class="k">换手率</div><div class="v" id="sum-turnover">0.0%</div></div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-head"><h2>再平衡后</h2></div>
+        <p class="card-sub">执行上述交易后的持仓与权重。<span id="drift-improve"></span></p>
+        <table class="after">
+          <thead>
+            <tr>
+              <th scope="col" style="text-align:left">标的</th>
+              <th scope="col">持股数</th>
+              <th scope="col">市值</th>
+              <th scope="col">权重</th>
+              <th scope="col">目标</th>
+              <th scope="col">偏离</th>
+            </tr>
+          </thead>
+          <tbody id="after-body"></tbody>
+        </table>
+      </section>
+    </div>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap">
+    <div>所有计算都在你的浏览器里完成,持仓数据只存在本机 localStorage,不会上传到任何服务器。</div>
+    <div class="legal">仅为计算工具,不构成投资建议。价格需自行填写,请以券商实际成交为准。</div>
+  </div>
+</footer>
+
+<script>
+"use strict";
+/* <<<ENGINE (pure, DOM-free: also unit-tested offline) */
+
+var EPS = 1e-6;
+
+function toNum(v, dflt) {
+  if (dflt === undefined) dflt = 0;
+  if (typeof v === "number") return isFinite(v) ? v : dflt;
+  if (v === null || v === undefined) return dflt;
+  var s = String(v).trim().replace(/[,$\s]/g, "");
+  if (s === "") return dflt;
+  var n = parseFloat(s);
+  return isFinite(n) ? n : dflt;
+}
+
+/**
+ * Water-filling: find the largest lambda >= 0 with sum(max(0, gap_i - lambda)) == budget.
+ * gaps may contain negatives (they never get filled). Assumes budget >= 0 and
+ * sum(max(0,gaps)) >= budget, which the caller guarantees by construction.
+ * Returns Infinity when nothing should be filled (budget <= 0).
+ */
+function solveLambda(gaps, budget) {
+  var g = gaps.filter(function (x) { return x > 0; }).sort(function (a, b) { return b - a; });
+  if (!g.length) return Infinity;
+  var acc = 0; // sum of g[0..k-1]
+  for (var k = 0; k < g.length; k++) {
+    // f(g[k]) = sum_{i<k} (g[i] - g[k]) = acc - k*g[k]
+    var f = acc - k * g[k];
+    if (f >= budget) {
+      if (k === 0) return Infinity;      // budget <= 0: fill nothing
+      return (acc - budget) / k;         // crossing lies in (g[k], g[k-1]]
+    }
+    acc += g[k];
+  }
+  return Math.max(0, (acc - budget) / g.length); // budget >= total gap: fill everything
+}
+
+function fail(msg) { return { ok: false, error: msg, warnings: [], rows: [], trades: [] }; }
+
+/**
+ * Plan a rebalance.
+ * input: { holdings:[{id,ticker,shares,price,target}], cash, contribution, reserve,
+ *          mode:'full'|'buy'|'sell', wholeShares, useBands, bandAbs, bandRel, minTrade }
+ */
+function plan(input) {
+  input = input || {};
+  var warnings = [];
+  var src = input.holdings || [];
+  var rows = [];
+  for (var i = 0; i < src.length; i++) {
+    var h = src[i];
+    var ticker = String(h.ticker === undefined || h.ticker === null ? "" : h.ticker).trim().toUpperCase();
+    if (!ticker && !h.shares && !h.price && !h.target) continue; // skip fully blank rows
+    rows.push({
+      id: h.id !== undefined ? h.id : "h" + i,
+      ticker: ticker,
+      shares: toNum(h.shares),
+      price: toNum(h.price),
+      target: toNum(h.target)
+    });
+  }
+  if (!rows.length) return fail("先添加至少一个持仓。");
+
+  var seen = {};
+  for (var j = 0; j < rows.length; j++) {
+    var r = rows[j];
+    if (!r.ticker) return fail("第 " + (j + 1) + " 行缺少代码。");
+    if (Object.prototype.hasOwnProperty.call(seen, r.ticker)) return fail("代码 " + r.ticker + " 重复了,请合并成一行。");
+    seen[r.ticker] = 1;
+    if (!(r.price > 0)) return fail(r.ticker + " 的现价必须大于 0。");
+    if (r.shares < 0) return fail(r.ticker + " 的持股数不能为负。");
+    if (r.target < 0) return fail(r.ticker + " 的目标权重不能为负。");
+  }
+
+  var targetSum = rows.reduce(function (s, x) { return s + x.target; }, 0);
+  if (!(targetSum > 0)) return fail("目标权重合计必须大于 0。");
+  if (Math.abs(targetSum - 100) > 0.05) {
+    warnings.push("目标权重合计 " + (Math.round(targetSum * 10) / 10) + "%,已按比例归一化到 100% 再计算。");
+  }
+  var t = rows.map(function (x) { return x.target / targetSum; });
+
+  var cash = toNum(input.cash);
+  var contribution = toNum(input.contribution);
+  var reserve = Math.max(0, toNum(input.reserve));
+  var mode = input.mode === "buy" || input.mode === "sell" ? input.mode : "full";
+  var wholeShares = input.wholeShares !== false;
+  var minTrade = Math.max(0, toNum(input.minTrade));
+
+  var v = rows.map(function (x) { return x.shares * x.price; });
+  var holdingsValue = v.reduce(function (s, x) { return s + x; }, 0);
+  var totalAssets = holdingsValue + cash + contribution;
+  var B = totalAssets - reserve;              // investable base: targets are shares of this
+  if (!(B > EPS)) return fail("可配置金额为 0 或负数,请检查现金 / 追加 / 保留额。");
+  var C = cash + contribution - reserve;      // deployable cash (negative = must raise cash)
+  var T = t.map(function (x) { return B * x; });
+
+  var canBuy = mode !== "sell";
+  var canSell = mode !== "buy";
+  if (C < -EPS && !canSell) return fail("现金不足以完成提取,请改用「全面再平衡」或「只卖不买」。");
+
+  // --- tolerance bands: only gate a pure drift-triggered rebalance (no cash flow) ---
+  var bandAbs = Math.max(0, toNum(input.bandAbs, 5));
+  var bandRel = Math.max(0, toNum(input.bandRel, 25));
+  var bands = null, bandsActive = false, bandBreached = true;
+  if (input.useBands && mode === "full") {
+    bands = rows.map(function (x, i) {
+      var w = (v[i] / B) * 100, tt = t[i] * 100, drift = Math.abs(w - tt);
+      return drift >= bandAbs - EPS || (tt > 0 && (drift / tt) * 100 >= bandRel - EPS);
+    });
+    if (Math.abs(C) < 0.005) {
+      bandsActive = true;
+      bandBreached = bands.some(function (x) { return x; });
+    } else {
+      warnings.push("有现金流入 / 流出,容忍带不阻止交易。");
+    }
+  }
+
+  // --- continuous ideal values (water-filling under direction constraints) ---
+  var ideal;
+  if (!bandBreached) {
+    ideal = v.slice();
+  } else if (mode === "full") {
+    ideal = T.slice();                                   // sum(T) == B, always feasible
+  } else if (mode === "buy") {
+    var d = T.map(function (x, i) { return x - v[i]; }); // deficits
+    var lam = solveLambda(d, Math.max(0, C));
+    ideal = v.map(function (x, i) { return x + Math.max(0, d[i] - lam); });
+  } else {
+    var e = v.map(function (x, i) { return x - T[i]; }); // surpluses
+    var mu = solveLambda(e, Math.max(0, -C));
+    ideal = v.map(function (x, i) { return x - Math.max(0, e[i] - mu); });
+  }
+
+  // --- integer share deltas (truncate toward zero: never overshoot the ideal) ---
+  var n = rows.map(function (x, i) {
+    var delta = (ideal[i] - v[i]) / x.price;
+    if (wholeShares) delta = Math.trunc(delta + Math.sign(delta) * 1e-9);
+    return Math.max(delta, -x.shares); // can't sell more than owned
+  });
+
+  var spent = function () {
+    var s = 0;
+    for (var i = 0; i < rows.length; i++) s += n[i] * rows[i].price;
+    return s;
+  };
+  // change in sum((value_i - T_i)^2) if holding i moves by k shares
+  var dJ = function (i, k) {
+    var p = rows[i].price, vi = v[i] + n[i] * p;
+    var a = vi + k * p - T[i], b = vi - T[i];
+    return a * a - b * b;
+  };
+  var legal = function (i, k, improving) {
+    if (!bandBreached) return false;
+    var nn = n[i] + k;
+    if (nn < -rows[i].shares - EPS) return false;
+    if (k > 0 && nn > EPS && !canBuy) return false;   // stepping up into a buy
+    if (k < 0 && nn < -EPS && !canSell) return false; // stepping down into a sell
+    // Sell-only raises exactly the cash the withdrawal needs and stops. Chasing the
+    // targets past that point would dump extra proceeds into idle cash — which the
+    // objective can't see, since it only measures distance from target.
+    if (improving && k < 0 && !canBuy) return false;
+    return true;
+  };
+
+  var sp = spent();
+  if (wholeShares) {
+    // Phase 1 — repair: truncation can leave us over budget. Give back the share
+    // that costs the objective least, until the plan is affordable.
+    var guard = 0;
+    while (sp > C + EPS && guard++ < 20000) {
+      var bi = -1, bd = Infinity;
+      for (var a = 0; a < rows.length; a++) {
+        if (!legal(a, -1)) continue;
+        var da = dJ(a, -1);
+        if (da < bd - EPS) { bd = da; bi = a; }
+      }
+      if (bi < 0) break;
+      n[bi] -= 1; sp -= rows[bi].price;
+    }
+    if (sp > C + EPS) return fail("资金不足以执行该计划,请调整现金 / 追加金额 / 保留额。");
+
+    // Phase 2 — local improvement: take any single-share move (either direction)
+    // that is legal, affordable and strictly cuts the objective. Truncation alone
+    // rounds toward zero, which can sit one share away from the better integer on
+    // both the buy and the sell side; this settles on a 1-share local optimum.
+    guard = 0;
+    while (guard++ < 20000) {
+      var ti = -1, tk = 0, td = 0;
+      for (var b = 0; b < rows.length; b++) {
+        for (var s1 = -1; s1 <= 1; s1 += 2) {
+          if (!legal(b, s1, true)) continue;
+          if (sp + s1 * rows[b].price > C + EPS) continue;
+          var db = dJ(b, s1);
+          if (db < td - EPS) { td = db; ti = b; tk = s1; }
+        }
+      }
+      if (ti < 0) break;
+      n[ti] += tk; sp += tk * rows[ti].price;
+    }
+  }
+
+  // --- min trade size: drop tiny trades while the cash constraint still holds ---
+  // One drop per pass, then re-scan: dropping a small buy frees the cash that was
+  // holding a small sell in place, so a single ordered pass would strand it.
+  if (minTrade > 0) {
+    var dropping = true;
+    while (dropping) {
+      dropping = false;
+      var small = [];
+      for (var m = 0; m < rows.length; m++) {
+        var amt = Math.abs(n[m] * rows[m].price);
+        if (amt > EPS && amt < minTrade - EPS) small.push(m);
+      }
+      small.sort(function (x, y) {
+        var ax = Math.abs(n[x] * rows[x].price), ay = Math.abs(n[y] * rows[y].price);
+        return ax - ay || x - y;
+      });
+      for (var s2 = 0; s2 < small.length; s2++) {
+        var idx = small[s2];
+        var cand = sp - n[idx] * rows[idx].price;
+        if (cand <= C + EPS) { sp = cand; n[idx] = 0; dropping = true; break; }
+      }
+    }
+  }
+
+  // --- results ---
+  var out = rows.map(function (x, i) {
+    var newValue = v[i] + n[i] * x.price;
+    var action = n[i] > EPS ? "buy" : n[i] < -EPS ? "sell" : "hold";
+    return {
+      id: x.id, ticker: x.ticker, shares: x.shares, price: x.price,
+      value: v[i], weight: (v[i] / B) * 100, targetPct: t[i] * 100, drift: (v[i] / B) * 100 - t[i] * 100,
+      targetValue: T[i], band: bands ? bands[i] : null,
+      action: action, deltaShares: n[i], deltaValue: n[i] * x.price,
+      newShares: x.shares + n[i], newValue: newValue,
+      newWeight: (newValue / B) * 100, newDrift: (newValue / B) * 100 - t[i] * 100
+    };
+  });
+
+  var trades = out.filter(function (x) { return x.action !== "hold"; })
+    .map(function (x) {
+      return { ticker: x.ticker, action: x.action, shares: Math.abs(x.deltaShares), amount: Math.abs(x.deltaValue), price: x.price };
+    })
+    .sort(function (x, y) { return y.amount - x.amount; });
+
+  var cashAfter = cash + contribution - sp;
+  var absSum = function (key) { return out.reduce(function (s, x) { return s + Math.abs(x[key]); }, 0); };
+  var maxOf = function (key) { return out.reduce(function (s, x) { return Math.max(s, Math.abs(x[key])); }, 0); };
+
+  return {
+    ok: true,
+    warnings: warnings,
+    mode: mode,
+    base: B, totalAssets: totalAssets, holdingsValue: holdingsValue, reserve: reserve,
+    deployable: C, cashBefore: cash + contribution, cashAfter: cashAfter,
+    cashWeight: (C / B) * 100, cashWeightAfter: ((cashAfter - reserve) / B) * 100,
+    bandsActive: bandsActive, bandBreached: bandBreached,
+    rows: out, trades: trades,
+    stats: {
+      tradeCount: trades.length,
+      buyTotal: out.reduce(function (s, x) { return s + (x.deltaValue > 0 ? x.deltaValue : 0); }, 0),
+      sellTotal: out.reduce(function (s, x) { return s + (x.deltaValue < 0 ? -x.deltaValue : 0); }, 0),
+      turnover: (absSum("deltaValue") / B) * 100,
+      maxDriftBefore: maxOf("drift"), maxDriftAfter: maxOf("newDrift"),
+      sumAbsDriftBefore: absSum("drift"), sumAbsDriftAfter: absSum("newDrift")
+    }
+  };
+}
+
+/** Parse pasted rows: "TICKER, shares, price, target%" (comma / tab / space separated). */
+function parseImport(text) {
+  var lines = String(text || "").split(/\r?\n/);
+  var rows = [], errors = [];
+  for (var i = 0; i < lines.length; i++) {
+    var line = lines[i].trim();
+    if (!line) continue;
+    if (/^(ticker|symbol|代码|标的)\b/i.test(line)) continue; // header row
+    // Spreadsheets paste thousands separators inside quotes ("1,200") — unquote
+    // those first so the field separator below doesn't split a number in half.
+    line = line.replace(/"([^"]*)"/g, function (_, inner) { return inner.replace(/[,\s]/g, ""); });
+    var parts = line.split(/[\t,;|]+|\s{1,}/).map(function (s) { return s.trim(); }).filter(function (s) { return s !== ""; });
+    if (parts.length < 3) { errors.push("第 " + (i + 1) + " 行字段不足:" + line); continue; }
+    var ticker = parts[0].toUpperCase();
+    if (!/^[A-Z0-9._-]{1,12}$/.test(ticker)) { errors.push("第 " + (i + 1) + " 行代码无效:" + parts[0]); continue; }
+    var shares = toNum(parts[1], NaN), price = toNum(parts[2], NaN);
+    var target = parts.length > 3 ? toNum(String(parts[3]).replace("%", ""), NaN) : 0;
+    if (!isFinite(shares) || !isFinite(price)) { errors.push("第 " + (i + 1) + " 行数字无法解析:" + line); continue; }
+    if (!isFinite(target)) target = 0;
+    rows.push({ ticker: ticker, shares: shares, price: price, target: target });
+  }
+  return { rows: rows, errors: errors };
+}
+/* ENGINE>>> */
+
+/* ---------------- state ---------------- */
+var LS_STATE = "rb.v1.state";
+var LS_BOOK = "rb.v1.portfolios";
+var SAMPLE = {
+  holdings: [
+    { ticker: "VTI", shares: 120, price: 285.4, target: 50 },
+    { ticker: "VXUS", shares: 180, price: 68.2, target: 30 },
+    { ticker: "BND", shares: 210, price: 72.5, target: 20 }
+  ],
+  cash: 4000, contribution: 0, reserve: 0,
+  mode: "full", wholeShares: true, useBands: false, bandAbs: 5, bandRel: 25, minTrade: 0
+};
+
+var state = null;
+var uid = 0;
+function nextId() { uid += 1; return "r" + uid; }
+
+function blankRow() { return { id: nextId(), ticker: "", shares: 0, price: 0, target: 0 }; }
+
+function cloneSample() {
+  return {
+    holdings: SAMPLE.holdings.map(function (h) {
+      return { id: nextId(), ticker: h.ticker, shares: h.shares, price: h.price, target: h.target };
+    }),
+    cash: SAMPLE.cash, contribution: SAMPLE.contribution, reserve: SAMPLE.reserve,
+    mode: SAMPLE.mode, wholeShares: SAMPLE.wholeShares, useBands: SAMPLE.useBands,
+    bandAbs: SAMPLE.bandAbs, bandRel: SAMPLE.bandRel, minTrade: SAMPLE.minTrade
+  };
+}
+
+function loadState() {
+  try {
+    var raw = localStorage.getItem(LS_STATE);
+    if (!raw) return cloneSample();
+    var s = JSON.parse(raw);
+    if (!s || !Array.isArray(s.holdings) || !s.holdings.length) return cloneSample();
+    s.holdings = s.holdings.map(function (h) {
+      return { id: nextId(), ticker: String(h.ticker || ""), shares: toNum(h.shares), price: toNum(h.price), target: toNum(h.target) };
+    });
+    return s;
+  } catch (e) { return cloneSample(); }
+}
+function saveState() {
+  try { localStorage.setItem(LS_STATE, JSON.stringify(state)); } catch (e) {}
+}
+function readBook() {
+  try { var b = JSON.parse(localStorage.getItem(LS_BOOK) || "{}"); return b && typeof b === "object" ? b : {}; }
+  catch (e) { return {}; }
+}
+function writeBook(b) { try { localStorage.setItem(LS_BOOK, JSON.stringify(b)); } catch (e) {} }
+
+/* ---------------- formatting ---------------- */
+function money(x) {
+  var neg = x < 0;
+  var s = Math.abs(x).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return (neg ? "-$" : "$") + s;
+}
+function pct(x, dp) { if (dp === undefined) dp = 1; return x.toFixed(dp) + "%"; }
+function signed(x, dp) { if (dp === undefined) dp = 1; return (x > 0 ? "+" : x < 0 ? "-" : "") + Math.abs(x).toFixed(dp) + "%"; }
+function shareStr(x) {
+  var a = Math.abs(x);
+  var s = Math.abs(a - Math.round(a)) < 1e-9 ? String(Math.round(a)) : a.toFixed(4).replace(/0+$/, "").replace(/\.$/, "");
+  return s;
+}
+function el(tag, cls, text) {
+  var e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text !== undefined && text !== null) e.textContent = text;
+  return e;
+}
+function $(id) { return document.getElementById(id); }
+
+/* ---------------- render: holdings editor ---------------- */
+function renderHoldings() {
+  var body = $("holdings-body");
+  body.textContent = "";
+  state.holdings.forEach(function (h) {
+    var tr = el("tr", "h-row");
+    tr.setAttribute("data-id", h.id);
+
+    var td1 = el("td");
+    var tk = el("input", "tk h-ticker");
+    tk.type = "text"; tk.value = h.ticker; tk.placeholder = "VTI"; tk.maxLength = 12;
+    tk.setAttribute("aria-label", "代码");
+    tk.addEventListener("input", function () { h.ticker = tk.value.toUpperCase(); schedule(); });
+    td1.appendChild(tk); tr.appendChild(td1);
+
+    [["shares", "h-shares", "持股数"], ["price", "h-price", "现价"], ["target", "h-target", "目标权重 %"]].forEach(function (spec) {
+      var td = el("td");
+      var inp = el("input", spec[1]);
+      inp.type = "number"; inp.step = "any"; inp.value = String(h[spec[0]]);
+      inp.setAttribute("aria-label", spec[2] + " " + (h.ticker || ""));
+      inp.setAttribute("inputmode", "decimal");
+      inp.addEventListener("input", function () { h[spec[0]] = toNum(inp.value); schedule(); });
+      td.appendChild(inp); tr.appendChild(td);
+    });
+
+    var tdx = el("td");
+    var del = el("button", "del", "×");
+    del.type = "button";
+    del.setAttribute("aria-label", "删除 " + (h.ticker || "该行"));
+    del.addEventListener("click", function () {
+      state.holdings = state.holdings.filter(function (x) { return x.id !== h.id; });
+      if (!state.holdings.length) state.holdings.push(blankRow());
+      renderHoldings(); update();
+    });
+    tdx.appendChild(del); tr.appendChild(tdx);
+    body.appendChild(tr);
+  });
+}
+
+/* ---------------- render: results ---------------- */
+function renderAlloc(res) {
+  var box = $("alloc-rows");
+  box.textContent = "";
+  if (!res.ok) {
+    box.appendChild(el("div", "empty-alloc", "填好持仓后这里会显示每个标的与目标的偏离。"));
+    return;
+  }
+  var maxW = Math.max(
+    res.rows.reduce(function (s, r) { return Math.max(s, r.weight, r.targetPct, r.newWeight); }, 0),
+    Math.max(res.cashWeight, 0), 1
+  );
+  var scale = function (x) { return Math.max(0, Math.min(100, (x / maxW) * 100)); };
+
+  res.rows.forEach(function (r) {
+    var row = el("div", "alloc-row");
+    row.setAttribute("data-ticker", r.ticker);
+
+    var coin = el("div", "coin", (r.ticker || "?").slice(0, 2));
+    row.appendChild(coin);
+
+    var tk = el("div", "alloc-tk", r.ticker);
+    row.appendChild(tk);
+
+    var track = el("div", "track");
+    var lo = Math.min(r.weight, r.newWeight), hi = Math.max(r.weight, r.newWeight);
+    var fill = el("div", "fill");
+    fill.style.width = scale(lo) + "%";
+    track.appendChild(fill);
+    if (hi - lo > 0.01) {
+      var gh = el("div", "delta-bar" + (r.newWeight < r.weight ? " sell" : ""));
+      gh.style.left = scale(lo) + "%";
+      gh.style.width = (scale(hi) - scale(lo)) + "%";
+      track.appendChild(gh);
+    }
+    var tick = el("div", "tick");
+    tick.style.left = "calc(" + scale(r.targetPct) + "% - 1px)";
+    track.appendChild(tick);
+    row.appendChild(track);
+
+    var d = el("div", "alloc-drift " + (r.drift > 0.05 ? "up" : r.drift < -0.05 ? "down" : "flat"), signed(r.drift));
+    d.classList.add("alloc-weight-drift");
+    row.appendChild(d);
+    box.appendChild(row);
+  });
+
+  if (res.cashWeight > 0.05) {
+    var crow = el("div", "alloc-row");
+    crow.setAttribute("data-ticker", "CASH");
+    crow.appendChild(el("div", "coin cash", "$"));
+    crow.appendChild(el("div", "alloc-tk", "闲置现金"));
+    var ct = el("div", "track");
+    var cf = el("div", "fill cashfill");
+    cf.style.width = scale(Math.max(0, res.cashWeightAfter)) + "%";
+    ct.appendChild(cf);
+    if (res.cashWeight - Math.max(0, res.cashWeightAfter) > 0.01) {
+      var cg = el("div", "delta-bar sell");
+      cg.style.left = scale(Math.max(0, res.cashWeightAfter)) + "%";
+      cg.style.width = (scale(res.cashWeight) - scale(Math.max(0, res.cashWeightAfter))) + "%";
+      ct.appendChild(cg);
+    }
+    var ctick = el("div", "tick");
+    ctick.style.left = "-1px";
+    ct.appendChild(ctick);
+    crow.appendChild(ct);
+    crow.appendChild(el("div", "alloc-drift up", signed(res.cashWeight)));
+    box.appendChild(crow);
+  }
+}
+
+function renderTrades(res) {
+  var box = $("trades");
+  var empty = $("plan-empty");
+  var errBox = $("plan-error");
+  box.textContent = "";
+  empty.style.display = "none";
+  errBox.style.display = "none";
+
+  if (!res.ok) {
+    errBox.textContent = res.error;
+    errBox.style.display = "block";
+    return;
+  }
+  if (!res.trades.length) {
+    empty.textContent = "";
+    var b = el("b", null, res.bandsActive && !res.bandBreached ? "全部在容忍带内" : "无需交易");
+    empty.appendChild(b);
+    empty.appendChild(document.createTextNode(
+      res.bandsActive && !res.bandBreached
+        ? "没有标的突破 " + toNum(state.bandAbs, 5) + " 个百分点 / " + toNum(state.bandRel, 25) + "% 相对容忍带,继续持有即可。"
+        : "当前配置已经贴合目标,或没有可用于交易的现金。"
+    ));
+    empty.style.display = "block";
+    return;
+  }
+  res.trades.forEach(function (t) {
+    var row = el("div", "trade");
+    row.setAttribute("data-ticker", t.ticker);
+    row.appendChild(el("div", "coin-l", t.ticker.slice(0, 2)));
+    var nm = el("div", "trade-name", t.ticker);
+    nm.appendChild(el("small", null, "@ " + money(t.price)));
+    row.appendChild(nm);
+    row.appendChild(el("div", "pill trade-action " + t.action, t.action === "buy" ? "买入" : "卖出"));
+    row.appendChild(el("div", "trade-shares", shareStr(t.shares) + " 股"));
+    row.appendChild(el("div", "trade-amount " + (t.action === "buy" ? "up" : "down"),
+      (t.action === "buy" ? "+" : "-") + money(t.amount).replace("-", "")));
+    box.appendChild(row);
+  });
+}
+
+function renderAfter(res) {
+  var body = $("after-body");
+  body.textContent = "";
+  if (!res.ok) return;
+  res.rows.forEach(function (r) {
+    var tr = el("tr", "after-row");
+    tr.setAttribute("data-ticker", r.ticker);
+    var td0 = el("td", "tk");
+    td0.textContent = r.ticker;
+    if (r.band) { var dot = el("span", "band-dot"); dot.title = "已突破容忍带"; td0.appendChild(dot); }
+    tr.appendChild(td0);
+
+    var sh = el("td", "n after-shares");
+    sh.textContent = shareStr(r.newShares);
+    if (Math.abs(r.deltaShares) > EPS) {
+      var sm = el("small", null, " (" + (r.deltaShares > 0 ? "+" : "-") + shareStr(r.deltaShares) + ")");
+      sm.style.color = r.deltaShares > 0 ? "var(--up)" : "var(--down)";
+      sh.appendChild(sm);
+    }
+    tr.appendChild(sh);
+
+    tr.appendChild(el("td", "n after-value", money(r.newValue)));
+
+    var wt = el("td", "n after-weight");
+    var oldw = el("span", "arrow", pct(r.weight));
+    wt.appendChild(oldw);
+    wt.appendChild(el("span", "arrow", "→"));
+    wt.appendChild(document.createTextNode(pct(r.newWeight)));
+    tr.appendChild(wt);
+
+    tr.appendChild(el("td", "n", pct(r.targetPct)));
+    tr.appendChild(el("td", "n after-drift " + (Math.abs(r.newDrift) < 0.05 ? "" : r.newDrift > 0 ? "up" : "down"), signed(r.newDrift, 2)));
+    body.appendChild(tr);
+  });
+}
+
+function renderWarnings(res) {
+  var box = $("warnings");
+  box.textContent = "";
+  (res.warnings || []).forEach(function (w) { box.appendChild(el("div", "warn", w)); });
+}
+
+var MODE_NOTES = {
+  full: "全面再平衡:买入 + 卖出,把每个标的拉到目标权重。",
+  buy: "只买不卖:只用现金买入低配的标的(不产生资本利得税),超配的标的原地不动。",
+  sell: "只卖不买:从超配的标的里卖出,用于「追加 / 提取」填负数时的取现。"
+};
+
+function update() {
+  var res = plan({
+    holdings: state.holdings,
+    cash: state.cash, contribution: state.contribution, reserve: state.reserve,
+    mode: state.mode, wholeShares: state.wholeShares,
+    useBands: state.useBands, bandAbs: state.bandAbs, bandRel: state.bandRel,
+    minTrade: state.minTrade
+  });
+  window.__rbLast = res;
+
+  renderWarnings(res);
+  renderAlloc(res);
+  renderTrades(res);
+  renderAfter(res);
+
+  $("stat-total").textContent = res.ok ? money(res.totalAssets) : "$0.00";
+  $("stat-maxdrift").textContent = res.ok ? pct(res.stats.maxDriftBefore) : "0.0%";
+  $("stat-trades").textContent = res.ok ? res.stats.tradeCount + " 笔" : "0 笔";
+  $("sum-buy").textContent = res.ok ? money(res.stats.buyTotal) : "$0.00";
+  $("sum-sell").textContent = res.ok ? money(res.stats.sellTotal) : "$0.00";
+  $("sum-cash-after").textContent = res.ok ? money(res.cashAfter) : "$0.00";
+  $("sum-turnover").textContent = res.ok ? pct(res.stats.turnover) : "0.0%";
+
+  var imp = $("drift-improve");
+  if (res.ok && res.stats.tradeCount) {
+    imp.textContent = "最大偏离 " + pct(res.stats.maxDriftBefore) + " → " + pct(res.stats.maxDriftAfter) + "。";
+    imp.style.color = "var(--up)";
+  } else { imp.textContent = ""; }
+
+  var sum = state.holdings.reduce(function (s, h) { return s + toNum(h.target); }, 0);
+  var ts = $("target-sum");
+  ts.textContent = "目标合计 " + sum.toFixed(1) + "%";
+  ts.className = "tsum" + (Math.abs(sum - 100) > 0.05 ? " bad" : "");
+
+  $("mode-note").textContent = MODE_NOTES[state.mode];
+  saveState();
+}
+
+var timer = null;
+function schedule() {
+  if (timer) clearTimeout(timer);
+  timer = setTimeout(function () { timer = null; update(); }, 0);
+}
+
+/* ---------------- events ---------------- */
+function syncInputs() {
+  $("cash").value = String(state.cash);
+  $("contribution").value = String(state.contribution);
+  $("reserve").value = String(state.reserve);
+  $("whole-shares").checked = !!state.wholeShares;
+  $("use-bands").checked = !!state.useBands;
+  $("band-abs").value = String(state.bandAbs);
+  $("band-rel").value = String(state.bandRel);
+  $("min-trade").value = String(state.minTrade);
+  ["full", "buy", "sell"].forEach(function (m) {
+    $("mode-" + m).setAttribute("aria-pressed", String(state.mode === m));
+  });
+}
+
+function bind() {
+  [["cash", "cash"], ["contribution", "contribution"], ["reserve", "reserve"],
+   ["band-abs", "bandAbs"], ["band-rel", "bandRel"], ["min-trade", "minTrade"]].forEach(function (p) {
+    $(p[0]).addEventListener("input", function () { state[p[1]] = toNum($(p[0]).value); update(); });
+  });
+  $("whole-shares").addEventListener("change", function () { state.wholeShares = $("whole-shares").checked; update(); });
+  $("use-bands").addEventListener("change", function () { state.useBands = $("use-bands").checked; update(); });
+  ["full", "buy", "sell"].forEach(function (m) {
+    $("mode-" + m).addEventListener("click", function () {
+      state.mode = m;
+      ["full", "buy", "sell"].forEach(function (x) { $("mode-" + x).setAttribute("aria-pressed", String(x === m)); });
+      update();
+    });
+  });
+  $("add-row").addEventListener("click", function () {
+    state.holdings.push(blankRow());
+    renderHoldings(); update();
+    var rows = document.querySelectorAll(".h-row .h-ticker");
+    if (rows.length) rows[rows.length - 1].focus();
+  });
+  $("clear-all").addEventListener("click", function () {
+    state.holdings = [blankRow()];
+    state.cash = 0; state.contribution = 0; state.reserve = 0;
+    renderHoldings(); syncInputs(); update();
+  });
+  $("normalize").addEventListener("click", function () {
+    var sum = state.holdings.reduce(function (s, h) { return s + toNum(h.target); }, 0);
+    if (!(sum > 0)) return;
+    // Largest-remainder apportionment in tenths of a percent. Rounding each weight
+    // on its own misses 100% whenever the split doesn't divide evenly (three equal
+    // holdings would each round to 33.3 and total 99.9).
+    var exact = state.holdings.map(function (h) { return (toNum(h.target) / sum) * 1000; });
+    var tenths = exact.map(function (x) { return Math.floor(x); });
+    var left = Math.round(1000 - tenths.reduce(function (s, x) { return s + x; }, 0));
+    var order = exact.map(function (_, i) { return i; }).sort(function (a, b) {
+      return (exact[b] - tenths[b]) - (exact[a] - tenths[a]) || a - b;
+    });
+    for (var i = 0; i < left && order.length; i++) tenths[order[i % order.length]] += 1;
+    state.holdings.forEach(function (h, i) { h.target = tenths[i] / 10; });
+    renderHoldings(); update();
+  });
+  $("load-sample").addEventListener("click", function () {
+    state = cloneSample();
+    renderHoldings(); syncInputs(); update();
+  });
+  $("import-btn").addEventListener("click", function () {
+    var r = parseImport($("import-text").value);
+    var msg = $("import-msg");
+    if (!r.rows.length) {
+      msg.textContent = r.errors.length ? r.errors[0] : "没有可导入的行。";
+      msg.className = "tsum bad";
+      return;
+    }
+    state.holdings = r.rows.map(function (h) {
+      return { id: nextId(), ticker: h.ticker, shares: h.shares, price: h.price, target: h.target };
+    });
+    msg.textContent = "已导入 " + r.rows.length + " 行" + (r.errors.length ? "," + r.errors.length + " 行被跳过" : "");
+    msg.className = "tsum";
+    renderHoldings(); update();
+  });
+  $("copy-plan").addEventListener("click", function () {
+    var res = window.__rbLast;
+    if (!res || !res.ok) return;
+    var lines = res.trades.map(function (t) {
+      return (t.action === "buy" ? "买入" : "卖出") + " " + t.ticker + " " + shareStr(t.shares) + " 股 @ " + money(t.price) + " = " + money(t.amount);
+    });
+    lines.push("交易后现金 " + money(res.cashAfter));
+    var text = lines.join("\n");
+    var done = function () { $("copy-plan").textContent = "已复制"; setTimeout(function () { $("copy-plan").textContent = "复制"; }, 1200); };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, done);
+    else done();
+  });
+
+  // saved portfolios
+  var sel = $("portfolio-select");
+  $("save-portfolio").addEventListener("click", function () {
+    var name = window.prompt("组合名称", sel.value || "我的组合");
+    if (!name) return;
+    var book = readBook();
+    book[name] = JSON.parse(JSON.stringify(state));
+    writeBook(book);
+    refreshBook(name);
+  });
+  $("delete-portfolio").addEventListener("click", function () {
+    var name = sel.value;
+    if (!name) return;
+    var book = readBook();
+    delete book[name];
+    writeBook(book);
+    refreshBook("");
+  });
+  sel.addEventListener("change", function () {
+    var book = readBook();
+    var s = book[sel.value];
+    if (!s) return;
+    state = JSON.parse(JSON.stringify(s));
+    state.holdings = state.holdings.map(function (h) {
+      return { id: nextId(), ticker: h.ticker, shares: toNum(h.shares), price: toNum(h.price), target: toNum(h.target) };
+    });
+    renderHoldings(); syncInputs(); update();
+  });
+}
+
+function refreshBook(selected) {
+  var sel = $("portfolio-select");
+  var book = readBook();
+  sel.textContent = "";
+  var opt0 = el("option", null, "未保存的组合");
+  opt0.value = "";
+  sel.appendChild(opt0);
+  Object.keys(book).sort().forEach(function (k) {
+    var o = el("option", null, k);
+    o.value = k;
+    sel.appendChild(o);
+  });
+  sel.value = selected || "";
+}
+
+/* ---------------- boot ---------------- */
+state = loadState();
+renderHoldings();
+syncInputs();
+bind();
+refreshBook("");
+update();
+
+window.__rb = { plan: plan, solveLambda: solveLambda, parseImport: parseImport, toNum: toNum };
+</script>
+</body>
+</html>
