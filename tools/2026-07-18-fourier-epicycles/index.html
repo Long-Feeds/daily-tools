@@ -1,0 +1,811 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>傅里叶画圆机 · Epicycle Machine</title>
+<meta name="description" content="画一个闭合图形，用离散傅里叶变换把它拆成一串旋转的圆（本轮），看这些圆的末端把你的图案重新画出来。纯前端、离线、可保存。" />
+<style>
+  /* ===== SpaceX-inspired system: pure black canvas, white uppercase D-DIN,
+     hairline #3a3a3f, ghost pill CTAs, no accent color. The epicycle animation
+     is the "full-bleed photography" — the single bright element against black. ===== */
+  :root{
+    --ink:#000; --night:#000; --night-soft:#0a0a0a;
+    --white:#ffffff; --cool:#f0f0fa; --mute:#9a9aa0; --mute-2:#77777c;
+    --hair:#3a3a3f; --hair-soft:#26262a;
+    --sans:"D-DIN","Arial Narrow",Arial,Verdana,sans-serif;
+    --tnum:"tabular-nums";
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; background:var(--night); color:var(--white);
+    font-family:var(--sans); letter-spacing:.32px;
+    -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
+    overflow:hidden;
+  }
+  a{color:var(--white)}
+  .cap{text-transform:uppercase; letter-spacing:1.4px}
+  .num{font-variant-numeric:tabular-nums}
+
+  .ep-app{ display:grid; grid-template-rows:auto minmax(0,1fr) auto; height:100dvh; }
+
+  /* ---------- nav ---------- */
+  .ep-nav{
+    display:flex; align-items:center; justify-content:space-between; gap:16px;
+    padding:14px 22px; border-bottom:1px solid var(--hair); background:var(--night);
+    position:relative; z-index:6;
+  }
+  .ep-nav-l{ display:flex; align-items:baseline; gap:18px; min-width:0; }
+  .ep-back{
+    font-size:12px; letter-spacing:1.2px; text-transform:uppercase; font-weight:700;
+    text-decoration:none; color:var(--white); border-bottom:1px solid var(--white);
+    padding-bottom:2px; white-space:nowrap; flex:0 0 auto;
+  }
+  .ep-back:hover{ color:var(--cool); border-color:var(--cool); }
+  .ep-wordmark{
+    font-size:12px; letter-spacing:1.8px; text-transform:uppercase; font-weight:700;
+    color:var(--white); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+  .ep-wordmark b{ font-weight:700 } .ep-wordmark span{ color:var(--mute); font-weight:400 }
+  .ep-eyebrow-nav{ font-size:11px; letter-spacing:1.6px; text-transform:uppercase; color:var(--mute); white-space:nowrap; }
+
+  /* ---------- stage ---------- */
+  .ep-stage{ position:relative; overflow:hidden; background:#000; touch-action:none; }
+  #ep-canvas{ position:absolute; inset:0; display:block; }
+  .ep-stage.drawing{ cursor:crosshair; }
+
+  .ep-hud{ position:absolute; top:20px; left:22px; max-width:min(52%,520px); pointer-events:none; z-index:3; }
+  .ep-eyebrow{ font-size:11px; letter-spacing:1.8px; text-transform:uppercase; color:var(--mute); margin:0 0 8px; }
+  .ep-title{ font-size:clamp(30px,5.2vw,58px); line-height:.95; letter-spacing:1.4px;
+    text-transform:uppercase; font-weight:700; margin:0; }
+  .ep-sub{ font-size:13px; line-height:1.55; color:var(--cool); margin:12px 0 0; max-width:40ch; letter-spacing:.3px; }
+
+  .ep-tele{ position:absolute; top:20px; right:22px; z-index:3;
+    border:1px solid var(--hair); background:rgba(10,10,10,.55); backdrop-filter:blur(2px);
+    min-width:190px; }
+  .ep-tele h4{ margin:0; padding:9px 14px; font-size:10.5px; letter-spacing:1.8px; text-transform:uppercase;
+    color:var(--mute); border-bottom:1px solid var(--hair); font-weight:700; }
+  .ep-tele-row{ display:flex; align-items:center; justify-content:space-between; gap:12px;
+    padding:8px 14px; border-bottom:1px solid var(--hair-soft); }
+  .ep-tele-row:last-child{ border-bottom:0 }
+  .ep-tele-k{ font-size:11px; letter-spacing:1.4px; text-transform:uppercase; color:var(--mute); }
+  .ep-tele-v{ font-size:15px; font-weight:700; color:var(--white); font-variant-numeric:tabular-nums; letter-spacing:.4px; }
+
+  .ep-empty{ position:absolute; inset:0; display:none; align-items:center; justify-content:center; text-align:center; z-index:2; }
+  .ep-empty.show{ display:flex }
+  .ep-empty p{ font-size:12px; letter-spacing:1.6px; text-transform:uppercase; color:var(--mute); }
+
+  /* ---------- dock ---------- */
+  .ep-dock{
+    border-top:1px solid var(--hair); background:var(--night-soft);
+    display:flex; flex-wrap:wrap; align-items:flex-end; gap:14px 22px;
+    padding:14px 22px; max-height:46vh; overflow:auto; position:relative; z-index:5;
+  }
+  .ep-group{ display:flex; flex-direction:column; gap:8px; }
+  .ep-group > .ep-glabel{ font-size:10px; letter-spacing:1.6px; text-transform:uppercase; color:var(--mute-2); }
+  .ep-row{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .ep-sep{ width:1px; align-self:stretch; background:var(--hair); margin:0 2px; }
+
+  .ep-btn{
+    appearance:none; background:transparent; color:var(--white);
+    border:1px solid var(--white); border-radius:32px;
+    font-family:var(--sans); font-size:11.5px; font-weight:700; letter-spacing:1.1px; text-transform:uppercase;
+    padding:10px 18px; cursor:pointer; white-space:nowrap; transition:background .12s,color .12s,border-color .12s;
+  }
+  .ep-btn:hover{ background:var(--white); color:#000; }
+  .ep-btn.sec{ border-color:var(--hair); color:var(--cool); }
+  .ep-btn.sec:hover{ border-color:var(--white); background:transparent; color:var(--white); }
+  .ep-btn.on{ background:var(--cool); color:#000; border-color:var(--cool); }
+  .ep-btn.pill-sm{ padding:8px 14px; font-size:11px; }
+
+  .ep-toggle{ display:inline-flex; align-items:center; gap:8px; cursor:pointer; user-select:none;
+    font-size:11px; letter-spacing:1.1px; text-transform:uppercase; color:var(--cool); }
+  .ep-toggle input{ appearance:none; width:34px; height:18px; border:1px solid var(--hair); border-radius:32px;
+    position:relative; background:transparent; cursor:pointer; flex:0 0 auto; transition:border-color .12s; }
+  .ep-toggle input::after{ content:""; position:absolute; top:2px; left:2px; width:12px; height:12px; border-radius:50%;
+    background:var(--mute); transition:left .14s,background .14s; }
+  .ep-toggle input:checked{ border-color:var(--white); }
+  .ep-toggle input:checked::after{ left:18px; background:var(--white); }
+
+  .ep-slider{ display:flex; flex-direction:column; gap:6px; min-width:150px; }
+  .ep-slider .ep-srow{ display:flex; align-items:baseline; justify-content:space-between; gap:10px; }
+  .ep-slider .ep-sname{ font-size:10px; letter-spacing:1.4px; text-transform:uppercase; color:var(--mute-2); }
+  .ep-slider .ep-sval{ font-size:12px; font-weight:700; color:var(--white); font-variant-numeric:tabular-nums; letter-spacing:.4px; }
+  input[type=range]{ appearance:none; -webkit-appearance:none; width:100%; height:2px; background:var(--hair); outline:none; cursor:pointer; }
+  input[type=range]::-webkit-slider-thumb{ -webkit-appearance:none; width:14px; height:14px; border-radius:50%; background:var(--white); border:0; cursor:pointer; }
+  input[type=range]::-moz-range-thumb{ width:14px; height:14px; border-radius:50%; background:var(--white); border:0; cursor:pointer; }
+  #ep-seek{ min-width:220px; }
+
+  .ep-name{ appearance:none; background:transparent; border:1px solid var(--hair); border-radius:4px;
+    color:var(--white); font-family:var(--sans); font-size:12px; letter-spacing:.6px; padding:9px 12px; width:150px; }
+  .ep-name::placeholder{ color:var(--mute-2); text-transform:uppercase; letter-spacing:1px; font-size:11px; }
+  .ep-name:focus{ border-color:var(--white); outline:none; }
+
+  .ep-saved{ display:flex; gap:6px; flex-wrap:wrap; max-width:280px; }
+  .ep-chip{ display:inline-flex; align-items:center; gap:6px; border:1px solid var(--hair); border-radius:32px;
+    padding:6px 8px 6px 12px; font-size:11px; letter-spacing:.8px; text-transform:uppercase; color:var(--cool); }
+  .ep-chip button{ appearance:none; background:transparent; border:0; color:var(--cool); cursor:pointer; font-size:11px; letter-spacing:.8px; text-transform:uppercase; padding:0; }
+  .ep-chip .ep-load{ font-weight:700; color:var(--white); background:transparent; border:0; cursor:pointer; }
+  .ep-chip .ep-del{ width:18px; height:18px; border:1px solid var(--hair); border-radius:50%; line-height:1; }
+  .ep-chip .ep-del:hover{ border-color:var(--white); color:var(--white); }
+  .ep-saved-empty{ font-size:11px; letter-spacing:1px; text-transform:uppercase; color:var(--mute-2); }
+
+  :focus-visible{ outline:2px solid var(--white); outline-offset:2px; }
+
+  @media (max-width:860px){
+    .ep-hud{ max-width:64% }
+    .ep-tele{ min-width:150px }
+    .ep-nav-l .ep-eyebrow-nav{ display:none }
+  }
+  @media (max-width:560px){
+    .ep-tele{ position:static; margin:0; display:none } /* keep stage clean on tiny screens */
+    .ep-hud{ top:14px; left:16px; max-width:88% }
+    .ep-dock{ padding:12px 14px; gap:12px 14px; }
+    .ep-name{ width:120px } .ep-saved{ max-width:100% }
+  }
+</style>
+</head>
+<body>
+<div class="ep-app">
+  <!-- NAV -->
+  <nav class="ep-nav">
+    <div class="ep-nav-l">
+      <a class="ep-back" href="../../">← 返回工具集</a>
+      <span class="ep-wordmark"><b>FOURIER</b> <span>· EPICYCLE MACHINE</span></span>
+    </div>
+    <span class="ep-eyebrow-nav">DISCRETE FOURIER TRANSFORM</span>
+  </nav>
+
+  <!-- STAGE -->
+  <div class="ep-stage" id="ep-stage">
+    <canvas id="ep-canvas"></canvas>
+
+    <div class="ep-hud">
+      <p class="ep-eyebrow">SIGNAL · PERIODIC RECONSTRUCTION</p>
+      <h1 class="ep-title">Drawing<br>Machine</h1>
+      <p class="ep-sub">画一个闭合图形，离散傅里叶变换把它拆成一串旋转的「本轮」——看这些圆的末端把你的图案重新画出来。谐波越多，越接近原形。</p>
+    </div>
+
+    <aside class="ep-tele" aria-label="telemetry">
+      <h4>Telemetry</h4>
+      <div class="ep-tele-row"><span class="ep-tele-k">Terms</span><span class="ep-tele-v num" id="ep-terms">—</span></div>
+      <div class="ep-tele-row"><span class="ep-tele-k">Points</span><span class="ep-tele-v num" id="ep-points">—</span></div>
+      <div class="ep-tele-row"><span class="ep-tele-k">Energy</span><span class="ep-tele-v num" id="ep-energy">—</span></div>
+      <div class="ep-tele-row"><span class="ep-tele-k">Speed</span><span class="ep-tele-v num" id="ep-speed">—</span></div>
+      <div class="ep-tele-row"><span class="ep-tele-k">Status</span><span class="ep-tele-v" id="ep-status">—</span></div>
+    </aside>
+
+    <div class="ep-empty" id="ep-empty"><p>Draw a closed shape — or pick a preset below</p></div>
+  </div>
+
+  <!-- DOCK -->
+  <div class="ep-dock" id="ep-dock">
+    <div class="ep-group">
+      <span class="ep-glabel">Transport</span>
+      <div class="ep-row">
+        <button class="ep-btn" id="ep-play">Pause</button>
+        <button class="ep-btn sec pill-sm" id="ep-restart">Restart</button>
+      </div>
+    </div>
+
+    <div class="ep-sep" aria-hidden="true"></div>
+
+    <div class="ep-group">
+      <span class="ep-glabel">Shape</span>
+      <div class="ep-row" id="ep-presets">
+        <button class="ep-btn sec pill-sm ep-preset" data-preset="heart">Heart</button>
+        <button class="ep-btn sec pill-sm ep-preset" data-preset="star">Star</button>
+        <button class="ep-btn sec pill-sm ep-preset" data-preset="rose">Rose</button>
+        <button class="ep-btn sec pill-sm ep-preset" data-preset="infinity">Infinity</button>
+        <button class="ep-btn sec pill-sm ep-preset" data-preset="square">Square</button>
+        <button class="ep-btn sec pill-sm ep-preset" data-preset="circle">Circle</button>
+      </div>
+    </div>
+
+    <div class="ep-sep" aria-hidden="true"></div>
+
+    <div class="ep-group">
+      <span class="ep-glabel">Input</span>
+      <div class="ep-row">
+        <button class="ep-btn sec pill-sm" id="ep-draw">Draw</button>
+        <button class="ep-btn sec pill-sm" id="ep-clear">Clear</button>
+        <button class="ep-btn sec pill-sm" id="ep-export">PNG</button>
+      </div>
+    </div>
+
+    <div class="ep-sep" aria-hidden="true"></div>
+
+    <div class="ep-group">
+      <span class="ep-glabel">Parameters</span>
+      <div class="ep-row" style="gap:18px">
+        <label class="ep-slider">
+          <span class="ep-srow"><span class="ep-sname">Harmonics</span><span class="ep-sval num" id="ep-harm-val">40</span></span>
+          <input type="range" id="ep-harm" min="1" max="200" value="40" aria-label="谐波数量" />
+        </label>
+        <label class="ep-slider">
+          <span class="ep-srow"><span class="ep-sname">Speed</span><span class="ep-sval num" id="ep-speed-val">0.40×</span></span>
+          <input type="range" id="ep-speed-range" min="5" max="200" value="40" aria-label="动画速度" />
+        </label>
+      </div>
+    </div>
+
+    <div class="ep-sep" aria-hidden="true"></div>
+
+    <div class="ep-group" style="flex:1 1 240px; min-width:220px">
+      <span class="ep-glabel">Seek</span>
+      <div class="ep-row" style="gap:14px">
+        <input type="range" id="ep-seek" min="0" max="1000" value="0" aria-label="进度" />
+        <label class="ep-toggle"><input type="checkbox" id="ep-t-circles" checked /><span>Circles</span></label>
+        <label class="ep-toggle"><input type="checkbox" id="ep-t-path" /><span>Path</span></label>
+      </div>
+    </div>
+
+    <div class="ep-sep" aria-hidden="true"></div>
+
+    <div class="ep-group">
+      <span class="ep-glabel">Library</span>
+      <div class="ep-row">
+        <input class="ep-name" id="ep-name" type="text" placeholder="Name" maxlength="24" aria-label="图案名称" />
+        <button class="ep-btn sec pill-sm" id="ep-save">Save</button>
+      </div>
+      <div class="ep-saved" id="ep-saved"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  var TAU = Math.PI * 2;
+  var LS_KEY = "ep-fourier-drawings-v1";
+  var N_DEFAULT = 200;
+
+  /* ============================================================
+     ENGINE (pure functions — exposed on window.__fourier for tests)
+     ------------------------------------------------------------
+     Samples are complex points p[n] = x + i·y (n = 0..N-1).
+     DFT:  X[k] = (1/N) Σ p[n] · e^(-i·2π·k·n/N)
+     IDFT: p[n] = Σ X[k] · e^(+i·2π·k·n/N)
+     Each component carries a signed frequency (k or k-N) so high-k
+     terms rotate slowly backward — the classic epicycle look — while
+     the reconstruction stays exact at every sample point.
+     ============================================================ */
+
+  // Uniformly resample a closed polyline to N points by arc length.
+  function resample(points, N){
+    if(!points || points.length < 2) return (points||[]).slice();
+    var closed = points.concat([points[0]]);      // close the loop
+    var cum = [0], total = 0, i;
+    for(i = 1; i < closed.length; i++){
+      total += Math.hypot(closed[i].x - closed[i-1].x, closed[i].y - closed[i-1].y);
+      cum.push(total);
+    }
+    if(total === 0){
+      var flat = []; for(i = 0; i < N; i++) flat.push({x:points[0].x, y:points[0].y});
+      return flat;
+    }
+    var out = [];
+    for(i = 0; i < N; i++){
+      var d = total * i / N;                        // sample over [0, total)
+      var lo = 0, hi = cum.length - 1;
+      while(lo < hi){ var mid = (lo + hi + 1) >> 1; if(cum[mid] <= d) lo = mid; else hi = mid - 1; }
+      var j = Math.min(lo, closed.length - 2);
+      var segLen = (cum[j+1] - cum[j]) || 1;
+      var f = (d - cum[j]) / segLen;
+      out.push({
+        x: closed[j].x + (closed[j+1].x - closed[j].x) * f,
+        y: closed[j].y + (closed[j+1].y - closed[j].y) * f
+      });
+    }
+    return out;
+  }
+
+  // Discrete Fourier Transform → array of {freq, amp, phase, re, im, k} in k-order.
+  function dft(pts){
+    var N = pts.length, comps = [], k, n;
+    for(k = 0; k < N; k++){
+      var re = 0, im = 0;
+      for(n = 0; n < N; n++){
+        var a = -TAU * k * n / N;
+        var c = Math.cos(a), s = Math.sin(a);
+        re += pts[n].x * c - pts[n].y * s;
+        im += pts[n].x * s + pts[n].y * c;
+      }
+      re /= N; im /= N;
+      comps.push({
+        freq: (k <= N/2) ? k : k - N,
+        amp: Math.hypot(re, im),
+        phase: Math.atan2(im, re),
+        re: re, im: im, k: k
+      });
+    }
+    return comps;
+  }
+
+  function sortComps(comps){ return comps.slice().sort(function(a,b){ return b.amp - a.amp; }); }
+
+  // Reconstruction from a pre-sorted list: sum of the top-M rotating vectors at time t.
+  function reconFromSorted(sorted, t, M){
+    var lim = Math.min(M, sorted.length), x = 0, y = 0, i;
+    for(i = 0; i < lim; i++){
+      var comp = sorted[i], ang = TAU * comp.freq * t + comp.phase;
+      x += comp.amp * Math.cos(ang);
+      y += comp.amp * Math.sin(ang);
+    }
+    return {x:x, y:y};
+  }
+  function reconstruct(comps, t, M){ return reconFromSorted(sortComps(comps), t, M); }
+
+  // Vertices + circles of the epicycle chain (centers walk from origin to the tip).
+  function chainFromSorted(sorted, t, M){
+    var lim = Math.min(M, sorted.length), x = 0, y = 0, i;
+    var verts = [{x:0, y:0}], circles = [];
+    for(i = 0; i < lim; i++){
+      var comp = sorted[i], ang = TAU * comp.freq * t + comp.phase;
+      var nx = x + comp.amp * Math.cos(ang);
+      var ny = y + comp.amp * Math.sin(ang);
+      circles.push({cx:x, cy:y, r:comp.amp});
+      verts.push({x:nx, y:ny});
+      x = nx; y = ny;
+    }
+    return {verts:verts, circles:circles, tip:{x:x, y:y}};
+  }
+
+  // Share of total signal energy captured by the top-M harmonics (0..100).
+  function energyFromSorted(sorted, M){
+    var tot = 0, i;
+    for(i = 0; i < sorted.length; i++) tot += sorted[i].amp * sorted[i].amp;
+    if(tot === 0) return 0;
+    var lim = Math.min(M, sorted.length), e = 0;
+    for(i = 0; i < lim; i++) e += sorted[i].amp * sorted[i].amp;
+    return e / tot * 100;
+  }
+  function energyCoverage(comps, M){ return energyFromSorted(sortComps(comps), M); }
+
+  // Fit a drawing's bounding box into the canvas with a margin → {s, ox, oy}.
+  function fitTransform(pts, W, H, margin){
+    var minx = Infinity, miny = Infinity, maxx = -Infinity, maxy = -Infinity, i;
+    for(i = 0; i < pts.length; i++){
+      var p = pts[i];
+      if(p.x < minx) minx = p.x; if(p.y < miny) miny = p.y;
+      if(p.x > maxx) maxx = p.x; if(p.y > maxy) maxy = p.y;
+    }
+    var bw = (maxx - minx) || 1, bh = (maxy - miny) || 1;
+    var s = Math.min((W - 2*margin) / bw, (H - 2*margin) / bh);
+    if(!isFinite(s) || s <= 0) s = 1;
+    return { s:s, ox: W/2 - s*(minx+maxx)/2, oy: H/2 - s*(miny+maxy)/2 };
+  }
+
+  /* ---------- presets: return a dense closed point loop (drawing space) ---------- */
+  function paramLoop(fn, steps){
+    var pts = [], i;
+    for(i = 0; i < steps; i++){ pts.push(fn(TAU * i / steps)); }
+    return pts;
+  }
+  var PRESETS = {
+    heart: function(){ return paramLoop(function(t){
+      return { x: 16*Math.pow(Math.sin(t),3),
+               y: -(13*Math.cos(t) - 5*Math.cos(2*t) - 2*Math.cos(3*t) - Math.cos(4*t)) }; }, 360); },
+    infinity: function(){ return paramLoop(function(t){
+      return { x: Math.sin(t), y: Math.sin(t)*Math.cos(t) }; }, 360); },
+    rose: function(){ return paramLoop(function(t){
+      var r = Math.cos(2*t); return { x: r*Math.cos(t), y: r*Math.sin(t) }; }, 480); },
+    circle: function(){ return paramLoop(function(t){
+      return { x: Math.cos(t), y: Math.sin(t) }; }, 240); },
+    star: function(){
+      var v = [], i; for(i = 0; i < 10; i++){
+        var ang = -Math.PI/2 + i*Math.PI/5, R = (i % 2 === 0) ? 1 : 0.42;
+        v.push({ x: R*Math.cos(ang), y: R*Math.sin(ang) });
+      } return v;
+    },
+    square: function(){ return [ {x:-1,y:-1},{x:1,y:-1},{x:1,y:1},{x:-1,y:1} ]; }
+  };
+  function presetPoints(name){ var f = PRESETS[name]; return f ? f() : null; }
+
+  /* ============================================================
+     APP
+     ============================================================ */
+  var canvas = document.getElementById("ep-canvas");
+  var ctx = canvas.getContext("2d");
+  var stage = document.getElementById("ep-stage");
+  var W = 0, H = 0;
+
+  var state = {
+    samples: null,   // resampled point loop (drawing space)
+    comps: null,     // DFT components (k-order)
+    sorted: null,    // components sorted by amplitude desc
+    tf: null,        // view transform
+    N: N_DEFAULT,
+    M: 40,
+    speed: 0.40,     // laps per second at 60fps
+    t: 0,
+    playing: false,
+    trace: [],
+    showCircles: true,
+    showPath: false,
+    drawMode: false,
+    capturing: false,
+    raw: [],
+    preset: null
+  };
+
+  function $(sel){ return document.querySelector(sel); }
+
+  /* ---------- sizing ---------- */
+  function resize(){
+    var r = stage.getBoundingClientRect();
+    W = Math.max(1, Math.floor(r.width));
+    H = Math.max(1, Math.floor(r.height));
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = Math.round(W * dpr);
+    canvas.height = Math.round(H * dpr);
+    canvas.style.width = W + "px";
+    canvas.style.height = H + "px";
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    if(state.samples) state.tf = fitTransform(state.samples, W, H, Math.min(W, H) * 0.15);
+    render();
+  }
+
+  /* ---------- set a drawing (from preset or freehand) ---------- */
+  function setDrawing(rawPts){
+    var N = Math.min(N_DEFAULT, Math.max(8, rawPts.length >= N_DEFAULT ? N_DEFAULT : Math.max(rawPts.length, 8)));
+    state.N = N_DEFAULT;
+    state.samples = resample(rawPts, N_DEFAULT);
+    state.comps = dft(state.samples);
+    state.sorted = sortComps(state.comps);
+    state.tf = fitTransform(state.samples, W, H, Math.min(W, H) * 0.15);
+    state.t = 0;
+    state.trace = [];
+    var harm = $("#ep-harm");
+    harm.max = String(state.samples.length);
+    if(state.M > state.samples.length) state.M = state.samples.length;
+    harm.value = String(state.M);
+    $("#ep-empty").classList.remove("show");
+    updateReadouts();
+    play();
+  }
+
+  /* ---------- transport ---------- */
+  var rafId = null, lastTs = null;
+  function play(){
+    if(!state.sorted) return;
+    state.playing = true;
+    lastTs = null;
+    state.trace = [];
+    $("#ep-play").textContent = "Pause";
+    updateReadouts();
+    if(rafId === null) rafId = requestAnimationFrame(loop);
+  }
+  function pause(){
+    state.playing = false;
+    $("#ep-play").textContent = "Play";
+    updateReadouts();
+  }
+  function togglePlay(){ if(state.playing) pause(); else play(); }
+
+  function loop(ts){
+    rafId = null;
+    if(state.playing && state.sorted){
+      if(lastTs !== null){
+        var dt = Math.min(0.05, (ts - lastTs) / 1000);
+        state.t += state.speed * dt;
+        if(state.t >= 1){ state.t -= Math.floor(state.t); state.trace = []; }
+        state.trace.push(reconFromSorted(state.sorted, state.t, state.M));
+        render();
+        updateSeekUI();
+      }
+      lastTs = ts;
+      rafId = requestAnimationFrame(loop);
+    }
+  }
+
+  // Build the whole trace polyline 0..tEnd (deterministic — used when paused / seeking).
+  function buildTrace(tEnd, steps){
+    if(!state.sorted) return [];
+    var n = Math.max(2, steps | 0), out = [], i;
+    for(i = 0; i <= n; i++) out.push(reconFromSorted(state.sorted, tEnd * i / n, state.M));
+    return out;
+  }
+  function seek(tv){
+    pause();
+    state.t = Math.max(0, Math.min(1, tv));
+    state.trace = buildTrace(state.t, Math.max(64, Math.round(state.t * 640)));
+    render();
+    updateSeekUI();
+  }
+  function updateSeekUI(){ var s = $("#ep-seek"); if(s) s.value = String(Math.round(state.t * 1000)); }
+
+  /* ---------- render ---------- */
+  function map(p){ return [ state.tf.ox + state.tf.s * p.x, state.tf.oy + state.tf.s * p.y ]; }
+
+  function render(){
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0, 0, W, H);
+
+    // freehand pen preview
+    if(state.capturing && state.raw.length){
+      ctx.strokeStyle = "rgba(255,255,255,.9)";
+      ctx.lineWidth = 2; ctx.lineJoin = "round"; ctx.lineCap = "round";
+      ctx.beginPath();
+      for(var i = 0; i < state.raw.length; i++){
+        var p = state.raw[i];
+        if(i) ctx.lineTo(p.x, p.y); else ctx.moveTo(p.x, p.y);
+      }
+      ctx.stroke();
+      return;
+    }
+
+    if(!state.sorted || !state.tf) return;
+
+    // ghost of the original path
+    if(state.showPath && state.samples){
+      ctx.strokeStyle = "rgba(240,240,250,.16)";
+      ctx.lineWidth = 1; ctx.beginPath();
+      for(var g = 0; g < state.samples.length; g++){
+        var m = map(state.samples[g]);
+        if(g) ctx.lineTo(m[0], m[1]); else ctx.moveTo(m[0], m[1]);
+      }
+      ctx.closePath(); ctx.stroke();
+    }
+
+    var ch = chainFromSorted(state.sorted, state.t, state.M);
+
+    // epicycle circles + arms
+    if(state.showCircles){
+      ctx.lineWidth = 1;
+      for(var c = 0; c < ch.circles.length; c++){
+        var circ = ch.circles[c], R = state.tf.s * circ.r;
+        if(R < 0.6) continue;
+        var cc = map({x:circ.cx, y:circ.cy});
+        ctx.strokeStyle = "rgba(122,122,132,.30)";
+        ctx.beginPath(); ctx.arc(cc[0], cc[1], R, 0, TAU); ctx.stroke();
+      }
+      ctx.strokeStyle = "rgba(205,205,215,.55)";
+      ctx.lineWidth = 1; ctx.beginPath();
+      for(var v = 0; v < ch.verts.length; v++){
+        var mv = map(ch.verts[v]);
+        if(v) ctx.lineTo(mv[0], mv[1]); else ctx.moveTo(mv[0], mv[1]);
+      }
+      ctx.stroke();
+    }
+
+    // the trace — the bright "exhaust plume" against black
+    if(state.trace.length > 1){
+      ctx.save();
+      ctx.strokeStyle = "#f0f0fa";
+      ctx.lineWidth = 2; ctx.lineJoin = "round"; ctx.lineCap = "round";
+      ctx.shadowColor = "rgba(240,240,250,.75)";
+      ctx.shadowBlur = 9;
+      ctx.beginPath();
+      for(var tr = 0; tr < state.trace.length; tr++){
+        var mt = map(state.trace[tr]);
+        if(tr) ctx.lineTo(mt[0], mt[1]); else ctx.moveTo(mt[0], mt[1]);
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // tip marker
+    var tip = map(ch.tip);
+    ctx.fillStyle = "#fff";
+    ctx.beginPath(); ctx.arc(tip[0], tip[1], 2.6, 0, TAU); ctx.fill();
+  }
+
+  /* ---------- readouts ---------- */
+  function updateReadouts(){
+    $("#ep-points").textContent = state.samples ? state.samples.length : "—";
+    $("#ep-terms").textContent = state.sorted ? state.M : "—";
+    $("#ep-harm-val").textContent = state.M;
+    $("#ep-energy").textContent = state.sorted ? energyFromSorted(state.sorted, state.M).toFixed(1) + "%" : "—";
+    $("#ep-speed").textContent = state.speed.toFixed(2) + "×";
+    $("#ep-speed-val").textContent = state.speed.toFixed(2) + "×";
+    $("#ep-status").textContent = state.playing ? "RUNNING" : "PAUSED";
+  }
+
+  /* ---------- freehand drawing ---------- */
+  function toLocal(e){
+    var r = canvas.getBoundingClientRect();
+    return { x: e.clientX - r.left, y: e.clientY - r.top };
+  }
+  canvas.addEventListener("pointerdown", function(e){
+    if(!state.drawMode) return;
+    e.preventDefault();
+    state.capturing = true;
+    state.raw = [ toLocal(e) ];
+    try{ canvas.setPointerCapture(e.pointerId); }catch(err){}
+    render();
+  });
+  canvas.addEventListener("pointermove", function(e){
+    if(!state.capturing) return;
+    var p = toLocal(e), last = state.raw[state.raw.length - 1];
+    if(!last || Math.hypot(p.x - last.x, p.y - last.y) >= 2.2){ state.raw.push(p); render(); }
+  });
+  function endStroke(){
+    if(!state.capturing) return;
+    state.capturing = false;
+    var raw = state.raw.slice();
+    state.raw = [];
+    if(raw.length >= 3){
+      setDrawing(raw);
+      setDrawMode(false);
+    } else {
+      render();
+    }
+  }
+  canvas.addEventListener("pointerup", endStroke);
+  canvas.addEventListener("pointercancel", endStroke);
+
+  function setDrawMode(on){
+    state.drawMode = on;
+    stage.classList.toggle("drawing", on);
+    $("#ep-draw").classList.toggle("on", on);
+    if(on){ pause(); }
+  }
+
+  /* ---------- library (localStorage) ---------- */
+  function loadStore(){
+    try{ return JSON.parse(localStorage.getItem(LS_KEY) || "{}") || {}; }
+    catch(err){ return {}; }
+  }
+  function writeStore(obj){
+    try{ localStorage.setItem(LS_KEY, JSON.stringify(obj)); return true; }
+    catch(err){ return false; }
+  }
+  function saveDrawing(name){
+    if(!state.samples) return false;
+    name = (name || "").trim() || ("DRAWING " + (Object.keys(loadStore()).length + 1));
+    var store = loadStore();
+    store[name] = { N: state.samples.length, pts: state.samples.map(function(p){ return {x:+p.x.toFixed(4), y:+p.y.toFixed(4)}; }) };
+    writeStore(store);
+    renderSaved();
+    return name;
+  }
+  function loadDrawing(name){
+    var store = loadStore(), entry = store[name];
+    if(!entry || !entry.pts || entry.pts.length < 3) return false;
+    state.preset = null;
+    highlightPreset(null);
+    setDrawing(entry.pts);
+    return true;
+  }
+  function deleteDrawing(name){
+    var store = loadStore();
+    if(store[name]){ delete store[name]; writeStore(store); renderSaved(); }
+  }
+  function renderSaved(){
+    var wrap = $("#ep-saved");
+    var store = loadStore();
+    var names = Object.keys(store);
+    wrap.textContent = "";
+    if(!names.length){
+      var em = document.createElement("span");
+      em.className = "ep-saved-empty";
+      em.textContent = "No saved drawings";
+      wrap.appendChild(em);
+      return;
+    }
+    names.forEach(function(name){
+      var chip = document.createElement("span");
+      chip.className = "ep-chip";
+      var load = document.createElement("button");
+      load.className = "ep-load"; load.type = "button";
+      load.textContent = name;
+      load.setAttribute("data-name", name);
+      load.addEventListener("click", function(){ loadDrawing(name); });
+      var del = document.createElement("button");
+      del.className = "ep-del"; del.type = "button";
+      del.textContent = "×"; del.setAttribute("aria-label", "delete " + name);
+      del.addEventListener("click", function(){ deleteDrawing(name); });
+      chip.appendChild(load); chip.appendChild(del);
+      wrap.appendChild(chip);
+    });
+  }
+
+  /* ---------- presets UI ---------- */
+  function highlightPreset(name){
+    var btns = document.querySelectorAll(".ep-preset");
+    for(var i = 0; i < btns.length; i++){
+      btns[i].classList.toggle("on", btns[i].getAttribute("data-preset") === name);
+    }
+  }
+  function loadPreset(name){
+    var pts = presetPoints(name);
+    if(!pts) return;
+    state.preset = name;
+    highlightPreset(name);
+    setDrawMode(false);
+    setDrawing(pts);
+  }
+
+  /* ---------- export ---------- */
+  function exportPNG(){
+    if(!state.sorted) return;
+    try{
+      var url = canvas.toDataURL("image/png");
+      var a = document.createElement("a");
+      a.href = url;
+      a.download = "epicycles-" + (state.preset || "drawing") + ".png";
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    }catch(err){}
+  }
+
+  /* ---------- wire controls ---------- */
+  $("#ep-play").addEventListener("click", togglePlay);
+  $("#ep-restart").addEventListener("click", function(){ if(state.sorted){ state.t = 0; play(); } });
+  $("#ep-draw").addEventListener("click", function(){ setDrawMode(!state.drawMode); });
+  $("#ep-clear").addEventListener("click", function(){
+    pause();
+    state.samples = state.comps = state.sorted = state.tf = null;
+    state.trace = []; state.t = 0; state.preset = null;
+    highlightPreset(null);
+    $("#ep-empty").classList.add("show");
+    updateReadouts();
+    render();
+  });
+  $("#ep-export").addEventListener("click", exportPNG);
+
+  document.querySelectorAll(".ep-preset").forEach(function(b){
+    b.addEventListener("click", function(){ loadPreset(b.getAttribute("data-preset")); });
+  });
+
+  $("#ep-harm").addEventListener("input", function(e){
+    state.M = Math.max(1, Math.min(parseInt(e.target.value, 10) || 1, state.samples ? state.samples.length : 200));
+    updateReadouts();
+    if(!state.playing && state.sorted) seek(state.t); else render();
+  });
+  $("#ep-speed-range").addEventListener("input", function(e){
+    state.speed = (parseInt(e.target.value, 10) || 40) / 100;
+    updateReadouts();
+  });
+  $("#ep-seek").addEventListener("input", function(e){
+    seek((parseInt(e.target.value, 10) || 0) / 1000);
+  });
+  $("#ep-t-circles").addEventListener("change", function(e){ state.showCircles = e.target.checked; render(); });
+  $("#ep-t-path").addEventListener("change", function(e){ state.showPath = e.target.checked; render(); });
+
+  $("#ep-save").addEventListener("click", function(){
+    var name = saveDrawing($("#ep-name").value);
+    if(name) $("#ep-name").value = "";
+  });
+  $("#ep-name").addEventListener("keydown", function(e){ if(e.key === "Enter"){ e.preventDefault(); $("#ep-save").click(); } });
+
+  document.addEventListener("keydown", function(e){
+    if(e.target && /^(INPUT|TEXTAREA)$/.test(e.target.tagName)) return;
+    if(e.code === "Space"){ e.preventDefault(); togglePlay(); }
+  });
+
+  window.addEventListener("resize", resize);
+  if(window.ResizeObserver){ new ResizeObserver(resize).observe(stage); }
+
+  /* ---------- expose engine for tests ---------- */
+  window.__fourier = {
+    TAU: TAU,
+    resample: resample,
+    dft: dft,
+    reconstruct: reconstruct,
+    chain: function(comps, t, M){ return chainFromSorted(sortComps(comps), t, M); },
+    energyCoverage: energyCoverage,
+    presetPoints: presetPoints,
+    // live accessors
+    samples: function(){ return state.samples; },
+    comps: function(){ return state.comps; },
+    tipAt: function(t){ return state.sorted ? reconFromSorted(state.sorted, t, state.M) : null; },
+    state: function(){ return { N: state.samples ? state.samples.length : 0, M: state.M, playing: state.playing, t: state.t, hasComps: !!state.sorted, speed: state.speed }; },
+    setM: function(m){ $("#ep-harm").value = String(m); $("#ep-harm").dispatchEvent(new Event("input", {bubbles:true})); },
+    setT: function(t){ seek(t); },
+    loadPreset: loadPreset,
+    saveDrawing: saveDrawing,
+    loadDrawing: loadDrawing,
+    listSaved: function(){ return Object.keys(loadStore()); },
+    clearSaved: function(){ writeStore({}); renderSaved(); }
+  };
+
+  /* ---------- boot ---------- */
+  renderSaved();
+  resize();
+  loadPreset("heart");   // open on an animated epicycle heart
+})();
+</script>
+</body>
+</html>
