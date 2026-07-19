@@ -1,0 +1,886 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>A/B 实验室 · A/B Test Lab</title>
+<meta name="description" content="A/B 实验显著性检验与样本量估算：两比例 z 检验、p 值、置信区间、统计功效，纯本地计算不上传。" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Source+Code+Pro:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+/* ============ PostHog design tokens ============ */
+:root{
+  --primary:#f7a501; --primary-pressed:#dd9001; --on-primary:#23251d;
+  --ink:#23251d; --body:#4d4f46; --charcoal:#33342d; --mute:#6c6e63; --ash:#9b9c92; --stone:#b6b7af;
+  --hairline:#bfc1b7; --hairline-soft:#dcdfd2;
+  --canvas:#eeefe9; --surface-soft:#e5e7e0; --card:#ffffff; --doc:#fcfcfa; --dark:#23251d;
+  --link-teal:#1078a3; --link-blue:#1d4ed8;
+  --blue:#2c84e0; --blue-soft:#dceaf6; --red:#cd4239; --red-soft:#f7d6d3;
+  --green:#2c8c66; --green-soft:#d9eddf; --purple:#7c44a6; --purple-soft:#e7d8ee;
+  --focus:rgba(59,130,246,0.5);
+  --sans:"IBM Plex Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,"PingFang SC","Microsoft YaHei",sans-serif;
+  --mono:"Source Code Pro",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{
+  background:var(--canvas); color:var(--body); font-family:var(--sans);
+  font-size:16px; line-height:1.5; -webkit-font-smoothing:antialiased;
+  text-rendering:optimizeLegibility;
+}
+a{color:var(--link-teal); text-decoration:none}
+a:hover{text-decoration:underline}
+.abt-num{font-family:var(--mono); font-variant-numeric:tabular-nums lining-nums}
+
+/* ============ nav ============ */
+.abt-nav{
+  height:56px; display:flex; align-items:center; gap:16px;
+  padding:0 24px; background:var(--canvas); border-bottom:1px solid var(--hairline);
+  position:sticky; top:0; z-index:20;
+}
+.abt-brand{display:flex; align-items:center; gap:10px; font-weight:700; color:var(--ink); font-size:17px; letter-spacing:-0.3px}
+.abt-brand svg{display:block}
+.abt-nav .abt-spacer{flex:1}
+.abt-back{
+  color:var(--ink); font-weight:600; font-size:14px; padding:8px 12px; border-radius:6px;
+  display:inline-flex; align-items:center; gap:6px;
+}
+.abt-back:hover{background:var(--surface-soft); text-decoration:none}
+
+/* ============ shell ============ */
+.abt-wrap{max-width:1180px; margin:0 auto; padding:28px 24px 64px}
+.abt-eyebrow{font-size:12px; font-weight:700; letter-spacing:0.06em; text-transform:uppercase; color:var(--mute); margin:0 0 8px}
+h1.abt-title{font-size:34px; font-weight:700; line-height:1.15; letter-spacing:-0.8px; color:var(--ink); margin:0 0 8px}
+.abt-title .abt-en{color:var(--ash); font-weight:600}
+.abt-lede{font-size:16px; color:var(--body); margin:0; max-width:64ch}
+
+/* ============ mode tabs ============ */
+.abt-modes{display:inline-flex; gap:4px; margin:22px 0 20px; background:var(--surface-soft); padding:4px; border-radius:8px; border:1px solid var(--hairline-soft)}
+.abt-mode{
+  appearance:none; border:0; background:transparent; cursor:pointer; font-family:inherit;
+  font-size:14px; font-weight:600; color:var(--body); padding:8px 16px; border-radius:6px;
+}
+.abt-mode[aria-selected="true"]{background:var(--card); color:var(--ink); box-shadow:none; border:1px solid var(--hairline)}
+.abt-panel{display:none}
+.abt-panel.abt-on{display:block}
+
+/* ============ layout grid ============ */
+.abt-grid{display:grid; grid-template-columns:minmax(320px,1fr) minmax(360px,1.25fr); gap:20px; align-items:start}
+@media (max-width:900px){ .abt-grid{grid-template-columns:1fr} }
+
+.abt-card{background:var(--card); border:1px solid var(--hairline); border-radius:6px; padding:20px}
+.abt-card + .abt-card{margin-top:16px}
+.abt-card h2{font-size:14px; font-weight:700; letter-spacing:0.05em; text-transform:uppercase; color:var(--mute); margin:0 0 14px}
+.abt-card h2 .abt-sub{text-transform:none; letter-spacing:0; font-weight:500; color:var(--stone); font-size:13px; margin-left:6px}
+
+/* group input blocks (A / B) */
+.abt-groups{display:grid; grid-template-columns:1fr 1fr; gap:14px}
+@media (max-width:460px){ .abt-groups{grid-template-columns:1fr} }
+.abt-grp{border:1px solid var(--hairline); border-radius:6px; padding:14px; background:var(--doc)}
+.abt-grp.abt-a{border-top:3px solid var(--blue)}
+.abt-grp.abt-b{border-top:3px solid var(--purple)}
+.abt-grp .abt-glabel{display:flex; align-items:center; gap:8px; font-weight:700; color:var(--ink); font-size:15px; margin-bottom:4px}
+.abt-dot{width:10px; height:10px; border-radius:2px; display:inline-block}
+.abt-dot.a{background:var(--blue)} .abt-dot.b{background:var(--purple)}
+.abt-grp .abt-rate{font-family:var(--mono); font-size:26px; font-weight:600; color:var(--ink); margin:2px 0 12px; letter-spacing:-0.5px}
+.abt-grp .abt-rate small{font-size:13px; color:var(--mute); font-weight:500; margin-left:4px; letter-spacing:0}
+
+.abt-field{margin-bottom:10px}
+.abt-field:last-child{margin-bottom:0}
+.abt-field label{display:block; font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:0.04em; color:var(--mute); margin-bottom:4px}
+.abt-input{
+  width:100%; height:38px; border:1px solid var(--hairline); border-radius:6px; background:var(--card);
+  color:var(--ink); font-family:var(--mono); font-size:15px; padding:6px 10px; font-variant-numeric:tabular-nums;
+}
+.abt-input:focus{outline:2px solid var(--focus); outline-offset:0; border-color:var(--blue)}
+.abt-input.abt-bad{border-color:var(--red); background:#fff}
+
+/* control rows: pill toggles */
+.abt-ctl{display:flex; flex-wrap:wrap; gap:18px; margin-top:4px}
+.abt-ctl .abt-ctl-lab{font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:0.04em; color:var(--mute); margin-bottom:6px; display:block}
+.abt-pillrow{display:inline-flex; gap:6px; flex-wrap:wrap}
+.abt-pill{
+  appearance:none; border:1px solid var(--hairline); background:transparent; cursor:pointer; font-family:inherit;
+  font-size:13px; font-weight:500; color:var(--body); padding:6px 14px; border-radius:9999px;
+}
+.abt-pill[aria-pressed="true"]{background:var(--ink); color:#fff; border-color:var(--ink)}
+
+/* primary CTA (the ONE yellow moment) */
+.abt-cta-row{display:flex; gap:10px; align-items:center; margin-top:14px; flex-wrap:wrap}
+.abt-primary{
+  appearance:none; border:0; cursor:pointer; font-family:inherit; font-weight:700; font-size:14px;
+  background:var(--primary); color:var(--on-primary); border-radius:9999px; padding:10px 20px; height:40px;
+}
+.abt-primary:active{background:var(--primary-pressed)}
+.abt-primary:disabled{background:var(--surface-soft); color:var(--ash); cursor:not-allowed}
+.abt-name{
+  height:40px; border:1px solid var(--hairline); border-radius:6px; background:var(--card); color:var(--ink);
+  font-family:inherit; font-size:14px; padding:6px 12px; flex:1; min-width:140px;
+}
+.abt-name:focus{outline:2px solid var(--focus); border-color:var(--blue)}
+
+/* verdict callout banner (PostHog callout family) */
+.abt-verdict{border-radius:6px; padding:16px 18px; display:flex; gap:12px; align-items:flex-start; border:1px solid transparent}
+.abt-verdict .abt-vem{font-size:20px; line-height:1.2}
+.abt-verdict .abt-vtxt{flex:1}
+.abt-verdict .abt-vh{font-weight:700; color:var(--ink); font-size:16px; margin:0 0 2px}
+.abt-verdict .abt-vp{font-size:14px; color:var(--charcoal); margin:0}
+.abt-v-green{background:var(--green-soft); border-color:#b9dcc7}
+.abt-v-red{background:var(--red-soft); border-color:#eeb9b4}
+.abt-v-info{background:var(--purple-soft); border-color:#d4bde0}
+.abt-v-blue{background:var(--blue-soft); border-color:#bcd8ee}
+
+/* stat tiles */
+.abt-stats{display:grid; grid-template-columns:1fr 1fr 1fr; gap:1px; background:var(--hairline-soft); border:1px solid var(--hairline-soft); border-radius:6px; overflow:hidden; margin-top:14px}
+@media (max-width:520px){ .abt-stats{grid-template-columns:1fr 1fr} }
+.abt-tile{background:var(--card); padding:12px 14px}
+.abt-tile .abt-tl{font-size:11px; font-weight:700; letter-spacing:0.05em; text-transform:uppercase; color:var(--mute); margin-bottom:4px}
+.abt-tile .abt-tv{font-family:var(--mono); font-size:19px; font-weight:600; color:var(--ink); letter-spacing:-0.3px; font-variant-numeric:tabular-nums}
+.abt-tile .abt-tv small{font-size:12px; color:var(--mute); font-weight:500}
+.abt-tile.abt-hero .abt-tv{color:var(--ink)}
+
+/* dark formula island (signature PostHog moment) */
+.abt-formula{
+  background:var(--dark); color:#e8eae0; border-radius:6px; padding:12px 14px; margin-top:14px;
+  font-family:var(--mono); font-size:13px; line-height:1.7; overflow-x:auto; white-space:nowrap;
+}
+.abt-formula .k{color:#8fc7ff} .abt-formula .n{color:#c9a6e6} .abt-formula .g{color:#8fd6ac} .abt-formula .r{color:#f0a39c}
+.abt-formula .muted{color:var(--stone)}
+
+/* chart */
+.abt-chartwrap{margin-top:2px}
+#abt-chart{display:block; width:100%; height:230px; border-radius:6px}
+.abt-legend{display:flex; gap:18px; margin-top:10px; flex-wrap:wrap; font-size:13px; color:var(--body)}
+.abt-legend span{display:inline-flex; align-items:center; gap:7px}
+.abt-legend i{width:12px; height:12px; border-radius:3px; display:inline-block}
+.abt-cihint{font-size:13px; color:var(--mute); margin-top:8px}
+.abt-cihint b{color:var(--charcoal); font-weight:600}
+
+/* saved experiments */
+.abt-saved{list-style:none; margin:10px 0 0; padding:0; display:flex; flex-direction:column; gap:8px}
+.abt-saved-empty{color:var(--stone); font-size:14px; padding:6px 0}
+.abt-si{display:flex; align-items:center; gap:10px; border:1px solid var(--hairline); border-radius:6px; padding:10px 12px; background:var(--doc)}
+.abt-si .abt-si-main{flex:1; min-width:0}
+.abt-si .abt-si-name{font-weight:600; color:var(--ink); font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.abt-si .abt-si-meta{font-family:var(--mono); font-size:12px; color:var(--mute); margin-top:1px}
+.abt-si .abt-si-badge{font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; padding:2px 8px; border-radius:9999px}
+.abt-badge-win{background:var(--green-soft); color:#1f6b4d}
+.abt-badge-loss{background:var(--red-soft); color:#a3352d}
+.abt-badge-ns{background:var(--surface-soft); color:var(--mute)}
+.abt-mini{appearance:none; border:1px solid var(--hairline); background:var(--card); cursor:pointer; font-family:inherit; font-size:12px; font-weight:600; color:var(--ink); padding:5px 10px; border-radius:6px}
+.abt-mini:hover{background:var(--surface-soft)}
+.abt-mini.abt-danger{color:var(--red)}
+
+/* sample size */
+.abt-ss-out{text-align:left}
+.abt-ss-hero{font-family:var(--mono); font-size:44px; font-weight:700; color:var(--ink); letter-spacing:-1.5px; line-height:1; margin:2px 0 2px}
+.abt-ss-hero small{font-size:15px; color:var(--mute); font-weight:500; letter-spacing:0}
+.abt-ss-sub{font-size:14px; color:var(--body); margin:0 0 14px}
+.abt-ss-rows{border-top:1px solid var(--hairline-soft); margin-top:6px}
+.abt-ss-row{display:flex; justify-content:space-between; align-items:baseline; padding:10px 0; border-bottom:1px solid var(--hairline-soft); font-size:14px}
+.abt-ss-row .abt-k{color:var(--mute)}
+.abt-ss-row .abt-vv{font-family:var(--mono); font-weight:600; color:var(--ink); font-variant-numeric:tabular-nums}
+
+.abt-note{font-size:13px; color:var(--mute); margin-top:14px; line-height:1.6}
+.abt-help{font-size:12.5px; color:var(--mute); margin-top:6px; line-height:1.55}
+
+/* footer */
+.abt-foot{border-top:1px solid var(--hairline); margin-top:40px; padding:22px 24px; color:var(--mute); font-size:13px; display:flex; align-items:center; gap:10px; justify-content:center; text-align:center; flex-wrap:wrap}
+.abt-foot svg{opacity:.9}
+</style>
+</head>
+<body>
+
+<nav class="abt-nav">
+  <a class="abt-back" href="../../">← 返回工具集</a>
+  <div class="abt-spacer"></div>
+  <div class="abt-brand">
+    <!-- flat hedgehog-with-flask mascot (PostHog signature decoration) -->
+    <svg width="30" height="26" viewBox="0 0 60 52" aria-hidden="true" role="img">
+      <g fill="none" stroke="#23251d" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round">
+        <path d="M8 40 Q2 30 12 24 Q10 14 20 13 Q24 5 33 9 Q46 6 50 18 Q60 24 50 34 Q52 42 42 43 L16 43 Q9 44 8 40 Z" fill="#e5e7e0"/>
+      </g>
+      <!-- spikes -->
+      <g stroke="#6c6e63" stroke-width="2" stroke-linecap="round">
+        <path d="M18 15 l-4 -7"/><path d="M25 12 l-2 -8"/><path d="M33 11 l1 -8"/><path d="M41 13 l4 -7"/><path d="M48 19 l7 -4"/>
+      </g>
+      <circle cx="14.5" cy="33" r="2.2" fill="#23251d"/>
+      <circle cx="10" cy="35.5" r="1.4" fill="#23251d"/>
+      <!-- flask -->
+      <g>
+        <path d="M40 30 l0 5 -5 8 q-1 3 2 3 l10 0 q3 0 2 -3 l-5 -8 0 -5 z" fill="#fff" stroke="#23251d" stroke-width="2" stroke-linejoin="round"/>
+        <path d="M37 43 q5 -2 12 0 l-2.5 3 q-1 2 -3 2 l-2 0 q-2 0 -3 -2 z" fill="#f7a501"/>
+      </g>
+    </svg>
+    A/B Lab
+  </div>
+</nav>
+
+<main class="abt-wrap">
+  <p class="abt-eyebrow">EXPERIMENTATION · 统计显著性</p>
+  <h1 class="abt-title">A/B 实验室 <span class="abt-en">· A/B Test Lab</span></h1>
+  <p class="abt-lede">两比例 z 检验，判断实验组是否真的更好，还是只是随机波动；再反过来算「要跑多少样本」。全程在你浏览器里计算，数据不上传。</p>
+
+  <div class="abt-modes" role="tablist" aria-label="模式">
+    <button class="abt-mode" id="abt-tab-analyze" role="tab" aria-selected="true" aria-controls="abt-panel-analyze" data-mode="analyze">显著性分析</button>
+    <button class="abt-mode" id="abt-tab-size" role="tab" aria-selected="false" aria-controls="abt-panel-size" data-mode="size">样本量估算</button>
+  </div>
+
+  <!-- ============ ANALYZE PANEL ============ -->
+  <section class="abt-panel abt-on" id="abt-panel-analyze" role="tabpanel" aria-labelledby="abt-tab-analyze">
+    <div class="abt-grid">
+      <!-- left: inputs -->
+      <div>
+        <div class="abt-card">
+          <h2>输入实验结果 <span class="abt-sub">访客数与转化数</span></h2>
+          <div class="abt-groups">
+            <div class="abt-grp abt-a">
+              <div class="abt-glabel"><span class="abt-dot a"></span>对照组 A</div>
+              <div class="abt-rate"><span id="abt-rate-a">10.00%</span><small>转化率</small></div>
+              <div class="abt-field">
+                <label for="abt-na">访客数</label>
+                <input class="abt-input" id="abt-na" type="number" min="0" step="1" inputmode="numeric" value="1000" />
+              </div>
+              <div class="abt-field">
+                <label for="abt-xa">转化数</label>
+                <input class="abt-input" id="abt-xa" type="number" min="0" step="1" inputmode="numeric" value="100" />
+              </div>
+            </div>
+            <div class="abt-grp abt-b">
+              <div class="abt-glabel"><span class="abt-dot b"></span>实验组 B</div>
+              <div class="abt-rate"><span id="abt-rate-b">13.00%</span><small>转化率</small></div>
+              <div class="abt-field">
+                <label for="abt-nb">访客数</label>
+                <input class="abt-input" id="abt-nb" type="number" min="0" step="1" inputmode="numeric" value="1000" />
+              </div>
+              <div class="abt-field">
+                <label for="abt-xb">转化数</label>
+                <input class="abt-input" id="abt-xb" type="number" min="0" step="1" inputmode="numeric" value="130" />
+              </div>
+            </div>
+          </div>
+
+          <div class="abt-ctl">
+            <div>
+              <span class="abt-ctl-lab">置信水平</span>
+              <div class="abt-pillrow" id="abt-conf" role="group" aria-label="置信水平">
+                <button class="abt-pill abt-conf" data-val="90" aria-pressed="false">90%</button>
+                <button class="abt-pill abt-conf" data-val="95" aria-pressed="true">95%</button>
+                <button class="abt-pill abt-conf" data-val="99" aria-pressed="false">99%</button>
+              </div>
+            </div>
+            <div>
+              <span class="abt-ctl-lab">检验方向</span>
+              <div class="abt-pillrow" id="abt-dir" role="group" aria-label="检验方向">
+                <button class="abt-pill abt-dir" data-val="two" aria-pressed="true">双侧</button>
+                <button class="abt-pill abt-dir" data-val="one" aria-pressed="false">单侧 (B&gt;A)</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="abt-cta-row">
+            <input class="abt-name" id="abt-exp-name" type="text" maxlength="40" placeholder="给这个实验起个名，如「结账页改版」" />
+            <button class="abt-primary" id="abt-save">保存实验</button>
+          </div>
+          <p class="abt-help">保存后可在下方「已存实验」里随时载回对比。</p>
+        </div>
+
+        <div class="abt-card">
+          <h2>已存实验 <span class="abt-sub">本地保存</span></h2>
+          <ul class="abt-saved" id="abt-saved"></ul>
+        </div>
+      </div>
+
+      <!-- right: results -->
+      <div>
+        <div class="abt-card" id="abt-out">
+          <div class="abt-verdict abt-v-green" id="abt-verdict">
+            <div class="abt-vem" id="abt-vem">✅</div>
+            <div class="abt-vtxt">
+              <p class="abt-vh" id="abt-vh">B 显著胜出</p>
+              <p class="abt-vp" id="abt-vp">占位</p>
+            </div>
+          </div>
+
+          <div class="abt-stats">
+            <div class="abt-tile abt-hero"><div class="abt-tl">相对提升</div><div class="abt-tv" id="abt-stat-uplift">+30.0%</div></div>
+            <div class="abt-tile"><div class="abt-tl">P 值</div><div class="abt-tv" id="abt-stat-p">0.0355</div></div>
+            <div class="abt-tile"><div class="abt-tl">Z 统计量</div><div class="abt-tv" id="abt-stat-z">2.10</div></div>
+            <div class="abt-tile"><div class="abt-tl">绝对差</div><div class="abt-tv" id="abt-stat-diff">+3.00<small> pp</small></div></div>
+            <div class="abt-tile"><div class="abt-tl">差值 95% 置信区间</div><div class="abt-tv" id="abt-stat-ci">0.2 ~ 5.8<small> pp</small></div></div>
+            <div class="abt-tile"><div class="abt-tl">统计功效</div><div class="abt-tv" id="abt-stat-power">56%</div></div>
+          </div>
+
+          <div class="abt-formula" id="abt-formula"></div>
+        </div>
+
+        <div class="abt-card">
+          <h2>抽样分布 <span class="abt-sub">两组转化率的估计分布</span></h2>
+          <div class="abt-chartwrap">
+            <canvas id="abt-chart" width="800" height="460"></canvas>
+          </div>
+          <div class="abt-legend">
+            <span><i style="background:#2c84e0"></i>A 对照 <b class="abt-num" id="abt-leg-a" style="margin-left:4px">10.00%</b></span>
+            <span><i style="background:#7c44a6"></i>B 实验 <b class="abt-num" id="abt-leg-b" style="margin-left:4px">13.00%</b></span>
+          </div>
+          <p class="abt-cihint" id="abt-cihint"></p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ SAMPLE SIZE PANEL ============ -->
+  <section class="abt-panel" id="abt-panel-size" role="tabpanel" aria-labelledby="abt-tab-size">
+    <div class="abt-grid">
+      <div>
+        <div class="abt-card">
+          <h2>实验规划 <span class="abt-sub">开跑前先算样本量</span></h2>
+          <div class="abt-field">
+            <label for="abt-base">基线转化率（对照组预期）</label>
+            <div style="display:flex; align-items:center; gap:8px">
+              <input class="abt-input" id="abt-base" type="number" min="0.01" max="99.99" step="0.1" value="10" style="max-width:130px" />
+              <span style="color:var(--mute); font-family:var(--mono)">%</span>
+            </div>
+          </div>
+
+          <div class="abt-field" style="margin-top:14px">
+            <label>最小可检测效应 (MDE)</label>
+            <div class="abt-pillrow" id="abt-mdetype" role="group" aria-label="MDE 类型" style="margin-bottom:8px">
+              <button class="abt-pill abt-mdetype" data-val="rel" aria-pressed="true">相对 %</button>
+              <button class="abt-pill abt-mdetype" data-val="abs" aria-pressed="false">绝对 pp</button>
+            </div>
+            <div style="display:flex; align-items:center; gap:8px">
+              <input class="abt-input" id="abt-mde" type="number" min="0.1" step="0.5" value="20" style="max-width:130px" />
+              <span style="color:var(--mute); font-family:var(--mono)" id="abt-mde-unit">%</span>
+            </div>
+            <p class="abt-help" id="abt-mde-help">要能可靠检测出「相对提升 ≥ 20%」，即 B 至少到 12.00%。</p>
+          </div>
+
+          <div class="abt-ctl" style="margin-top:16px">
+            <div>
+              <span class="abt-ctl-lab">置信水平</span>
+              <div class="abt-pillrow" id="abt-ssconf" role="group" aria-label="置信水平">
+                <button class="abt-pill abt-ssconf" data-val="90" aria-pressed="false">90%</button>
+                <button class="abt-pill abt-ssconf" data-val="95" aria-pressed="true">95%</button>
+                <button class="abt-pill abt-ssconf" data-val="99" aria-pressed="false">99%</button>
+              </div>
+            </div>
+            <div>
+              <span class="abt-ctl-lab">统计功效</span>
+              <div class="abt-pillrow" id="abt-sspow" role="group" aria-label="统计功效">
+                <button class="abt-pill abt-sspow" data-val="80" aria-pressed="true">80%</button>
+                <button class="abt-pill abt-sspow" data-val="90" aria-pressed="false">90%</button>
+                <button class="abt-pill abt-sspow" data-val="95" aria-pressed="false">95%</button>
+              </div>
+            </div>
+            <div>
+              <span class="abt-ctl-lab">检验方向</span>
+              <div class="abt-pillrow" id="abt-ssdir" role="group" aria-label="检验方向">
+                <button class="abt-pill abt-ssdir" data-val="two" aria-pressed="true">双侧</button>
+                <button class="abt-pill abt-ssdir" data-val="one" aria-pressed="false">单侧</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="abt-field" style="margin-top:16px">
+            <label for="abt-traffic">每日进入实验的总访客（可选，用于估算天数）</label>
+            <input class="abt-input" id="abt-traffic" type="number" min="0" step="1" value="1000" style="max-width:180px" />
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="abt-card">
+          <h2>所需样本量</h2>
+          <div class="abt-ss-out" id="abt-ss-out">
+            <div class="abt-ss-hero"><span id="abt-ss-n">3841</span><small> / 每组</small></div>
+            <p class="abt-ss-sub" id="abt-ss-sub">对照组与实验组各需约这么多访客。</p>
+            <div class="abt-ss-rows">
+              <div class="abt-ss-row"><span class="abt-k">两组合计</span><span class="abt-vv" id="abt-ss-total">7,682</span></div>
+              <div class="abt-ss-row"><span class="abt-k">基线 → 目标转化率</span><span class="abt-vv" id="abt-ss-p2">10.00% → 12.00%</span></div>
+              <div class="abt-ss-row"><span class="abt-k">预计运行天数</span><span class="abt-vv" id="abt-ss-days">≈ 8 天</span></div>
+            </div>
+          </div>
+          <div class="abt-verdict abt-v-blue" style="margin-top:16px">
+            <div class="abt-vem">💡</div>
+            <div class="abt-vtxt">
+              <p class="abt-vh" style="font-size:15px">越小的效应越贵</p>
+              <p class="abt-vp" id="abt-ss-tip">想检测更小的提升、或想要更高的功效/置信度，所需样本量会快速上升（约与 MDE 的平方成反比）。</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="abt-foot">
+  <svg width="20" height="18" viewBox="0 0 60 52" aria-hidden="true"><path d="M8 40 Q2 30 12 24 Q10 14 20 13 Q24 5 33 9 Q46 6 50 18 Q60 24 50 34 Q52 42 42 43 L16 43 Q9 44 8 40 Z" fill="#e5e7e0" stroke="#bfc1b7" stroke-width="2"/><circle cx="14.5" cy="33" r="2" fill="#6c6e63"/></svg>
+  纯前端 · 两比例 z 检验 + 样本量公式 · 数据只在本地浏览器计算，绝不上传 · 设计语言：PostHog
+</footer>
+
+<script>
+"use strict";
+// =================================================================
+// <<<ENGINE  (pure, deterministic statistics — extracted for offline validation)
+const Stat = (function () {
+  // erf via Abramowitz & Stegun 7.1.26 (|error| <= 1.5e-7)
+  function erf(x) {
+    var s = x < 0 ? -1 : 1; x = Math.abs(x);
+    var t = 1 / (1 + 0.3275911 * x);
+    var y = 1 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-x * x);
+    return s * y;
+  }
+  // standard normal CDF
+  function normCdf(z) { return 0.5 * (1 + erf(z / Math.SQRT2)); }
+  // inverse standard normal CDF — Acklam's rational approximation (|rel err| ~1e-9)
+  function normInv(p) {
+    if (p <= 0) return -Infinity;
+    if (p >= 1) return Infinity;
+    var a = [-3.969683028665376e1, 2.209460984245205e2, -2.759285104469687e2, 1.38357751867269e2, -3.066479806614716e1, 2.506628277459239e0];
+    var b = [-5.447609879822406e1, 1.615858368580409e2, -1.556989798598866e2, 6.680131188771972e1, -1.328068155288572e1];
+    var c = [-7.784894002430293e-3, -3.223964580411365e-1, -2.400758277161838e0, -2.549732539343734e0, 4.374664141464968e0, 2.938163982698783e0];
+    var d = [7.784695709041462e-3, 3.224671290700398e-1, 2.445134137142996e0, 3.754408661907416e0];
+    var plow = 0.02425, phigh = 1 - plow, q, r, x;
+    if (p < plow) {
+      q = Math.sqrt(-2 * Math.log(p));
+      x = (((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) / ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1);
+    } else if (p <= phigh) {
+      q = p - 0.5; r = q * q;
+      x = (((((a[0] * r + a[1]) * r + a[2]) * r + a[3]) * r + a[4]) * r + a[5]) * q / (((((b[0] * r + b[1]) * r + b[2]) * r + b[3]) * r + b[4]) * r + 1);
+    } else {
+      q = Math.sqrt(-2 * Math.log(1 - p));
+      x = -(((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) / ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1);
+    }
+    // one Halley refinement step for extra accuracy
+    var e = normCdf(x) - p;
+    var u = e * Math.sqrt(2 * Math.PI) * Math.exp(x * x / 2);
+    x = x - u / (1 + x * u / 2);
+    return x;
+  }
+  // normal pdf (for chart)
+  function normPdf(x, mu, sigma) {
+    var z = (x - mu) / sigma;
+    return Math.exp(-0.5 * z * z) / (sigma * Math.sqrt(2 * Math.PI));
+  }
+
+  // Two-proportion z-test.
+  // dir: 'two' | 'one' (one-sided tests B>A, i.e. upper tail).
+  // Returns rates, signed z, p-value, unpooled CI for (pB-pA) at given conf, and post-hoc power.
+  function analyze(nA, xA, nB, xB, conf, dir) {
+    var alpha = 1 - conf / 100;
+    var pA = nA > 0 ? xA / nA : 0;
+    var pB = nB > 0 ? xB / nB : 0;
+    var diff = pB - pA;
+    var pPool = (nA + nB) > 0 ? (xA + xB) / (nA + nB) : 0;
+    var se0 = Math.sqrt(pPool * (1 - pPool) * (1 / nA + 1 / nB)); // null (pooled) SE
+    var se1 = Math.sqrt(pA * (1 - pA) / nA + pB * (1 - pB) / nB);  // alt (unpooled) SE
+    var z = se0 > 0 ? diff / se0 : 0;
+    var p;
+    if (dir === 'one') p = 1 - normCdf(z);          // H1: B > A
+    else p = 2 * (1 - normCdf(Math.abs(z)));         // two-sided
+    if (p > 1) p = 1; if (p < 0) p = 0;
+    var zcrit = dir === 'one' ? normInv(1 - alpha) : normInv(1 - alpha / 2);
+    var margin = zcrit * se1;
+    var ciLow = diff - margin, ciHigh = diff + margin;
+    // post-hoc power
+    var power;
+    if (se1 > 0) {
+      if (dir === 'one') power = normCdf((diff - zcrit * se0) / se1);
+      else power = normCdf((Math.abs(diff) - zcrit * se0) / se1);
+    } else power = 0;
+    if (power < 0) power = 0; if (power > 1) power = 1;
+    var significant = p < alpha;
+    var verdict; // 'win' | 'loss' | 'ns'
+    if (!significant) verdict = 'ns';
+    else if (diff > 0) verdict = 'win';
+    else verdict = 'loss';
+    if (dir === 'one' && significant) verdict = 'win'; // one-sided only detects B>A
+    return {
+      pA: pA, pB: pB, diff: diff, rel: pA > 0 ? diff / pA : (diff === 0 ? 0 : Infinity),
+      z: z, p: p, alpha: alpha, zcrit: zcrit, se0: se0, se1: se1,
+      ciLow: ciLow, ciHigh: ciHigh, power: power, significant: significant, verdict: verdict
+    };
+  }
+
+  // Required sample size PER GROUP (equal allocation), two-proportion test.
+  // p1 baseline, p2 target; conf %, power %; dir 'two'|'one'.
+  function sampleSize(p1, p2, conf, power, dir) {
+    var alpha = 1 - conf / 100;
+    var za = dir === 'one' ? normInv(1 - alpha) : normInv(1 - alpha / 2);
+    var zb = normInv(power / 100);
+    var pbar = (p1 + p2) / 2;
+    var delta = Math.abs(p2 - p1);
+    if (delta <= 0) return Infinity;
+    var t = za * Math.sqrt(2 * pbar * (1 - pbar)) + zb * Math.sqrt(p1 * (1 - p1) + p2 * (1 - p2));
+    return Math.ceil((t * t) / (delta * delta));
+  }
+
+  return { erf: erf, normCdf: normCdf, normInv: normInv, normPdf: normPdf, analyze: analyze, sampleSize: sampleSize };
+})();
+// ENGINE>>>
+// =================================================================
+
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var LS_KEY = 'abtestlab.v1';
+  var nonce = 0;
+  var lastR = null;
+
+  // ---------- number formatting ----------
+  function fmtPct(x, dp) { if (!isFinite(x)) return '—'; return (x * 100).toFixed(dp == null ? 2 : dp) + '%'; }
+  function fmtPP(x, dp) { if (!isFinite(x)) return '—'; var v = x * 100; return (v >= 0 ? '+' : '') + v.toFixed(dp == null ? 2 : dp); }
+  function fmtP(p) {
+    if (!isFinite(p)) return '—';
+    if (p < 0.0001) return '< 0.0001';
+    return p.toFixed(4);
+  }
+  function fmtRel(r) {
+    if (!isFinite(r)) return '—';
+    return (r >= 0 ? '+' : '') + (r * 100).toFixed(1) + '%';
+  }
+  function fmtInt(n) { return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
+
+  // ---------- pill helpers ----------
+  function pillValue(groupId) {
+    var el = document.querySelector('#' + groupId + ' [aria-pressed="true"]');
+    return el ? el.getAttribute('data-val') : null;
+  }
+  function bindPills(groupId, onChange) {
+    var g = $(groupId);
+    g.addEventListener('click', function (e) {
+      var b = e.target.closest('.abt-pill'); if (!b || !g.contains(b)) return;
+      Array.prototype.forEach.call(g.querySelectorAll('.abt-pill'), function (p) { p.setAttribute('aria-pressed', p === b ? 'true' : 'false'); });
+      onChange();
+    });
+  }
+
+  // ---------- ANALYZE ----------
+  var out = $('abt-out');
+  function readNum(id) { var v = parseFloat($(id).value); return isNaN(v) ? NaN : v; }
+
+  function validateAnalyze() {
+    var ok = true;
+    [['abt-na', 'abt-xa'], ['abt-nb', 'abt-xb']].forEach(function (pair) {
+      var n = readNum(pair[0]), x = readNum(pair[1]);
+      var badN = !(n >= 1) || Math.floor(n) !== n;
+      var badX = !(x >= 0) || Math.floor(x) !== x || (isFinite(n) && x > n);
+      $(pair[0]).classList.toggle('abt-bad', badN);
+      $(pair[1]).classList.toggle('abt-bad', badX);
+      if (badN || badX) ok = false;
+    });
+    return ok;
+  }
+
+  function setVerdict(kind, emoji, head, para) {
+    var v = $('abt-verdict');
+    v.className = 'abt-verdict ' + kind;
+    $('abt-vem').textContent = emoji;
+    $('abt-vh').textContent = head;
+    $('abt-vp').textContent = para;
+  }
+
+  function computeAnalyze() {
+    nonce++;
+    var conf = parseInt(pillValue('abt-conf'), 10);
+    var dir = pillValue('abt-dir');
+    var nA = readNum('abt-na'), xA = readNum('abt-xa'), nB = readNum('abt-nb'), xB = readNum('abt-xb');
+    var valid = validateAnalyze();
+
+    out.dataset.nonce = String(nonce);
+    out.dataset.na = isFinite(nA) ? String(nA) : '';
+    out.dataset.nb = isFinite(nB) ? String(nB) : '';
+    out.dataset.xa = isFinite(xA) ? String(xA) : '';
+    out.dataset.xb = isFinite(xB) ? String(xB) : '';
+    out.dataset.conf = String(conf);
+    out.dataset.dir = dir;
+
+    if (!valid) {
+      out.dataset.valid = '0';
+      $('abt-rate-a').textContent = isFinite(nA) && isFinite(xA) && nA > 0 ? fmtPct(xA / nA) : '—';
+      $('abt-rate-b').textContent = isFinite(nB) && isFinite(xB) && nB > 0 ? fmtPct(xB / nB) : '—';
+      setVerdict('abt-v-blue', '📋', '请完善输入', '每组访客数需为 ≥1 的整数，转化数为 0…访客数 之间的整数。');
+      ['abt-stat-uplift', 'abt-stat-p', 'abt-stat-z', 'abt-stat-diff', 'abt-stat-ci', 'abt-stat-power'].forEach(function (id) { $(id).textContent = '—'; });
+      $('abt-formula').innerHTML = '<span class="muted">// 修正输入后自动计算</span>';
+      $('abt-cihint').textContent = '';
+      drawChart(null);
+      return;
+    }
+
+    var r = Stat.analyze(nA, xA, nB, xB, conf, dir);
+    out.dataset.valid = '1';
+    out.dataset.z = r.z.toFixed(6);
+    out.dataset.p = r.p.toFixed(8);
+    out.dataset.uplift = isFinite(r.rel) ? r.rel.toFixed(6) : 'inf';
+    out.dataset.diff = r.diff.toFixed(6);
+    out.dataset.cilow = r.ciLow.toFixed(6);
+    out.dataset.cihigh = r.ciHigh.toFixed(6);
+    out.dataset.power = r.power.toFixed(6);
+    out.dataset.ratea = r.pA.toFixed(6);
+    out.dataset.rateb = r.pB.toFixed(6);
+    out.dataset.verdict = r.verdict;
+    out.dataset.significant = r.significant ? '1' : '0';
+
+    $('abt-rate-a').textContent = fmtPct(r.pA);
+    $('abt-rate-b').textContent = fmtPct(r.pB);
+    $('abt-leg-a').textContent = fmtPct(r.pA);
+    $('abt-leg-b').textContent = fmtPct(r.pB);
+
+    $('abt-stat-uplift').textContent = fmtRel(r.rel);
+    $('abt-stat-p').textContent = fmtP(r.p);
+    $('abt-stat-z').textContent = (r.z >= 0 ? '+' : '') + r.z.toFixed(2);
+    $('abt-stat-diff').innerHTML = fmtPP(r.diff) + '<small> pp</small>';
+    $('abt-stat-ci').innerHTML = fmtPP(r.ciLow) + ' ~ ' + fmtPP(r.ciHigh) + '<small> pp</small>';
+    $('abt-stat-power').textContent = Math.round(r.power * 100) + '%';
+
+    // stat-ci label reflects chosen confidence
+    var ciTile = $('abt-stat-ci').parentElement.querySelector('.abt-tl');
+    if (ciTile) ciTile.textContent = '差值 ' + conf + '% 置信区间';
+
+    // verdict
+    var relTxt = isFinite(r.rel) ? fmtRel(r.rel) : '不适用';
+    if (r.verdict === 'win') {
+      setVerdict('abt-v-green', '✅', 'B 显著胜出（' + conf + '% 置信）',
+        '在 α = ' + r.alpha.toFixed(2) + ' 下 p = ' + fmtP(r.p) + ' < α，差异不太可能是随机波动。B 相对 A 提升 ' + relTxt + '。');
+    } else if (r.verdict === 'loss') {
+      setVerdict('abt-v-red', '⚠️', 'B 显著更差（' + conf + '% 置信）',
+        'p = ' + fmtP(r.p) + ' < α = ' + r.alpha.toFixed(2) + '，但方向是负的：B 比 A 低 ' + fmtRel(-r.rel) + '。建议保留 A。');
+    } else {
+      setVerdict('abt-v-info', '📘', '尚不显著 · 证据不足',
+        'p = ' + fmtP(r.p) + ' ≥ α = ' + r.alpha.toFixed(2) + '。当前差异可能只是随机波动，还不能下结论——继续收集样本，或到「样本量估算」看看还需多少量。');
+    }
+
+    // dark formula island
+    var pooled = (xA + xB) / (nA + nB);
+    $('abt-formula').innerHTML =
+      '<span class="muted">// 两比例 z 检验（' + (dir === 'one' ? '单侧' : '双侧') + '）</span><br>' +
+      '<span class="k">p̂_A</span> = ' + (r.pA).toFixed(4) + '   <span class="k">p̂_B</span> = ' + (r.pB).toFixed(4) +
+      '   <span class="muted">pooled</span> = ' + pooled.toFixed(4) + '<br>' +
+      '<span class="k">z</span> = (p̂_B − p̂_A) / SE = <span class="n">' + (r.z >= 0 ? '+' : '') + r.z.toFixed(3) + '</span>' +
+      '   <span class="k">p</span> = <span class="' + (r.significant ? 'g' : 'r') + '">' + fmtP(r.p) + '</span> ' +
+      '<span class="muted">(α = ' + r.alpha.toFixed(2) + ')</span>';
+
+    // CI hint
+    var incl0 = r.ciLow <= 0 && r.ciHigh >= 0;
+    $('abt-cihint').innerHTML = '差值的 ' + conf + '% 置信区间为 <b>[' + fmtPP(r.ciLow) + ', ' + fmtPP(r.ciHigh) + '] pp</b>，' +
+      (incl0 ? '<b>包含 0</b> → 与「无差异」不矛盾。' : '<b>不含 0</b> → 与显著性一致。');
+
+    drawChart(r);
+  }
+
+  // ---------- chart ----------
+  var canvas = $('abt-chart');
+  function drawChart(r) {
+    lastR = r;
+    var ctx = canvas.getContext('2d');
+    var dpr = window.devicePixelRatio || 1;
+    var cssW = canvas.clientWidth || 760, cssH = 230;
+    if (canvas.width !== Math.round(cssW * dpr) || canvas.height !== Math.round(cssH * dpr)) {
+      canvas.width = Math.round(cssW * dpr); canvas.height = Math.round(cssH * dpr);
+    }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, cssW, cssH);
+    // frame
+    var padL = 12, padR = 12, padT = 14, padB = 30;
+    var w = cssW - padL - padR, h = cssH - padT - padB;
+    if (!r || !(r.se1 >= 0)) {
+      ctx.fillStyle = '#9b9c92'; ctx.font = '13px "Source Code Pro",monospace';
+      ctx.textAlign = 'center'; ctx.fillText('输入有效数据后显示分布', cssW / 2, cssH / 2);
+      canvas.dataset.drawn = String(nonce); return;
+    }
+    var sigA = Math.sqrt(Math.max(r.pA * (1 - r.pA) / (parseFloat(out.dataset.na)), 1e-9));
+    var sigB = Math.sqrt(Math.max(r.pB * (1 - r.pB) / (parseFloat(out.dataset.nb)), 1e-9));
+    var lo = Math.min(r.pA - 4 * sigA, r.pB - 4 * sigB);
+    var hi = Math.max(r.pA + 4 * sigA, r.pB + 4 * sigB);
+    if (hi - lo < 1e-6) { lo -= 0.01; hi += 0.01; }
+    lo = Math.max(0, lo); hi = Math.min(1, hi === lo ? lo + 0.01 : hi);
+    var X = function (v) { return padL + (v - lo) / (hi - lo) * w; };
+    var N = 160;
+    var peak = 0, i, x, ya, yb;
+    for (i = 0; i <= N; i++) { x = lo + (hi - lo) * i / N; peak = Math.max(peak, Stat.normPdf(x, r.pA, sigA), Stat.normPdf(x, r.pB, sigB)); }
+    var Y = function (d) { return padT + h - (d / peak) * h; };
+
+    // baseline
+    ctx.strokeStyle = '#dcdfd2'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(padL, padT + h + 0.5); ctx.lineTo(padL + w, padT + h + 0.5); ctx.stroke();
+    // x ticks (%)
+    ctx.fillStyle = '#9b9c92'; ctx.font = '11px "Source Code Pro",monospace'; ctx.textAlign = 'center';
+    var ticks = 5;
+    for (i = 0; i <= ticks; i++) {
+      var tv = lo + (hi - lo) * i / ticks;
+      ctx.fillText((tv * 100).toFixed(1) + '%', X(tv), padT + h + 18);
+      ctx.strokeStyle = '#eef0e8'; ctx.beginPath(); ctx.moveTo(X(tv), padT); ctx.lineTo(X(tv), padT + h); ctx.stroke();
+    }
+
+    function curve(mu, sig, stroke, fill) {
+      ctx.beginPath();
+      for (i = 0; i <= N; i++) { x = lo + (hi - lo) * i / N; var px = X(x), py = Y(Stat.normPdf(x, mu, sig)); if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py); }
+      ctx.lineTo(X(hi), padT + h); ctx.lineTo(X(lo), padT + h); ctx.closePath();
+      ctx.fillStyle = fill; ctx.fill();
+      ctx.beginPath();
+      for (i = 0; i <= N; i++) { x = lo + (hi - lo) * i / N; var px2 = X(x), py2 = Y(Stat.normPdf(x, mu, sig)); if (i === 0) ctx.moveTo(px2, py2); else ctx.lineTo(px2, py2); }
+      ctx.strokeStyle = stroke; ctx.lineWidth = 2; ctx.stroke();
+      // mean line
+      ctx.strokeStyle = stroke; ctx.setLineDash([4, 4]); ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(X(mu), Y(Stat.normPdf(mu, mu, sig))); ctx.lineTo(X(mu), padT + h); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    curve(r.pA, sigA, '#2c84e0', 'rgba(44,132,224,0.16)');
+    curve(r.pB, sigB, '#7c44a6', 'rgba(124,68,166,0.16)');
+    canvas.dataset.drawn = String(nonce);
+  }
+
+  // ---------- saved experiments ----------
+  function loadSaved() { try { return JSON.parse(localStorage.getItem(LS_KEY) || '[]'); } catch (e) { return []; } }
+  function persist(list) { try { localStorage.setItem(LS_KEY, JSON.stringify(list)); } catch (e) {} }
+  function renderSaved() {
+    var list = loadSaved(), ul = $('abt-saved');
+    ul.innerHTML = '';
+    if (!list.length) { var li = document.createElement('li'); li.className = 'abt-saved-empty'; li.textContent = '还没有保存的实验。填好数据、点「保存实验」。'; ul.appendChild(li); return; }
+    list.forEach(function (item, idx) {
+      var li = document.createElement('li'); li.className = 'abt-si'; li.setAttribute('data-idx', String(idx));
+      var badgeCls = item.verdict === 'win' ? 'abt-badge-win' : item.verdict === 'loss' ? 'abt-badge-loss' : 'abt-badge-ns';
+      var badgeTxt = item.verdict === 'win' ? '胜出' : item.verdict === 'loss' ? '更差' : '未定';
+      var main = document.createElement('div'); main.className = 'abt-si-main';
+      var nm = document.createElement('div'); nm.className = 'abt-si-name'; nm.textContent = item.name || '未命名实验';
+      var meta = document.createElement('div'); meta.className = 'abt-si-meta';
+      meta.textContent = 'A ' + item.xA + '/' + item.nA + ' · B ' + item.xB + '/' + item.nB + ' · p=' + (item.p != null ? fmtP(item.p) : '—');
+      main.appendChild(nm); main.appendChild(meta);
+      var badge = document.createElement('span'); badge.className = 'abt-si-badge ' + badgeCls; badge.textContent = badgeTxt;
+      var load = document.createElement('button'); load.className = 'abt-mini abt-load'; load.textContent = '载入'; load.setAttribute('data-idx', String(idx));
+      var del = document.createElement('button'); del.className = 'abt-mini abt-danger abt-del'; del.textContent = '删除'; del.setAttribute('data-idx', String(idx));
+      li.appendChild(main); li.appendChild(badge); li.appendChild(load); li.appendChild(del);
+      ul.appendChild(li);
+    });
+  }
+  function saveCurrent() {
+    if (out.dataset.valid !== '1') return;
+    var list = loadSaved();
+    var name = ($('abt-exp-name').value || '').trim() || ('实验 ' + (list.length + 1));
+    list.unshift({
+      name: name,
+      nA: parseInt(out.dataset.na, 10), xA: parseInt(out.dataset.xa, 10),
+      nB: parseInt(out.dataset.nb, 10), xB: parseInt(out.dataset.xb, 10),
+      conf: parseInt(out.dataset.conf, 10), dir: out.dataset.dir,
+      p: parseFloat(out.dataset.p), verdict: out.dataset.verdict
+    });
+    if (list.length > 50) list = list.slice(0, 50);
+    persist(list); renderSaved();
+    $('abt-exp-name').value = '';
+  }
+  $('abt-saved').addEventListener('click', function (e) {
+    var b = e.target.closest('button'); if (!b) return;
+    var idx = parseInt(b.getAttribute('data-idx'), 10);
+    var list = loadSaved(); if (isNaN(idx) || !list[idx]) return;
+    if (b.classList.contains('abt-del')) { list.splice(idx, 1); persist(list); renderSaved(); return; }
+    if (b.classList.contains('abt-load')) {
+      var it = list[idx];
+      $('abt-na').value = it.nA; $('abt-xa').value = it.xA; $('abt-nb').value = it.nB; $('abt-xb').value = it.xB;
+      setPill('abt-conf', String(it.conf)); setPill('abt-dir', it.dir || 'two');
+      computeAnalyze();
+      window.scrollTo({ top: 0, behavior: 'auto' });
+    }
+  });
+  function setPill(groupId, val) {
+    Array.prototype.forEach.call($(groupId).querySelectorAll('.abt-pill'), function (p) {
+      p.setAttribute('aria-pressed', p.getAttribute('data-val') === val ? 'true' : 'false');
+    });
+  }
+
+  // ---------- SAMPLE SIZE ----------
+  var ssOut = $('abt-ss-out');
+  function computeSize() {
+    nonce++;
+    var base = readNum('abt-base');
+    var mde = readNum('abt-mde');
+    var mtype = pillValue('abt-mdetype');
+    var conf = parseInt(pillValue('abt-ssconf'), 10);
+    var power = parseInt(pillValue('abt-sspow'), 10);
+    var dir = pillValue('abt-ssdir');
+    var traffic = readNum('abt-traffic');
+
+    var p1 = base / 100;
+    var p2;
+    if (mtype === 'rel') p2 = p1 * (1 + mde / 100);
+    else p2 = p1 + mde / 100;
+
+    // unit label + help
+    $('abt-mde-unit').textContent = mtype === 'rel' ? '%' : 'pp';
+    var validIn = (base > 0 && base < 100 && mde > 0 && p2 > 0 && p2 < 1 && isFinite(p1) && isFinite(p2));
+
+    ssOut.dataset.nonce = String(nonce);
+    ssOut.dataset.base = isFinite(base) ? String(base) : '';
+    ssOut.dataset.mde = isFinite(mde) ? String(mde) : '';
+    ssOut.dataset.conf = String(conf); ssOut.dataset.power = String(power); ssOut.dataset.dir = dir;
+
+    if (!validIn) {
+      ssOut.dataset.valid = '0';
+      $('abt-ss-n').textContent = '—';
+      $('abt-ss-total').textContent = '—';
+      $('abt-ss-p2').textContent = '—';
+      $('abt-ss-days').textContent = '—';
+      $('abt-mde-help').textContent = '请输入 0–100 之间的基线，且目标转化率需落在 0–100% 之间。';
+      $('abt-ss-sub').textContent = '输入有效参数后计算。';
+      return;
+    }
+
+    var n = Stat.sampleSize(p1, p2, conf, power, dir);
+    var total = n * 2;
+    ssOut.dataset.valid = '1';
+    ssOut.dataset.n = String(n);
+    ssOut.dataset.total = String(total);
+    ssOut.dataset.p2 = p2.toFixed(6);
+
+    $('abt-ss-n').textContent = fmtInt(n);
+    $('abt-ss-total').textContent = fmtInt(total);
+    $('abt-ss-p2').textContent = fmtPct(p1) + ' → ' + fmtPct(p2);
+    $('abt-mde-help').textContent = '要能可靠检测出「' + (mtype === 'rel' ? '相对提升 ≥ ' + mde + '%' : '绝对提升 ≥ ' + mde + ' pp') + '」，即 B 至少到 ' + fmtPct(p2) + '。';
+
+    if (traffic > 0) {
+      var days = Math.ceil(total / traffic);
+      ssOut.dataset.days = String(days);
+      $('abt-ss-days').textContent = '≈ ' + fmtInt(days) + ' 天';
+    } else {
+      ssOut.dataset.days = '';
+      $('abt-ss-days').textContent = '填入每日访客后估算';
+    }
+    $('abt-ss-tip').textContent = '想检测更小的提升、或要更高的功效/置信度，样本量会快速上升（约与 MDE 的平方成反比）。当前每组 ' + fmtInt(n) + '，合计 ' + fmtInt(total) + '。';
+  }
+
+  // ---------- mode tabs ----------
+  function switchMode(mode) {
+    ['analyze', 'size'].forEach(function (m) {
+      var on = m === mode;
+      $('abt-tab-' + m).setAttribute('aria-selected', on ? 'true' : 'false');
+      $('abt-panel-' + m).classList.toggle('abt-on', on);
+    });
+    if (mode === 'analyze') { computeAnalyze(); }
+    else computeSize();
+  }
+  Array.prototype.forEach.call(document.querySelectorAll('.abt-mode'), function (b) {
+    b.addEventListener('click', function () { switchMode(b.getAttribute('data-mode')); });
+  });
+
+  // ---------- wire up ----------
+  ['abt-na', 'abt-xa', 'abt-nb', 'abt-xb'].forEach(function (id) { $(id).addEventListener('input', computeAnalyze); });
+  bindPills('abt-conf', computeAnalyze);
+  bindPills('abt-dir', computeAnalyze);
+  $('abt-save').addEventListener('click', saveCurrent);
+  $('abt-exp-name').addEventListener('keydown', function (e) { if (e.key === 'Enter') saveCurrent(); });
+
+  ['abt-base', 'abt-mde', 'abt-traffic'].forEach(function (id) { $(id).addEventListener('input', computeSize); });
+  bindPills('abt-mdetype', computeSize);
+  bindPills('abt-ssconf', computeSize);
+  bindPills('abt-sspow', computeSize);
+  bindPills('abt-ssdir', computeSize);
+
+  window.addEventListener('resize', function () { if ($('abt-panel-analyze').classList.contains('abt-on')) drawChart(lastR); });
+
+  renderSaved();
+  computeAnalyze();
+  computeSize();
+})();
+</script>
+</body>
+</html>
