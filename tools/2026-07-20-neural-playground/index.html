@@ -1,0 +1,1498 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>神经网络游乐场 · Neural Playground</title>
+<meta name="description" content="在浏览器里从零训练一个神经网络：自研前向传播与反向传播引擎，实时可见决策边界、每个神经元学到的特征、损失曲线。纯前端，数据不上传。" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+/* ============ IBM / Carbon Design System tokens ============ */
+:root{
+  --blue:#0f62fe; --blue-hover:#0050e6; --blue-60:#0043ce; --blue-80:#002d9c;
+  --ink:#161616; --ink-muted:#525252; --ink-subtle:#8c8c8c;
+  --canvas:#ffffff; --surface-1:#f4f4f4; --surface-2:#e0e0e0;
+  --hairline:#e0e0e0; --hairline-strong:#161616;
+  --inverse:#161616; --inverse-1:#262626; --inverse-ink:#ffffff; --inverse-muted:#c6c6c6;
+  --green:#24a148; --yellow:#f1c21b; --red:#da1e28;
+  /* the only two data colours: Carbon blue 60 vs magenta 60 */
+  --pos:#0f62fe; --neg:#d12771;
+  --sans:'IBM Plex Sans','Helvetica Neue',Arial,'PingFang SC','Microsoft YaHei',sans-serif;
+  --mono:'IBM Plex Mono',ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box}
+[hidden]{display:none !important}   /* author display rules would otherwise beat the UA sheet */
+html{color-scheme:light}
+body{
+  margin:0; background:var(--canvas); color:var(--ink); font-family:var(--sans);
+  font-size:16px; line-height:1.5; letter-spacing:0.16px;
+  -webkit-font-smoothing:antialiased;
+}
+h1,h2,h3,p,dl,dd,dt,figure{margin:0}
+button,input,select{font-family:inherit}
+:focus-visible{outline:2px solid var(--blue); outline-offset:-2px}
+
+/* ---------- chrome ---------- */
+.np-utility{
+  height:32px; background:var(--surface-1); border-bottom:1px solid var(--hairline);
+  display:flex; align-items:center; justify-content:space-between; gap:16px;
+  padding:0 24px; font-size:12px; line-height:1.33; letter-spacing:0.32px; color:var(--ink-muted);
+}
+.np-utility span:last-child{color:var(--ink-subtle)}
+.np-nav{
+  height:48px; background:var(--canvas); border-bottom:1px solid var(--hairline);
+  display:flex; align-items:center; gap:24px; padding:0 24px;
+}
+.np-back{color:var(--blue); text-decoration:none; font-size:14px; line-height:1.29; letter-spacing:0.16px}
+.np-back:hover{color:var(--blue-60); text-decoration:underline}
+.np-brand{font-size:14px; font-weight:600; letter-spacing:0.16px}
+.np-brand em{font-style:normal; font-weight:400; color:var(--ink-subtle); margin-left:8px}
+
+/* ---------- hero ---------- */
+.np-hero{padding:28px 24px 20px; max-width:1120px}
+.np-hero h1{font-size:clamp(28px,3.7vw,42px); font-weight:300; line-height:1.17; letter-spacing:-0.5px}
+.np-hero p{margin-top:10px; font-size:17px; line-height:1.5; letter-spacing:0; color:var(--ink-muted); max-width:70ch}
+
+/* ---------- control strip ---------- */
+.np-strip{
+  border-top:1px solid var(--hairline); border-bottom:1px solid var(--hairline);
+  background:var(--surface-1); display:flex; flex-wrap:wrap; align-items:flex-end; gap:16px;
+  padding:12px 24px;
+}
+.np-transport{display:flex; gap:1px}
+.np-btn{
+  appearance:none; border:0; border-radius:0; background:var(--surface-2); color:var(--ink);
+  font-size:14px; line-height:1.29; letter-spacing:0.16px; padding:11px 16px; cursor:pointer;
+  display:inline-flex; align-items:center; gap:8px; min-height:40px; white-space:nowrap;
+  transition:background 70ms linear, color 70ms linear;
+}
+.np-btn:hover{background:#d1d1d1}
+.np-btn--primary{background:var(--blue); color:#fff}
+.np-btn--primary:hover{background:var(--blue-hover)}
+.np-btn--primary:active{background:var(--blue-80)}
+.np-btn--dark{background:var(--ink); color:#fff}
+.np-btn--dark:hover{background:#393939}
+.np-btn--tertiary{background:transparent; color:var(--blue); box-shadow:inset 0 0 0 1px var(--blue)}
+.np-btn--tertiary:hover{background:var(--blue); color:#fff}
+.np-btn--ghost{background:transparent; color:var(--blue); padding:11px 12px}
+.np-btn--ghost:hover{background:var(--surface-2)}
+.np-btn[disabled]{background:var(--surface-2); color:#c6c6c6; cursor:not-allowed; box-shadow:none}
+.np-btn:focus-visible{outline:2px solid var(--blue); outline-offset:-4px}
+
+.np-field{display:flex; flex-direction:column; gap:4px; min-width:0}
+.np-field > span{font-size:12px; line-height:1.33; letter-spacing:0.32px; color:var(--ink-muted)}
+.np-select,.np-input{
+  appearance:none; border:0; border-bottom:1px solid var(--ink-subtle); border-radius:0;
+  background:var(--surface-2); color:var(--ink); font-size:14px; letter-spacing:0.16px;
+  padding:9px 12px; min-height:40px;
+}
+.np-select{padding-right:30px; background-image:linear-gradient(45deg,transparent 50%,var(--ink) 50%),linear-gradient(135deg,var(--ink) 50%,transparent 50%); background-position:calc(100% - 15px) 18px,calc(100% - 10px) 18px; background-size:5px 5px,5px 5px; background-repeat:no-repeat}
+.np-select:focus,.np-input:focus{outline:2px solid var(--blue); outline-offset:-2px; border-bottom-color:var(--hairline-strong)}
+.np-input{width:88px; font-family:var(--mono); font-variant-numeric:tabular-nums}
+
+.np-metrics{display:flex; margin-left:auto; border-left:1px solid var(--hairline)}
+.np-metrics > div{padding:2px 20px; border-right:1px solid var(--hairline); min-width:108px}
+.np-metrics dt{font-size:12px; line-height:1.33; letter-spacing:0.32px; color:var(--ink-muted)}
+.np-metrics dd{font-family:var(--mono); font-size:20px; font-weight:500; line-height:1.3; font-variant-numeric:tabular-nums}
+.np-metrics dd.np-acc{color:var(--blue)}
+
+/* ---------- workspace grid ---------- */
+.np-grid{display:grid; grid-template-columns:268px minmax(0,1fr) 424px; border-bottom:1px solid var(--hairline)}
+.np-pane{padding:20px 24px 24px; border-right:1px solid var(--hairline); min-width:0}
+.np-pane:last-child{border-right:0}
+.np-h{font-size:14px; font-weight:600; line-height:1.29; letter-spacing:0.16px}
+.np-sub{font-size:12px; line-height:1.33; letter-spacing:0.32px; color:var(--ink-subtle); margin-top:2px}
+.np-block{margin-top:24px}
+.np-block:first-child{margin-top:0}
+
+/* dataset + feature tiles */
+.np-tiles{display:grid; grid-template-columns:repeat(2,1fr); gap:8px; margin-top:12px}
+.np-tile{
+  appearance:none; border:0; border-radius:0; background:var(--canvas); cursor:pointer; padding:8px;
+  display:flex; flex-direction:column; align-items:center; gap:6px;
+  box-shadow:inset 0 0 0 1px var(--hairline); color:var(--ink-muted);
+  font-size:12px; letter-spacing:0.32px; transition:box-shadow 70ms linear, color 70ms linear;
+}
+.np-tile:hover{box-shadow:inset 0 0 0 1px var(--ink-subtle)}
+.np-tile[aria-pressed="true"]{box-shadow:inset 0 0 0 2px var(--blue); color:var(--ink); font-weight:600}
+.np-tile canvas{display:block; width:56px; height:56px; background:var(--surface-1)}
+.np-feats{display:grid; grid-template-columns:repeat(auto-fill,minmax(66px,1fr)); gap:8px; margin-top:12px}
+.np-feats .np-tile canvas{width:40px; height:40px; image-rendering:pixelated}
+.np-feats .np-tile{padding:6px}
+
+.np-slider{margin-top:16px}
+.np-slider .np-lab{display:flex; justify-content:space-between; align-items:baseline; font-size:12px; letter-spacing:0.32px; color:var(--ink-muted)}
+.np-slider .np-val{font-family:var(--mono); color:var(--ink); font-variant-numeric:tabular-nums}
+.np-range{appearance:none; width:100%; height:20px; background:transparent; margin:0; cursor:pointer}
+.np-range::-webkit-slider-runnable-track{height:2px; background:var(--surface-2)}
+.np-range::-webkit-slider-thumb{appearance:none; width:14px; height:14px; margin-top:-6px; border-radius:50%; background:var(--ink)}
+.np-range::-moz-range-track{height:2px; background:var(--surface-2)}
+.np-range::-moz-range-thumb{width:14px; height:14px; border:0; border-radius:50%; background:var(--ink)}
+.np-range:focus-visible{outline:2px solid var(--blue); outline-offset:2px}
+
+/* network diagram */
+.np-netbar{display:flex; align-items:center; gap:8px; margin-top:12px; flex-wrap:wrap}
+.np-stepper{display:flex; align-items:center; background:var(--canvas); box-shadow:inset 0 0 0 1px var(--hairline)}
+.np-stepper button{
+  appearance:none; border:0; background:transparent; cursor:pointer; width:32px; height:32px;
+  font-size:16px; line-height:1; color:var(--blue);
+}
+.np-stepper button:hover{background:var(--surface-1)}
+.np-stepper button[disabled]{color:#c6c6c6; cursor:not-allowed; background:transparent}
+.np-stepper span{min-width:104px; text-align:center; font-size:12px; letter-spacing:0.32px; color:var(--ink-muted)}
+.np-netscroll{overflow-x:auto; margin-top:16px; padding-bottom:4px}
+.np-net{position:relative; display:flex; align-items:flex-start; gap:clamp(28px,5vw,64px); min-height:212px; min-width:min-content; padding:24px 4px 8px}
+.np-edges{position:absolute; inset:0; width:100%; height:100%; pointer-events:none; overflow:visible}
+.np-col{display:flex; flex-direction:column; align-items:center; gap:12px; position:relative; z-index:1}
+.np-collab{font-size:12px; letter-spacing:0.32px; color:var(--ink-subtle); white-space:nowrap; height:16px}
+.np-node{
+  appearance:none; border:0; border-radius:0; padding:0; background:var(--surface-1); cursor:pointer;
+  width:48px; height:48px; display:block; box-shadow:inset 0 0 0 1px var(--hairline);
+  position:relative; transition:box-shadow 70ms linear;
+}
+.np-node canvas{display:block; width:100%; height:100%; image-rendering:pixelated}
+.np-node:hover{box-shadow:inset 0 0 0 1px var(--ink)}
+.np-node.np-sel{box-shadow:inset 0 0 0 2px var(--blue), 0 0 0 2px #fff}
+.np-node--out{width:60px; height:60px}
+.np-nodelab{font-size:12px; letter-spacing:0.32px; color:var(--ink-subtle); white-space:nowrap}
+.np-caption{margin-top:12px; font-size:12px; line-height:1.33; letter-spacing:0.32px; color:var(--ink-subtle)}
+
+/* output pane */
+.np-stage{position:relative; margin-top:12px; background:var(--surface-1); box-shadow:inset 0 0 0 1px var(--hairline)}
+.np-stage canvas{display:block; width:100%; height:auto; aspect-ratio:1/1}
+.np-viewbar{display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:8px; min-height:32px}
+.np-viewlabel{font-size:12px; letter-spacing:0.32px; color:var(--ink-muted)}
+.np-viewlabel b{font-weight:600; color:var(--ink)}
+.np-legend{display:flex; gap:16px; align-items:center; margin-top:12px; font-size:12px; letter-spacing:0.32px; color:var(--ink-muted); flex-wrap:wrap}
+.np-legend i{display:inline-block; width:12px; height:12px; margin-right:6px; vertical-align:-1px}
+.np-check{display:inline-flex; align-items:center; gap:8px; font-size:12px; letter-spacing:0.32px; color:var(--ink-muted); cursor:pointer}
+.np-check input{appearance:none; width:16px; height:16px; margin:0; border:1px solid var(--ink); background:var(--canvas); cursor:pointer; position:relative; border-radius:0}
+.np-check input:checked{background:var(--ink)}
+.np-check input:checked::after{content:""; position:absolute; left:4px; top:0px; width:5px; height:10px; border:solid #fff; border-width:0 2px 2px 0; transform:rotate(45deg)}
+.np-check input:focus-visible{outline:2px solid var(--blue); outline-offset:2px}
+.np-curvewrap{margin-top:20px}
+.np-curve{display:block; width:100%; height:96px; background:var(--surface-1); box-shadow:inset 0 0 0 1px var(--hairline)}
+
+/* saved band */
+.np-band{background:var(--surface-1); border-bottom:1px solid var(--hairline); padding:24px}
+.np-saverow{display:flex; gap:8px; align-items:flex-end; flex-wrap:wrap; margin-top:12px}
+.np-saverow .np-input{width:220px; font-family:var(--sans)}
+.np-cards{display:grid; grid-template-columns:repeat(auto-fill,minmax(248px,1fr)); gap:1px; margin-top:16px; background:var(--hairline)}
+.np-card{background:var(--canvas); padding:16px; display:flex; flex-direction:column; gap:8px}
+.np-card h3{font-size:14px; font-weight:600; letter-spacing:0.16px; word-break:break-word}
+.np-card p{font-size:12px; line-height:1.33; letter-spacing:0.32px; color:var(--ink-muted); font-family:var(--mono)}
+.np-card div{display:flex; gap:4px; margin-top:auto}
+.np-empty{font-size:14px; letter-spacing:0.16px; color:var(--ink-subtle); margin-top:16px}
+
+/* notes */
+.np-notes{padding:48px 24px; max-width:1120px}
+.np-notes h2{font-size:32px; font-weight:400; line-height:1.25; letter-spacing:0}
+.np-notecols{display:grid; grid-template-columns:repeat(auto-fit,minmax(248px,1fr)); gap:1px; margin-top:24px; background:var(--hairline); border:1px solid var(--hairline)}
+.np-note{background:var(--canvas); padding:24px}
+.np-note h3{font-size:14px; font-weight:600; letter-spacing:0.16px}
+.np-note p{margin-top:8px; font-size:14px; line-height:1.5; letter-spacing:0.16px; color:var(--ink-muted)}
+.np-note code{font-family:var(--mono); font-size:13px; color:var(--ink); background:var(--surface-1); padding:1px 4px}
+
+/* footer */
+.np-footer{background:var(--inverse); color:var(--inverse-muted); padding:48px 24px; font-size:14px; letter-spacing:0.16px}
+.np-footer strong{display:block; color:var(--inverse-ink); font-weight:400; font-size:20px; margin-bottom:8px}
+.np-footer a{color:#78a9ff; text-decoration:none}
+.np-footer a:hover{text-decoration:underline}
+
+@media (max-width:1180px){
+  .np-grid{grid-template-columns:268px minmax(0,1fr)}
+  .np-pane--out{grid-column:1 / -1; border-top:1px solid var(--hairline); border-right:0}
+  .np-pane--out .np-outcols{display:grid; grid-template-columns:minmax(0,424px) minmax(0,1fr); gap:24px; align-items:start}
+}
+@media (max-width:760px){
+  .np-grid{grid-template-columns:1fr}
+  .np-pane{border-right:0; border-top:1px solid var(--hairline)}
+  .np-pane:first-child{border-top:0}
+  .np-pane--out .np-outcols{grid-template-columns:1fr}
+  .np-metrics{margin-left:0; border-left:0; flex-wrap:wrap}
+  .np-metrics > div{padding-left:0}
+  .np-utility{padding:0 16px} .np-nav{padding:0 16px} .np-hero{padding:24px 16px}
+  .np-strip{padding:12px 16px} .np-pane{padding:16px} .np-band{padding:16px} .np-notes{padding:32px 16px}
+}
+</style>
+</head>
+<body>
+
+<div class="np-utility">
+  <span>每日工具集 · 机器学习</span>
+  <span>纯前端 · 训练在你的浏览器里进行 · 数据不上传</span>
+</div>
+
+<nav class="np-nav">
+  <a class="np-back" href="../../">← 返回工具集</a>
+  <span class="np-brand">神经网络游乐场<em>Neural Playground</em></span>
+</nav>
+
+<header class="np-hero">
+  <h1>在浏览器里从零训练一个神经网络</h1>
+  <p>自研的前向传播与反向传播引擎，没有任何机器学习库。调整数据、特征与网络结构，实时看着决策边界成形，并逐个打开神经元，看它到底学到了什么。</p>
+</header>
+
+<section class="np-strip" aria-label="训练控制">
+  <div class="np-transport">
+    <button type="button" class="np-btn np-btn--primary" id="np-play" aria-pressed="false">▶ 训练</button>
+    <button type="button" class="np-btn" id="np-step">单步</button>
+    <button type="button" class="np-btn" id="np-fast">× 100</button>
+    <button type="button" class="np-btn np-btn--dark" id="np-reset">重置</button>
+  </div>
+
+  <label class="np-field"><span>学习率</span>
+    <select class="np-select" id="np-lr">
+      <option value="0.001">0.001</option><option value="0.003">0.003</option>
+      <option value="0.01">0.01</option><option value="0.03">0.03</option>
+      <option value="0.1" selected>0.1</option><option value="0.3">0.3</option><option value="1">1</option>
+    </select>
+  </label>
+  <label class="np-field"><span>激活函数</span>
+    <select class="np-select" id="np-act">
+      <option value="tanh" selected>tanh</option><option value="relu">ReLU</option>
+      <option value="sigmoid">Sigmoid</option><option value="linear">线性</option>
+    </select>
+  </label>
+  <label class="np-field"><span>正则化</span>
+    <select class="np-select" id="np-reg">
+      <option value="none" selected>无</option><option value="l1">L1</option><option value="l2">L2</option>
+    </select>
+  </label>
+  <label class="np-field"><span>正则强度 λ</span>
+    <select class="np-select" id="np-lambda">
+      <option value="0" selected>0</option><option value="0.001">0.001</option><option value="0.01">0.01</option>
+      <option value="0.03">0.03</option><option value="0.1">0.1</option><option value="0.3">0.3</option>
+    </select>
+  </label>
+  <label class="np-field"><span>随机种子</span>
+    <input class="np-input" id="np-seed" type="number" min="1" max="99999" step="1" value="5" />
+  </label>
+
+  <dl class="np-metrics" id="np-state"
+      data-epoch="0" data-losstrain="0" data-losstest="0" data-acc="0" data-acctest="0"
+      data-shape="" data-nfeats="2" data-nhidden="2" data-ds="circle" data-view="out"
+      data-running="0" data-nonce="0">
+    <div><dt>轮次</dt><dd id="np-m-epoch">0</dd></div>
+    <div><dt>训练损失</dt><dd id="np-m-ltrain">0.000</dd></div>
+    <div><dt>测试损失</dt><dd id="np-m-ltest">0.000</dd></div>
+    <div><dt>测试准确率</dt><dd class="np-acc" id="np-m-acc">—</dd></div>
+  </dl>
+</section>
+
+<div class="np-grid">
+  <!-- ---------------- data ---------------- -->
+  <section class="np-pane" aria-label="数据">
+    <div class="np-block">
+      <h2 class="np-h">数据</h2>
+      <p class="np-sub">选择要拟合的二维分布</p>
+      <div class="np-tiles" id="np-datasets"></div>
+    </div>
+
+    <div class="np-block">
+      <div class="np-slider">
+        <span class="np-lab"><span>噪声</span><span class="np-val" id="np-noise-val">0%</span></span>
+        <input class="np-range" id="np-noise" type="range" min="0" max="50" step="5" value="0" aria-label="噪声" />
+      </div>
+      <div class="np-slider">
+        <span class="np-lab"><span>训练集占比</span><span class="np-val" id="np-ratio-val">50%</span></span>
+        <input class="np-range" id="np-ratio" type="range" min="10" max="90" step="10" value="50" aria-label="训练集占比" />
+      </div>
+      <div class="np-slider">
+        <span class="np-lab"><span>批量大小</span><span class="np-val" id="np-batch-val">10</span></span>
+        <input class="np-range" id="np-batch" type="range" min="1" max="30" step="1" value="10" aria-label="批量大小" />
+      </div>
+      <div class="np-slider">
+        <span class="np-lab"><span>样本数</span><span class="np-val" id="np-count-val">250</span></span>
+        <input class="np-range" id="np-count" type="range" min="50" max="500" step="50" value="250" aria-label="样本数" />
+      </div>
+      <div class="np-netbar">
+        <button type="button" class="np-btn np-btn--tertiary" id="np-regen">重新生成数据</button>
+      </div>
+      <p class="np-caption" id="np-split">训练 125 个 · 测试 125 个</p>
+    </div>
+  </section>
+
+  <!-- ---------------- features + network ---------------- -->
+  <section class="np-pane" aria-label="特征与网络">
+    <div class="np-block">
+      <h2 class="np-h">输入特征</h2>
+      <p class="np-sub">送进网络的不是原始坐标，而是你勾选的这些变换</p>
+      <div class="np-feats" id="np-features"></div>
+    </div>
+
+    <div class="np-block">
+      <h2 class="np-h">网络结构</h2>
+      <p class="np-sub">点开任意神经元，主视图会切换成它学到的特征</p>
+      <div class="np-netbar">
+        <div class="np-stepper">
+          <button type="button" id="np-layer-minus" aria-label="减少一层隐藏层">−</button>
+          <span id="np-layer-count">2 层隐藏层</span>
+          <button type="button" id="np-layer-plus" aria-label="增加一层隐藏层">+</button>
+        </div>
+        <span class="np-viewlabel" id="np-shape">2 – 4 – 2 – 1</span>
+      </div>
+      <div class="np-netscroll">
+        <div class="np-net" id="np-net">
+          <svg class="np-edges" id="np-edges" aria-hidden="true"></svg>
+        </div>
+      </div>
+      <p class="np-caption">连线粗细代表权重绝对值，<span style="color:var(--pos)">蓝色为正</span>、<span style="color:var(--neg)">品红为负</span>；悬停可看具体数值。</p>
+    </div>
+  </section>
+
+  <!-- ---------------- output ---------------- -->
+  <section class="np-pane np-pane--out" aria-label="输出">
+    <div class="np-outcols">
+      <div>
+        <h2 class="np-h">输出</h2>
+        <p class="np-sub" id="np-outsub">网络对整个平面的判断</p>
+        <div class="np-stage"><canvas id="np-out" width="440" height="440"></canvas></div>
+        <div class="np-viewbar">
+          <span class="np-viewlabel" id="np-viewlabel">当前显示：<b>网络输出</b></span>
+          <button type="button" class="np-btn np-btn--ghost" id="np-viewreset" hidden>回到网络输出</button>
+        </div>
+      </div>
+      <div>
+        <div class="np-legend">
+          <span><i style="background:var(--pos)"></i>类别 A（+1）</span>
+          <span><i style="background:var(--neg)"></i>类别 B（−1）</span>
+          <label class="np-check"><input type="checkbox" id="np-showtest" checked /> 显示测试数据（黑边）</label>
+        </div>
+        <div class="np-curvewrap">
+          <h2 class="np-h">损失曲线</h2>
+          <p class="np-sub"><span style="color:var(--blue)">■</span> 训练　<span style="color:var(--ink-subtle)">■</span> 测试</p>
+          <canvas class="np-curve" id="np-curve" width="800" height="192"></canvas>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<section class="np-band" aria-label="保存的实验">
+  <h2 class="np-h">保存的实验</h2>
+  <p class="np-sub">把当前的数据、特征、结构与超参数存到本机浏览器，下次直接复现</p>
+  <div class="np-saverow">
+    <label class="np-field"><span>实验名称</span>
+      <input class="np-input" id="np-name" type="text" maxlength="40" placeholder="例如：螺旋 8-8-6" />
+    </label>
+    <button type="button" class="np-btn np-btn--primary" id="np-save">保存当前配置</button>
+  </div>
+  <div class="np-cards" id="np-saved"></div>
+  <p class="np-empty" id="np-saved-empty">还没有保存的实验。</p>
+</section>
+
+<section class="np-notes">
+  <h2>它到底在算什么</h2>
+  <div class="np-notecols">
+    <div class="np-note">
+      <h3>前向传播</h3>
+      <p>每个神经元把上一层的输出加权求和再加偏置，得到 <code>z = Σwx + b</code>，然后过一次激活函数。输出层固定用 <code>tanh</code>，所以结果落在 −1 到 +1 之间，正好对应两个类别。</p>
+    </div>
+    <div class="np-note">
+      <h3>反向传播</h3>
+      <p>损失取 <code>½(ŷ − y)²</code>。误差从输出层按链式法则逐层回传，得到每个权重的梯度，再沿梯度反方向走一小步。本页的梯度已用中心差分法逐个权重校验过。</p>
+    </div>
+    <div class="np-note">
+      <h3>为什么要选特征</h3>
+      <p>只给 <code>X₁ X₂</code> 时，网络必须自己"发明"出非线性边界；一旦你把 <code>X₁X₂</code> 也勾上，异或问题不用隐藏层就能解开——特征工程能替网络省掉很多层。</p>
+    </div>
+    <div class="np-note">
+      <h3>过拟合与正则化</h3>
+      <p>把噪声调大、训练集占比调小，就能看到训练损失继续下降而测试损失掉头向上。此时打开 L1 / L2 正则：L2 让权重整体变小，L1 会把一部分权重直接压到 0。</p>
+    </div>
+  </div>
+</section>
+
+<footer class="np-footer">
+  <strong>神经网络游乐场</strong>
+  纯前端实现，训练全程在本机完成，不发送任何数据。<br />
+  <a href="../../">← 回到每日工具集</a>
+</footer>
+
+<script>
+// <<<ENGINE  (pure, DOM-free — also unit-tested offline by test.mjs)
+
+const NP_DOMAIN = 6;   // the visible input plane is [-6, 6]^2
+const NP_R = 5;        // data radius
+
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return function () {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function gaussRand(rnd) {
+  let u = 0, v = 0;
+  while (u === 0) u = rnd();
+  while (v === 0) v = rnd();
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+}
+
+function shuffleInPlace(arr, rnd) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(rnd() * (i + 1));
+    const t = arr[i]; arr[i] = arr[j]; arr[j] = t;
+  }
+  return arr;
+}
+
+const DATASETS = [
+  { id: 'circle', label: '同心圆' },
+  { id: 'xor', label: '异或' },
+  { id: 'gauss', label: '高斯' },
+  { id: 'spiral', label: '螺旋' },
+];
+
+function makeDataset(kind, n, noise, seed) {
+  const rnd = mulberry32(seed);
+  const pts = [];
+  const jit = (amp) => (rnd() * 2 - 1) * amp;
+  const half = Math.floor(n / 2);
+  if (kind === 'circle') {
+    for (let i = 0; i < n; i++) {
+      const inner = i < half;
+      const r = inner ? rnd() * NP_R * 0.5 : NP_R * 0.75 + rnd() * NP_R * 0.25;
+      const a = rnd() * 2 * Math.PI;
+      pts.push({ x: r * Math.sin(a) + jit(NP_R * noise), y: r * Math.cos(a) + jit(NP_R * noise), label: inner ? 1 : -1 });
+    }
+  } else if (kind === 'xor') {
+    for (let i = 0; i < n; i++) {
+      let x = rnd() * 2 * NP_R - NP_R, y = rnd() * 2 * NP_R - NP_R;
+      x += x > 0 ? 0.3 : -0.3;
+      y += y > 0 ? 0.3 : -0.3;
+      const label = x * y >= 0 ? 1 : -1;
+      pts.push({ x: x + jit(NP_R * noise), y: y + jit(NP_R * noise), label });
+    }
+  } else if (kind === 'gauss') {
+    const s = 0.6 + noise * 3;
+    for (let i = 0; i < n; i++) {
+      const inner = i < half;
+      const c = inner ? 2.2 : -2.2;
+      pts.push({ x: c + gaussRand(rnd) * s, y: c + gaussRand(rnd) * s, label: inner ? 1 : -1 });
+    }
+  } else {
+    for (let d = 0; d < 2; d++) {
+      const cnt = d === 0 ? half : n - half;
+      const label = d === 0 ? 1 : -1;
+      for (let i = 0; i < cnt; i++) {
+        const r = (i / cnt) * NP_R, t = 1.75 * (i / cnt) * 2 * Math.PI + d * Math.PI;
+        pts.push({ x: r * Math.sin(t) + jit(NP_R * noise * 0.6), y: r * Math.cos(t) + jit(NP_R * noise * 0.6), label });
+      }
+    }
+  }
+  return shuffleInPlace(pts, rnd);
+}
+
+const FEATURES = [
+  { id: 'x1', label: 'X₁', fn: (x, y) => x },
+  { id: 'x2', label: 'X₂', fn: (x, y) => y },
+  { id: 'x1sq', label: 'X₁²', fn: (x, y) => x * x },
+  { id: 'x2sq', label: 'X₂²', fn: (x, y) => y * y },
+  { id: 'x1x2', label: 'X₁X₂', fn: (x, y) => x * y },
+  { id: 'sin1', label: 'sin(X₁)', fn: (x, y) => Math.sin(x) },
+  { id: 'sin2', label: 'sin(X₂)', fn: (x, y) => Math.sin(y) },
+];
+const FEAT_BY_ID = {};
+for (const f of FEATURES) FEAT_BY_ID[f.id] = f;
+
+function featurize(x, y, ids) {
+  const v = new Array(ids.length);
+  for (let i = 0; i < ids.length; i++) v[i] = FEAT_BY_ID[ids[i]].fn(x, y);
+  return v;
+}
+
+const ACT = {
+  tanh: { f: (x) => Math.tanh(x), df: (x, o) => 1 - o * o },
+  relu: { f: (x) => (x > 0 ? x : 0), df: (x) => (x > 0 ? 1 : 0) },
+  sigmoid: { f: (x) => 1 / (1 + Math.exp(-x)), df: (x, o) => o * (1 - o) },
+  linear: { f: (x) => x, df: () => 1 },
+};
+
+function makeNet(shape, actName, seed) {
+  const rnd = mulberry32(seed);
+  const layers = [];
+  for (let l = 1; l < shape.length; l++) {
+    const nodes = [];
+    for (let j = 0; j < shape[l]; j++) {
+      const w = new Array(shape[l - 1]);
+      for (let k = 0; k < shape[l - 1]; k++) w[k] = rnd() - 0.5;
+      nodes.push({ w, gw: new Array(shape[l - 1]).fill(0), b: 0.1, gb: 0, net: 0, out: 0, dz: 0 });
+    }
+    layers.push(nodes);
+  }
+  return { shape: shape.slice(), act: actName, layers, layerInputs: [] };
+}
+
+function forward(net, input) {
+  let prev = input;
+  const L = net.layers.length;
+  for (let l = 0; l < L; l++) {
+    net.layerInputs[l] = prev;
+    const act = l === L - 1 ? ACT.tanh : ACT[net.act];
+    const layer = net.layers[l];
+    const cur = new Array(layer.length);
+    for (let j = 0; j < layer.length; j++) {
+      const nd = layer[j];
+      let s = nd.b;
+      for (let k = 0; k < prev.length; k++) s += nd.w[k] * prev[k];
+      nd.net = s;
+      nd.out = act.f(s);
+      cur[j] = nd.out;
+    }
+    prev = cur;
+  }
+  return prev[0];
+}
+
+function backpropAccum(net, input, label) {
+  const out = forward(net, input);
+  const L = net.layers.length;
+  const on = net.layers[L - 1][0];
+  on.dz = (out - label) * ACT.tanh.df(on.net, on.out);
+  for (let l = L - 1; l >= 0; l--) {
+    const layer = net.layers[l], ins = net.layerInputs[l];
+    for (let j = 0; j < layer.length; j++) {
+      const nd = layer[j];
+      for (let k = 0; k < ins.length; k++) nd.gw[k] += nd.dz * ins[k];
+      nd.gb += nd.dz;
+    }
+    if (l > 0) {
+      const prev = net.layers[l - 1], act = ACT[net.act];
+      for (let k = 0; k < prev.length; k++) {
+        let s = 0;
+        for (let j = 0; j < layer.length; j++) s += layer[j].w[k] * layer[j].dz;
+        prev[k].dz = s * act.df(prev[k].net, prev[k].out);
+      }
+    }
+  }
+  return 0.5 * (out - label) * (out - label);
+}
+
+function zeroGrads(net) {
+  for (const layer of net.layers) for (const nd of layer) {
+    nd.gb = 0;
+    for (let k = 0; k < nd.gw.length; k++) nd.gw[k] = 0;
+  }
+}
+
+function applyGrads(net, lr, count, reg, lambda) {
+  for (const layer of net.layers) for (const nd of layer) {
+    nd.b -= lr * (nd.gb / count);
+    nd.gb = 0;
+    for (let k = 0; k < nd.w.length; k++) {
+      nd.w[k] -= lr * (nd.gw[k] / count);
+      nd.gw[k] = 0;
+      if (reg === 'l2' && lambda > 0) {
+        nd.w[k] -= lr * lambda * nd.w[k];
+      } else if (reg === 'l1' && lambda > 0) {
+        const before = nd.w[k];
+        nd.w[k] -= lr * lambda * Math.sign(nd.w[k]);
+        if (before * nd.w[k] < 0) nd.w[k] = 0;
+      }
+    }
+  }
+}
+
+function trainEpoch(net, points, opts) {
+  const bs = Math.max(1, Math.min(opts.batch, points.length));
+  let i = 0;
+  while (i < points.length) {
+    const end = Math.min(i + bs, points.length);
+    for (let k = i; k < end; k++) backpropAccum(net, featurize(points[k].x, points[k].y, opts.feats), points[k].label);
+    applyGrads(net, opts.lr, end - i, opts.reg, opts.lambda);
+    i = end;
+  }
+}
+
+function evalLoss(net, points, feats) {
+  if (!points.length) return 0;
+  let s = 0;
+  for (const p of points) {
+    const o = forward(net, featurize(p.x, p.y, feats));
+    s += 0.5 * (o - p.label) * (o - p.label);
+  }
+  return s / points.length;
+}
+
+function evalAcc(net, points, feats) {
+  if (!points.length) return 0;
+  let ok = 0;
+  for (const p of points) {
+    const o = forward(net, featurize(p.x, p.y, feats));
+    if ((o > 0 ? 1 : -1) === p.label) ok++;
+  }
+  return ok / points.length;
+}
+
+function totalLoss(net, points, feats) {
+  let s = 0;
+  for (const p of points) {
+    const o = forward(net, featurize(p.x, p.y, feats));
+    s += 0.5 * (o - p.label) * (o - p.label);
+  }
+  return s;
+}
+// ENGINE>>>
+
+/* ============================ UI ============================ */
+(function () {
+  'use strict';
+  const $ = (id) => document.getElementById(id);
+  const CFG_KEY = 'np.cfg.v1';
+  const SAVE_KEY = 'np.saved.v1';
+
+  const S = {
+    ds: 'circle', noise: 0, ratio: 0.5, batch: 10, count: 250, seed: 5,
+    feats: ['x1', 'x2'], hidden: [4, 2], act: 'tanh', lr: 0.1, reg: 'none', lambda: 0,
+    showTest: true, view: 'out',
+  };
+
+  let data = [], train = [], test = [], net = null;
+  let epoch = 0, history = [], running = false, raf = 0, nonce = 0;
+  let nodeCanvases = [];   // [layer][neuron] -> canvas ctx  (layer 0 = first hidden)
+  let inputCanvases = [];  // per active feature
+  let outNodeCanvas = null;
+  let edgeEls = [];
+
+  /* ---------------- colour ---------------- */
+  const POS = [15, 98, 254], NEG = [209, 39, 113], MID = [244, 244, 244];
+  function mixTo(v, out, off) {
+    const t = Math.max(-1, Math.min(1, v));
+    const c = t >= 0 ? POS : NEG;
+    const a = Math.abs(t);
+    out[off] = Math.round(MID[0] + (c[0] - MID[0]) * a);
+    out[off + 1] = Math.round(MID[1] + (c[1] - MID[1]) * a);
+    out[off + 2] = Math.round(MID[2] + (c[2] - MID[2]) * a);
+    out[off + 3] = 255;
+  }
+
+  /* ---------------- data plumbing ---------------- */
+  function regenerate() {
+    data = makeDataset(S.ds, S.count, S.noise, S.seed);
+    const cut = Math.max(1, Math.round(data.length * S.ratio));
+    train = data.slice(0, cut);
+    test = data.slice(cut);
+    $('np-split').textContent = `训练 ${train.length} 个 · 测试 ${test.length} 个`;
+  }
+  function shapeOf() { return [S.feats.length, ...S.hidden, 1]; }
+  function resetNet() {
+    net = makeNet(shapeOf(), S.act, S.seed);
+    epoch = 0;
+    history = [];
+    stop();
+  }
+  function rebuild(regen) {
+    if (regen) regenerate();
+    resetNet();
+    buildNetworkDOM();
+    renderAll();
+  }
+
+  /* ---------------- training ---------------- */
+  function runEpochs(k) {
+    if (!S.feats.length) return;
+    for (let i = 0; i < k; i++) {
+      trainEpoch(net, train, { lr: S.lr, batch: S.batch, reg: S.reg, lambda: S.lambda, feats: S.feats });
+      epoch++;
+      history.push([evalLoss(net, train, S.feats), evalLoss(net, test, S.feats)]);
+    }
+  }
+  function tick() {
+    if (!running) return;
+    runEpochs(1);
+    renderAll();
+    raf = requestAnimationFrame(tick);
+  }
+  function play() {
+    if (running || !S.feats.length) return;
+    running = true;
+    $('np-play').textContent = '⏸ 暂停';
+    $('np-play').setAttribute('aria-pressed', 'true');
+    renderReadouts();
+    raf = requestAnimationFrame(tick);
+  }
+  function stop() {
+    running = false;
+    if (raf) cancelAnimationFrame(raf);
+    raf = 0;
+    $('np-play').textContent = '▶ 训练';
+    $('np-play').setAttribute('aria-pressed', 'false');
+    if (net) renderReadouts();   // the loop is what normally refreshes them
+  }
+
+  /* ---------------- network DOM ---------------- */
+  function buildNetworkDOM() {
+    const host = $('np-net');
+    const svg = $('np-edges');
+    [...host.querySelectorAll('.np-col')].forEach((c) => c.remove());
+    nodeCanvases = [];
+    inputCanvases = [];
+
+    const mkCanvas = (grid) => {
+      const c = document.createElement('canvas');
+      c.width = grid; c.height = grid;
+      return c;
+    };
+    const mkCol = (label) => {
+      const col = document.createElement('div');
+      col.className = 'np-col';
+      const lab = document.createElement('div');
+      lab.className = 'np-collab';
+      lab.textContent = label;
+      col.appendChild(lab);
+      return col;
+    };
+
+    // inputs
+    const inCol = mkCol(S.feats.length + ' 个特征');
+    inCol.dataset.col = 'input';
+    S.feats.forEach((fid) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'np-node';
+      btn.dataset.kind = 'input';
+      btn.dataset.fid = fid;
+      btn.title = '输入特征 ' + FEAT_BY_ID[fid].label;
+      btn.setAttribute('aria-label', '查看输入特征 ' + FEAT_BY_ID[fid].label);
+      const cv = mkCanvas(24);
+      btn.appendChild(cv);
+      const wrap = document.createElement('div');
+      wrap.style.display = 'flex';
+      wrap.style.flexDirection = 'column';
+      wrap.style.alignItems = 'center';
+      wrap.style.gap = '4px';
+      wrap.appendChild(btn);
+      const lab = document.createElement('span');
+      lab.className = 'np-nodelab';
+      lab.textContent = FEAT_BY_ID[fid].label;
+      wrap.appendChild(lab);
+      inCol.appendChild(wrap);
+      inputCanvases.push(cv.getContext('2d'));
+    });
+    host.appendChild(inCol);
+
+    // hidden layers
+    S.hidden.forEach((n, li) => {
+      const col = mkCol('');
+      col.dataset.col = 'h' + li;
+      const lab = col.firstChild;
+      const stepper = document.createElement('div');
+      stepper.className = 'np-stepper';
+      stepper.innerHTML =
+        '<button type="button" data-act="minus" data-l="' + li + '" aria-label="减少神经元">−</button>' +
+        '<span style="min-width:56px">' + n + ' 个</span>' +
+        '<button type="button" data-act="plus" data-l="' + li + '" aria-label="增加神经元">+</button>';
+      lab.replaceWith(stepper);
+      const row = [];
+      for (let j = 0; j < n; j++) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'np-node';
+        btn.dataset.kind = 'hidden';
+        btn.dataset.l = String(li);
+        btn.dataset.j = String(j);
+        btn.setAttribute('aria-label', `查看第 ${li + 1} 层第 ${j + 1} 个神经元`);
+        const cv = mkCanvas(24);
+        btn.appendChild(cv);
+        col.appendChild(btn);
+        row.push(cv.getContext('2d'));
+      }
+      nodeCanvases.push(row);
+      host.appendChild(col);
+    });
+
+    // output
+    const outCol = mkCol('输出');
+    outCol.dataset.col = 'out';
+    const ob = document.createElement('button');
+    ob.type = 'button';
+    ob.className = 'np-node np-node--out';
+    ob.dataset.kind = 'out';
+    ob.setAttribute('aria-label', '查看网络输出');
+    const ocv = mkCanvas(28);
+    ob.appendChild(ocv);
+    outCol.appendChild(ob);
+    outNodeCanvas = ocv.getContext('2d');
+    host.appendChild(outCol);
+
+    host.appendChild(svg);
+    buildEdges();
+    syncStructureLabels();
+  }
+
+  function buildEdges() {
+    const svg = $('np-edges');
+    while (svg.firstChild) svg.removeChild(svg.firstChild);
+    edgeEls = [];
+    const ns = 'http://www.w3.org/2000/svg';
+    for (let l = 0; l < net.layers.length; l++) {
+      const row = [];
+      for (let j = 0; j < net.layers[l].length; j++) {
+        const per = [];
+        for (let k = 0; k < net.layers[l][j].w.length; k++) {
+          const line = document.createElementNS(ns, 'line');
+          line.setAttribute('stroke-linecap', 'butt');
+          const t = document.createElementNS(ns, 'title');
+          line.appendChild(t);
+          svg.appendChild(line);
+          per.push({ line, title: t });
+        }
+        row.push(per);
+      }
+      edgeEls.push(row);
+    }
+    layoutEdges();
+  }
+
+  function nodeCenters() {
+    const host = $('np-net');
+    const base = host.getBoundingClientRect();
+    const centers = [];
+    const cols = [...host.querySelectorAll('.np-col')];
+    cols.forEach((col) => {
+      const nodes = [...col.querySelectorAll('.np-node')];
+      centers.push(nodes.map((n) => {
+        const r = n.getBoundingClientRect();
+        return { x: r.left - base.left + r.width / 2, y: r.top - base.top + r.height / 2, w: r.width / 2 };
+      }));
+    });
+    return centers;
+  }
+
+  function layoutEdges() {
+    if (!net) return;
+    const c = nodeCenters();
+    if (c.length < 2) return;
+    for (let l = 0; l < edgeEls.length; l++) {
+      const from = c[l], to = c[l + 1];
+      if (!from || !to) continue;
+      for (let j = 0; j < edgeEls[l].length; j++) {
+        for (let k = 0; k < edgeEls[l][j].length; k++) {
+          const e = edgeEls[l][j][k];
+          const a = from[k], b = to[j];
+          if (!a || !b) { e.line.setAttribute('stroke', 'none'); continue; }
+          e.line.setAttribute('x1', a.x + a.w);
+          e.line.setAttribute('y1', a.y);
+          e.line.setAttribute('x2', b.x - b.w);
+          e.line.setAttribute('y2', b.y);
+        }
+      }
+    }
+    paintEdges();
+  }
+
+  function paintEdges() {
+    if (!net) return;
+    for (let l = 0; l < edgeEls.length && l < net.layers.length; l++) {
+      for (let j = 0; j < edgeEls[l].length && j < net.layers[l].length; j++) {
+        const nd = net.layers[l][j];
+        for (let k = 0; k < edgeEls[l][j].length && k < nd.w.length; k++) {
+          const w = nd.w[k];
+          const e = edgeEls[l][j][k];
+          const mag = Math.min(1, Math.abs(w) / 2.5);
+          e.line.setAttribute('stroke', w >= 0 ? '#0f62fe' : '#d12771');
+          e.line.setAttribute('stroke-width', String(0.5 + mag * 3.5));
+          e.line.setAttribute('stroke-opacity', String(0.18 + mag * 0.72));
+          e.title.textContent = `权重 ${w.toFixed(3)}`;
+        }
+      }
+    }
+  }
+
+  function syncStructureLabels() {
+    $('np-layer-count').textContent = S.hidden.length + ' 层隐藏层';
+    $('np-shape').textContent = shapeOf().join(' – ');
+    $('np-layer-minus').disabled = S.hidden.length === 0;
+    $('np-layer-plus').disabled = S.hidden.length >= 5;
+    document.querySelectorAll('#np-net .np-stepper button').forEach((b) => {
+      const l = Number(b.dataset.l);
+      b.disabled = b.dataset.act === 'minus' ? S.hidden[l] <= 1 : S.hidden[l] >= 8;
+    });
+    document.querySelectorAll('#np-net .np-node').forEach((n) => {
+      n.classList.toggle('np-sel', nodeKey(n) === S.view);
+    });
+  }
+  function nodeKey(el) {
+    if (el.dataset.kind === 'out') return 'out';
+    if (el.dataset.kind === 'input') return 'in:' + el.dataset.fid;
+    return 'h:' + el.dataset.l + ':' + el.dataset.j;
+  }
+
+  /* ---------------- rendering ---------------- */
+  const NODE_G = 24, OUT_G = 28, MAIN_G = 90;
+  let mainBuf = null, mainBufCtx = null;
+
+  function fieldSamples(grid) {
+    // returns {xs, ys} of length grid, in input-space coordinates (row-major, y flipped)
+    const xs = new Float64Array(grid), ys = new Float64Array(grid);
+    for (let i = 0; i < grid; i++) {
+      const t = (i + 0.5) / grid;
+      xs[i] = -NP_DOMAIN + t * 2 * NP_DOMAIN;
+      ys[i] = NP_DOMAIN - t * 2 * NP_DOMAIN;
+    }
+    return { xs, ys };
+  }
+
+  function renderNodeMaps() {
+    if (!net) return;
+    const { xs, ys } = fieldSamples(NODE_G);
+    const nH = net.layers.length - 1;
+    const hidden = [];
+    for (let l = 0; l < nH; l++) hidden.push(net.layers[l].map(() => new Float64Array(NODE_G * NODE_G)));
+    const inputs = S.feats.map(() => new Float64Array(NODE_G * NODE_G));
+    const outGrid = new Float64Array(OUT_G * OUT_G);
+
+    for (let iy = 0; iy < NODE_G; iy++) {
+      for (let ix = 0; ix < NODE_G; ix++) {
+        const idx = iy * NODE_G + ix;
+        const fv = featurize(xs[ix], ys[iy], S.feats);
+        for (let i = 0; i < fv.length; i++) inputs[i][idx] = fv[i];
+        forward(net, fv);
+        for (let l = 0; l < nH; l++) {
+          for (let j = 0; j < net.layers[l].length; j++) hidden[l][j][idx] = net.layers[l][j].out;
+        }
+      }
+    }
+    const og = fieldSamples(OUT_G);
+    for (let iy = 0; iy < OUT_G; iy++) {
+      for (let ix = 0; ix < OUT_G; ix++) {
+        outGrid[iy * OUT_G + ix] = forward(net, featurize(og.xs[ix], og.ys[iy], S.feats));
+      }
+    }
+
+    const paint = (ctx, buf, grid, absolute) => {
+      if (!ctx) return;
+      let scale = 1;
+      if (!absolute) {
+        let m = 0;
+        for (let i = 0; i < buf.length; i++) { const a = Math.abs(buf[i]); if (a > m) m = a; }
+        scale = m > 1 ? 1 / m : 1;
+      }
+      const img = ctx.createImageData(grid, grid);
+      for (let i = 0; i < buf.length; i++) mixTo(buf[i] * scale, img.data, i * 4);
+      ctx.putImageData(img, 0, 0);
+    };
+
+    inputCanvases.forEach((ctx, i) => paint(ctx, inputs[i], NODE_G, false));
+    for (let l = 0; l < nH; l++) {
+      for (let j = 0; j < (nodeCanvases[l] || []).length; j++) paint(nodeCanvases[l][j], hidden[l][j], NODE_G, false);
+    }
+    paint(outNodeCanvas, outGrid, OUT_G, true);
+  }
+
+  function viewValueAt(x, y) {
+    const fv = featurize(x, y, S.feats);
+    if (S.view.startsWith('in:')) {
+      const fid = S.view.slice(3);
+      return { v: FEAT_BY_ID[fid].fn(x, y), absolute: false };
+    }
+    const out = forward(net, fv);
+    if (S.view === 'out') return { v: out, absolute: true };
+    const parts = S.view.split(':');
+    const l = Number(parts[1]), j = Number(parts[2]);
+    const layer = net.layers[l];
+    if (!layer || !layer[j]) return { v: out, absolute: true };
+    return { v: layer[j].out, absolute: false };
+  }
+
+  function renderMain() {
+    const cv = $('np-out');
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const cssW = Math.max(200, Math.round(cv.getBoundingClientRect().width || 424));
+    const px = Math.round(cssW * dpr);
+    if (cv.width !== px) { cv.width = px; cv.height = px; }
+    const ctx = cv.getContext('2d');
+
+    if (!mainBuf) {
+      mainBuf = document.createElement('canvas');
+      mainBuf.width = MAIN_G; mainBuf.height = MAIN_G;
+      mainBufCtx = mainBuf.getContext('2d');
+    }
+    const { xs, ys } = fieldSamples(MAIN_G);
+    const vals = new Float64Array(MAIN_G * MAIN_G);
+    let maxAbs = 0, absolute = true;
+    for (let iy = 0; iy < MAIN_G; iy++) {
+      for (let ix = 0; ix < MAIN_G; ix++) {
+        const r = viewValueAt(xs[ix], ys[iy]);
+        absolute = r.absolute;
+        vals[iy * MAIN_G + ix] = r.v;
+        const a = Math.abs(r.v);
+        if (a > maxAbs) maxAbs = a;
+      }
+    }
+    const scale = absolute || maxAbs <= 1 ? 1 : 1 / maxAbs;
+    const img = mainBufCtx.createImageData(MAIN_G, MAIN_G);
+    for (let i = 0; i < vals.length; i++) mixTo(vals[i] * scale, img.data, i * 4);
+    mainBufCtx.putImageData(img, 0, 0);
+
+    ctx.save();
+    ctx.imageSmoothingEnabled = true;
+    ctx.clearRect(0, 0, px, px);
+    ctx.drawImage(mainBuf, 0, 0, px, px);
+
+    // axes at x = 0 and y = 0
+    ctx.strokeStyle = 'rgba(22,22,22,0.16)';
+    ctx.lineWidth = Math.max(1, dpr);
+    ctx.beginPath();
+    ctx.moveTo(px / 2, 0); ctx.lineTo(px / 2, px);
+    ctx.moveTo(0, px / 2); ctx.lineTo(px, px / 2);
+    ctx.stroke();
+
+    // data points
+    const toPx = (x, y) => [((x + NP_DOMAIN) / (2 * NP_DOMAIN)) * px, ((NP_DOMAIN - y) / (2 * NP_DOMAIN)) * px];
+    const r = Math.max(3, 3.6 * dpr);
+    const drawPts = (pts, ring) => {
+      for (const p of pts) {
+        const [cx, cy] = toPx(p.x, p.y);
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, 0, 2 * Math.PI);
+        ctx.fillStyle = p.label > 0 ? '#0f62fe' : '#d12771';
+        ctx.fill();
+        ctx.lineWidth = Math.max(1, 1.2 * dpr);
+        ctx.strokeStyle = ring;
+        ctx.stroke();
+      }
+    };
+    drawPts(train, '#ffffff');
+    if (S.showTest) drawPts(test, '#161616');
+    ctx.restore();
+    cv.dataset.drawn = String(nonce);
+  }
+
+  function renderCurve() {
+    const cv = $('np-curve');
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const rect = cv.getBoundingClientRect();
+    const w = Math.round((rect.width || 400) * dpr), h = Math.round((rect.height || 96) * dpr);
+    if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+    const ctx = cv.getContext('2d');
+    ctx.clearRect(0, 0, w, h);
+    const pad = 6 * dpr;
+    let maxV = 0.05;
+    for (const [a, b] of history) { if (a > maxV) maxV = a; if (b > maxV) maxV = b; }
+    maxV *= 1.08;
+
+    ctx.strokeStyle = '#e0e0e0';
+    ctx.lineWidth = dpr;
+    ctx.beginPath();
+    ctx.moveTo(0, h - pad); ctx.lineTo(w, h - pad);
+    ctx.stroke();
+
+    if (history.length > 1) {
+      const n = history.length;
+      const xAt = (i) => pad + (i / (n - 1)) * (w - 2 * pad);
+      const yAt = (v) => h - pad - (Math.min(v, maxV) / maxV) * (h - 2 * pad);
+      const stride = Math.max(1, Math.floor(n / 600));
+      const line = (idx, color) => {
+        ctx.beginPath();
+        for (let i = 0; i < n; i += stride) {
+          const x = xAt(i), y = yAt(history[i][idx]);
+          if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        }
+        ctx.lineTo(xAt(n - 1), yAt(history[n - 1][idx]));
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1.6 * dpr;
+        ctx.stroke();
+      };
+      line(1, '#8c8c8c');
+      line(0, '#0f62fe');
+    }
+  }
+
+  function renderFeatureTiles() {
+    document.querySelectorAll('#np-features .np-tile').forEach((tile) => {
+      const fid = tile.dataset.f;
+      tile.setAttribute('aria-pressed', S.feats.includes(fid) ? 'true' : 'false');
+      const cv = tile.querySelector('canvas');
+      const ctx = cv.getContext('2d');
+      const g = cv.width;
+      const { xs, ys } = fieldSamples(g);
+      const buf = new Float64Array(g * g);
+      let m = 0;
+      for (let iy = 0; iy < g; iy++) for (let ix = 0; ix < g; ix++) {
+        const v = FEAT_BY_ID[fid].fn(xs[ix], ys[iy]);
+        buf[iy * g + ix] = v;
+        if (Math.abs(v) > m) m = Math.abs(v);
+      }
+      const sc = m > 1 ? 1 / m : 1;
+      const img = ctx.createImageData(g, g);
+      for (let i = 0; i < buf.length; i++) mixTo(buf[i] * sc, img.data, i * 4);
+      ctx.putImageData(img, 0, 0);
+    });
+  }
+
+  function renderDatasetTiles() {
+    document.querySelectorAll('#np-datasets .np-tile').forEach((tile) => {
+      const id = tile.dataset.ds;
+      tile.setAttribute('aria-pressed', S.ds === id ? 'true' : 'false');
+      const cv = tile.querySelector('canvas');
+      const ctx = cv.getContext('2d');
+      const dpr = Math.min(2, window.devicePixelRatio || 1);
+      const size = 56 * dpr;
+      if (cv.width !== size) { cv.width = size; cv.height = size; }
+      ctx.clearRect(0, 0, size, size);
+      ctx.fillStyle = '#f4f4f4';
+      ctx.fillRect(0, 0, size, size);
+      const pts = makeDataset(id, 90, S.noise, S.seed);
+      for (const p of pts) {
+        const x = ((p.x + NP_DOMAIN) / (2 * NP_DOMAIN)) * size;
+        const y = ((NP_DOMAIN - p.y) / (2 * NP_DOMAIN)) * size;
+        ctx.beginPath();
+        ctx.arc(x, y, 1.5 * dpr, 0, 2 * Math.PI);
+        ctx.fillStyle = p.label > 0 ? '#0f62fe' : '#d12771';
+        ctx.fill();
+      }
+    });
+  }
+
+  function renderReadouts() {
+    const lt = evalLoss(net, train, S.feats);
+    const lv = evalLoss(net, test, S.feats);
+    const accTest = evalAcc(net, test, S.feats);
+    const accTrain = evalAcc(net, train, S.feats);
+    $('np-m-epoch').textContent = String(epoch);
+    $('np-m-ltrain').textContent = lt.toFixed(4);
+    $('np-m-ltest').textContent = lv.toFixed(4);
+    $('np-m-acc').textContent = test.length ? (accTest * 100).toFixed(1) + '%' : '—';
+    const st = $('np-state').dataset;
+    st.epoch = String(epoch);
+    st.losstrain = lt.toFixed(5);
+    st.losstest = lv.toFixed(5);
+    st.acc = accTrain.toFixed(4);
+    st.acctest = accTest.toFixed(4);
+    st.shape = shapeOf().join('-');
+    st.nfeats = String(S.feats.length);
+    st.nhidden = String(S.hidden.length);
+    st.ds = S.ds;
+    st.view = S.view;
+    st.ntrain = String(train.length);
+    st.ntest = String(test.length);
+    st.running = running ? '1' : '0';
+    st.nonce = String(nonce);
+  }
+
+  function renderAll() {
+    nonce++;
+    renderReadouts();
+    renderMain();
+    renderNodeMaps();
+    paintEdges();
+    renderCurve();
+  }
+
+  /* ---------------- view switching ---------------- */
+  function setView(key) {
+    S.view = key;
+    let label = '网络输出';
+    if (key.startsWith('in:')) label = '输入特征 ' + FEAT_BY_ID[key.slice(3)].label;
+    else if (key.startsWith('h:')) {
+      const p = key.split(':');
+      label = `隐藏层 ${Number(p[1]) + 1} · 第 ${Number(p[2]) + 1} 个神经元`;
+    }
+    $('np-viewlabel').innerHTML = '当前显示：<b></b>';
+    $('np-viewlabel').querySelector('b').textContent = label;
+    $('np-viewreset').hidden = key === 'out';
+    $('np-outsub').textContent = key === 'out' ? '网络对整个平面的判断' : '该神经元在平面各处的激活值';
+    syncStructureLabels();
+    renderAll();
+    persist();
+  }
+
+  /* ---------------- persistence ---------------- */
+  function persist() {
+    try { localStorage.setItem(CFG_KEY, JSON.stringify(S)); } catch (e) { /* ignore */ }
+  }
+  function restore() {
+    let raw = null;
+    try { raw = localStorage.getItem(CFG_KEY); } catch (e) { return; }
+    if (!raw) return;
+    let o;
+    try { o = JSON.parse(raw); } catch (e) { return; }
+    if (!o || typeof o !== 'object') return;
+    const okFeats = Array.isArray(o.feats) ? o.feats.filter((f) => FEAT_BY_ID[f]) : null;
+    if (okFeats && okFeats.length) S.feats = okFeats;
+    if (DATASETS.some((d) => d.id === o.ds)) S.ds = o.ds;
+    if (Array.isArray(o.hidden) && o.hidden.length <= 5 && o.hidden.every((n) => n >= 1 && n <= 8)) S.hidden = o.hidden.slice();
+    if (ACT[o.act]) S.act = o.act;
+    if (Number.isFinite(o.lr) && o.lr > 0) S.lr = o.lr;
+    if (['none', 'l1', 'l2'].includes(o.reg)) S.reg = o.reg;
+    if (Number.isFinite(o.lambda) && o.lambda >= 0) S.lambda = o.lambda;
+    if (Number.isFinite(o.noise) && o.noise >= 0 && o.noise <= 0.5) S.noise = o.noise;
+    if (Number.isFinite(o.ratio) && o.ratio >= 0.1 && o.ratio <= 0.9) S.ratio = o.ratio;
+    if (Number.isFinite(o.batch) && o.batch >= 1 && o.batch <= 30) S.batch = Math.round(o.batch);
+    if (Number.isFinite(o.count) && o.count >= 50 && o.count <= 500) S.count = Math.round(o.count);
+    if (Number.isFinite(o.seed) && o.seed >= 1 && o.seed <= 99999) S.seed = Math.round(o.seed);
+    if (typeof o.showTest === 'boolean') S.showTest = o.showTest;
+    S.view = validView(o.view);
+  }
+  function validView(v) {
+    if (typeof v !== 'string') return 'out';
+    if (v === 'out') return 'out';
+    if (v.startsWith('in:')) return S.feats.includes(v.slice(3)) ? v : 'out';
+    const p = v.split(':');
+    if (p[0] === 'h' && S.hidden[Number(p[1])] > Number(p[2]) && Number(p[2]) >= 0) return v;
+    return 'out';
+  }
+  function loadSaved() {
+    try {
+      const raw = localStorage.getItem(SAVE_KEY);
+      const arr = raw ? JSON.parse(raw) : [];
+      return Array.isArray(arr) ? arr : [];
+    } catch (e) { return []; }
+  }
+  function writeSaved(arr) {
+    try { localStorage.setItem(SAVE_KEY, JSON.stringify(arr)); } catch (e) { /* ignore */ }
+  }
+  function renderSaved() {
+    const list = loadSaved();
+    const host = $('np-saved');
+    host.innerHTML = '';
+    $('np-saved-empty').hidden = list.length > 0;
+    host.hidden = list.length === 0;
+    list.forEach((item) => {
+      const card = document.createElement('div');
+      card.className = 'np-card';
+      const h = document.createElement('h3');
+      h.textContent = item.name;
+      const p = document.createElement('p');
+      const c = item.cfg;
+      p.textContent = `${c.ds} · ${[c.feats.length, ...c.hidden, 1].join('-')} · ${c.act} · lr ${c.lr}`;
+      const row = document.createElement('div');
+      const bl = document.createElement('button');
+      bl.type = 'button';
+      bl.className = 'np-btn np-btn--tertiary';
+      bl.textContent = '载入';
+      bl.dataset.load = item.id;
+      const bd = document.createElement('button');
+      bd.type = 'button';
+      bd.className = 'np-btn np-btn--ghost';
+      bd.textContent = '删除';
+      bd.dataset.del = item.id;
+      row.append(bl, bd);
+      card.append(h, p, row);
+      host.appendChild(card);
+    });
+  }
+
+  /* ---------------- build static tiles ---------------- */
+  function buildTiles() {
+    const dsHost = $('np-datasets');
+    DATASETS.forEach((d) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'np-tile';
+      b.dataset.ds = d.id;
+      b.setAttribute('aria-pressed', 'false');
+      const cv = document.createElement('canvas');
+      cv.width = 56; cv.height = 56;
+      const sp = document.createElement('span');
+      sp.textContent = d.label;
+      b.append(cv, sp);
+      dsHost.appendChild(b);
+    });
+    const fHost = $('np-features');
+    FEATURES.forEach((f) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'np-tile';
+      b.dataset.f = f.id;
+      b.setAttribute('aria-pressed', 'false');
+      const cv = document.createElement('canvas');
+      cv.width = 22; cv.height = 22;
+      const sp = document.createElement('span');
+      sp.textContent = f.label;
+      b.append(cv, sp);
+      fHost.appendChild(b);
+    });
+  }
+
+  /* ---------------- events ---------------- */
+  function wire() {
+    $('np-play').addEventListener('click', () => (running ? stop() : play()));
+    $('np-step').addEventListener('click', () => { stop(); runEpochs(1); renderAll(); });
+    $('np-fast').addEventListener('click', () => { stop(); runEpochs(100); renderAll(); });
+    $('np-reset').addEventListener('click', () => { resetNet(); renderAll(); });
+    $('np-regen').addEventListener('click', () => { rebuild(true); persist(); });
+
+    $('np-lr').addEventListener('change', (e) => { S.lr = parseFloat(e.target.value); persist(); });
+    $('np-act').addEventListener('change', (e) => { S.act = e.target.value; rebuild(false); persist(); });
+    $('np-reg').addEventListener('change', (e) => { S.reg = e.target.value; persist(); });
+    $('np-lambda').addEventListener('change', (e) => { S.lambda = parseFloat(e.target.value); persist(); });
+    $('np-seed').addEventListener('change', (e) => {
+      const v = Math.round(Number(e.target.value));
+      S.seed = Number.isFinite(v) && v >= 1 && v <= 99999 ? v : 5;
+      e.target.value = String(S.seed);
+      renderDatasetTiles();
+      rebuild(true);
+      persist();
+    });
+
+    const slider = (id, valId, apply, fmt) => {
+      $(id).addEventListener('input', (e) => {
+        apply(Number(e.target.value));
+        $(valId).textContent = fmt();
+        rebuild(true);
+        renderDatasetTiles();
+        persist();
+      });
+    };
+    slider('np-noise', 'np-noise-val', (v) => (S.noise = v / 100), () => Math.round(S.noise * 100) + '%');
+    slider('np-ratio', 'np-ratio-val', (v) => (S.ratio = v / 100), () => Math.round(S.ratio * 100) + '%');
+    slider('np-count', 'np-count-val', (v) => (S.count = v), () => String(S.count));
+    $('np-batch').addEventListener('input', (e) => {
+      S.batch = Number(e.target.value);
+      $('np-batch-val').textContent = String(S.batch);
+      persist();
+    });
+
+    $('np-showtest').addEventListener('change', (e) => { S.showTest = e.target.checked; renderAll(); persist(); });
+
+    $('np-datasets').addEventListener('click', (e) => {
+      const t = e.target.closest('.np-tile');
+      if (!t) return;
+      S.ds = t.dataset.ds;
+      renderDatasetTiles();
+      rebuild(true);
+      persist();
+    });
+
+    $('np-features').addEventListener('click', (e) => {
+      const t = e.target.closest('.np-tile');
+      if (!t) return;
+      const fid = t.dataset.f;
+      const i = S.feats.indexOf(fid);
+      if (i >= 0) {
+        if (S.feats.length === 1) return;   // never leave the network without inputs
+        S.feats.splice(i, 1);
+      } else {
+        S.feats.push(fid);
+        S.feats.sort((a, b) => FEATURES.findIndex((f) => f.id === a) - FEATURES.findIndex((f) => f.id === b));
+      }
+      if (S.view.startsWith('in:') && !S.feats.includes(S.view.slice(3))) S.view = 'out';
+      renderFeatureTiles();
+      rebuild(false);
+      setView(S.view);
+      persist();
+    });
+
+    $('np-layer-plus').addEventListener('click', () => {
+      if (S.hidden.length >= 5) return;
+      S.hidden.push(Math.min(4, Math.max(1, S.hidden[S.hidden.length - 1] || 2)));
+      S.view = 'out';
+      rebuild(false);
+      setView('out');
+      persist();
+    });
+    $('np-layer-minus').addEventListener('click', () => {
+      if (!S.hidden.length) return;
+      S.hidden.pop();
+      S.view = 'out';
+      rebuild(false);
+      setView('out');
+      persist();
+    });
+
+    $('np-net').addEventListener('click', (e) => {
+      const st = e.target.closest('.np-stepper button');
+      if (st) {
+        const l = Number(st.dataset.l);
+        if (st.dataset.act === 'plus' && S.hidden[l] < 8) S.hidden[l]++;
+        else if (st.dataset.act === 'minus' && S.hidden[l] > 1) S.hidden[l]--;
+        else return;
+        S.view = 'out';
+        rebuild(false);
+        setView('out');
+        persist();
+        return;
+      }
+      const node = e.target.closest('.np-node');
+      if (node) setView(nodeKey(node));
+    });
+
+    $('np-viewreset').addEventListener('click', () => setView('out'));
+
+    $('np-save').addEventListener('click', () => {
+      const nameEl = $('np-name');
+      const name = (nameEl.value || '').trim() || `${S.ds} ${shapeOf().join('-')}`;
+      const list = loadSaved();
+      list.unshift({ id: 'e' + Date.now().toString(36) + Math.floor(Math.random() * 1e4).toString(36), name: name.slice(0, 40), cfg: JSON.parse(JSON.stringify(S)) });
+      writeSaved(list.slice(0, 24));
+      nameEl.value = '';
+      renderSaved();
+    });
+    $('np-saved').addEventListener('click', (e) => {
+      const del = e.target.closest('[data-del]');
+      if (del) { writeSaved(loadSaved().filter((x) => x.id !== del.dataset.del)); renderSaved(); return; }
+      const load = e.target.closest('[data-load]');
+      if (!load) return;
+      const item = loadSaved().find((x) => x.id === load.dataset.load);
+      if (!item) return;
+      Object.assign(S, JSON.parse(JSON.stringify(item.cfg)));
+      syncControls();
+      renderDatasetTiles();
+      renderFeatureTiles();
+      rebuild(true);
+      setView('out');
+      persist();
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (e.target !== document.body || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.code === 'Space') { e.preventDefault(); running ? stop() : play(); }
+      else if (e.key === 's' || e.key === 'S') { stop(); runEpochs(1); renderAll(); }
+      else if (e.key === 'r' || e.key === 'R') { resetNet(); renderAll(); }
+    });
+
+    let resizeTimer = 0;
+    window.addEventListener('resize', () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => { layoutEdges(); renderMain(); renderCurve(); }, 80);
+    });
+    if (window.ResizeObserver) {
+      const ro = new ResizeObserver(() => layoutEdges());
+      ro.observe($('np-net'));
+    }
+  }
+
+  function syncControls() {
+    $('np-lr').value = String(S.lr);
+    $('np-act').value = S.act;
+    $('np-reg').value = S.reg;
+    $('np-lambda').value = String(S.lambda);
+    $('np-seed').value = String(S.seed);
+    $('np-noise').value = String(Math.round(S.noise * 100));
+    $('np-noise-val').textContent = Math.round(S.noise * 100) + '%';
+    $('np-ratio').value = String(Math.round(S.ratio * 100));
+    $('np-ratio-val').textContent = Math.round(S.ratio * 100) + '%';
+    $('np-batch').value = String(S.batch);
+    $('np-batch-val').textContent = String(S.batch);
+    $('np-count').value = String(S.count);
+    $('np-count-val').textContent = String(S.count);
+    $('np-showtest').checked = S.showTest;
+  }
+
+  /* ---------------- boot ---------------- */
+  restore();
+  buildTiles();
+  syncControls();
+  renderDatasetTiles();
+  renderFeatureTiles();
+  regenerate();
+  resetNet();
+  buildNetworkDOM();
+  wire();
+  renderSaved();
+  setView(validView(S.view));
+  requestAnimationFrame(() => { layoutEdges(); renderAll(); });
+})();
+</script>
+</body>
+</html>
