@@ -99,7 +99,8 @@ export default async function ({ page, toolURL, screenshot, assert }) {
   let cTxt = (await page.locator('#match-count').textContent()) || '';
   assert(/1/.test(cTxt) && (await page.locator('#highlight mark').count()) === 1, 'without i: 1 match (abc)');
   await page.check('#f-i');
-  await page.waitForTimeout(140);
+  // 等防抖后的渲染收敛再断言，别用定时读（07-06 教训：定时读会偶得 stale 值卡红发布闸）
+  await page.waitForFunction(() => document.querySelectorAll('#highlight mark').length === 2, null, { timeout: 4000 });
   assert((await page.locator('#highlight mark').count()) === 2, 'with i: 2 matches (ABC + abc)');
   await page.uncheck('#f-i');
 
@@ -107,24 +108,31 @@ export default async function ({ page, toolURL, screenshot, assert }) {
   await page.fill('#pattern', '\\d+');
   await page.fill('#test-text', 'a1b22');
   await page.fill('#replacement', '#');
-  await page.waitForTimeout(140);
+  await page.waitForFunction(() => (document.getElementById('replace-result').textContent || '') === 'a#b#',
+    null, { timeout: 4000 });
   const rr = (await page.locator('#replace-result').textContent()) || '';
   assert(rr === 'a#b#', `replace preview = a#b# (got ${JSON.stringify(rr)})`);
 
   // ---------- DOM: invalid pattern shows error + clears matches ----------
   await page.fill('#pattern', '(');
-  await page.waitForTimeout(140);
-  assert(!(await page.locator('#error').getAttribute('hidden')) === true || (await page.locator('#error').isVisible()),
-    'error banner is visible for invalid pattern');
+  await page.waitForFunction(() => {
+    const e = document.getElementById('error');
+    return e && getComputedStyle(e).display !== 'none' && /无效/.test(e.textContent || '');
+  }, null, { timeout: 4000 });
+  assert(await page.locator('#error').isVisible(), 'error banner is visible for invalid pattern');
   const errTxt = (await page.locator('#error').textContent()) || '';
   assert(/无效/.test(errTxt), `error banner explains invalidity (got "${errTxt.trim()}")`);
+  await page.waitForFunction(() => document.querySelectorAll('#highlight mark').length === 0, null, { timeout: 4000 });
   assert((await page.locator('#highlight mark').count()) === 0, 'invalid pattern clears highlights');
 
   // ---------- DOM: library chip loads a working pattern ----------
   const emailChip = page.locator('.lib-item', { hasText: '电子邮箱' });
   assert((await emailChip.count()) >= 1, 'email library chip exists');
   await emailChip.first().click();
-  await page.waitForTimeout(160);
+  await page.waitForFunction(() => {
+    const e = document.getElementById('error');
+    return getComputedStyle(e).display === 'none' && document.querySelectorAll('#highlight mark').length >= 1;
+  }, null, { timeout: 4000 });
   assert((await page.locator('#error').isVisible()) === false, 'email chip yields a valid pattern');
   assert((await page.locator('#highlight mark').count()) >= 1, 'email chip produces matches on its demo text');
 
@@ -136,7 +144,7 @@ export default async function ({ page, toolURL, screenshot, assert }) {
   const savedTxt = (await page.locator('#saved-list .saved-item').first().textContent()) || '';
   assert(/测试邮箱/.test(savedTxt), 'saved pattern survives reload');
   await page.locator('#saved-list .saved-item .sload').first().click();
-  await page.waitForTimeout(140);
+  await page.waitForFunction(() => document.getElementById('pattern').value.indexOf('@') >= 0, null, { timeout: 4000 });
   assert((await page.locator('#pattern').inputValue()).indexOf('@') >= 0, 'clicking a saved item loads its pattern');
 
   // ---------- settle a rich state for the thumbnail ----------
@@ -145,10 +153,12 @@ export default async function ({ page, toolURL, screenshot, assert }) {
   await page.check('#f-g');
   await page.fill('#test-text', '发布 2026-07-05 · 上线 2026-07-04 · 归档 1999-12-31');
   await page.fill('#replacement', '$3/$2/$1');
-  await page.waitForTimeout(200);
+  // 等替换预览真的渲染出三个日期再截图，别用定时等
+  await page.waitForFunction(() => /05\/07\/2026/.test(document.getElementById('replace-result').textContent || ''),
+    null, { timeout: 4000 });
   // fully hide any transient toast so the thumbnail is clean
   await page.evaluate(() => { const t = document.getElementById('toast'); if (t) { t.classList.remove('show'); t.style.display = 'none'; } });
   await page.evaluate(() => window.scrollTo(0, 0));
-  await page.waitForTimeout(100);
+  await page.waitForFunction(() => window.scrollY === 0);
   await screenshot('thumb.png');
 }
