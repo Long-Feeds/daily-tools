@@ -1,0 +1,1013 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>化学配平 · Reaction Balancer</title>
+<meta name="description" content="配平任何化学方程式 —— 精确有理数引擎解元素组成矩阵的零空间;附摩尔质量与化学计量。纯前端,零上传。" />
+<style>
+  /* ---- hard guard: author CSS must never defeat the UA [hidden] rule (lesson 2026-07-20) ---- */
+  [hidden]{display:none!important}
+
+  /* ============ Apple design language tokens ============ */
+  :root{
+    --primary:#0066cc; --primary-focus:#0071e3; --sky:#2997ff;
+    --ink:#1d1d1f; --ink-80:#333; --ink-48:#7a7a7a;
+    --canvas:#fff; --parchment:#f5f5f7; --pearl:#fafafc;
+    --tile-1:#272729; --tile-2:#2a2a2c; --black:#000;
+    --on-dark:#fff; --on-dark-mute:#a1a1a6; --on-dark-faint:#6e6e73;
+    --hairline:#e0e0e0; --divider:#f0f0f0; --chip:#d2d2d7;
+    --err:#bf4d34; --ok:#2a8c4a;
+    --font-d:"SF Pro Display",-apple-system,BlinkMacSystemFont,system-ui,"Segoe UI",Roboto,sans-serif;
+    --font-t:"SF Pro Text",-apple-system,BlinkMacSystemFont,system-ui,"Segoe UI",Roboto,sans-serif;
+    --shadow-product:0 3px 30px rgba(0,0,0,.22);
+    --maxw:1000px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    font-family:var(--font-t); color:var(--ink); background:var(--canvas);
+    line-height:1.47; letter-spacing:-.01em; -webkit-font-smoothing:antialiased;
+    font-variant-numeric:tabular-nums;
+  }
+  a{color:var(--primary);text-decoration:none}
+  a:hover{text-decoration:underline}
+  ::selection{background:#cfe4ff}
+
+  /* ---- global nav (slim black) ---- */
+  .gnav{
+    position:sticky; top:0; z-index:30; height:44px; background:rgba(0,0,0,.86);
+    backdrop-filter:saturate(180%) blur(20px); -webkit-backdrop-filter:saturate(180%) blur(20px);
+    display:flex; align-items:center; justify-content:space-between;
+    padding:0 22px; color:var(--on-dark);
+  }
+  .gnav a{color:#f5f5f7;font-size:12px;letter-spacing:-.01em}
+  .gnav a:hover{color:#fff;text-decoration:none}
+  .gnav .brand{font-size:12px;font-weight:600;letter-spacing:.02em}
+  .gnav .brand b{font-weight:600}
+
+  /* ---- sub-nav frosted (parchment) ---- */
+  .subnav{
+    position:sticky; top:44px; z-index:20; height:52px; background:rgba(245,245,247,.92);
+    backdrop-filter:saturate(180%) blur(22px); -webkit-backdrop-filter:saturate(180%) blur(22px);
+    border-bottom:1px solid rgba(0,0,0,.06);
+    display:flex; align-items:center; justify-content:space-between; padding:0 max(22px,calc((100% - var(--maxw))/2));
+  }
+  .subnav .title{font-family:var(--font-d);font-size:21px;font-weight:600;letter-spacing:-.01em}
+  .subnav .title .cn{color:var(--ink)}
+  .subnav .title .en{color:var(--ink-48);font-weight:400;margin-left:.5em;font-size:15px;letter-spacing:0}
+  .subnav .meta{font-size:12px;color:var(--ink-48)}
+
+  /* ---- tiles ---- */
+  .tile{padding:64px 22px}
+  .tile.dark{background:var(--tile-1);color:var(--on-dark)}
+  .tile.parch{background:var(--parchment)}
+  .tile.white{background:var(--canvas)}
+  .wrap{max-width:var(--maxw);margin:0 auto}
+  .eyebrow{font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--primary)}
+  .tile.dark .eyebrow{color:var(--sky)}
+  h1.hero{font-family:var(--font-d);font-size:clamp(34px,5.4vw,56px);font-weight:600;line-height:1.07;letter-spacing:-.02em;margin:.28em 0 .18em}
+  h2.head{font-family:var(--font-d);font-size:clamp(26px,3.4vw,40px);font-weight:600;line-height:1.1;letter-spacing:-.015em}
+  .lead{font-size:clamp(17px,2vw,21px);color:var(--ink-80);font-weight:400;letter-spacing:-.01em;max-width:44ch}
+  .tile.dark .lead{color:var(--on-dark-mute)}
+  .section-sub{font-size:15px;color:var(--ink-48);margin-top:.5em;max-width:60ch}
+
+  /* ---- hero input ---- */
+  .console{margin-top:28px}
+  .eqrow{display:flex;gap:12px;flex-wrap:wrap;align-items:stretch}
+  .eqfield{
+    flex:1 1 460px; min-width:0; display:flex; align-items:center; gap:10px;
+    background:var(--canvas); border:1px solid var(--hairline); border-radius:14px;
+    padding:14px 18px; box-shadow:0 1px 2px rgba(0,0,0,.03);
+  }
+  .eqfield:focus-within{border-color:var(--primary);box-shadow:0 0 0 4px rgba(0,113,227,.14)}
+  #rb-eq{
+    flex:1; min-width:0; border:0; outline:0; background:transparent; color:var(--ink);
+    font-family:var(--font-t); font-size:19px; letter-spacing:-.01em; font-variant-numeric:tabular-nums;
+  }
+  #rb-eq::placeholder{color:#b0b0b6}
+  .btn{
+    font-family:var(--font-t); font-size:17px; font-weight:400; letter-spacing:-.01em;
+    border:0; border-radius:980px; padding:13px 26px; cursor:pointer; white-space:nowrap;
+    background:var(--primary); color:#fff; transition:background .18s, transform .12s;
+  }
+  .btn:hover{background:#0a6fe0}
+  .btn:active{transform:scale(.975)}
+  .btn:focus-visible{outline:2px solid var(--primary-focus);outline-offset:3px}
+  .btn.ghost{background:var(--pearl);color:var(--ink-80);border:1px solid var(--hairline);font-size:14px;padding:10px 18px;border-radius:11px}
+  .btn.ghost:hover{background:#f0f0f4}
+  .btn.mini{font-size:13px;padding:8px 15px;border-radius:8px;background:var(--ink);color:#fff}
+  .btn.mini:hover{background:#000}
+
+  .chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px}
+  .chip{
+    font-size:13px; letter-spacing:-.01em; color:var(--ink-80);
+    background:var(--canvas); border:1px solid var(--hairline); border-radius:980px;
+    padding:8px 15px; cursor:pointer; transition:border-color .15s,color .15s,background .15s;
+    font-variant-numeric:tabular-nums;
+  }
+  .chip:hover{border-color:#b9b9c0;color:var(--ink)}
+  .chip .k{color:var(--ink-48);font-size:11px;margin-right:6px;text-transform:uppercase;letter-spacing:.05em}
+  .chips-label{font-size:12px;color:var(--ink-48);letter-spacing:.05em;text-transform:uppercase;margin:22px 0 2px}
+
+  /* ---- dark result tile: the balanced equation as the artifact ---- */
+  .stage{min-height:180px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:22px 0 6px}
+  .balanced{
+    font-family:var(--font-d); font-weight:600; letter-spacing:-.01em; line-height:1.3;
+    font-size:clamp(26px,4.4vw,44px); color:var(--on-dark);
+    display:flex; flex-wrap:wrap; align-items:baseline; justify-content:center; gap:.34em .5em;
+  }
+  .balanced .coef{color:var(--sky);font-weight:600}
+  .balanced .arrow{color:var(--on-dark-mute);font-weight:400;padding:0 .12em}
+  .balanced .plus{color:var(--on-dark-faint);font-weight:400}
+  .balanced .sp{white-space:nowrap}
+  .result-cap{margin-top:20px;font-size:13px;letter-spacing:.05em;text-transform:uppercase;color:var(--on-dark-faint)}
+  .result-cap.warn{color:#e6b566;text-transform:none;letter-spacing:-.01em;font-size:15px;max-width:52ch}
+  .result-cap.err{color:#ef8b74;text-transform:none;letter-spacing:-.01em;font-size:17px;max-width:52ch}
+  .elbal{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:22px}
+  .elbal .e{
+    font-size:12px;color:var(--on-dark-mute);background:rgba(255,255,255,.06);
+    border:1px solid rgba(255,255,255,.1); border-radius:980px; padding:6px 12px;
+    font-variant-numeric:tabular-nums;
+  }
+  .elbal .e b{color:#fff;font-weight:600}
+  .elbal .e .tick{color:#6fd18b;margin-left:6px}
+  .darkactions{display:flex;gap:10px;justify-content:center;margin-top:26px}
+
+  /* ---- utility cards / stats ---- */
+  .grid-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin-top:26px}
+  .stat{background:var(--canvas);border:1px solid var(--hairline);border-radius:18px;padding:20px 22px}
+  .stat .n{font-family:var(--font-d);font-size:34px;font-weight:600;letter-spacing:-.02em}
+  .stat .l{font-size:13px;color:var(--ink-48);margin-top:4px}
+
+  .matrix-shell{margin-top:26px;border:1px solid var(--hairline);border-radius:18px;background:var(--canvas);overflow:hidden}
+  .matrix-scroll{overflow-x:auto}
+  table.mx{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums;font-size:14px}
+  table.mx th,table.mx td{padding:10px 14px;text-align:center;border-bottom:1px solid var(--divider);white-space:nowrap}
+  table.mx thead th{background:var(--pearl);color:var(--ink-80);font-weight:600;position:sticky;top:0}
+  table.mx th.rowh{text-align:left;color:var(--ink);font-weight:600;background:var(--canvas)}
+  table.mx td.pos{color:var(--primary)}
+  table.mx td.neg{color:var(--err)}
+  table.mx td.zero{color:#c4c4cc}
+  table.mx tr:last-child td{border-bottom:0}
+  table.mx .sidehdr td{background:var(--pearl);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-48);padding:6px 14px}
+  .mx-note{font-size:12.5px;color:var(--ink-48);padding:12px 16px;border-top:1px solid var(--divider);background:var(--pearl)}
+
+  /* ---- stoichiometry ---- */
+  .stoich-controls{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;margin-top:24px}
+  .field{display:flex;flex-direction:column;gap:6px}
+  .field label{font-size:12px;color:var(--ink-48);letter-spacing:.04em;text-transform:uppercase}
+  select.inp,input.inp{
+    font-family:var(--font-t);font-size:16px;color:var(--ink);background:var(--canvas);
+    border:1px solid var(--hairline);border-radius:11px;padding:11px 14px;outline:0;letter-spacing:-.01em;
+    font-variant-numeric:tabular-nums;height:44px;
+  }
+  select.inp{cursor:pointer;min-width:170px;background-image:none}
+  input.inp{width:150px}
+  select.inp:focus,input.inp:focus{border-color:var(--primary);box-shadow:0 0 0 4px rgba(0,113,227,.14)}
+  .stoich-table-shell{margin-top:22px;border:1px solid var(--hairline);border-radius:18px;overflow:hidden;background:var(--canvas)}
+  .stoich-scroll{overflow-x:auto}
+  table.st{border-collapse:collapse;width:100%;font-size:15px;font-variant-numeric:tabular-nums}
+  table.st th,table.st td{padding:12px 16px;text-align:right;border-bottom:1px solid var(--divider);white-space:nowrap}
+  table.st th:first-child,table.st td:first-child{text-align:left}
+  table.st thead th{background:var(--pearl);color:var(--ink-48);font-weight:600;font-size:12px;letter-spacing:.04em;text-transform:uppercase}
+  table.st td.f{font-family:var(--font-d);font-weight:600;color:var(--ink)}
+  table.st tr.prod td.f{color:var(--ink-80)}
+  table.st tr:last-child td{border-bottom:0}
+  .st-side{display:inline-block;font-size:10px;letter-spacing:.05em;text-transform:uppercase;padding:2px 7px;border-radius:980px;margin-left:8px;vertical-align:middle}
+  .st-side.r{background:rgba(0,102,204,.1);color:var(--primary)}
+  .st-side.p{background:rgba(42,140,74,.12);color:var(--ok)}
+  .masscheck{margin-top:16px;font-size:14px;color:var(--ink-48);display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .masscheck b{color:var(--ink);font-weight:600}
+  .masscheck .ok{color:var(--ok);font-weight:600}
+
+  /* ---- molar mass ---- */
+  .mm-head{display:flex;flex-wrap:wrap;gap:24px;align-items:flex-end;justify-content:space-between}
+  .mm-total{font-family:var(--font-d);font-size:clamp(40px,7vw,64px);font-weight:600;letter-spacing:-.02em;line-height:1}
+  .mm-total .u{font-size:.34em;color:var(--ink-48);font-weight:400;margin-left:.3em;letter-spacing:0}
+  .mm-formula{font-family:var(--font-d);font-size:22px;font-weight:600;color:var(--ink-80)}
+  .mm-bars{margin-top:28px;display:flex;flex-direction:column;gap:12px}
+  .bar-row{display:grid;grid-template-columns:120px 1fr 120px;gap:14px;align-items:center}
+  .bar-row .el{font-weight:600;font-size:15px}
+  .bar-row .el small{color:var(--ink-48);font-weight:400;margin-left:6px;font-size:12px}
+  .bar-track{height:12px;background:var(--divider);border-radius:980px;overflow:hidden}
+  .bar-fill{height:100%;background:var(--primary);border-radius:980px}
+  .bar-row .pct{text-align:right;color:var(--ink-80);font-size:14px;font-variant-numeric:tabular-nums}
+  .bar-row .pct small{color:var(--ink-48)}
+
+  /* ---- history ---- */
+  .history{margin-top:26px}
+  .history .chips .chip{background:var(--pearl)}
+  .empty{font-size:14px;color:var(--ink-48)}
+
+  /* ---- footer ---- */
+  .foot{background:var(--parchment);padding:40px 22px;border-top:1px solid rgba(0,0,0,.06)}
+  .foot .wrap{display:flex;flex-wrap:wrap;gap:12px;justify-content:space-between;align-items:center}
+  .foot p{font-size:12px;color:var(--ink-48);line-height:1.7}
+  .backlink{display:inline-flex;align-items:center;gap:6px;font-size:14px}
+
+  .divide{height:1px;background:var(--divider);border:0;max-width:var(--maxw);margin:0 auto}
+
+  @media (max-width:640px){
+    .tile{padding:44px 18px}
+    .subnav .title .en{display:none}
+    .bar-row{grid-template-columns:90px 1fr 74px;gap:10px}
+    .stat .n{font-size:28px}
+  }
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<nav class="gnav">
+  <a href="../../" class="backlink" id="rb-back">← 返回工具集</a>
+  <span class="brand">每日工具集 · <b>化学</b></span>
+</nav>
+
+<div class="subnav">
+  <div class="title"><span class="cn">化学配平</span><span class="en">Reaction Balancer</span></div>
+  <div class="meta">精确有理数引擎 · 零上传</div>
+</div>
+
+<!-- ============ HERO ============ -->
+<section class="tile parch" id="rb-hero">
+  <div class="wrap">
+    <span class="eyebrow">配平 · 摩尔质量 · 化学计量</span>
+    <h1 class="hero">配平任何<br>化学方程式。</h1>
+    <p class="lead">输入未配平的反应式,引擎把元素组成矩阵化为零空间、用精确有理数解出最简整数系数 —— 连氧化还原离子方程也一并搞定。</p>
+
+    <div class="console">
+      <div class="eqrow">
+        <label class="eqfield" for="rb-eq" aria-label="化学方程式">
+          <span aria-hidden="true" style="color:#b0b0b6;font-size:15px">🧪</span>
+          <input id="rb-eq" type="text" autocomplete="off" autocapitalize="off" spellcheck="false"
+                 placeholder="例如  C2H6 + O2 -> CO2 + H2O" />
+        </label>
+        <button class="btn" id="rb-balance">配平</button>
+      </div>
+      <div class="chips-label">试试这些反应</div>
+      <div class="chips" id="rb-presets"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ RESULT (dark artifact tile) ============ -->
+<section class="tile dark" id="rb-result" data-status="empty">
+  <div class="wrap">
+    <div class="stage">
+      <div class="balanced" id="rb-eq-pretty" aria-live="polite"></div>
+      <div class="result-cap" id="rb-msg">已配平 · balanced</div>
+      <div class="elbal" id="rb-elements"></div>
+      <div class="darkactions">
+        <button class="btn mini" id="rb-copy" hidden>复制配平结果</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ HOW IT SOLVED (matrix) ============ -->
+<section class="tile white" id="rb-engine">
+  <div class="wrap">
+    <span class="eyebrow">配平原理</span>
+    <h2 class="head">解组成矩阵的零空间</h2>
+    <p class="section-sub">把每个物种当作一列、每种元素(必要时加上电荷)当作一行,反应物记正、产物记负,方程配平即求 <b>A·x = 0</b> 的非平凡整数解。自由度为 1 时配平唯一。</p>
+    <div class="grid-stats" id="rb-stats">
+      <div class="stat"><div class="n" id="rb-stat-species">–</div><div class="l">物种数</div></div>
+      <div class="stat"><div class="n" id="rb-stat-elements">–</div><div class="l">约束(元素/电荷)</div></div>
+      <div class="stat"><div class="n" id="rb-stat-rank">–</div><div class="l">矩阵秩</div></div>
+      <div class="stat"><div class="n" id="rb-stat-dof">–</div><div class="l">解的自由度</div></div>
+    </div>
+    <div class="matrix-shell" id="rb-matrix-shell" hidden>
+      <div class="matrix-scroll"><table class="mx" id="rb-matrix"></table></div>
+      <div class="mx-note">列 = 物种,行 = 元素守恒方程;正数为反应物、负数为产物。每一行之和(乘以系数后)必须为 0。</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ STOICHIOMETRY ============ -->
+<section class="tile parch" id="rb-stoich" hidden>
+  <div class="wrap">
+    <span class="eyebrow">化学计量</span>
+    <h2 class="head">由一个已知量算出其余</h2>
+    <p class="section-sub">选一个物种、填入物质的量或质量,按配平系数比例换算出所有物种的 mol 与克数。反应物总质量应等于产物总质量。</p>
+    <div class="stoich-controls">
+      <div class="field">
+        <label for="rb-stoich-species">已知物种</label>
+        <select class="inp" id="rb-stoich-species"></select>
+      </div>
+      <div class="field">
+        <label for="rb-stoich-amt">数量</label>
+        <input class="inp" id="rb-stoich-amt" type="number" min="0" step="any" value="1" />
+      </div>
+      <div class="field">
+        <label for="rb-stoich-unit">单位</label>
+        <select class="inp" id="rb-stoich-unit">
+          <option value="mol">mol(物质的量)</option>
+          <option value="g">g(质量)</option>
+        </select>
+      </div>
+    </div>
+    <div class="stoich-table-shell">
+      <div class="stoich-scroll"><table class="st" id="rb-stoich-table"></table></div>
+    </div>
+    <div class="masscheck" id="rb-stoich-mass"></div>
+  </div>
+</section>
+
+<!-- ============ MOLAR MASS ============ -->
+<section class="tile white" id="rb-mm-sec">
+  <div class="wrap">
+    <span class="eyebrow">摩尔质量</span>
+    <h2 class="head">任意化学式的相对分子质量</h2>
+    <div class="console">
+      <div class="eqrow">
+        <label class="eqfield" for="rb-mm" aria-label="化学式">
+          <span aria-hidden="true" style="color:#b0b0b6;font-size:15px">⚛</span>
+          <input id="rb-mm" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="例如  CuSO4·5H2O" />
+        </label>
+        <button class="btn" id="rb-mm-go">计算</button>
+      </div>
+      <div class="chips" id="rb-mm-presets" style="margin-top:14px"></div>
+    </div>
+    <div class="mm-head" style="margin-top:34px">
+      <div class="mm-total" id="rb-mm-total" data-mass="0">–</div>
+      <div class="mm-formula" id="rb-mm-formula"></div>
+    </div>
+    <div class="mm-bars" id="rb-mm-bars"></div>
+    <div class="result-cap err" id="rb-mm-err" style="color:var(--err);margin-top:18px" hidden></div>
+  </div>
+</section>
+
+<!-- ============ HISTORY ============ -->
+<section class="tile parch" id="rb-hist-sec">
+  <div class="wrap">
+    <span class="eyebrow">最近配平</span>
+    <h2 class="head" style="font-size:clamp(22px,2.6vw,30px)">你的反应记录</h2>
+    <div class="history">
+      <div class="chips" id="rb-history"></div>
+      <div class="empty" id="rb-history-empty">还没有记录 —— 配平一个方程,它会保存在本地(不会上传)。</div>
+    </div>
+  </div>
+</section>
+
+<footer class="foot">
+  <div class="wrap">
+    <p>化学配平 · Reaction Balancer &nbsp;—&nbsp; 精确 BigInt 有理数引擎,全程本地运算,零上传。<br>标准原子量取自 IUPAC;结果仅供学习参考。设计语言:Apple。</p>
+    <a href="../../" class="backlink">← 返回每日工具集</a>
+  </div>
+</footer>
+
+<script>
+/*<<<ENGINE*/
+const RB = (function () {
+  'use strict';
+
+  // ---- Periodic table: [symbol, name, standard atomic weight] indexed by Z ----
+  const RAW = [
+    ['H','Hydrogen',1.008],['He','Helium',4.0026],['Li','Lithium',6.94],['Be','Beryllium',9.0122],
+    ['B','Boron',10.81],['C','Carbon',12.011],['N','Nitrogen',14.007],['O','Oxygen',15.999],
+    ['F','Fluorine',18.998],['Ne','Neon',20.180],['Na','Sodium',22.990],['Mg','Magnesium',24.305],
+    ['Al','Aluminium',26.982],['Si','Silicon',28.085],['P','Phosphorus',30.974],['S','Sulfur',32.06],
+    ['Cl','Chlorine',35.45],['Ar','Argon',39.95],['K','Potassium',39.098],['Ca','Calcium',40.078],
+    ['Sc','Scandium',44.956],['Ti','Titanium',47.867],['V','Vanadium',50.942],['Cr','Chromium',51.996],
+    ['Mn','Manganese',54.938],['Fe','Iron',55.845],['Co','Cobalt',58.933],['Ni','Nickel',58.693],
+    ['Cu','Copper',63.546],['Zn','Zinc',65.38],['Ga','Gallium',69.723],['Ge','Germanium',72.630],
+    ['As','Arsenic',74.922],['Se','Selenium',78.971],['Br','Bromine',79.904],['Kr','Krypton',83.798],
+    ['Rb','Rubidium',85.468],['Sr','Strontium',87.62],['Y','Yttrium',88.906],['Zr','Zirconium',91.224],
+    ['Nb','Niobium',92.906],['Mo','Molybdenum',95.95],['Tc','Technetium',98],['Ru','Ruthenium',101.07],
+    ['Rh','Rhodium',102.91],['Pd','Palladium',106.42],['Ag','Silver',107.87],['Cd','Cadmium',112.41],
+    ['In','Indium',114.82],['Sn','Tin',118.71],['Sb','Antimony',121.76],['Te','Tellurium',127.60],
+    ['I','Iodine',126.90],['Xe','Xenon',131.29],['Cs','Caesium',132.91],['Ba','Barium',137.33],
+    ['La','Lanthanum',138.91],['Ce','Cerium',140.12],['Pr','Praseodymium',140.91],['Nd','Neodymium',144.24],
+    ['Pm','Promethium',145],['Sm','Samarium',150.36],['Eu','Europium',151.96],['Gd','Gadolinium',157.25],
+    ['Tb','Terbium',158.93],['Dy','Dysprosium',162.50],['Ho','Holmium',164.93],['Er','Erbium',167.26],
+    ['Tm','Thulium',168.93],['Yb','Ytterbium',173.05],['Lu','Lutetium',174.97],['Hf','Hafnium',178.49],
+    ['Ta','Tantalum',180.95],['W','Tungsten',183.84],['Re','Rhenium',186.21],['Os','Osmium',190.23],
+    ['Ir','Iridium',192.22],['Pt','Platinum',195.08],['Au','Gold',196.97],['Hg','Mercury',200.59],
+    ['Tl','Thallium',204.38],['Pb','Lead',207.2],['Bi','Bismuth',208.98],['Po','Polonium',209],
+    ['At','Astatine',210],['Rn','Radon',222],['Fr','Francium',223],['Ra','Radium',226],
+    ['Ac','Actinium',227],['Th','Thorium',232.04],['Pa','Protactinium',231.04],['U','Uranium',238.03],
+    ['Np','Neptunium',237],['Pu','Plutonium',244],['Am','Americium',243],['Cm','Curium',247],
+    ['Bk','Berkelium',247],['Cf','Californium',251],['Es','Einsteinium',252],['Fm','Fermium',257],
+    ['Md','Mendelevium',258],['No','Nobelium',259],['Lr','Lawrencium',262],['Rf','Rutherfordium',267],
+    ['Db','Dubnium',268],['Sg','Seaborgium',269],['Bh','Bohrium',270],['Hs','Hassium',269],
+    ['Mt','Meitnerium',278],['Ds','Darmstadtium',281],['Rg','Roentgenium',282],['Cn','Copernicium',285],
+    ['Nh','Nihonium',286],['Fl','Flerovium',289],['Mc','Moscovium',290],['Lv','Livermorium',293],
+    ['Ts','Tennessine',294],['Og','Oganesson',294]
+  ];
+  const PT = {};
+  RAW.forEach((r, i) => { PT[r[0]] = { sym: r[0], name: r[1], w: r[2], z: i + 1 }; });
+
+  // ---- exact BigInt fraction ----
+  function bgcd(a, b) { a = a < 0n ? -a : a; b = b < 0n ? -b : b; while (b) { [a, b] = [b, a % b]; } return a; }
+  function blcm(a, b) { if (a === 0n || b === 0n) return 0n; return (a / bgcd(a, b)) * b; }
+  class Fr {
+    constructor(n, d = 1n) {
+      n = BigInt(n); d = BigInt(d);
+      if (d === 0n) throw new Error('division by zero');
+      if (d < 0n) { n = -n; d = -d; }
+      const g = bgcd(n, d) || 1n;
+      this.n = n / g; this.d = d / g;
+    }
+    isZero() { return this.n === 0n; }
+    sign() { return this.n > 0n ? 1 : this.n < 0n ? -1 : 0; }
+    neg() { return new Fr(-this.n, this.d); }
+    add(o) { return new Fr(this.n * o.d + o.n * this.d, this.d * o.d); }
+    sub(o) { return new Fr(this.n * o.d - o.n * this.d, this.d * o.d); }
+    mul(o) { return new Fr(this.n * o.n, this.d * o.d); }
+    div(o) { return new Fr(this.n * o.d, this.d * o.n); }
+  }
+  const F = (n, d = 1n) => new Fr(n, d);
+
+  // ---- formula parser -> { counts: Map<sym,int>, charge: int } ----
+  function parseFormula(raw) {
+    if (raw == null) throw new Error('空式子');
+    let s = String(raw).trim();
+    if (!s) throw new Error('空式子');
+    s = s.replace(/\((?:s|l|g|aq)\)/gi, '');
+    let charge = 0;
+    const cm = s.match(/\^(\d*)([+\-−])$/);
+    if (cm) {
+      const mag = cm[1] ? parseInt(cm[1], 10) : 1;
+      const sign = (cm[2] === '+') ? 1 : -1;
+      charge = mag * sign;
+      s = s.slice(0, s.length - cm[0].length);
+    }
+    const parts = s.split(/[·‧*.]/).filter(p => p.length);
+    const counts = new Map();
+    for (const part of parts) {
+      let p = part;
+      let mult = 1;
+      const lm = p.match(/^(\d+)(?=[A-Z(])/);
+      if (lm) { mult = parseInt(lm[1], 10); p = p.slice(lm[1].length); }
+      const sub = parseGroup(p);
+      for (const [el, c] of sub) counts.set(el, (counts.get(el) || 0) + c * mult);
+    }
+    if (counts.size === 0) throw new Error('无法识别的式子: ' + raw);
+    return { counts, charge };
+  }
+
+  function parseGroup(str) {
+    let i = 0;
+    const stack = [new Map()];
+    function addTop(el, n) { const m = stack[stack.length - 1]; m.set(el, (m.get(el) || 0) + n); }
+    while (i < str.length) {
+      const ch = str[i];
+      if (ch === '(' || ch === '[' || ch === '{') { stack.push(new Map()); i++; continue; }
+      if (ch === ')' || ch === ']' || ch === '}') {
+        if (stack.length < 2) throw new Error('括号不匹配');
+        i++;
+        let num = '';
+        while (i < str.length && /\d/.test(str[i])) { num += str[i]; i++; }
+        const mult = num ? parseInt(num, 10) : 1;
+        const grp = stack.pop();
+        const top = stack[stack.length - 1];
+        for (const [el, c] of grp) top.set(el, (top.get(el) || 0) + c * mult);
+        continue;
+      }
+      const em = /^[A-Z][a-z]?/.exec(str.slice(i));
+      if (!em) throw new Error('无法解析: "' + str[i] + '" 于 ' + str);
+      const el = em[0];
+      if (!PT[el]) throw new Error('未知元素: ' + el);
+      i += el.length;
+      let num = '';
+      while (i < str.length && /\d/.test(str[i])) { num += str[i]; i++; }
+      addTop(el, num ? parseInt(num, 10) : 1);
+    }
+    if (stack.length !== 1) throw new Error('括号不匹配');
+    return stack[0];
+  }
+
+  function splitEquation(input) {
+    if (!input || !String(input).trim()) throw new Error('请输入化学方程式');
+    let s = String(input).trim();
+    s = s.replace(/[→⟶⇌↔⇄]|=>|-->|->|<=>|<->|=+/g, '→');
+    const arrowCount = (s.match(/→/g) || []).length;
+    if (arrowCount === 0) throw new Error('缺少箭头(用 -> 或 = 分隔反应物与产物)');
+    if (arrowCount > 1) throw new Error('箭头过多,只能有一个 -> ');
+    const [lhs, rhs] = s.split('→');
+    const react = splitSide(lhs);
+    const prod = splitSide(rhs);
+    if (!react.length) throw new Error('反应物一侧为空');
+    if (!prod.length) throw new Error('产物一侧为空');
+    return { react, prod };
+  }
+
+  function splitSide(side) {
+    const prot = side.replace(/\^(\d*)\+/g, '^$1#PLUS#').replace(/\^(\d*)[-−]/g, '^$1#MINUS#');
+    return prot.split('+').map(t => t.trim()).filter(t => t.length).map(tok => {
+      const rest = tok.replace(/#PLUS#/g, '+').replace(/#MINUS#/g, '-');
+      const cm = rest.match(/^(\d+)\s*(?=[A-Z(\[])/);
+      const formula = cm ? rest.slice(cm[0].length) : rest;
+      return { formula: formula.trim(), parsed: parseFormula(formula.trim()) };
+    });
+  }
+
+  function nullspace(A, ncols) {
+    const M = A.map(r => r.slice());
+    const nrows = M.length;
+    const pivotCols = [];
+    let pr = 0;
+    for (let col = 0; col < ncols && pr < nrows; col++) {
+      let sel = -1;
+      for (let r = pr; r < nrows; r++) if (!M[r][col].isZero()) { sel = r; break; }
+      if (sel === -1) continue;
+      [M[pr], M[sel]] = [M[sel], M[pr]];
+      const pv = M[pr][col];
+      M[pr] = M[pr].map(x => x.div(pv));
+      for (let r = 0; r < nrows; r++) {
+        if (r !== pr && !M[r][col].isZero()) {
+          const f = M[r][col];
+          M[r] = M[r].map((x, k) => x.sub(f.mul(M[pr][k])));
+        }
+      }
+      pivotCols.push(col);
+      pr++;
+    }
+    const pivotSet = new Set(pivotCols);
+    const freeCols = [];
+    for (let c = 0; c < ncols; c++) if (!pivotSet.has(c)) freeCols.push(c);
+    const basis = freeCols.map(fc => {
+      const vec = Array.from({ length: ncols }, () => F(0));
+      vec[fc] = F(1);
+      for (let i = 0; i < pivotCols.length; i++) vec[pivotCols[i]] = M[i][fc].neg();
+      return vec;
+    });
+    return { basis, pivotCols, freeCols, rank: pivotCols.length };
+  }
+
+  function toIntegers(vec) {
+    let L = 1n;
+    for (const f of vec) L = blcm(L, f.d);
+    let ints = vec.map(f => f.n * (L / f.d));
+    let g = 0n;
+    for (const x of ints) g = bgcd(g, x < 0n ? -x : x);
+    if (g === 0n) g = 1n;
+    return ints.map(x => x / g);
+  }
+
+  function balance(input) {
+    const { react, prod } = splitEquation(input);
+    const species = [
+      ...react.map(s => ({ ...s, side: 1 })),
+      ...prod.map(s => ({ ...s, side: -1 }))
+    ];
+    const nR = react.length;
+    const anyCharge = species.some(s => s.parsed.charge !== 0);
+    const elemSet = new Set();
+    for (const s of species) for (const el of s.parsed.counts.keys()) elemSet.add(el);
+    const elements = [...elemSet].sort();
+    const rows = elements.map(el => ({ kind: 'el', el }));
+    if (anyCharge) rows.push({ kind: 'charge' });
+
+    const A = rows.map(r => species.map(s => {
+      const v = r.kind === 'charge' ? s.parsed.charge : (s.parsed.counts.get(r.el) || 0);
+      return F(s.side * v);
+    }));
+
+    const { basis, rank } = nullspace(A, species.length);
+
+    const base = {
+      species, nR, elements, anyCharge, rows,
+      matrix: A.map(row => row.map(f => Number(f.n) / Number(f.d))),
+      rank
+    };
+
+    if (basis.length === 0) {
+      return { ok: false, reason: 'unbalanceable', message: '无法配平:各物种线性无关(检查式子是否写错、或缺少物种)。', ...base };
+    }
+    if (basis.length >= 2) {
+      let cand = null;
+      const sum = Array.from({ length: species.length }, (_, i) =>
+        basis.reduce((acc, v) => acc.add(v[i]), F(0)));
+      const sInts = toIntegers(sum);
+      if (sInts.every(x => x > 0n)) cand = sInts;
+      return {
+        ok: true, unique: false, dof: basis.length,
+        coeffs: cand ? cand.map(x => x.toString()) : null,
+        coeffNums: cand ? cand.map(x => Number(x)) : null,
+        message: `方程欠定:存在 ${basis.length} 个独立自由度,配平不唯一。` + (cand ? '(下方给出其中一组正整数解)' : ''),
+        ...base
+      };
+    }
+
+    let ints = toIntegers(basis[0]);
+    const nonzero = ints.filter(x => x !== 0n);
+    if (nonzero.length === 0) return { ok: false, reason: 'trivial', message: '无非平凡解。', ...base };
+    if (nonzero.every(x => x < 0n)) ints = ints.map(x => -x);
+    const signs = ints.filter(x => x !== 0n);
+    if (signs.some(x => x < 0n)) {
+      return { ok: false, reason: 'signs', message: '无法用正整数配平:出现异号系数(可能有物种放错了反应物/产物一侧)。', ...base };
+    }
+    if (ints.some(x => x === 0n)) {
+      return { ok: false, reason: 'zero', message: '某个物种系数为 0(它并未参与反应,请移除)。', ...base };
+    }
+
+    const coeffs = ints;
+    for (const r of rows) {
+      let sum = 0n;
+      species.forEach((s, i) => {
+        const v = BigInt(r.kind === 'charge' ? s.parsed.charge : (s.parsed.counts.get(r.el) || 0));
+        sum += BigInt(s.side) * coeffs[i] * v;
+      });
+      if (sum !== 0n) return { ok: false, reason: 'verify', message: '内部校验失败。', ...base };
+    }
+
+    return {
+      ok: true, unique: true,
+      coeffs: coeffs.map(x => x.toString()),
+      coeffNums: coeffs.map(x => Number(x)),
+      ...base
+    };
+  }
+
+  function molarMass(formula) {
+    const { counts, charge } = parseFormula(formula);
+    let total = 0;
+    const parts = [];
+    for (const [el, n] of counts) {
+      const w = PT[el].w;
+      const sub = w * n;
+      total += sub;
+      parts.push({ el, name: PT[el].name, z: PT[el].z, count: n, weight: w, subtotal: sub });
+    }
+    parts.sort((a, b) => b.subtotal - a.subtotal);
+    for (const p of parts) p.percent = total > 0 ? (p.subtotal / total) * 100 : 0;
+    return { total, parts, charge, counts };
+  }
+
+  function stoich(balanceResult, basisIndex, amount, unit) {
+    if (!balanceResult || !balanceResult.ok || !balanceResult.unique) throw new Error('需要唯一配平结果');
+    const sp = balanceResult.species;
+    const coeffs = balanceResult.coeffNums;
+    const masses = sp.map(s => {
+      let m = 0; for (const [el, n] of s.parsed.counts) m += PT[el].w * n; return m;
+    });
+    const amt = Number(amount);
+    if (!isFinite(amt) || amt < 0) throw new Error('数量非法');
+    const molBasis = unit === 'g' ? amt / masses[basisIndex] : amt;
+    const cBasis = coeffs[basisIndex];
+    const rows = sp.map((s, i) => {
+      const mol = molBasis * coeffs[i] / cBasis;
+      return { formula: s.formula, side: s.side, coeff: coeffs[i], molarMass: masses[i], mol, grams: mol * masses[i] };
+    });
+    const reactG = rows.filter(r => r.side === 1).reduce((a, r) => a + r.grams, 0);
+    const prodG = rows.filter(r => r.side === -1).reduce((a, r) => a + r.grams, 0);
+    return { rows, reactG, prodG };
+  }
+
+  const SUB = { '0': '₀', '1': '₁', '2': '₂', '3': '₃', '4': '₄', '5': '₅', '6': '₆', '7': '₇', '8': '₈', '9': '₉' };
+  const SUP = { '0': '⁰', '1': '¹', '2': '²', '3': '³', '4': '⁴', '5': '⁵', '6': '⁶', '7': '⁷', '8': '⁸', '9': '⁹', '+': '⁺', '-': '⁻' };
+  function pretty(formula) {
+    let s = String(formula);
+    let charge = '';
+    const cm = s.match(/\^(\d*)([+\-−])$/);
+    if (cm) {
+      const mag = cm[1] || '';
+      const sign = cm[2] === '-' || cm[2] === '−' ? '-' : '+';
+      charge = (mag ? mag.split('').map(d => SUP[d]).join('') : '') + SUP[sign];
+      s = s.slice(0, s.length - cm[0].length);
+    }
+    let out = '';
+    for (let i = 0; i < s.length; i++) {
+      const ch = s[i];
+      if (/\d/.test(ch)) {
+        const prev = s[i - 1];
+        if (prev === '·' || prev === '*' || prev === '‧') out += ch;
+        else out += SUB[ch];
+      } else if (ch === '*') out += '·';
+      else out += ch;
+    }
+    return out + charge;
+  }
+
+  return { PT, parseFormula, splitEquation, balance, molarMass, stoich, pretty, Fr, F };
+})();
+/*ENGINE>>>*/
+
+// ============ DOM layer ============
+(function () {
+  'use strict';
+  const $ = (id) => document.getElementById(id);
+  const KEY = 'rb.v1';
+  const state = loadState();
+
+  const PRESETS = [
+    { k: '燃烧', eq: 'C2H6 + O2 -> CO2 + H2O' },
+    { k: '氧化还原', eq: 'KMnO4 + HCl -> KCl + MnCl2 + H2O + Cl2' },
+    { k: '生锈', eq: 'Fe + O2 -> Fe2O3' },
+    { k: '中和', eq: 'Ca(OH)2 + H3PO4 -> Ca3(PO4)2 + H2O' },
+    { k: '离子·半反应', eq: 'MnO4^- + Fe^2+ + H^+ -> Mn^2+ + Fe^3+ + H2O' },
+    { k: '火山', eq: '(NH4)2Cr2O7 -> Cr2O3 + N2 + H2O' },
+    { k: '光合', eq: 'CO2 + H2O -> C6H12O6 + O2' }
+  ];
+  const MM_PRESETS = ['H2O', 'C6H12O6', 'CuSO4·5H2O', 'NaCl', 'H2SO4', 'CaCO3'];
+
+  let lastBalance = null;
+
+  function loadState() {
+    try { const s = JSON.parse(localStorage.getItem(KEY)); if (s && typeof s === 'object') return { history: [], ...s }; } catch (e) {}
+    return { history: [] };
+  }
+  function saveState() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} }
+
+  function coefSpan(c) { return c === 1 ? '' : '<span class="coef">' + c + '</span> '; }
+
+  // ---- render balanced equation on the dark tile ----
+  function renderResult(res) {
+    const tile = $('rb-result');
+    const pretty = $('rb-eq-pretty');
+    const msg = $('rb-msg');
+    const el = $('rb-elements');
+    const copy = $('rb-copy');
+    el.innerHTML = '';
+    copy.hidden = true;
+    msg.className = 'result-cap';
+
+    if (!res || !res.ok) {
+      tile.dataset.status = 'error';
+      tile.dataset.coeffs = '';
+      pretty.innerHTML = '<span style="color:var(--on-dark-faint);font-weight:400">— 无法配平 —</span>';
+      msg.className = 'result-cap err';
+      msg.textContent = '⚠ ' + (res ? res.message : '出错了');
+      return;
+    }
+
+    // build the pretty equation with coefficients
+    const sp = res.species;
+    const coeffs = res.coeffNums || [];
+    const parts = [];
+    for (let i = 0; i < sp.length; i++) {
+      if (i === res.nR) parts.push('<span class="arrow">→</span>');
+      else if (i > 0) parts.push('<span class="plus">+</span>');
+      const c = coeffs[i] != null ? coeffs[i] : '?';
+      parts.push('<span class="sp">' + coefSpan(c) + RB.pretty(sp[i].formula) + '</span>');
+    }
+    pretty.innerHTML = parts.join(' ');
+
+    if (res.unique) {
+      tile.dataset.status = 'ok-unique';
+      tile.dataset.coeffs = coeffs.join(',');
+      msg.textContent = '已配平 · balanced';
+      // element balance chips
+      for (const e of res.elements) {
+        let tot = 0;
+        sp.forEach((s, i) => { tot += (i < res.nR ? 1 : 0); });
+        // count atoms of e on reactant side
+        let n = 0;
+        sp.forEach((s, i) => { if (i < res.nR) n += coeffs[i] * (s.parsed.counts.get(e) || 0); });
+        const chip = document.createElement('span');
+        chip.className = 'e';
+        chip.innerHTML = e + ' <b>' + n + '</b><span class="tick">✓</span>';
+        el.appendChild(chip);
+      }
+      if (res.anyCharge) {
+        let q = 0; sp.forEach((s, i) => { if (i < res.nR) q += coeffs[i] * s.parsed.charge; });
+        const chip = document.createElement('span');
+        chip.className = 'e';
+        chip.innerHTML = '电荷 <b>' + (q > 0 ? '+' + q : q) + '</b><span class="tick">✓</span>';
+        el.appendChild(chip);
+      }
+      copy.hidden = false;
+    } else {
+      tile.dataset.status = 'ok-underdetermined';
+      tile.dataset.coeffs = coeffs && coeffs.length ? coeffs.join(',') : '';
+      msg.className = 'result-cap warn';
+      msg.textContent = 'ⓘ ' + res.message;
+    }
+  }
+
+  // ---- render matrix + stats ----
+  function renderEngine(res) {
+    $('rb-stat-species').textContent = res.species.length;
+    $('rb-stat-elements').textContent = res.rows.length;
+    $('rb-stat-rank').textContent = res.rank;
+    const dof = res.species.length - res.rank;
+    $('rb-stat-dof').textContent = dof;
+
+    const shell = $('rb-matrix-shell');
+    const tbl = $('rb-matrix');
+    shell.hidden = false;
+    const sp = res.species;
+    let html = '<thead><tr><th class="rowh">元素 \\ 物种</th>';
+    for (let i = 0; i < sp.length; i++) {
+      html += '<th>' + RB.pretty(sp[i].formula) + '</th>';
+    }
+    html += '</tr></thead><tbody>';
+    for (const r of res.rows) {
+      const label = r.kind === 'charge' ? '电荷 q' : r.el;
+      html += '<tr><td class="rowh">' + label + '</td>';
+      for (let i = 0; i < sp.length; i++) {
+        const v = r.kind === 'charge' ? sp[i].parsed.charge : (sp[i].parsed.counts.get(r.el) || 0);
+        const signed = sp[i].side * v;
+        const cls = signed > 0 ? 'pos' : signed < 0 ? 'neg' : 'zero';
+        const disp = signed > 0 ? '+' + signed : signed;
+        html += '<td class="' + cls + '">' + disp + '</td>';
+      }
+      html += '</tr>';
+    }
+    html += '</tbody>';
+    tbl.innerHTML = html;
+  }
+
+  // ---- stoichiometry ----
+  function setupStoich(res) {
+    const sec = $('rb-stoich');
+    if (!res.unique) { sec.hidden = true; return; }
+    sec.hidden = false;
+    const sel = $('rb-stoich-species');
+    sel.innerHTML = '';
+    res.species.forEach((s, i) => {
+      const o = document.createElement('option');
+      o.value = String(i);
+      o.textContent = s.formula + (i < res.nR ? '(反应物)' : '(产物)');
+      sel.appendChild(o);
+    });
+    sel.value = '0';
+    sec.dataset.basis = '0';
+    renderStoich();
+  }
+
+  function fmt(x, dp) {
+    if (!isFinite(x)) return '—';
+    if (x === 0) return '0';
+    const a = Math.abs(x);
+    if (a < 1e-4 || a >= 1e7) return x.toExponential(3);
+    return x.toLocaleString('en-US', { maximumFractionDigits: dp, minimumFractionDigits: 0 });
+  }
+
+  function renderStoich() {
+    if (!lastBalance || !lastBalance.unique) return;
+    const sel = $('rb-stoich-species');
+    const idx = parseInt(sel.value || '0', 10);
+    const amt = $('rb-stoich-amt').value;
+    const unit = $('rb-stoich-unit').value;
+    $('rb-stoich').dataset.basis = String(idx);
+    let s;
+    try { s = RB.stoich(lastBalance, idx, amt, unit); }
+    catch (e) { return; }
+    const tbl = $('rb-stoich-table');
+    let html = '<thead><tr><th>物种</th><th>系数</th><th>摩尔质量</th><th>物质的量 (mol)</th><th>质量 (g)</th></tr></thead><tbody>';
+    s.rows.forEach((r, i) => {
+      const sideCls = r.side === 1 ? 'r' : 'p';
+      const sideTxt = r.side === 1 ? '反应物' : '产物';
+      html += '<tr class="' + (r.side === 1 ? 'react' : 'prod') + '">' +
+        '<td class="f">' + RB.pretty(r.formula) + '<span class="st-side ' + sideCls + '">' + sideTxt + '</span></td>' +
+        '<td>' + r.coeff + '</td>' +
+        '<td>' + fmt(r.molarMass, 3) + '</td>' +
+        '<td>' + fmt(r.mol, 4) + '</td>' +
+        '<td>' + fmt(r.grams, 4) + '</td></tr>';
+    });
+    html += '</tbody>';
+    tbl.innerHTML = html;
+
+    const diff = Math.abs(s.reactG - s.prodG);
+    const rel = s.reactG > 0 ? diff / s.reactG : 0;
+    const okmass = rel < 1e-6;
+    $('rb-stoich-mass').innerHTML =
+      '质量守恒:反应物 <b>' + fmt(s.reactG, 4) + ' g</b> = 产物 <b>' + fmt(s.prodG, 4) + ' g</b> ' +
+      '<span class="ok">' + (okmass ? '✓ 守恒' : '(Δ=' + fmt(diff, 6) + ' g)') + '</span>';
+  }
+
+  // ---- molar mass ----
+  function runMM(formula) {
+    const err = $('rb-mm-err');
+    const total = $('rb-mm-total');
+    const bars = $('rb-mm-bars');
+    const fEl = $('rb-mm-formula');
+    let mm;
+    try { mm = RB.molarMass(formula); }
+    catch (e) {
+      err.hidden = false; err.textContent = '⚠ ' + e.message;
+      total.textContent = '–'; total.dataset.mass = '0'; bars.innerHTML = ''; fEl.textContent = '';
+      return;
+    }
+    err.hidden = true;
+    total.dataset.mass = mm.total.toFixed(4);
+    total.innerHTML = fmt(mm.total, 2) + '<span class="u">g/mol</span>';
+    fEl.innerHTML = RB.pretty(formula);
+    bars.innerHTML = '';
+    mm.parts.forEach((p, i) => {
+      const row = document.createElement('div');
+      row.className = 'bar-row';
+      const op = (1 - i * 0.13).toFixed(2);
+      row.innerHTML =
+        '<div class="el">' + p.el + ' <small>×' + p.count + '</small></div>' +
+        '<div class="bar-track"><div class="bar-fill" style="width:' + p.percent.toFixed(2) + '%;opacity:' + Math.max(0.42, op) + '"></div></div>' +
+        '<div class="pct">' + p.percent.toFixed(1) + '%<small> · ' + fmt(p.subtotal, 2) + '</small></div>';
+      bars.appendChild(row);
+    });
+    state.lastMM = formula; saveState();
+  }
+
+  // ---- history ----
+  function pushHistory(eq) {
+    eq = eq.trim();
+    state.history = state.history.filter(h => h !== eq);
+    state.history.unshift(eq);
+    if (state.history.length > 12) state.history.length = 12;
+    saveState();
+    renderHistory();
+  }
+  function renderHistory() {
+    const box = $('rb-history');
+    const empty = $('rb-history-empty');
+    box.innerHTML = '';
+    if (!state.history.length) { empty.hidden = false; return; }
+    empty.hidden = true;
+    for (const eq of state.history) {
+      const c = document.createElement('button');
+      c.className = 'chip';
+      c.textContent = eq;
+      c.addEventListener('click', () => { $('rb-eq').value = eq; doBalance(); scrollToTop(); });
+      box.appendChild(c);
+    }
+  }
+  function scrollToTop() { window.scrollTo({ top: 0, behavior: 'smooth' }); }
+
+  // ---- main balance action ----
+  function doBalance() {
+    const input = $('rb-eq').value;
+    let res;
+    try { res = RB.balance(input); }
+    catch (e) {
+      res = { ok: false, message: e.message, species: [], rows: [], elements: [], rank: 0 };
+      renderResult(res);
+      // still clear engine section gracefully
+      $('rb-stat-species').textContent = '–'; $('rb-stat-elements').textContent = '–';
+      $('rb-stat-rank').textContent = '–'; $('rb-stat-dof').textContent = '–';
+      $('rb-matrix-shell').hidden = true;
+      $('rb-stoich').hidden = true;
+      lastBalance = null;
+      return;
+    }
+    lastBalance = res;
+    renderResult(res);
+    renderEngine(res);
+    setupStoich(res);
+    if (res.ok) { state.lastEq = input.trim(); pushHistory(input); }
+  }
+
+  // ---- copy ----
+  function plainEquation(res) {
+    const sp = res.species; const coeffs = res.coeffNums || [];
+    const parts = [];
+    for (let i = 0; i < sp.length; i++) {
+      if (i === res.nR) parts.push('→');
+      else if (i > 0) parts.push('+');
+      const c = coeffs[i]; parts.push((c === 1 ? '' : c + ' ') + RB.pretty(sp[i].formula));
+    }
+    return parts.join(' ');
+  }
+
+  // ---- init ----
+  function init() {
+    // presets
+    const pbox = $('rb-presets');
+    PRESETS.forEach(p => {
+      const c = document.createElement('button');
+      c.className = 'chip'; c.type = 'button';
+      c.innerHTML = '<span class="k">' + p.k + '</span>' + p.eq;
+      c.addEventListener('click', () => { $('rb-eq').value = p.eq; doBalance(); });
+      pbox.appendChild(c);
+    });
+    const mbox = $('rb-mm-presets');
+    MM_PRESETS.forEach(f => {
+      const c = document.createElement('button');
+      c.className = 'chip'; c.type = 'button'; c.textContent = f;
+      c.addEventListener('click', () => { $('rb-mm').value = f; runMM(f); });
+      mbox.appendChild(c);
+    });
+
+    $('rb-balance').addEventListener('click', doBalance);
+    $('rb-eq').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); doBalance(); } });
+    $('rb-mm-go').addEventListener('click', () => runMM($('rb-mm').value));
+    $('rb-mm').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); runMM($('rb-mm').value); } });
+    ['rb-stoich-species', 'rb-stoich-amt', 'rb-stoich-unit'].forEach(id => {
+      $(id).addEventListener('input', renderStoich);
+      $(id).addEventListener('change', renderStoich);
+    });
+    $('rb-copy').addEventListener('click', () => {
+      if (!lastBalance || !lastBalance.ok) return;
+      const txt = plainEquation(lastBalance);
+      const btn = $('rb-copy');
+      const done = () => { btn.textContent = '已复制 ✓'; setTimeout(() => btn.textContent = '复制配平结果', 1400); };
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(done, done);
+      else done();
+    });
+
+    renderHistory();
+
+    // seed initial content (respect saved last)
+    $('rb-eq').value = state.lastEq || 'C2H6 + O2 -> CO2 + H2O';
+    doBalance();
+    $('rb-mm').value = state.lastMM || 'C6H12O6';
+    runMM($('rb-mm').value);
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
+})();
+</script>
+</body>
+</html>
