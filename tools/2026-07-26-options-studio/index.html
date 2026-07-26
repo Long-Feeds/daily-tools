@@ -1,0 +1,934 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>期权工作台 · Options Studio</title>
+<meta name="description" content="Black–Scholes–Merton 期权定价 + 全套希腊字母(Δ/Γ/Θ/Vega/Rho)+ 牛顿法隐含波动率求解 + 多腿策略到期盈亏图(价差/跨式/铁鹰/蝶式)。纯前端,零上传。" />
+<style>
+  /* ---- hard guard: author CSS must never defeat the UA [hidden] rule (lesson 2026-07-20) ---- */
+  [hidden]{display:none!important}
+
+  /* ============ Binance design language tokens ============ */
+  :root{
+    --canvas:#0b0e11; --card:#1e2329; --elevated:#2b3139;
+    --hairline:#2b3139; --hairline-soft:#222831;
+    --primary:#fcd535; --primary-active:#f0b90b; --primary-dim:#3a3a1f;
+    --on-primary:#181a20;
+    --body:#eaecef; --on-dark:#ffffff; --muted:#707a8a; --muted-strong:#929aa5;
+    --up:#0ecb81; --down:#f6465d; --info:#3b82f6; --turq:#2dbdb6;
+    --font:"BinanceNova",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --num:"BinancePlex",ui-monospace,"SF Mono","Roboto Mono",-apple-system,sans-serif;
+    --maxw:1240px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    font-family:var(--font); color:var(--body); background:var(--canvas);
+    line-height:1.5; -webkit-font-smoothing:antialiased;
+  }
+  .num,.os-num{font-family:var(--num);font-variant-numeric:tabular-nums}
+  a{color:var(--primary);text-decoration:none}
+  a:hover{color:var(--primary-active)}
+  ::selection{background:rgba(252,213,53,.28)}
+  button{font-family:inherit;cursor:pointer}
+  input,select{font-family:inherit}
+
+  /* ---- global nav ---- */
+  .os-gnav{
+    position:sticky; top:0; z-index:40; height:56px; background:var(--canvas);
+    border-bottom:1px solid var(--hairline);
+    display:flex; align-items:center; justify-content:space-between;
+    padding:0 max(20px,calc((100% - var(--maxw))/2));
+  }
+  .os-gnav .brand{display:flex;align-items:center;gap:9px;font-size:14px;font-weight:600;letter-spacing:.02em;color:var(--on-dark)}
+  .os-gnav .mark{width:22px;height:22px;flex:none}
+  .os-gnav a.back{color:var(--muted-strong);font-size:13px;font-weight:500;display:inline-flex;align-items:center;gap:6px}
+  .os-gnav a.back:hover{color:var(--body)}
+
+  .os-wrap{max-width:var(--maxw); margin:0 auto; padding:0 20px}
+
+  /* ---- hero ---- */
+  .os-hero{padding:34px 0 20px}
+  .os-hero .eyebrow{font-size:12px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--primary)}
+  .os-hero h1{font-size:34px;line-height:1.1;font-weight:700;letter-spacing:-.5px;color:var(--on-dark);margin-top:9px}
+  .os-hero h1 .en{color:var(--muted-strong);font-weight:600}
+  .os-hero p{margin-top:10px;max-width:70ch;color:var(--muted-strong);font-size:14px}
+  .os-hero .disc{margin-top:8px;font-size:12px;color:var(--muted)}
+
+  /* ---- layout grid ---- */
+  .os-grid{display:grid;grid-template-columns:minmax(0,0.86fr) minmax(0,1.14fr);gap:18px;padding-bottom:16px;align-items:start}
+  .os-grid > section{min-width:0}   /* grid items must shrink so inner overflow-x:auto scrollers clamp (lesson 2026-07-23) */
+  @media(max-width:920px){ .os-grid{grid-template-columns:1fr} }
+
+  .os-card{background:var(--card);border:1px solid var(--hairline);border-radius:12px;padding:20px;min-width:0}
+  .os-card + .os-card{margin-top:18px}
+  .os-card h2{font-size:15px;font-weight:600;color:var(--on-dark);display:flex;align-items:center;gap:8px}
+  .os-card h2 .tag{font-size:11px;font-weight:600;letter-spacing:.04em;color:var(--muted);text-transform:uppercase}
+  .os-sub{font-size:12px;color:var(--muted);margin-top:3px}
+
+  /* ---- form controls ---- */
+  .os-field-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px 14px;margin-top:16px}
+  .os-field{display:flex;flex-direction:column;gap:6px;min-width:0}
+  .os-field label{font-size:11.5px;font-weight:500;color:var(--muted-strong);letter-spacing:.01em;display:flex;justify-content:space-between;align-items:baseline;gap:6px}
+  .os-field label .hint{color:var(--muted);font-weight:400}
+  .os-inp{
+    height:40px;background:var(--elevated);border:1px solid var(--hairline);border-radius:8px;
+    color:var(--on-dark);font-family:var(--num);font-variant-numeric:tabular-nums;font-size:15px;font-weight:500;
+    padding:0 12px;width:100%;transition:border-color .15s;
+  }
+  .os-inp:focus{outline:none;border-color:var(--info);box-shadow:0 0 0 3px rgba(59,130,246,.18)}
+  .os-inp.bad{border-color:var(--down);box-shadow:0 0 0 3px rgba(246,70,93,.16)}
+  select.os-inp{cursor:pointer;-webkit-appearance:none;appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--muted-strong) 50%),linear-gradient(135deg,var(--muted-strong) 50%,transparent 50%);background-position:calc(100% - 16px) 17px,calc(100% - 11px) 17px;background-size:5px 5px,5px 5px;background-repeat:no-repeat;padding-right:30px}
+
+  /* segmented (call/put, long/short) */
+  .os-seg{display:inline-flex;background:var(--elevated);border:1px solid var(--hairline);border-radius:8px;padding:3px;gap:3px}
+  .os-seg button{border:none;background:transparent;color:var(--muted-strong);font-size:13px;font-weight:600;padding:7px 16px;border-radius:6px;transition:.12s}
+  .os-seg button[aria-pressed="true"]{background:var(--primary);color:var(--on-primary)}
+  .os-seg.dir button.up[aria-pressed="true"]{background:var(--up);color:#04231a}
+  .os-seg.dir button.down[aria-pressed="true"]{background:var(--down);color:#2a0910}
+
+  /* ---- price readout ---- */
+  .os-priceline{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-top:20px;padding-top:18px;border-top:1px solid var(--hairline)}
+  .os-priceline .lab{font-size:12px;color:var(--muted);letter-spacing:.02em}
+  .os-price{font-family:var(--num);font-variant-numeric:tabular-nums;font-size:40px;font-weight:700;line-height:1;letter-spacing:-.5px;color:var(--primary)}
+  .os-price .cur{font-size:18px;color:var(--muted-strong);margin-right:4px;font-weight:600}
+  .os-tv{text-align:right;font-size:12px;color:var(--muted)}
+  .os-tv b{font-family:var(--num);color:var(--body);font-weight:600;font-variant-numeric:tabular-nums}
+
+  /* ---- greeks grid ---- */
+  .os-greeks{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;margin-top:18px;background:var(--hairline);border:1px solid var(--hairline);border-radius:10px;overflow:hidden}
+  .os-greek{background:var(--card);padding:12px 13px;min-width:0}
+  .os-greek .k{font-size:11px;color:var(--muted);font-weight:600;letter-spacing:.03em;display:flex;align-items:center;gap:5px}
+  .os-greek .k .sym{font-family:var(--num);color:var(--muted-strong);font-size:13px}
+  .os-greek .v{font-family:var(--num);font-variant-numeric:tabular-nums;font-size:18px;font-weight:600;color:var(--on-dark);margin-top:5px;letter-spacing:-.2px}
+  .os-greek .u{font-size:10.5px;color:var(--muted);margin-top:1px}
+  .os-greek .v.pos{color:var(--up)} .os-greek .v.neg{color:var(--down)}
+
+  /* d-values row */
+  .os-dvals{display:flex;flex-wrap:wrap;gap:6px;margin-top:14px}
+  .os-chip{background:var(--elevated);border:1px solid var(--hairline);border-radius:6px;padding:5px 9px;font-size:11.5px;color:var(--muted-strong)}
+  .os-chip b{font-family:var(--num);font-variant-numeric:tabular-nums;color:var(--body);font-weight:600;margin-left:5px}
+
+  /* ---- IV solver ---- */
+  .os-ivbar{display:flex;gap:10px;align-items:flex-end;margin-top:16px;flex-wrap:wrap}
+  .os-ivbar .os-field{flex:1;min-width:130px}
+  .os-btn{height:40px;padding:0 20px;border:none;border-radius:8px;background:var(--primary);color:var(--on-primary);font-size:13px;font-weight:600;letter-spacing:.01em;transition:.12s;white-space:nowrap}
+  .os-btn:hover{background:var(--primary-active)}
+  .os-btn.ghost{background:var(--elevated);color:var(--body);border:1px solid var(--hairline)}
+  .os-btn.ghost:hover{background:#333b44;color:var(--on-dark)}
+  .os-ivout{margin-top:12px;font-size:13px;color:var(--muted-strong)}
+  .os-ivout .big{font-family:var(--num);font-variant-numeric:tabular-nums;font-size:22px;font-weight:700;color:var(--primary);letter-spacing:-.3px}
+  .os-ivout .it{font-size:11.5px;color:var(--muted)}
+  .os-ivout.bad .big{color:var(--down)}
+
+  /* ---- strategy builder ---- */
+  .os-presets{display:flex;flex-wrap:wrap;gap:7px;margin-top:14px}
+  .os-preset{background:var(--elevated);border:1px solid var(--hairline);border-radius:999px;color:var(--muted-strong);font-size:12px;font-weight:500;padding:6px 13px;transition:.12s}
+  .os-preset:hover{color:var(--on-dark);border-color:var(--muted)}
+  .os-preset[aria-pressed="true"]{background:var(--primary);color:var(--on-primary);border-color:var(--primary);font-weight:600}
+
+  .os-legs{width:100%;margin-top:16px;border-collapse:collapse;font-size:13px}
+  .os-legs th{text-align:left;font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);padding:0 8px 8px;border-bottom:1px solid var(--hairline);white-space:nowrap}
+  .os-legs th.r,.os-legs td.r{text-align:right}
+  .os-legs td{padding:7px 8px;border-bottom:1px solid var(--hairline-soft);vertical-align:middle}
+  .os-legs .legkind{display:inline-flex;align-items:center;gap:6px;font-weight:600}
+  .os-legs .dot{width:8px;height:8px;border-radius:2px;flex:none}
+  .os-legs .dot.long{background:var(--up)} .os-legs .dot.short{background:var(--down)}
+  .os-legs .miniinp{width:78px;height:30px;background:var(--elevated);border:1px solid var(--hairline);border-radius:6px;color:var(--on-dark);font-family:var(--num);font-variant-numeric:tabular-nums;font-size:13px;font-weight:500;padding:0 8px;text-align:right}
+  .os-legs .miniinp:focus{outline:none;border-color:var(--info)}
+  .os-legs select.miniinp{width:auto;text-align:left;-webkit-appearance:none;appearance:none;padding-right:8px}
+  .os-legs .del{background:transparent;border:none;color:var(--muted);font-size:16px;line-height:1;padding:2px 6px;border-radius:5px}
+  .os-legs .del:hover{color:var(--down);background:rgba(246,70,93,.1)}
+  .os-legs .num{color:var(--body)}
+  .os-addrow{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+  .os-addrow .os-btn{height:34px;font-size:12px;padding:0 14px}
+
+  /* strat stats */
+  .os-sstats{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;margin-top:16px;background:var(--hairline);border:1px solid var(--hairline);border-radius:10px;overflow:hidden}
+  .os-sstat{background:var(--card);padding:11px 12px;min-width:0}
+  .os-sstat .k{font-size:10.5px;color:var(--muted);font-weight:600;letter-spacing:.03em}
+  .os-sstat .v{font-family:var(--num);font-variant-numeric:tabular-nums;font-size:16px;font-weight:600;color:var(--on-dark);margin-top:4px;letter-spacing:-.2px;overflow-wrap:anywhere}
+  .os-sstat .v.pos{color:var(--up)} .os-sstat .v.neg{color:var(--down)} .os-sstat .v.warn{color:var(--primary)}
+  @media(max-width:520px){ .os-sstats{grid-template-columns:repeat(2,1fr)} .os-greeks{grid-template-columns:repeat(2,1fr)} .os-field-grid{grid-template-columns:1fr} }
+
+  /* ---- payoff chart ---- */
+  .os-chartwrap{margin-top:18px;background:#12161c;border:1px solid var(--hairline);border-radius:10px;padding:12px 12px 8px;overflow-x:auto}
+  #os-chart{display:block;width:100%;height:auto;min-width:520px}
+  .os-legend{display:flex;flex-wrap:wrap;gap:14px;margin-top:8px;padding:0 4px;font-size:11.5px;color:var(--muted-strong)}
+  .os-legend span{display:inline-flex;align-items:center;gap:6px}
+  .os-legend i{width:14px;height:0;border-top:2px solid;display:inline-block}
+  .os-legend i.now{border-top-style:dashed}
+
+  .os-foot{color:var(--muted);font-size:12px;padding:22px 0 42px;border-top:1px solid var(--hairline);margin-top:12px;line-height:1.7}
+  .os-foot b{color:var(--muted-strong);font-weight:600}
+</style>
+</head>
+<body>
+  <nav class="os-gnav">
+    <span class="brand">
+      <svg class="mark" viewBox="0 0 32 32" aria-hidden="true"><path fill="#fcd535" d="M16 4l3.6 3.6L11.9 15.3 8.3 11.7 16 4zM22 10l3.6 3.6L11.9 27.3 8.3 23.7 22 10zM6.4 12.4L10 16l-3.6 3.6L2.8 16l3.6-3.6zm19.2 0L29.2 16l-3.6 3.6L22 16l3.6-3.6z"/></svg>
+      每日工具 · Daily Tools
+    </span>
+    <a class="back" id="os-back" href="../../">← 返回工具集</a>
+  </nav>
+
+  <div class="os-wrap">
+    <header class="os-hero">
+      <div class="eyebrow">Derivatives · 衍生品</div>
+      <h1>期权工作台 <span class="en">Options Studio</span></h1>
+      <p>Black–Scholes–Merton 定价引擎:实时算出欧式期权理论价 + 全套希腊字母,牛顿法反解隐含波动率,并把任意多腿策略画成到期盈亏图 —— 盈亏平衡点、最大盈亏、风险收益一目了然。</p>
+      <div class="disc">纯前端 · 零上传 · 仅供学习研究,非投资建议。期权价按<b>每股</b>计,标准美式合约需 ×100。</div>
+    </header>
+
+    <div class="os-grid">
+      <!-- ============ LEFT: PRICER ============ -->
+      <section>
+        <div class="os-card">
+          <h2>定价器 <span class="tag">Black–Scholes–Merton</span></h2>
+          <div class="os-sub">连续分红的欧式期权闭式解。改任一参数,价格与希腊字母即时重算。</div>
+
+          <div style="margin-top:16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+            <div class="os-seg" id="os-type" role="group" aria-label="期权类型">
+              <button type="button" data-type="call" aria-pressed="true">看涨 Call</button>
+              <button type="button" data-type="put" aria-pressed="false">看跌 Put</button>
+            </div>
+          </div>
+
+          <div class="os-field-grid">
+            <div class="os-field">
+              <label for="os-S">标的价格 <span class="hint">S</span></label>
+              <input class="os-inp" id="os-S" type="number" step="0.01" value="100" inputmode="decimal">
+            </div>
+            <div class="os-field">
+              <label for="os-K">行权价 <span class="hint">K</span></label>
+              <input class="os-inp" id="os-K" type="number" step="0.01" value="100" inputmode="decimal">
+            </div>
+            <div class="os-field">
+              <label for="os-days">到期天数 <span class="hint">→ T</span></label>
+              <input class="os-inp" id="os-days" type="number" step="1" value="90" inputmode="decimal">
+            </div>
+            <div class="os-field">
+              <label for="os-vol">波动率 σ <span class="hint">% / 年</span></label>
+              <input class="os-inp" id="os-vol" type="number" step="0.5" value="25" inputmode="decimal">
+            </div>
+            <div class="os-field">
+              <label for="os-rate">无风险利率 r <span class="hint">%</span></label>
+              <input class="os-inp" id="os-rate" type="number" step="0.1" value="4" inputmode="decimal">
+            </div>
+            <div class="os-field">
+              <label for="os-div">分红率 q <span class="hint">%</span></label>
+              <input class="os-inp" id="os-div" type="number" step="0.1" value="0" inputmode="decimal">
+            </div>
+          </div>
+
+          <div class="os-priceline">
+            <div>
+              <div class="lab">理论价格 · Fair value</div>
+              <div class="os-price" id="os-price"><span class="cur">$</span><span id="os-price-num">—</span></div>
+            </div>
+            <div class="os-tv">
+              内在价值 <b id="os-intrinsic">—</b><br>
+              时间价值 <b id="os-timeval">—</b>
+            </div>
+          </div>
+
+          <div class="os-greeks" id="os-greeks">
+            <div class="os-greek"><div class="k"><span class="sym">Δ</span>Delta</div><div class="v" id="os-delta">—</div><div class="u">标的每 +1</div></div>
+            <div class="os-greek"><div class="k"><span class="sym">Γ</span>Gamma</div><div class="v" id="os-gamma">—</div><div class="u">Δ 每 +1</div></div>
+            <div class="os-greek"><div class="k"><span class="sym">Θ</span>Theta</div><div class="v" id="os-theta">—</div><div class="u">每日时间损耗</div></div>
+            <div class="os-greek"><div class="k"><span class="sym">ν</span>Vega</div><div class="v" id="os-vega">—</div><div class="u">σ 每 +1%</div></div>
+            <div class="os-greek"><div class="k"><span class="sym">ρ</span>Rho</div><div class="v" id="os-rho">—</div><div class="u">r 每 +1%</div></div>
+            <div class="os-greek"><div class="k"><span class="sym">%</span>ITM 概率</div><div class="v" id="os-prob">—</div><div class="u">风险中性 N(d₂)</div></div>
+          </div>
+
+          <div class="os-dvals">
+            <span class="os-chip">d₁<b id="os-d1">—</b></span>
+            <span class="os-chip">d₂<b id="os-d2">—</b></span>
+            <span class="os-chip">N(d₁)<b id="os-nd1">—</b></span>
+            <span class="os-chip">N(d₂)<b id="os-nd2">—</b></span>
+          </div>
+        </div>
+
+        <div class="os-card">
+          <h2>隐含波动率 <span class="tag">Newton–Raphson</span></h2>
+          <div class="os-sub">输入市场成交价,反解让 BSM 价等于市价的 σ(牛顿迭代 + 二分兜底)。用上方的 S/K/T/r/q。</div>
+          <div class="os-ivbar">
+            <div class="os-field">
+              <label for="os-mktprice">期权市价 <span class="hint">观测价</span></label>
+              <input class="os-inp" id="os-mktprice" type="number" step="0.01" value="6.50" inputmode="decimal">
+            </div>
+            <button class="os-btn" id="os-solve" type="button">求解 σ</button>
+          </div>
+          <div class="os-ivout" id="os-ivout" aria-live="polite">
+            隐含波动率 <span class="big" id="os-iv">—</span>
+            <span class="it" id="os-iv-it"></span>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ RIGHT: STRATEGY ============ -->
+      <section>
+        <div class="os-card">
+          <h2>策略盈亏 <span class="tag">Payoff at expiry</span></h2>
+          <div class="os-sub">选一个预置策略或自行加腿,即时画出到期盈亏曲线并标出盈亏平衡点。</div>
+
+          <div class="os-presets" id="os-presets" role="group" aria-label="预置策略">
+            <button class="os-preset" type="button" data-preset="long-call" aria-pressed="false">买入看涨</button>
+            <button class="os-preset" type="button" data-preset="long-put" aria-pressed="false">买入看跌</button>
+            <button class="os-preset" type="button" data-preset="covered-call" aria-pressed="false">备兑看涨</button>
+            <button class="os-preset" type="button" data-preset="bull-call" aria-pressed="false">牛市价差</button>
+            <button class="os-preset" type="button" data-preset="bear-put" aria-pressed="false">熊市价差</button>
+            <button class="os-preset" type="button" data-preset="straddle" aria-pressed="true">跨式</button>
+            <button class="os-preset" type="button" data-preset="strangle" aria-pressed="false">宽跨式</button>
+            <button class="os-preset" type="button" data-preset="iron-condor" aria-pressed="false">铁鹰</button>
+            <button class="os-preset" type="button" data-preset="butterfly" aria-pressed="false">蝶式</button>
+          </div>
+
+          <div style="overflow-x:auto">
+          <table class="os-legs">
+            <thead>
+              <tr>
+                <th>方向</th><th>类型</th><th class="r">数量</th><th class="r">行权价 K</th><th class="r">权利金</th><th></th>
+              </tr>
+            </thead>
+            <tbody id="os-legbody"></tbody>
+          </table>
+          </div>
+          <div class="os-addrow">
+            <button class="os-btn ghost" id="os-addleg" type="button">+ 加一腿</button>
+            <button class="os-btn ghost" id="os-clearlegs" type="button">清空</button>
+          </div>
+
+          <div class="os-sstats" id="os-sstats">
+            <div class="os-sstat"><div class="k">净成本 / 收入</div><div class="v" id="os-net">—</div></div>
+            <div class="os-sstat"><div class="k">最大盈利</div><div class="v pos" id="os-maxp">—</div></div>
+            <div class="os-sstat"><div class="k">最大亏损</div><div class="v neg" id="os-maxl">—</div></div>
+            <div class="os-sstat"><div class="k">盈亏平衡</div><div class="v warn" id="os-be">—</div></div>
+          </div>
+
+          <div class="os-chartwrap">
+            <svg id="os-chart" viewBox="0 0 760 380" role="img" aria-label="到期盈亏图"></svg>
+          </div>
+          <div class="os-legend">
+            <span><i style="border-color:var(--up)"></i>盈利</span>
+            <span><i style="border-color:var(--down)"></i>亏损</span>
+            <span><i class="now" style="border-color:var(--muted-strong)"></i>当前标的价 S</span>
+            <span><i style="border-color:var(--primary)"></i>盈亏平衡</span>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <div class="os-foot">
+      <b>模型:</b> Black–Scholes–Merton 欧式期权闭式解,含连续分红率 q;希腊字母为解析式(非差分)。隐含波动率用带 Vega 的牛顿迭代,越界回退二分法,并做无套利上下界检查。<br>
+      <b>说明:</b> 所有计算 100% 在你的浏览器内完成,输入不上传、不保存到任何服务器。策略盈亏为<b>到期时刻</b>的每股损益(标准美式合约 1 张 = 100 股)。仅供学习研究,不构成任何投资建议。
+    </div>
+  </div>
+
+<script>
+/*<<<ENGINE*/
+// ============================================================
+//  Options Studio engine — pure, deterministic, no DOM refs.
+//  Exposed on window.__opt for tests. Black–Scholes–Merton.
+// ============================================================
+var SQRT2PI = Math.sqrt(2 * Math.PI);
+
+// Abramowitz & Stegun 7.1.26 error function, |err| < 1.5e-7
+function erf(x) {
+  var s = x < 0 ? -1 : 1;
+  x = Math.abs(x);
+  var t = 1 / (1 + 0.3275911 * x);
+  var y = 1 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-x * x);
+  return s * y;
+}
+function normCdf(x) { return 0.5 * (1 + erf(x / Math.SQRT2)); }
+function normPdf(x) { return Math.exp(-0.5 * x * x) / SQRT2PI; }
+
+function d1(S, K, T, r, sig, q) {
+  return (Math.log(S / K) + (r - q + 0.5 * sig * sig) * T) / (sig * Math.sqrt(T));
+}
+function d2(S, K, T, r, sig, q) { return d1(S, K, T, r, sig, q) - sig * Math.sqrt(T); }
+
+// European option price. type: 'call' | 'put'.
+function price(type, S, K, T, r, sig, q) {
+  q = q || 0;
+  if (T <= 0) { return type === 'call' ? Math.max(S - K, 0) : Math.max(K - S, 0); }
+  if (sig <= 0) {
+    var fwd = S * Math.exp(-q * T) - K * Math.exp(-r * T);
+    return type === 'call' ? Math.max(fwd, 0) : Math.max(-fwd, 0);
+  }
+  var sq = Math.sqrt(T);
+  var D1 = d1(S, K, T, r, sig, q), D2 = D1 - sig * sq;
+  var dfR = Math.exp(-r * T), dfQ = Math.exp(-q * T);
+  if (type === 'call') return S * dfQ * normCdf(D1) - K * dfR * normCdf(D2);
+  return K * dfR * normCdf(-D2) - S * dfQ * normCdf(-D1);
+}
+
+// Analytic greeks. Returns per-year theta/rho and vega per 1.00 vol,
+// plus convenience per-day theta, per-1% vega/rho. Also d1/d2/N(d1)/N(d2).
+function greeks(type, S, K, T, r, sig, q) {
+  q = q || 0;
+  var sq = Math.sqrt(T);
+  var D1 = d1(S, K, T, r, sig, q), D2 = D1 - sig * sq;
+  var dfR = Math.exp(-r * T), dfQ = Math.exp(-q * T);
+  var pdf = normPdf(D1);
+  var o = { d1: D1, d2: D2, Nd1: normCdf(D1), Nd2: normCdf(D2) };
+  o.gamma = dfQ * pdf / (S * sig * sq);
+  o.vega = S * dfQ * pdf * sq;      // per 1.00 (i.e. +100% vol)
+  o.vega1 = o.vega / 100;           // per +1% vol
+  if (type === 'call') {
+    o.delta = dfQ * normCdf(D1);
+    o.theta = -(S * dfQ * pdf * sig) / (2 * sq) - r * K * dfR * normCdf(D2) + q * S * dfQ * normCdf(D1);
+    o.rho = K * T * dfR * normCdf(D2);
+    o.probITM = normCdf(D2);        // risk-neutral P(S_T > K)
+  } else {
+    o.delta = -dfQ * normCdf(-D1);
+    o.theta = -(S * dfQ * pdf * sig) / (2 * sq) + r * K * dfR * normCdf(-D2) - q * S * dfQ * normCdf(-D1);
+    o.rho = -K * T * dfR * normCdf(-D2);
+    o.probITM = normCdf(-D2);       // risk-neutral P(S_T < K)
+  }
+  o.thetaDay = o.theta / 365;
+  o.rho1 = o.rho / 100;             // per +1% rate
+  return o;
+}
+
+function intrinsic(type, S, K) { return type === 'call' ? Math.max(S - K, 0) : Math.max(K - S, 0); }
+
+// Implied volatility via Newton–Raphson (vega step) with bisection fallback
+// and no-arbitrage bounds check. Returns {ok, sigma, iters, reason?}.
+function impliedVol(type, mkt, S, K, T, r, q) {
+  q = q || 0;
+  if (!(mkt > 0) || T <= 0) return { ok: false, sigma: null, iters: 0, reason: 'invalid price or expiry' };
+  var lowBound = intrinsic(type, S * Math.exp(-q * T), K * Math.exp(-r * T)); // discounted intrinsic
+  var upBound = type === 'call' ? S * Math.exp(-q * T) : K * Math.exp(-r * T);
+  if (mkt < lowBound - 1e-8) return { ok: false, sigma: null, iters: 0, reason: '价格低于内在价值下界(无套利)' };
+  if (mkt > upBound + 1e-8) return { ok: false, sigma: null, iters: 0, reason: '价格高于无套利上界' };
+  var lo = 1e-6, hi = 5.0, sig = 0.25, iters = 0;
+  for (iters = 1; iters <= 100; iters++) {
+    var p = price(type, S, K, T, r, sig, q);
+    var diff = p - mkt;
+    if (Math.abs(diff) < 1e-9) return { ok: true, sigma: sig, iters: iters };
+    if (diff > 0) hi = sig; else lo = sig;               // price monotonic ↑ in sigma
+    var v = S * Math.exp(-q * T) * normPdf(d1(S, K, T, r, sig, q)) * Math.sqrt(T);
+    var next = v > 1e-8 ? sig - diff / v : NaN;
+    if (!(next > lo && next < hi) || !isFinite(next)) break; // leave to bisection
+    sig = next;
+  }
+  var a = lo, b = hi;
+  for (var i = 0; i < 200; i++) {
+    var m = 0.5 * (a + b), pm = price(type, S, K, T, r, m, q) - mkt;
+    if (Math.abs(pm) < 1e-9 || (b - a) < 1e-12) return { ok: true, sigma: m, iters: iters + i };
+    var pa = price(type, S, K, T, r, a, q) - mkt;
+    if ((pa < 0) === (pm < 0)) a = m; else b = m;
+  }
+  return { ok: true, sigma: 0.5 * (a + b), iters: iters + 200, approx: true };
+}
+
+// ---------------- multi-leg strategy payoff at EXPIRY ----------------
+// leg = { kind:'call'|'put'|'stock', side:'long'|'short', qty:>0, strike, premium }
+//   options: premium = option price paid/received per share
+//   stock:   premium = entry price per share (strike ignored)
+function legPayoff(leg, ST) {
+  var sgn = leg.side === 'short' ? -1 : 1;
+  var q = leg.qty || 1;
+  if (leg.kind === 'stock') return sgn * q * (ST - leg.premium);
+  var val = leg.kind === 'call' ? Math.max(ST - leg.strike, 0) : Math.max(leg.strike - ST, 0);
+  return sgn * q * (val - leg.premium);   // long: receive intrinsic, paid premium
+}
+function stratPayoff(legs, ST) {
+  var s = 0;
+  for (var i = 0; i < legs.length; i++) s += legPayoff(legs[i], ST);
+  return s;
+}
+// net premium: + = net debit (you pay), - = net credit (you receive)
+function netDebit(legs) {
+  var s = 0;
+  for (var i = 0; i < legs.length; i++) {
+    var l = legs[i], sgn = l.side === 'short' ? -1 : 1, q = l.qty || 1;
+    s += sgn * q * l.premium;
+  }
+  return s;
+}
+function optionStrikes(legs) {
+  var xs = [];
+  for (var i = 0; i < legs.length; i++) if (legs[i].kind !== 'stock') xs.push(legs[i].strike);
+  return xs;
+}
+// slope of payoff as ST → +∞ (calls & stock contribute; puts flat there)
+function rightSlope(legs) {
+  var s = 0;
+  for (var i = 0; i < legs.length; i++) {
+    var l = legs[i], sg = l.side === 'short' ? -1 : 1, q = l.qty || 1;
+    if (l.kind === 'call' || l.kind === 'stock') s += sg * q;
+  }
+  return s;
+}
+// Break-even prices where payoff crosses zero (piecewise-linear → exact).
+function breakevens(legs) {
+  if (!legs.length) return [];
+  var strikes = optionStrikes(legs);
+  var maxK = strikes.length ? Math.max.apply(null, strikes) : 0;
+  var far = maxK * 3 + Math.max(maxK, 100);
+  var xs = [0].concat(strikes); xs.push(far);
+  xs = Array.from(new Set(xs)).sort(function (a, b) { return a - b; });
+  var out = [];
+  for (var i = 0; i < xs.length - 1; i++) {
+    var x0 = xs[i], x1 = xs[i + 1], y0 = stratPayoff(legs, x0), y1 = stratPayoff(legs, x1);
+    if (Math.abs(y0) < 1e-9 && x0 > 0) push(x0);
+    else if ((y0 < 0 && y1 > 0) || (y0 > 0 && y1 < 0)) push(x0 + (-y0 / (y1 - y0)) * (x1 - x0));
+  }
+  function push(v) { if (!out.some(function (u) { return Math.abs(u - v) < 1e-6; })) out.push(v); }
+  return out.sort(function (a, b) { return a - b; });
+}
+// Max profit / max loss over the valid domain ST ∈ [0, ∞).
+function extremes(legs) {
+  var pts = [0].concat(optionStrikes(legs));
+  var vals = pts.map(function (x) { return stratPayoff(legs, x); });
+  var bmax = Math.max.apply(null, vals), bmin = Math.min.apply(null, vals);
+  var rs = rightSlope(legs);
+  return {
+    maxProfit: rs > 1e-9 ? Infinity : bmax,
+    maxLoss: rs < -1e-9 ? -Infinity : bmin,
+    rightSlope: rs,
+    kinks: pts.map(function (x, i) { return [x, vals[i]]; })
+  };
+}
+function payoffCurve(legs, lo, hi, n) {
+  var out = [];
+  for (var i = 0; i <= n; i++) { var x = lo + (hi - lo) * i / n; out.push([x, stratPayoff(legs, x)]); }
+  return out;
+}
+// theoretical value of the position NOW (T>0) via BSM per leg, minus net cost.
+function valueNow(legs, ST, T, r, sig, q) {
+  var s = 0;
+  for (var i = 0; i < legs.length; i++) {
+    var l = legs[i], sgn = l.side === 'short' ? -1 : 1, qn = l.qty || 1;
+    if (l.kind === 'stock') s += sgn * qn * (ST - l.premium);
+    else s += sgn * qn * (price(l.kind, ST, l.strike, T, r, sig, q) - l.premium);
+  }
+  return s;
+}
+
+// Preset strategy factories given a spot price (strikes derived from spot).
+// Premiums are realistic BSM values at a default 30-day, 25%-vol, 4%-rate context,
+// so spreads/condors/butterflies come out non-degenerate and monotonic in strike.
+function presets(spot) {
+  var s = spot;
+  var rnd = function (x) { return Math.round(x); };          // round strike
+  var atm = rnd(s), lo = rnd(s * 0.95), hi = rnd(s * 1.05), lo2 = rnd(s * 0.9), hi2 = rnd(s * 1.1);
+  var Tp = 30 / 365, sigp = 0.25, rp = 0.04, qp = 0;
+  var pc = function (K) { return rd(price('call', s, K, Tp, rp, sigp, qp)); };
+  var pp = function (K) { return rd(price('put', s, K, Tp, rp, sigp, qp)); };
+  function rd(x) { return Math.round(x * 100) / 100; }
+  var P = {
+    'long-call': [{ kind: 'call', side: 'long', qty: 1, strike: atm, premium: rd(pc(atm)) }],
+    'long-put': [{ kind: 'put', side: 'long', qty: 1, strike: atm, premium: rd(pp(atm)) }],
+    'covered-call': [
+      { kind: 'stock', side: 'long', qty: 1, strike: 0, premium: rd(s) },
+      { kind: 'call', side: 'short', qty: 1, strike: hi, premium: rd(pc(hi)) }
+    ],
+    'bull-call': [
+      { kind: 'call', side: 'long', qty: 1, strike: lo, premium: rd(pc(lo)) },
+      { kind: 'call', side: 'short', qty: 1, strike: hi, premium: rd(pc(hi)) }
+    ],
+    'bear-put': [
+      { kind: 'put', side: 'long', qty: 1, strike: hi, premium: rd(pp(hi)) },
+      { kind: 'put', side: 'short', qty: 1, strike: lo, premium: rd(pp(lo)) }
+    ],
+    'straddle': [
+      { kind: 'call', side: 'long', qty: 1, strike: atm, premium: rd(pc(atm)) },
+      { kind: 'put', side: 'long', qty: 1, strike: atm, premium: rd(pp(atm)) }
+    ],
+    'strangle': [
+      { kind: 'call', side: 'long', qty: 1, strike: hi, premium: rd(pc(hi)) },
+      { kind: 'put', side: 'long', qty: 1, strike: lo, premium: rd(pp(lo)) }
+    ],
+    'iron-condor': [
+      { kind: 'put', side: 'long', qty: 1, strike: lo2, premium: rd(pp(lo2)) },
+      { kind: 'put', side: 'short', qty: 1, strike: lo, premium: rd(pp(lo)) },
+      { kind: 'call', side: 'short', qty: 1, strike: hi, premium: rd(pc(hi)) },
+      { kind: 'call', side: 'long', qty: 1, strike: hi2, premium: rd(pc(hi2)) }
+    ],
+    'butterfly': [
+      { kind: 'call', side: 'long', qty: 1, strike: lo, premium: rd(pc(lo)) },
+      { kind: 'call', side: 'short', qty: 2, strike: atm, premium: rd(pc(atm)) },
+      { kind: 'call', side: 'long', qty: 1, strike: hi, premium: rd(pc(hi)) }
+    ]
+  };
+  return P;
+}
+
+var ENGINE = {
+  erf: erf, normCdf: normCdf, normPdf: normPdf, d1: d1, d2: d2,
+  price: price, greeks: greeks, intrinsic: intrinsic, impliedVol: impliedVol,
+  legPayoff: legPayoff, stratPayoff: stratPayoff, netDebit: netDebit,
+  breakevens: breakevens, extremes: extremes, payoffCurve: payoffCurve,
+  valueNow: valueNow, rightSlope: rightSlope, optionStrikes: optionStrikes, presets: presets
+};
+if (typeof window !== 'undefined') window.__opt = ENGINE;
+if (typeof module !== 'undefined' && module.exports) module.exports = ENGINE;
+/*ENGINE>>>*/
+
+// ============================================================
+//  UI wiring
+// ============================================================
+(function () {
+  if (typeof document === 'undefined') return;
+  var $ = function (id) { return document.getElementById(id); };
+  var LS = 'os_options_studio_v1';
+
+  // ---------- number formatting ----------
+  function fmt(x, dp) {
+    if (x === Infinity) return '∞';
+    if (x === -Infinity) return '−∞';
+    if (!isFinite(x)) return '—';
+    if (dp === undefined) dp = 2;
+    var neg = x < 0;
+    var s = Math.abs(x).toLocaleString('en-US', { minimumFractionDigits: dp, maximumFractionDigits: dp });
+    return (neg ? '−' : '') + s;
+  }
+  function money(x, dp) { if (x === Infinity) return '∞'; if (x === -Infinity) return '−∞'; return (x < 0 ? '−$' : '$') + fmt(Math.abs(x), dp === undefined ? 2 : dp); }
+  function pct(x, dp) { return fmt(x * 100, dp === undefined ? 1 : dp) + '%'; }
+
+  // ---------- pricer state ----------
+  var type = 'call';
+
+  function readNum(id, min) {
+    var el = $(id), v = parseFloat(el.value);
+    var ok = isFinite(v) && (min === undefined || v >= min);
+    el.classList.toggle('bad', !ok && el.value !== '');
+    return ok ? v : NaN;
+  }
+  function pricerInputs() {
+    return {
+      S: readNum('os-S', 0), K: readNum('os-K', 0),
+      days: readNum('os-days', 0), vol: readNum('os-vol', 0),
+      rate: readNum('os-rate'), div: readNum('os-div')
+    };
+  }
+  function renderPricer() {
+    var p = pricerInputs();
+    var T = p.days / 365, sig = p.vol / 100, r = p.rate / 100, q = p.div / 100;
+    var valid = isFinite(p.S) && p.S > 0 && isFinite(p.K) && p.K > 0 && isFinite(T) && T >= 0 &&
+      isFinite(sig) && sig >= 0 && isFinite(r) && isFinite(q);
+    var priceNum = $('os-price-num');
+    if (!valid) {
+      priceNum.textContent = '—'; priceNum.dataset.value = '';
+      ['os-intrinsic', 'os-timeval', 'os-delta', 'os-gamma', 'os-theta', 'os-vega', 'os-rho', 'os-prob', 'os-d1', 'os-d2', 'os-nd1', 'os-nd2']
+        .forEach(function (id) { $(id).textContent = '—'; });
+      return;
+    }
+    var pr = window.__opt.price(type, p.S, p.K, T, r, sig, q);
+    var intr = window.__opt.intrinsic(type, p.S, p.K);
+    priceNum.textContent = fmt(pr, 4);
+    priceNum.dataset.value = String(pr);
+    $('os-intrinsic').textContent = money(intr);
+    $('os-timeval').textContent = money(Math.max(pr - intr, 0));
+
+    var g = (T > 0 && sig > 0) ? window.__opt.greeks(type, p.S, p.K, T, r, sig, q) : null;
+    function setG(id, val, dp, signed) {
+      var el = $(id);
+      if (!g) { el.textContent = '—'; el.className = 'v'; el.dataset.value = ''; return; }
+      el.textContent = (signed && val > 0 ? '+' : '') + fmt(val, dp);
+      el.dataset.value = String(val);
+      el.className = 'v' + (signed ? (val > 1e-12 ? ' pos' : (val < -1e-12 ? ' neg' : '')) : '');
+    }
+    setG('os-delta', g && g.delta, 4, true);
+    setG('os-gamma', g && g.gamma, 4, false);
+    setG('os-theta', g && g.thetaDay, 4, true);
+    setG('os-vega', g && g.vega1, 4, false);
+    setG('os-rho', g && g.rho1, 4, true);
+    $('os-prob').textContent = g ? pct(g.probITM, 1) : '—';
+    $('os-prob').dataset.value = g ? String(g.probITM) : '';
+    $('os-prob').className = 'v';
+    $('os-d1').textContent = g ? fmt(g.d1, 4) : '—';
+    $('os-d2').textContent = g ? fmt(g.d2, 4) : '—';
+    $('os-nd1').textContent = g ? fmt(g.Nd1, 4) : '—';
+    $('os-nd2').textContent = g ? fmt(g.Nd2, 4) : '—';
+    save();
+  }
+
+  // ---------- type toggle ----------
+  Array.prototype.forEach.call($('os-type').querySelectorAll('button'), function (b) {
+    b.addEventListener('click', function () {
+      type = b.dataset.type;
+      Array.prototype.forEach.call($('os-type').querySelectorAll('button'), function (x) {
+        x.setAttribute('aria-pressed', String(x === b));
+      });
+      renderPricer();
+    });
+  });
+  ['os-S', 'os-K', 'os-days', 'os-vol', 'os-rate', 'os-div'].forEach(function (id) {
+    $(id).addEventListener('input', renderPricer);
+  });
+
+  // ---------- IV solver ----------
+  $('os-solve').addEventListener('click', function () {
+    var p = pricerInputs();
+    var T = p.days / 365, r = p.rate / 100, q = p.div / 100;
+    var mkt = parseFloat($('os-mktprice').value);
+    var out = $('os-ivout'), iv = $('os-iv'), it = $('os-iv-it');
+    out.classList.remove('bad');
+    if (!(isFinite(mkt) && mkt > 0) || !(p.S > 0) || !(p.K > 0) || !(T > 0)) {
+      out.classList.add('bad'); iv.textContent = '无效输入'; iv.dataset.value = ''; it.textContent = ''; return;
+    }
+    var res = window.__opt.impliedVol(type, mkt, p.S, p.K, T, r, q);
+    if (!res.ok) {
+      out.classList.add('bad'); iv.textContent = '无解'; iv.dataset.value = '';
+      it.textContent = ' · ' + (res.reason || '价格超出可行区间'); return;
+    }
+    iv.textContent = pct(res.sigma, 2);
+    iv.dataset.value = String(res.sigma);
+    it.textContent = ' · ' + res.iters + ' 次迭代' + (res.approx ? '(二分逼近)' : '') + ' · ' + type.toUpperCase();
+  });
+
+  // ---------- strategy builder ----------
+  var legs = [];
+  var activePreset = null;
+
+  function legRow(leg, i) {
+    var tr = document.createElement('tr');
+    tr.dataset.i = i;
+    var isStock = leg.kind === 'stock';
+    tr.innerHTML =
+      '<td><select class="miniinp side" data-k="side">' +
+        '<option value="long"' + (leg.side === 'long' ? ' selected' : '') + '>买入 Long</option>' +
+        '<option value="short"' + (leg.side === 'short' ? ' selected' : '') + '>卖出 Short</option>' +
+      '</select></td>' +
+      '<td><span class="legkind"><span class="dot ' + leg.side + '"></span>' +
+        '<select class="miniinp kind" data-k="kind">' +
+          '<option value="call"' + (leg.kind === 'call' ? ' selected' : '') + '>看涨 Call</option>' +
+          '<option value="put"' + (leg.kind === 'put' ? ' selected' : '') + '>看跌 Put</option>' +
+          '<option value="stock"' + (leg.kind === 'stock' ? ' selected' : '') + '>股票 Stock</option>' +
+        '</select></span></td>' +
+      '<td class="r"><input class="miniinp qty" data-k="qty" type="number" step="1" min="1" value="' + leg.qty + '"></td>' +
+      '<td class="r"><input class="miniinp strike" data-k="strike" type="number" step="0.5" value="' + leg.strike + '"' + (isStock ? ' disabled placeholder="—"' : '') + '></td>' +
+      '<td class="r"><input class="miniinp premium" data-k="premium" type="number" step="0.01" value="' + leg.premium + '"></td>' +
+      '<td class="r"><button class="del" title="删除" aria-label="删除该腿">×</button></td>';
+    tr.querySelector('.del').addEventListener('click', function () { legs.splice(i, 1); clearPresetHighlight(); renderStrategy(); });
+    Array.prototype.forEach.call(tr.querySelectorAll('[data-k]'), function (el) {
+      if (el.tagName === 'SELECT') {
+        // kind/side changes alter row structure (dot colour, strike enabled) → full rebuild
+        el.addEventListener('change', function () { legs[i][el.dataset.k] = el.value; clearPresetHighlight(); renderStrategy(); });
+      } else {
+        // numeric edits update the model + stats/chart WITHOUT rebuilding the table (keeps focus)
+        el.addEventListener('input', function () { legs[i][el.dataset.k] = parseFloat(el.value); clearPresetHighlight(); recompute(); });
+      }
+    });
+    return tr;
+  }
+
+  function renderLegs() {
+    var tb = $('os-legbody');
+    tb.textContent = '';
+    legs.forEach(function (leg, i) { tb.appendChild(legRow(leg, i)); });
+  }
+
+  function cleanLegs() {
+    return legs.filter(function (l) {
+      return isFinite(l.qty) && l.qty > 0 && isFinite(l.premium) &&
+        (l.kind === 'stock' || isFinite(l.strike));
+    });
+  }
+
+  function renderStrategy() { renderLegs(); recompute(); }
+
+  function recompute() {
+    var L = cleanLegs();
+    var net = L.length ? window.__opt.netDebit(L) : NaN;
+    var ex = L.length ? window.__opt.extremes(L) : null;
+    var bes = L.length ? window.__opt.breakevens(L) : [];
+
+    var netEl = $('os-net');
+    if (!L.length) { netEl.textContent = '—'; netEl.className = 'v'; }
+    else if (net > 1e-9) { netEl.textContent = money(net) + ' 借'; netEl.className = 'v neg'; }
+    else if (net < -1e-9) { netEl.textContent = money(-net) + ' 贷'; netEl.className = 'v pos'; }
+    else { netEl.textContent = money(0); netEl.className = 'v'; }
+    netEl.dataset.value = L.length ? String(net) : '';
+
+    $('os-maxp').textContent = ex ? (ex.maxProfit === Infinity ? '无限' : money(ex.maxProfit)) : '—';
+    $('os-maxp').dataset.value = ex ? String(ex.maxProfit) : '';
+    $('os-maxl').textContent = ex ? (ex.maxLoss === -Infinity ? '无限' : money(ex.maxLoss)) : '—';
+    $('os-maxl').dataset.value = ex ? String(ex.maxLoss) : '';
+    var beEl = $('os-be');
+    beEl.textContent = bes.length ? bes.map(function (b) { return fmt(b, 2); }).join('  /  ') : (L.length ? '无' : '—');
+    beEl.dataset.value = bes.map(function (b) { return b.toFixed(4); }).join(',');
+
+    drawChart(L, ex, bes);
+    save();
+  }
+
+  // ---------- payoff chart ----------
+  function drawChart(L, ex, bes) {
+    var svg = $('os-chart');
+    var W = 760, H = 380, padL = 58, padR = 18, padT = 18, padB = 34;
+    var plotW = W - padL - padR, plotH = H - padT - padB;
+    var NS = 'http://www.w3.org/2000/svg';
+    svg.textContent = '';
+    if (!L.length) {
+      var t = document.createElementNS(NS, 'text');
+      t.setAttribute('x', W / 2); t.setAttribute('y', H / 2); t.setAttribute('text-anchor', 'middle');
+      t.setAttribute('fill', '#707a8a'); t.setAttribute('font-size', '14'); t.textContent = '加一腿以查看盈亏图';
+      svg.appendChild(t); return;
+    }
+    var spot = readNum('os-S', 0); if (!isFinite(spot) || spot <= 0) spot = 100;
+    var strikes = window.__opt.optionStrikes(L);
+    var anchors = strikes.concat([spot]).concat(bes);
+    var kmin = Math.min.apply(null, anchors), kmax = Math.max.apply(null, anchors);
+    var span = Math.max(kmax - kmin, spot * 0.2);
+    var xlo = Math.max(0, kmin - span * 0.55), xhi = kmax + span * 0.55;
+    if (xhi - xlo < 1) { xlo = Math.max(0, spot - 10); xhi = spot + 10; }
+
+    var curve = window.__opt.payoffCurve(L, xlo, xhi, 240);
+    var ys = curve.map(function (p) { return p[1]; });
+    var ymin = Math.min.apply(null, ys), ymax = Math.max.apply(null, ys);
+    if (ymax - ymin < 1e-6) { ymax += 1; ymin -= 1; }
+    var yPad = (ymax - ymin) * 0.14; ymin -= yPad; ymax += yPad;
+    if (ymin > 0) ymin = -yPad; if (ymax < 0) ymax = yPad;
+
+    var X = function (v) { return padL + (v - xlo) / (xhi - xlo) * plotW; };
+    var Y = function (v) { return padT + (ymax - v) / (ymax - ymin) * plotH; };
+    var y0 = Y(0);
+
+    function el(name, attrs) { var e = document.createElementNS(NS, name); for (var k in attrs) e.setAttribute(k, attrs[k]); return e; }
+
+    // zero baseline + frame
+    svg.appendChild(el('line', { x1: padL, y1: y0, x2: W - padR, y2: y0, stroke: '#3a4048', 'stroke-width': 1 }));
+    // y gridlines / labels
+    var yticks = niceTicks(ymin, ymax, 5);
+    yticks.forEach(function (yt) {
+      var yy = Y(yt);
+      svg.appendChild(el('line', { x1: padL, y1: yy, x2: W - padR, y2: yy, stroke: '#20262d', 'stroke-width': 1 }));
+      var lab = el('text', { x: padL - 8, y: yy + 3.5, 'text-anchor': 'end', fill: '#707a8a', 'font-size': 10.5 });
+      lab.textContent = (yt > 0 ? '+' : '') + Math.round(yt);
+      svg.appendChild(lab);
+    });
+    // x ticks (strikes + a few)
+    var xticks = niceTicks(xlo, xhi, 6);
+    xticks.forEach(function (xt) {
+      var xx = X(xt);
+      var lab = el('text', { x: xx, y: H - padB + 16, 'text-anchor': 'middle', fill: '#707a8a', 'font-size': 10.5 });
+      lab.textContent = Math.round(xt); svg.appendChild(lab);
+    });
+
+    // clip halves for green(profit)/red(loss) coloring
+    var defs = el('defs', {});
+    defs.appendChild(clip('os-clipUp', padL, padT, plotW, Math.max(0, y0 - padT)));
+    defs.appendChild(clip('os-clipDn', padL, y0, plotW, Math.max(0, padT + plotH - y0)));
+    svg.appendChild(defs);
+    function clip(id, x, y, w, h) { var c = el('clipPath', { id: id }); c.appendChild(el('rect', { x: x, y: y, width: w, height: h })); return c; }
+
+    var dLine = curve.map(function (p, i) { return (i ? 'L' : 'M') + X(p[0]).toFixed(2) + ' ' + Y(p[1]).toFixed(2); }).join(' ');
+    var dArea = 'M' + X(curve[0][0]).toFixed(2) + ' ' + y0.toFixed(2) + ' ' +
+      curve.map(function (p) { return 'L' + X(p[0]).toFixed(2) + ' ' + Y(p[1]).toFixed(2); }).join(' ') +
+      ' L' + X(curve[curve.length - 1][0]).toFixed(2) + ' ' + y0.toFixed(2) + ' Z';
+
+    // filled areas
+    svg.appendChild(el('path', { d: dArea, fill: 'rgba(14,203,129,.16)', 'clip-path': 'url(#os-clipUp)' }));
+    svg.appendChild(el('path', { d: dArea, fill: 'rgba(246,70,93,.15)', 'clip-path': 'url(#os-clipDn)' }));
+    // colored strokes
+    svg.appendChild(el('path', { d: dLine, fill: 'none', stroke: '#0ecb81', 'stroke-width': 2.4, 'clip-path': 'url(#os-clipUp)', 'stroke-linejoin': 'round' }));
+    svg.appendChild(el('path', { d: dLine, fill: 'none', stroke: '#f6465d', 'stroke-width': 2.4, 'clip-path': 'url(#os-clipDn)', 'stroke-linejoin': 'round' }));
+
+    // spot line
+    var xs = X(spot);
+    svg.appendChild(el('line', { x1: xs, y1: padT, x2: xs, y2: padT + plotH, stroke: '#929aa5', 'stroke-width': 1.2, 'stroke-dasharray': '4 3' }));
+    var slab = el('text', { x: xs, y: padT - 5, 'text-anchor': 'middle', fill: '#929aa5', 'font-size': 10.5 });
+    slab.textContent = 'S ' + fmt(spot, 2); svg.appendChild(slab);
+
+    // breakevens
+    bes.forEach(function (b) {
+      if (b < xlo || b > xhi) return;
+      var bx = X(b);
+      svg.appendChild(el('circle', { cx: bx, cy: y0, r: 4, fill: '#fcd535', stroke: '#12161c', 'stroke-width': 1.5 }));
+      var bl = el('text', { x: bx, y: y0 - 9, 'text-anchor': 'middle', fill: '#fcd535', 'font-size': 10.5, 'font-weight': 600 });
+      bl.textContent = fmt(b, 2); svg.appendChild(bl);
+    });
+
+    // axis titles
+    var xt = el('text', { x: padL + plotW / 2, y: H - 3, 'text-anchor': 'middle', fill: '#5b6570', 'font-size': 10.5 });
+    xt.textContent = '到期标的价格'; svg.appendChild(xt);
+    var ytt = el('text', { x: 13, y: padT + plotH / 2, 'text-anchor': 'middle', fill: '#5b6570', 'font-size': 10.5, transform: 'rotate(-90 13 ' + (padT + plotH / 2) + ')' });
+    ytt.textContent = '每股盈亏 P&L'; svg.appendChild(ytt);
+  }
+
+  function niceTicks(lo, hi, n) {
+    var span = hi - lo; if (span <= 0) return [lo];
+    var step = Math.pow(10, Math.floor(Math.log(span / n) / Math.LN10));
+    var err = (span / n) / step;
+    if (err >= 7.5) step *= 10; else if (err >= 3.5) step *= 5; else if (err >= 1.5) step *= 2;
+    var out = [], start = Math.ceil(lo / step) * step;
+    for (var v = start; v <= hi + step * 1e-6; v += step) out.push(Math.round(v * 1e6) / 1e6);
+    return out;
+  }
+
+  function clearPresetHighlight() {
+    activePreset = null;
+    Array.prototype.forEach.call($('os-presets').querySelectorAll('.os-preset'), function (b) { b.setAttribute('aria-pressed', 'false'); });
+  }
+
+  function loadPreset(name) {
+    var spot = readNum('os-S', 0); if (!isFinite(spot) || spot <= 0) spot = 100;
+    var P = window.__opt.presets(spot);
+    if (!P[name]) return;
+    legs = P[name].map(function (l) { return { kind: l.kind, side: l.side, qty: l.qty, strike: l.strike, premium: l.premium }; });
+    activePreset = name;
+    Array.prototype.forEach.call($('os-presets').querySelectorAll('.os-preset'), function (b) {
+      b.setAttribute('aria-pressed', String(b.dataset.preset === name));
+    });
+    renderStrategy();
+  }
+
+  Array.prototype.forEach.call($('os-presets').querySelectorAll('.os-preset'), function (b) {
+    b.addEventListener('click', function () { loadPreset(b.dataset.preset); });
+  });
+  $('os-addleg').addEventListener('click', function () {
+    var spot = readNum('os-S', 0); if (!isFinite(spot) || spot <= 0) spot = 100;
+    legs.push({ kind: 'call', side: 'long', qty: 1, strike: Math.round(spot), premium: Math.round(spot * 0.05 * 100) / 100 });
+    clearPresetHighlight(); renderStrategy();
+  });
+  $('os-clearlegs').addEventListener('click', function () { legs = []; clearPresetHighlight(); renderStrategy(); });
+
+  // ---------- persistence ----------
+  function save() {
+    try {
+      var data = {
+        type: type,
+        pricer: { S: $('os-S').value, K: $('os-K').value, days: $('os-days').value, vol: $('os-vol').value, rate: $('os-rate').value, div: $('os-div').value, mkt: $('os-mktprice').value },
+        legs: legs, activePreset: activePreset
+      };
+      localStorage.setItem(LS, JSON.stringify(data));
+    } catch (e) { /* ignore quota / privacy mode */ }
+  }
+  function load() {
+    var raw;
+    try { raw = localStorage.getItem(LS); } catch (e) { raw = null; }
+    if (!raw) return false;
+    try {
+      var d = JSON.parse(raw);
+      if (d.type === 'call' || d.type === 'put') {
+        type = d.type;
+        Array.prototype.forEach.call($('os-type').querySelectorAll('button'), function (x) { x.setAttribute('aria-pressed', String(x.dataset.type === type)); });
+      }
+      if (d.pricer) {
+        ['S', 'K', 'days', 'vol', 'rate', 'div'].forEach(function (k) { if (d.pricer[k] !== undefined) $('os-' + k).value = d.pricer[k]; });
+        if (d.pricer.mkt !== undefined) $('os-mktprice').value = d.pricer.mkt;
+      }
+      if (Array.isArray(d.legs)) legs = d.legs;
+      activePreset = d.activePreset || null;
+      if (activePreset) {
+        Array.prototype.forEach.call($('os-presets').querySelectorAll('.os-preset'), function (b) { b.setAttribute('aria-pressed', String(b.dataset.preset === activePreset)); });
+      }
+      return true;
+    } catch (e) { return false; }
+  }
+
+  // ---------- init ----------
+  if (!load()) { loadPreset('straddle'); }
+  renderPricer();
+  renderStrategy();
+})();
+</script>
+</body>
+</html>
