@@ -1,0 +1,1692 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>桁架工作台 · Truss Studio</title>
+<meta name="description" content="平面桁架结构分析:直接刚度法求解杆件轴力、支座反力、节点位移,含欧拉屈曲校核与静定判别。7 种参数化桁架预设,纯前端本地计算。">
+<style>
+/* UA 的 [hidden]{display:none} 与作者规则同特异性,靠后即胜出 —— 顶部固化守卫 */
+[hidden]{display:none!important}
+
+*,*::before,*::after{box-sizing:border-box}
+:root{
+  /* Tesla:单一蓝 + 三级灰,除此之外没有第二个色相 */
+  --blue:#3E6AE1;
+  --blue-dark:#2f57c4;
+  --white:#FFFFFF;
+  --ash:#F4F4F4;
+  --carbon:#171A20;
+  --graphite:#393C41;
+  --pewter:#5C5E62;
+  --fog:#8E8E8E;
+  --cloud:#EEEEEE;
+  --silver:#D0D1D2;
+  --t:.33s;
+  --font-d:"Universal Sans Display","Helvetica Neue",-apple-system,BlinkMacSystemFont,Arial,sans-serif;
+  --font-t:"Universal Sans Text","Helvetica Neue",-apple-system,BlinkMacSystemFont,Arial,sans-serif;
+}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0;background:var(--white);color:var(--graphite);
+  font-family:var(--font-t);font-size:14px;font-weight:400;line-height:1.43;
+  -webkit-font-smoothing:antialiased;
+}
+h1,h2,h3,p,figure,dl,dd{margin:0}
+button,input,select{font:inherit;color:inherit}
+a{color:inherit}
+:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+
+/* ── 导航:白底,无边框无阴影 ─────────────────────────────── */
+.ts-nav{
+  position:sticky;top:0;z-index:40;background:var(--white);
+  display:flex;align-items:center;gap:16px;
+  padding:0 24px;height:56px;
+}
+.ts-back{
+  font-size:14px;font-weight:400;color:var(--pewter);text-decoration:none;
+  padding:4px 8px;border-radius:4px;transition:color var(--t),background-color var(--t);white-space:nowrap;
+}
+.ts-back:hover{color:var(--carbon);background:var(--ash)}
+.ts-mark{
+  flex:1;min-width:0;text-align:center;
+  font-family:var(--font-d);font-size:15px;font-weight:500;color:var(--carbon);
+  letter-spacing:.42em;text-indent:.42em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.ts-navnote{font-size:14px;color:var(--pewter);white-space:nowrap}
+
+/* ── Hero:结构图就是这套系统里的「产品大片」 ────────────────── */
+.ts-hero{padding:0 24px 0}
+.ts-stage{
+  position:relative;background:var(--carbon);border-radius:12px;overflow:hidden;
+  height:clamp(340px,70vh,624px);
+}
+#ts-canvas{display:block;width:100%;height:100%;touch-action:none}
+.ts-overlay{position:absolute;inset:0;pointer-events:none;padding:34px 40px}
+.ts-title{
+  font-family:var(--font-d);font-size:40px;font-weight:500;line-height:1.2;
+  color:rgba(255,255,255,.96);
+}
+.ts-sub{margin-top:6px;font-size:14px;font-weight:400;color:rgba(255,255,255,.62);max-width:44ch}
+.ts-legend{
+  position:absolute;left:40px;bottom:26px;display:flex;gap:20px;flex-wrap:wrap;
+  font-size:13px;color:rgba(255,255,255,.72)
+}
+.ts-legend span{display:inline-flex;align-items:center;gap:8px}
+.ts-swatch{width:22px;height:3px;border-radius:2px;flex:none}
+.ts-swatch.t{background:var(--blue)}
+.ts-swatch.c{background:#fff}
+.ts-swatch.z{background:transparent;border-top:2px dashed var(--fog);height:0}
+.ts-verdict{
+  position:absolute;right:40px;bottom:24px;text-align:right;
+  font-size:13px;color:rgba(255,255,255,.72);line-height:1.55
+}
+.ts-verdict b{display:block;font-size:17px;font-weight:500;color:#fff}
+
+/* 轮播:Tesla 车型走马灯 → 桁架型式 */
+.ts-arrow{
+  position:absolute;top:50%;transform:translateY(-50%);
+  width:44px;height:44px;border-radius:50%;border:0;cursor:pointer;pointer-events:auto;
+  background:rgba(255,255,255,.86);color:var(--carbon);
+  display:flex;align-items:center;justify-content:center;font-size:16px;
+  transition:background-color var(--t),color var(--t)
+}
+.ts-arrow:hover{background:#fff}
+.ts-arrow.prev{left:14px}
+.ts-arrow.next{right:14px}
+.ts-dots{
+  position:absolute;left:50%;transform:translateX(-50%);bottom:24px;
+  display:flex;justify-content:center;gap:11px;pointer-events:auto
+}
+.ts-dot{
+  width:9px;height:9px;border-radius:50%;border:0;padding:0;cursor:pointer;flex:none;
+  background:rgba(255,255,255,.34);transition:background-color var(--t),transform var(--t)
+}
+.ts-dot[aria-current="true"]{background:#fff;transform:scale(1.2)}
+
+/* 画布上的显示开关 */
+.ts-toggles{
+  position:absolute;right:40px;top:34px;display:flex;flex-direction:column;gap:8px;
+  align-items:flex-end;pointer-events:auto
+}
+.ts-toggle{
+  border:0;cursor:pointer;border-radius:4px;padding:7px 14px;min-height:32px;
+  font-size:13px;font-weight:500;
+  background:rgba(255,255,255,.12);color:rgba(255,255,255,.78);
+  transition:background-color var(--t),color var(--t)
+}
+.ts-toggle:hover{background:rgba(255,255,255,.2);color:#fff}
+.ts-toggle[aria-pressed="true"]{background:#fff;color:var(--carbon)}
+
+/* ── 通用区块 ─────────────────────────────────────────── */
+.ts-section{padding:56px 24px}
+.ts-section.ash{background:var(--ash)}
+.ts-wrap{max-width:1240px;margin:0 auto;min-width:0}
+.ts-eyebrow{font-size:14px;font-weight:500;color:var(--carbon);margin-bottom:4px}
+.ts-note{font-size:14px;color:var(--pewter);margin-bottom:26px}
+
+/* 参数控制台 */
+.ts-controls{display:grid;grid-template-columns:repeat(auto-fit,minmax(216px,1fr));gap:26px 32px;min-width:0}
+.ts-field{min-width:0}
+.ts-label{display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin-bottom:9px}
+.ts-label span:first-child{font-size:14px;font-weight:500;color:var(--carbon)}
+.ts-val{font-size:14px;color:var(--pewter);font-variant-numeric:tabular-nums}
+input[type="range"].ts-range{
+  -webkit-appearance:none;appearance:none;width:100%;min-width:0;height:4px;border-radius:2px;
+  background:var(--silver);outline-offset:6px;cursor:pointer
+}
+input[type="range"].ts-range::-webkit-slider-thumb{
+  -webkit-appearance:none;appearance:none;width:16px;height:16px;border-radius:50%;
+  background:var(--blue);border:0;cursor:pointer;transition:background-color var(--t)
+}
+input[type="range"].ts-range::-moz-range-thumb{
+  width:16px;height:16px;border-radius:50%;background:var(--blue);border:0;cursor:pointer
+}
+select.ts-select,input[type="number"].ts-num{
+  width:100%;min-width:0;height:40px;padding:0 12px;border-radius:4px;
+  border:1px solid var(--silver);background:var(--white);color:var(--carbon);
+  font-size:14px;transition:border-color var(--t)
+}
+select.ts-select:hover,input[type="number"].ts-num:hover{border-color:var(--pewter)}
+.ts-seg{display:flex;gap:8px;flex-wrap:wrap;min-width:0}
+.ts-segbtn{
+  border:1px solid var(--silver);background:var(--white);color:var(--graphite);
+  border-radius:4px;min-height:40px;padding:0 16px;cursor:pointer;font-size:14px;font-weight:400;
+  transition:background-color var(--t),color var(--t),border-color var(--t);flex:1 1 auto;white-space:nowrap
+}
+.ts-segbtn[aria-pressed="true"]{background:var(--carbon);border-color:var(--carbon);color:#fff;font-weight:500}
+.ts-check{display:flex;align-items:center;gap:10px;min-height:40px;cursor:pointer;font-size:14px}
+.ts-check input{width:17px;height:17px;accent-color:var(--blue);cursor:pointer;flex:none}
+
+/* 结果大数字 */
+.ts-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(178px,1fr));gap:34px 28px;min-width:0}
+.ts-stat{min-width:0}
+.ts-stat dt{font-size:14px;color:var(--pewter);margin-bottom:7px}
+.ts-stat dd{font-family:var(--font-d);font-size:32px;font-weight:500;color:var(--carbon);line-height:1.15;font-variant-numeric:tabular-nums;word-break:break-word}
+.ts-stat dd small{font-size:15px;font-weight:400;color:var(--pewter);margin-left:4px}
+.ts-stat .ts-hint{font-size:13px;color:var(--fog);margin-top:5px}
+.ts-blue{color:var(--blue)}
+
+/* 表格:靠间距与发丝线分隔,不用卡片边框 */
+.ts-tablewrap{overflow-x:auto;min-width:0;-webkit-overflow-scrolling:touch}
+table.ts-table{width:100%;border-collapse:collapse;font-size:14px;font-variant-numeric:tabular-nums;min-width:640px}
+.ts-table th{
+  text-align:right;font-weight:500;color:var(--pewter);font-size:13px;
+  padding:0 14px 10px;border-bottom:1px solid var(--cloud);white-space:nowrap
+}
+.ts-table th:first-child,.ts-table td:first-child{text-align:left;padding-left:0}
+.ts-table th:last-child,.ts-table td:last-child{padding-right:0}
+.ts-table td{padding:11px 14px;text-align:right;border-bottom:1px solid var(--cloud);color:var(--graphite);white-space:nowrap}
+.ts-table tbody tr{cursor:pointer;transition:background-color var(--t)}
+.ts-table tbody tr:hover{background:var(--white)}
+.ts-section.ash .ts-table tbody tr:hover{background:#fff}
+.ts-table tbody tr[aria-selected="true"]{background:var(--white)}
+.ts-section.ash .ts-table tbody tr[aria-selected="true"]{background:#fff}
+.ts-t{color:var(--blue);font-weight:500}
+.ts-c{color:var(--carbon);font-weight:500}
+.ts-z{color:var(--fog)}
+.ts-tag{
+  display:inline-block;padding:2px 9px;border-radius:4px;font-size:12px;font-weight:500;
+  background:var(--ash);color:var(--pewter)
+}
+.ts-section.ash .ts-tag{background:#fff}
+.ts-tag.over{background:var(--carbon);color:#fff}
+.ts-bar{position:relative;display:block;width:104px;height:4px;border-radius:2px;background:var(--cloud);margin-left:auto}
+.ts-bar i{position:absolute;left:0;top:0;bottom:0;border-radius:2px;background:var(--blue);transition:width var(--t)}
+.ts-bar i.over{background:var(--carbon)}
+
+/* 选中杆件详情 */
+.ts-detail{display:grid;grid-template-columns:repeat(auto-fit,minmax(158px,1fr));gap:26px 24px;min-width:0;margin-top:8px}
+.ts-detail div{min-width:0}
+.ts-detail dt{font-size:13px;color:var(--pewter);margin-bottom:5px}
+.ts-detail dd{font-size:17px;font-weight:500;color:var(--carbon);font-variant-numeric:tabular-nums}
+
+/* 保存的设计 */
+.ts-saves{display:flex;flex-wrap:wrap;gap:10px;min-width:0}
+.ts-save{
+  display:inline-flex;align-items:center;gap:10px;background:var(--white);border:1px solid var(--silver);
+  border-radius:4px;padding:0 6px 0 14px;min-height:40px;font-size:14px;transition:border-color var(--t)
+}
+.ts-section.ash .ts-save{background:#fff}
+.ts-save:hover{border-color:var(--pewter)}
+.ts-save button{border:0;background:none;cursor:pointer;padding:6px;color:var(--pewter);border-radius:4px;transition:color var(--t)}
+.ts-save button:hover{color:var(--carbon)}
+.ts-save .ts-open{padding:0;color:var(--carbon);font-weight:500}
+.ts-empty{font-size:14px;color:var(--fog)}
+
+/* 按钮 */
+.ts-btn{
+  border:3px solid transparent;border-radius:4px;min-height:40px;padding:0 22px;cursor:pointer;
+  font-size:14px;font-weight:500;transition:background-color var(--t),color var(--t),border-color var(--t)
+}
+.ts-btn.primary{background:var(--blue);color:#fff}
+.ts-btn.primary:hover{background:var(--blue-dark)}
+.ts-btn.secondary{background:var(--white);color:var(--graphite);border-color:var(--silver)}
+.ts-btn.secondary:hover{color:var(--carbon);border-color:var(--pewter)}
+.ts-actions{display:flex;gap:12px;flex-wrap:wrap;align-items:center;min-width:0}
+.ts-actions input.ts-name{
+  height:40px;padding:0 12px;border-radius:4px;border:1px solid var(--silver);
+  background:var(--white);color:var(--carbon);font-size:14px;min-width:0;width:210px
+}
+
+/* 底部常驻状态条(对应 Tesla 的常驻问答栏) */
+/* Tesla 的常驻底栏是「白底 + 一道发丝线」,不是磨砂玻璃(磨砂只用在导航) */
+.ts-dock{
+  position:sticky;bottom:0;z-index:30;background:var(--white);
+  border-top:1px solid var(--cloud);
+  display:flex;align-items:center;gap:22px;padding:12px 24px;flex-wrap:wrap;min-width:0
+}
+.ts-dockitem{display:flex;align-items:baseline;gap:8px;font-size:13px;color:var(--pewter);min-width:0}
+.ts-dockitem b{font-size:14px;font-weight:500;color:var(--carbon);font-variant-numeric:tabular-nums}
+.ts-dockspacer{flex:1 1 auto;min-width:0}
+.ts-warn{color:var(--carbon);font-weight:500}
+
+.ts-foot{padding:40px 24px 90px;text-align:center;color:var(--fog);font-size:13px}
+.ts-sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+
+@media (max-width:900px){
+  .ts-overlay{padding:24px 22px}
+  .ts-title{font-size:28px}
+  /* 右上角三个开关会压住标题/副标题,给文字留出让位 */
+  .ts-title,.ts-sub{margin-right:118px}
+  .ts-legend{left:22px;bottom:22px;gap:14px;font-size:12px}
+  .ts-verdict{right:22px;bottom:20px;font-size:12px}
+  .ts-verdict b{font-size:15px}
+  .ts-toggles{right:22px;top:24px}
+  .ts-section{padding:42px 20px}
+  .ts-hero{padding:0 12px}
+  .ts-navnote{display:none}
+  .ts-mark{text-align:left;letter-spacing:.3em;text-indent:.3em}
+  .ts-stat dd{font-size:26px}
+}
+@media (max-width:560px){
+  .ts-hero{padding:0 8px}
+  /* 手机上「24m 的桥」本就是一条细带,舞台再高只剩留白;压低高度 */
+  .ts-stage{height:clamp(300px,44vh,400px)}
+  .ts-arrow{width:36px;height:36px}
+  .ts-arrow.prev{left:8px}
+  .ts-arrow.next{right:8px}
+  .ts-toggle{padding:6px 10px;font-size:12px}
+  .ts-title,.ts-sub{margin-right:96px}
+  .ts-verdict{display:none}
+  /* 图例与圆点各占一行,永不互相压叠 */
+  .ts-legend{bottom:42px;gap:12px}
+  .ts-dots{bottom:15px}
+  #ts-hintline{display:none}
+  .ts-dock{padding:10px 16px;gap:10px 16px}
+}
+</style>
+</head>
+<body>
+<nav class="ts-nav">
+  <a class="ts-back" href="../../">← 返回工具集</a>
+  <div class="ts-mark">TRUSS STUDIO</div>
+  <div class="ts-navnote">直接刚度法 · 本地求解</div>
+</nav>
+
+<header class="ts-hero">
+  <div class="ts-stage" id="ts-stage">
+    <canvas id="ts-canvas" aria-label="桁架受力图"></canvas>
+    <div class="ts-overlay">
+      <h1 class="ts-title" id="ts-title">华伦桁架</h1>
+      <p class="ts-sub" id="ts-subtitle">等边三角腹杆 · 桥梁最常见</p>
+      <div class="ts-legend">
+        <span><i class="ts-swatch t"></i>受拉</span>
+        <span><i class="ts-swatch c"></i>受压</span>
+        <span><i class="ts-swatch z"></i>零杆</span>
+        <span id="ts-hintline">线宽 ∝ 轴力大小</span>
+      </div>
+      <div class="ts-verdict" id="ts-verdict"><b>—</b><span>—</span></div>
+      <div class="ts-toggles">
+        <button class="ts-toggle" id="ts-t-deform" type="button" aria-pressed="true">变形形态</button>
+        <button class="ts-toggle" id="ts-t-forces" type="button" aria-pressed="false">轴力标注</button>
+        <button class="ts-toggle" id="ts-t-react" type="button" aria-pressed="true">支座反力</button>
+      </div>
+      <button class="ts-arrow prev" id="ts-prev" type="button" aria-label="上一种桁架型式">‹</button>
+      <button class="ts-arrow next" id="ts-next" type="button" aria-label="下一种桁架型式">›</button>
+      <div class="ts-dots" id="ts-dots" role="tablist" aria-label="桁架型式"></div>
+    </div>
+  </div>
+  <p class="ts-sr" id="ts-a11y" aria-live="polite"></p>
+</header>
+
+<section class="ts-section">
+  <div class="ts-wrap">
+    <h2 class="ts-eyebrow">结构参数</h2>
+    <p class="ts-note">改动任一参数立即重解。拖动画布上的节点可以自由调整几何,轴力与变形实时跟随。</p>
+    <div class="ts-controls">
+      <div class="ts-field">
+        <label class="ts-label" for="ts-span"><span id="ts-spanlabel">跨度</span><span class="ts-val" id="ts-spanval">24.0 m</span></label>
+        <input class="ts-range" id="ts-span" type="range" min="4" max="48" step="0.5" value="24">
+      </div>
+      <div class="ts-field">
+        <label class="ts-label" for="ts-height"><span id="ts-heightlabel">桁高</span><span class="ts-val" id="ts-heightval">3.5 m</span></label>
+        <input class="ts-range" id="ts-height" type="range" min="0.5" max="10" step="0.1" value="3.5">
+      </div>
+      <div class="ts-field" id="ts-panelfield">
+        <label class="ts-label" for="ts-panels"><span>节间数</span><span class="ts-val" id="ts-panelsval">6</span></label>
+        <input class="ts-range" id="ts-panels" type="range" min="2" max="12" step="1" value="6">
+      </div>
+      <div class="ts-field">
+        <label class="ts-label" for="ts-load"><span>总荷载</span><span class="ts-val" id="ts-loadval">40 kN</span></label>
+        <input class="ts-range" id="ts-load" type="range" min="1" max="600" step="1" value="40">
+      </div>
+      <div class="ts-field">
+        <div class="ts-label"><span>荷载分布</span><span class="ts-val" id="ts-modeval">节点均布</span></div>
+        <div class="ts-seg" id="ts-modes" role="group" aria-label="荷载分布"></div>
+      </div>
+      <div class="ts-field">
+        <label class="ts-label" for="ts-mat"><span>材料</span><span class="ts-val" id="ts-matval"></span></label>
+        <select class="ts-select" id="ts-mat"></select>
+      </div>
+      <div class="ts-field">
+        <label class="ts-label" for="ts-sec"><span>截面形状</span><span class="ts-val" id="ts-secval"></span></label>
+        <select class="ts-select" id="ts-sec"></select>
+      </div>
+      <div class="ts-field">
+        <label class="ts-label" for="ts-area"><span>截面面积</span><span class="ts-val">cm²</span></label>
+        <input class="ts-num" id="ts-area" type="number" min="0.5" max="2000" step="0.5" value="24">
+      </div>
+      <div class="ts-field">
+        <div class="ts-label"><span>附加选项</span><span class="ts-val"></span></div>
+        <label class="ts-check"><input type="checkbox" id="ts-sw"><span>计入结构自重</span></label>
+      </div>
+      <div class="ts-field">
+        <label class="ts-label" for="ts-defscale"><span>变形放大</span><span class="ts-val" id="ts-defscaleval">自动 ×1</span></label>
+        <input class="ts-range" id="ts-defscale" type="range" min="-2" max="2" step="0.25" value="0">
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="ts-section ash">
+  <div class="ts-wrap">
+    <h2 class="ts-eyebrow">求解结果</h2>
+    <p class="ts-note" id="ts-solvenote">直接刚度法:组装整体刚度矩阵 → 引入支座约束 → 高斯消元解位移 → 反算杆件轴力与支座反力。</p>
+    <dl class="ts-stats" id="ts-stats"></dl>
+  </div>
+</section>
+
+<section class="ts-section">
+  <div class="ts-wrap">
+    <h2 class="ts-eyebrow">杆件内力</h2>
+    <p class="ts-note">点击任意一行(或画布上的杆件)查看该杆的强度与稳定校核。受拉为正、受压为负。</p>
+    <div class="ts-tablewrap">
+      <table class="ts-table" id="ts-members">
+        <thead><tr>
+          <th>杆件</th><th>类型</th><th>长度 m</th><th>轴力 kN</th><th>应力 MPa</th>
+          <th>欧拉临界力 kN</th><th>控制</th><th>利用率</th><th></th>
+        </tr></thead>
+        <tbody id="ts-mbody"></tbody>
+      </table>
+    </div>
+    <div style="margin-top:34px">
+      <h3 class="ts-eyebrow" id="ts-dtitle">杆件详情</h3>
+      <p class="ts-note" style="margin-bottom:14px" id="ts-dnote">—</p>
+      <dl class="ts-detail" id="ts-detail"></dl>
+    </div>
+  </div>
+</section>
+
+<section class="ts-section ash">
+  <div class="ts-wrap">
+    <h2 class="ts-eyebrow">支座反力与节点位移</h2>
+    <p class="ts-note">反力由 R = K·u − F 反算;整体平衡残差同时给出,可作为求解正确性的证据。</p>
+    <div class="ts-tablewrap">
+      <table class="ts-table" id="ts-reactions">
+        <thead><tr><th>支座节点</th><th>约束</th><th>水平反力 kN</th><th>竖向反力 kN</th><th>坐标 m</th></tr></thead>
+        <tbody id="ts-rbody"></tbody>
+      </table>
+    </div>
+    <div class="ts-tablewrap" style="margin-top:34px">
+      <table class="ts-table" id="ts-nodes">
+        <thead><tr><th>位移最大的节点</th><th>坐标 m</th><th>水平位移 mm</th><th>竖向位移 mm</th><th>合位移 mm</th></tr></thead>
+        <tbody id="ts-nbody"></tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section class="ts-section">
+  <div class="ts-wrap">
+    <h2 class="ts-eyebrow">保存的方案</h2>
+    <p class="ts-note">方案只存在这台设备的浏览器里(localStorage),不会上传到任何服务器。</p>
+    <div class="ts-actions" style="margin-bottom:22px">
+      <input class="ts-name" id="ts-savename" type="text" placeholder="方案名称" maxlength="40">
+      <button class="ts-btn primary" id="ts-save" type="button">保存当前方案</button>
+      <button class="ts-btn secondary" id="ts-csv" type="button">导出内力 CSV</button>
+      <button class="ts-btn secondary" id="ts-reset" type="button">恢复预设几何</button>
+    </div>
+    <div class="ts-saves" id="ts-savelist"></div>
+  </div>
+</section>
+
+<div class="ts-dock">
+  <div class="ts-dockitem"><span>判别</span><b id="ts-dock-det">—</b></div>
+  <div class="ts-dockitem"><span>最大利用率</span><b id="ts-dock-util">—</b></div>
+  <div class="ts-dockitem"><span>最大挠度</span><b id="ts-dock-disp">—</b></div>
+  <div class="ts-dockitem"><span>用料</span><b id="ts-dock-mass">—</b></div>
+  <div class="ts-dockspacer"></div>
+  <div class="ts-dockitem"><span>平衡残差</span><b id="ts-dock-eq">—</b></div>
+</div>
+
+<footer class="ts-foot">
+  平面桁架 · 铰接节点 · 小变形线弹性 · 欧拉屈曲按两端铰接(K=1)估算 · 结果仅供学习与方案比选,不替代规范设计
+</footer>
+
+<script>
+// <<<ENGINE
+// 平面桁架分析引擎 —— 直接刚度法(Direct Stiffness Method)
+// 坐标:x 向右、y 向上,单位 SI(m / N / Pa)。轴力以受拉为正。
+var TRUSS = (function () {
+  'use strict';
+  var G = 9.80665;
+
+  var MATERIALS = {
+    steel: { name: '结构钢 Q235', E: 206e9, allow: 215e6, rho: 7850 },
+    alu: { name: '铝合金 6061-T6', E: 69e9, allow: 165e6, rho: 2700 },
+    wood: { name: '松木(顺纹)', E: 11e9, allow: 8e6, rho: 500 },
+    cfrp: { name: '碳纤维复合', E: 135e9, allow: 600e6, rho: 1600 }
+  };
+
+  // 截面惯性矩写成 I = k·A²(同面积下形状决定抗弯/抗屈曲能力)
+  // 实心方 b: A=b², I=b⁴/12          → k = 1/12
+  // 实心圆 d: A=πd²/4, I=πd⁴/64      → k = 1/(4π)
+  // 圆管 d/D=r:                       → k = (1+r²)/(4π(1-r²))
+  function tubeK(r) { return (1 + r * r) / (4 * Math.PI * (1 - r * r)); }
+  var SECTIONS = {
+    square: { name: '实心方形', k: 1 / 12 },
+    round: { name: '实心圆形', k: 1 / (4 * Math.PI) },
+    tube: { name: '圆管 D/t=20', k: tubeK(0.9) }
+  };
+
+  // ── 线性方程组:高斯消元 + 部分主元;奇异返回 null ─────────────────────
+  function solveLinear(A, b) {
+    var n = b.length, i, j, k;
+    if (n === 0) return [];
+    var M = new Array(n);
+    var scale = 0;
+    for (i = 0; i < n; i++) {
+      M[i] = new Float64Array(n + 1);
+      for (j = 0; j < n; j++) { M[i][j] = A[i][j]; if (Math.abs(A[i][j]) > scale) scale = Math.abs(A[i][j]); }
+      M[i][n] = b[i];
+    }
+    if (scale === 0) return null;
+    var tol = 1e-11 * scale;
+    for (k = 0; k < n; k++) {
+      var piv = k, best = Math.abs(M[k][k]);
+      for (i = k + 1; i < n; i++) { var v = Math.abs(M[i][k]); if (v > best) { best = v; piv = i; } }
+      if (best <= tol) return null;
+      if (piv !== k) { var t = M[piv]; M[piv] = M[k]; M[k] = t; }
+      var pk = M[k][k];
+      for (i = k + 1; i < n; i++) {
+        var f = M[i][k] / pk;
+        if (f === 0) continue;
+        M[i][k] = 0;
+        for (j = k + 1; j <= n; j++) M[i][j] -= f * M[k][j];
+      }
+    }
+    var x = new Float64Array(n);
+    for (i = n - 1; i >= 0; i--) {
+      var s = M[i][n];
+      for (j = i + 1; j < n; j++) s -= M[i][j] * x[j];
+      x[i] = s / M[i][i];
+    }
+    return x;
+  }
+
+  function memberGeom(model, m) {
+    var a = model.nodes[m.a], b = model.nodes[m.b];
+    var dx = b.x - a.x, dy = b.y - a.y;
+    var L = Math.hypot(dx, dy);
+    return { L: L, c: L > 0 ? dx / L : 0, s: L > 0 ? dy / L : 0 };
+  }
+
+  function propsOf(model, m) {
+    var mat = MATERIALS[m.mat || model.mat] || MATERIALS.steel;
+    var sec = SECTIONS[m.sec || model.sec] || SECTIONS.square;
+    var A = m.A != null ? m.A : model.A;
+    return { E: mat.E, allow: mat.allow, rho: mat.rho, A: A, k: sec.k, matName: mat.name, secName: sec.name };
+  }
+
+  // ── 主求解 ────────────────────────────────────────────────────────────
+  function analyze(model) {
+    var nodes = model.nodes, members = model.members;
+    var nj = nodes.length, ndof = 2 * nj, i, j;
+
+    var res = {
+      ok: false, reason: '', nodes: [], members: [], reactions: [],
+      determinacy: null, equilibrium: null, maxDisp: 0, maxDispNode: -1,
+      maxUtil: 0, maxUtilMember: -1, mass: 0, strainEnergy: 0, externalWork: 0,
+      totalLoad: { fx: 0, fy: 0 }
+    };
+    if (nj < 2 || members.length === 0) { res.reason = '结构至少需要 2 个节点和 1 根杆件'; return res; }
+
+    // 几何退化检查
+    for (i = 0; i < members.length; i++) {
+      var g0 = memberGeom(model, members[i]);
+      if (!(g0.L > 1e-9)) { res.reason = '杆件 ' + (i + 1) + ' 长度为零(两端节点重合)'; return res; }
+    }
+
+    // 荷载向量
+    var F = new Float64Array(ndof);
+    (model.loads || []).forEach(function (l) {
+      if (l.node < 0 || l.node >= nj) return;
+      F[2 * l.node] += l.fx || 0; F[2 * l.node + 1] += l.fy || 0;
+    });
+    var appliedFx = 0, appliedFy = 0;
+    for (i = 0; i < nj; i++) { appliedFx += F[2 * i]; appliedFy += F[2 * i + 1]; }
+
+    // 自重(集中到两端节点)
+    var mass = 0;
+    for (i = 0; i < members.length; i++) {
+      var p0 = propsOf(model, members[i]), gg = memberGeom(model, members[i]);
+      var w = p0.rho * p0.A * gg.L;
+      mass += w;
+      if (model.selfWeight) {
+        F[2 * members[i].a + 1] -= w * G / 2;
+        F[2 * members[i].b + 1] -= w * G / 2;
+      }
+    }
+    res.mass = mass;
+    if (model.selfWeight) appliedFy -= mass * G;
+    res.totalLoad = { fx: appliedFx, fy: appliedFy };
+
+    // 全局刚度矩阵
+    var K = new Array(ndof);
+    for (i = 0; i < ndof; i++) K[i] = new Float64Array(ndof);
+    var geo = [];
+    for (i = 0; i < members.length; i++) {
+      var m = members[i], g = memberGeom(model, m), p = propsOf(model, m);
+      geo.push(g);
+      var ea = p.E * p.A / g.L, c = g.c, s = g.s;
+      var d = [2 * m.a, 2 * m.a + 1, 2 * m.b, 2 * m.b + 1];
+      var kl = [
+        [c * c, c * s, -c * c, -c * s],
+        [c * s, s * s, -c * s, -s * s],
+        [-c * c, -c * s, c * c, c * s],
+        [-c * s, -s * s, c * s, s * s]
+      ];
+      for (var r = 0; r < 4; r++) for (var q = 0; q < 4; q++) K[d[r]][d[q]] += ea * kl[r][q];
+    }
+
+    // 约束
+    var fixed = new Uint8Array(ndof), nr = 0;
+    for (i = 0; i < nj; i++) {
+      if (nodes[i].sx) { fixed[2 * i] = 1; nr++; }
+      if (nodes[i].sy) { fixed[2 * i + 1] = 1; nr++; }
+    }
+    var freeDofs = [];
+    for (i = 0; i < ndof; i++) if (!fixed[i]) freeDofs.push(i);
+
+    // 静定性判别(必要条件)
+    var mCount = members.length;
+    var det = { m: mCount, r: nr, j: nj, sum: mCount + nr, need: 2 * nj };
+    if (det.sum < det.need) { det.code = 'mechanism'; det.degree = det.need - det.sum; det.label = '几何可变(机构)'; }
+    else if (det.sum === det.need) { det.code = 'determinate'; det.degree = 0; det.label = '静定结构'; }
+    else { det.code = 'indeterminate'; det.degree = det.sum - det.need; det.label = '超静定 ' + (det.sum - det.need) + ' 次'; }
+    res.determinacy = det;
+
+    // 孤立节点(没有任何杆件连接且未完全约束)
+    var deg = new Array(nj).fill(0);
+    for (i = 0; i < mCount; i++) { deg[members[i].a]++; deg[members[i].b]++; }
+    for (i = 0; i < nj; i++) {
+      if (deg[i] === 0 && !(nodes[i].sx && nodes[i].sy)) {
+        res.reason = '节点 ' + (i + 1) + ' 没有连接任何杆件(自由漂浮)'; res.determinacy = det; return res;
+      }
+    }
+
+    // 缩减求解
+    var nf = freeDofs.length;
+    var Kf = new Array(nf), Ff = new Float64Array(nf);
+    for (i = 0; i < nf; i++) {
+      Kf[i] = new Float64Array(nf);
+      for (j = 0; j < nf; j++) Kf[i][j] = K[freeDofs[i]][freeDofs[j]];
+      Ff[i] = F[freeDofs[i]];
+    }
+    var uf = solveLinear(Kf, Ff);
+    if (uf === null) {
+      res.reason = det.code === 'mechanism'
+        ? '刚度矩阵奇异:结构是机构,缺少 ' + det.degree + ' 个约束/杆件'
+        : '刚度矩阵奇异:杆件布置构成局部机构(存在可自由运动的节点),请检查支座与斜腹杆';
+      return res;
+    }
+
+    var u = new Float64Array(ndof);
+    for (i = 0; i < nf; i++) u[freeDofs[i]] = uf[i];
+
+    // 杆件轴力(受拉为正)
+    var maxUtil = 0, maxUtilM = -1, strain = 0;
+    for (i = 0; i < mCount; i++) {
+      var mm = members[i], gm = geo[i], pm = propsOf(model, mm);
+      var du = [u[2 * mm.a], u[2 * mm.a + 1], u[2 * mm.b], u[2 * mm.b + 1]];
+      var elong = (du[2] - du[0]) * gm.c + (du[3] - du[1]) * gm.s;
+      var N = pm.E * pm.A / gm.L * elong;
+      var sigma = N / pm.A;
+      var I = pm.k * pm.A * pm.A;
+      var Pcr = Math.PI * Math.PI * pm.E * I / (gm.L * gm.L);
+      var utilY = Math.abs(sigma) / pm.allow;
+      var utilB = N < 0 ? -N / Pcr : 0;
+      var util = Math.max(utilY, utilB);
+      var zero = Math.abs(N) < 1e-6 * Math.max(1, Math.abs(appliedFy) + Math.abs(appliedFx));
+      strain += N * N * gm.L / (2 * pm.E * pm.A);
+      if (util > maxUtil) { maxUtil = util; maxUtilM = i; }
+      res.members.push({
+        i: i, a: mm.a, b: mm.b, L: gm.L, c: gm.c, s: gm.s, N: N, sigma: sigma,
+        elong: elong, A: pm.A, E: pm.E, allow: pm.allow, Pcr: Pcr, I: I,
+        utilYield: utilY, utilBuckle: utilB, util: util,
+        governs: utilB > utilY ? 'buckle' : 'yield',
+        kind: zero ? 'zero' : (N > 0 ? 'tension' : 'compression'),
+        mass: pm.rho * pm.A * gm.L
+      });
+    }
+    res.maxUtil = maxUtil; res.maxUtilMember = maxUtilM; res.strainEnergy = strain;
+
+    // 位移 / 外力功
+    var work = 0, maxD = 0, maxDN = -1;
+    for (i = 0; i < nj; i++) {
+      var ux = u[2 * i], uy = u[2 * i + 1], mag = Math.hypot(ux, uy);
+      res.nodes.push({ i: i, ux: ux, uy: uy, mag: mag });
+      if (mag > maxD) { maxD = mag; maxDN = i; }
+      work += 0.5 * (F[2 * i] * ux + F[2 * i + 1] * uy);
+    }
+    res.maxDisp = maxD; res.maxDispNode = maxDN; res.externalWork = work;
+
+    // 支座反力 R = K·u − F
+    var Ku = new Float64Array(ndof);
+    for (i = 0; i < ndof; i++) {
+      if (!fixed[i]) continue;
+      var acc = 0, row = K[i];
+      for (j = 0; j < ndof; j++) if (u[j] !== 0) acc += row[j] * u[j];
+      Ku[i] = acc;
+    }
+    var sumRx = 0, sumRy = 0, sumM = 0;
+    for (i = 0; i < nj; i++) {
+      var rx = fixed[2 * i] ? Ku[2 * i] - F[2 * i] : 0;
+      var ry = fixed[2 * i + 1] ? Ku[2 * i + 1] - F[2 * i + 1] : 0;
+      if (fixed[2 * i] || fixed[2 * i + 1]) {
+        res.reactions.push({ node: i, rx: rx, ry: ry, sx: !!nodes[i].sx, sy: !!nodes[i].sy });
+        sumRx += rx; sumRy += ry;
+        sumM += nodes[i].x * ry - nodes[i].y * rx;
+      }
+    }
+    // 整体平衡校核(荷载 + 反力)
+    for (i = 0; i < nj; i++) sumM += nodes[i].x * F[2 * i + 1] - nodes[i].y * F[2 * i];
+    var refF = 0;
+    for (i = 0; i < ndof; i++) refF += Math.abs(F[i]);
+    refF = Math.max(refF, 1);
+    var span = 1;
+    for (i = 0; i < nj; i++) span = Math.max(span, Math.abs(nodes[i].x), Math.abs(nodes[i].y));
+    res.equilibrium = {
+      fx: sumRx + appliedFx, fy: sumRy + appliedFy, mz: sumM,
+      relFx: Math.abs(sumRx + appliedFx) / refF,
+      relFy: Math.abs(sumRy + appliedFy) / refF,
+      relMz: Math.abs(sumM) / (refF * span)
+    };
+
+    // 逐节点平衡残差(最严格的正确性证明)
+    var jr = 0;
+    var rx2 = new Float64Array(nj), ry2 = new Float64Array(nj);
+    for (i = 0; i < mCount; i++) {
+      var em = res.members[i];
+      rx2[em.a] += em.N * em.c; ry2[em.a] += em.N * em.s;
+      rx2[em.b] -= em.N * em.c; ry2[em.b] -= em.N * em.s;
+    }
+    res.reactions.forEach(function (rr) { rx2[rr.node] += rr.rx; ry2[rr.node] += rr.ry; });
+    for (i = 0; i < nj; i++) {
+      rx2[i] += F[2 * i]; ry2[i] += F[2 * i + 1];
+      jr = Math.max(jr, Math.hypot(rx2[i], ry2[i]));
+    }
+    res.jointResidual = jr / refF;
+    res.ok = true;
+    return res;
+  }
+
+  // ── 参数化预设结构 ────────────────────────────────────────────────────
+  function nd(x, y, sx, sy) { return { x: x, y: y, sx: !!sx, sy: !!sy }; }
+  function mb(a, b) { return { a: a, b: b }; }
+
+  function presetTriangle(p) {
+    var L = p.span, h = p.height;
+    return {
+      nodes: [nd(0, 0, 1, 1), nd(L, 0, 0, 1), nd(L / 2, h)],
+      members: [mb(0, 2), mb(2, 1), mb(0, 1)],
+      loadNodes: [2], deck: 'bottom', name: '三角桁架'
+    };
+  }
+
+  function presetWarren(p) {
+    var n = Math.max(2, p.panels | 0), L = p.span, h = p.height, pp = L / n;
+    var nodes = [], members = [], i;
+    for (i = 0; i <= n; i++) nodes.push(nd(i * pp, 0, i === 0 ? 1 : 0, (i === 0 || i === n) ? 1 : 0));
+    var top0 = nodes.length;
+    for (i = 0; i < n; i++) nodes.push(nd((i + 0.5) * pp, h));
+    for (i = 0; i < n; i++) members.push(mb(i, i + 1));               // 下弦
+    for (i = 0; i < n - 1; i++) members.push(mb(top0 + i, top0 + i + 1)); // 上弦
+    for (i = 0; i < n; i++) { members.push(mb(i, top0 + i)); members.push(mb(top0 + i, i + 1)); } // 斜腹杆
+    var ln = []; for (i = 1; i < n; i++) ln.push(i);
+    return { nodes: nodes, members: members, loadNodes: ln, deck: 'bottom', name: '华伦桁架' };
+  }
+
+  function chordTruss(p, style) {
+    var n = Math.max(4, (p.panels | 0));
+    if (n % 2) n += 1;
+    var L = p.span, h = p.height, pp = L / n;
+    var nodes = [], members = [], i;
+    for (i = 0; i <= n; i++) nodes.push(nd(i * pp, 0, i === 0 ? 1 : 0, (i === 0 || i === n) ? 1 : 0));
+    var t = {}; // 站号 → 上弦节点索引
+    for (i = 1; i <= n - 1; i++) { t[i] = nodes.length; nodes.push(nd(i * pp, h)); }
+    for (i = 0; i < n; i++) members.push(mb(i, i + 1));                 // 下弦
+    for (i = 1; i <= n - 2; i++) members.push(mb(t[i], t[i + 1]));      // 上弦
+    members.push(mb(0, t[1])); members.push(mb(n, t[n - 1]));           // 端斜杆
+    for (i = 1; i <= n - 1; i++) members.push(mb(t[i], i));             // 竖杆
+    if (style === 'pratt') {
+      for (i = 1; i <= n / 2 - 1; i++) members.push(mb(t[i], i + 1));
+      for (i = n / 2 + 1; i <= n - 1; i++) members.push(mb(t[i], i - 1));
+    } else { // howe
+      for (i = 2; i <= n / 2; i++) members.push(mb(t[i], i - 1));
+      for (i = n / 2; i <= n - 2; i++) members.push(mb(t[i], i + 1));
+    }
+    var ln = []; for (i = 1; i < n; i++) ln.push(i);
+    return { nodes: nodes, members: members, loadNodes: ln, deck: 'bottom', name: style === 'pratt' ? '普拉特桁架' : '豪威桁架' };
+  }
+
+  function presetCantilever(p) {
+    var n = Math.max(2, p.panels | 0), L = p.span, h = p.height, pp = L / n;
+    var nodes = [], members = [], i;
+    nodes.push(nd(0, 0, 1, 1));              // 0 下端固定
+    for (i = 1; i <= n; i++) nodes.push(nd(i * pp, 0));
+    var t0 = nodes.length;
+    nodes.push(nd(0, h, 1, 1));              // 上端固定
+    for (i = 1; i <= n; i++) nodes.push(nd(i * pp, h));
+    for (i = 0; i < n; i++) members.push(mb(i, i + 1));                 // 下弦
+    for (i = 0; i < n; i++) members.push(mb(t0 + i, t0 + i + 1));       // 上弦
+    for (i = 1; i <= n; i++) members.push(mb(i, t0 + i));               // 竖杆
+    for (i = 0; i < n; i++) members.push(mb(t0 + i, i + 1));            // 斜腹杆
+    return { nodes: nodes, members: members, loadNodes: [n, t0 + n], deck: 'tip', name: '悬臂桁架' };
+  }
+
+  function presetTower(p) {
+    var n = Math.max(2, p.panels | 0), w = p.height, H = p.span, pp = H / n;
+    var nodes = [], members = [], i;
+    nodes.push(nd(0, 0, 1, 1));
+    for (i = 1; i <= n; i++) nodes.push(nd(0, i * pp));
+    var t0 = nodes.length;
+    nodes.push(nd(w, 0, 1, 1));
+    for (i = 1; i <= n; i++) nodes.push(nd(w, i * pp));
+    for (i = 0; i < n; i++) members.push(mb(i, i + 1));
+    for (i = 0; i < n; i++) members.push(mb(t0 + i, t0 + i + 1));
+    for (i = 1; i <= n; i++) members.push(mb(i, t0 + i));
+    for (i = 0; i < n; i++) members.push(mb(i + 1, t0 + i));
+    return { nodes: nodes, members: members, loadNodes: [n, t0 + n], deck: 'tip', name: '输电塔架' };
+  }
+
+  function presetRoof(p) {
+    var L = p.span, h = p.height, q = L / 4;
+    var nodes = [
+      nd(0, 0, 1, 1),        // 0 左支座(兼左檐)
+      nd(q, 0), nd(2 * q, 0), nd(3 * q, 0), // 1,2,3 下弦
+      nd(L, 0, 0, 1),        // 4 右支座
+      nd(q, h / 2),          // 5 左坡中
+      nd(2 * q, h),          // 6 屋脊
+      nd(3 * q, h / 2)       // 7 右坡中
+    ];
+    var members = [
+      mb(0, 5), mb(5, 6), mb(6, 7), mb(7, 4),      // 上弦(屋面)
+      mb(0, 1), mb(1, 2), mb(2, 3), mb(3, 4),      // 下弦
+      mb(5, 1), mb(6, 2), mb(7, 3),                // 竖腹杆
+      mb(1, 6), mb(3, 6)                           // 斜腹杆
+    ];
+    return { nodes: nodes, members: members, loadNodes: [5, 6, 7], deck: 'top', name: '三角屋架' };
+  }
+
+  var PRESETS = [
+    { id: 'triangle', name: '三角桁架', desc: '最小静定单元 · 三杆两支座', build: presetTriangle, defaults: { span: 8, height: 3, panels: 2 }, fixedPanels: true },
+    { id: 'warren', name: '华伦桁架', desc: '等边三角腹杆 · 桥梁最常见', build: presetWarren, defaults: { span: 24, height: 3.5, panels: 6 } },
+    { id: 'pratt', name: '普拉特桁架', desc: '斜腹杆受拉 · 钢桥经典', build: function (p) { return chordTruss(p, 'pratt'); }, defaults: { span: 24, height: 4, panels: 6 }, even: true },
+    { id: 'howe', name: '豪威桁架', desc: '斜腹杆受压 · 木桥常用', build: function (p) { return chordTruss(p, 'howe'); }, defaults: { span: 24, height: 4, panels: 6 }, even: true },
+    { id: 'cantilever', name: '悬臂桁架', desc: '一端嵌固 · 挑檐/雨棚', build: presetCantilever, defaults: { span: 12, height: 2.5, panels: 4 } },
+    { id: 'tower', name: '输电塔架', desc: '竖向悬臂 · 顶部水平风载', build: presetTower, defaults: { span: 16, height: 3, panels: 5 } },
+    { id: 'roof', name: '三角屋架', desc: '上弦承屋面载 · 含零杆', build: presetRoof, defaults: { span: 12, height: 3, panels: 4 }, fixedPanels: true }
+  ];
+
+  function presetById(id) {
+    for (var i = 0; i < PRESETS.length; i++) if (PRESETS[i].id === id) return PRESETS[i];
+    return PRESETS[1];
+  }
+
+  // 荷载模式:uniform 每个可加载节点等值;center 仅中间节点;tip 端部节点
+  function applyLoads(shape, mode, P) {
+    var ln = shape.loadNodes.slice(), loads = [], i;
+    if (!ln.length) return loads;
+    if (shape.deck === 'tip') {
+      if (mode === 'wind') { ln.forEach(function (n) { loads.push({ node: n, fx: P / ln.length, fy: 0 }); }); }
+      else ln.forEach(function (n) { loads.push({ node: n, fx: 0, fy: -P / ln.length }); });
+      return loads;
+    }
+    if (mode === 'center') {
+      var mid = ln[(ln.length - 1) >> 1];
+      if (ln.length % 2 === 0) { // 偶数个:平均分给中间两个
+        var m2 = ln[ln.length >> 1];
+        loads.push({ node: mid, fx: 0, fy: -P / 2 });
+        loads.push({ node: m2, fx: 0, fy: -P / 2 });
+      } else loads.push({ node: mid, fx: 0, fy: -P });
+      return loads;
+    }
+    for (i = 0; i < ln.length; i++) loads.push({ node: ln[i], fx: 0, fy: -P / ln.length });
+    return loads;
+  }
+
+  // 由参数生成完整可求解模型
+  function buildModel(cfg) {
+    var pre = presetById(cfg.preset);
+    var panels = cfg.panels;
+    if (pre.even && panels % 2) panels += 1;
+    var shape = pre.build({ span: cfg.span, height: cfg.height, panels: panels });
+    return {
+      preset: pre.id, presetName: shape.name, deck: shape.deck,
+      nodes: shape.nodes, members: shape.members, loadNodes: shape.loadNodes,
+      loads: applyLoads(shape, cfg.loadMode, cfg.load),
+      mat: cfg.mat, sec: cfg.sec, A: cfg.area, selfWeight: !!cfg.selfWeight
+    };
+  }
+
+  // 单位荷载法(虚功)独立复核某节点位移:δ = Σ N·n·L/(EA)
+  function unitLoadDeflection(model, nodeIdx, dir) {
+    var real = analyze(model);
+    if (!real.ok) return null;
+    var virt = JSON.parse(JSON.stringify(model));
+    virt.selfWeight = false;
+    virt.loads = [{ node: nodeIdx, fx: dir === 'x' ? 1 : 0, fy: dir === 'y' ? 1 : 0 }];
+    var vr = analyze(virt);
+    if (!vr.ok) return null;
+    var d = 0;
+    for (var i = 0; i < real.members.length; i++) {
+      var m = real.members[i], v = vr.members[i];
+      d += m.N * v.N * m.L / (m.E * m.A);
+    }
+    return d;
+  }
+
+  return {
+    MATERIALS: MATERIALS, SECTIONS: SECTIONS, PRESETS: PRESETS, G: G,
+    analyze: analyze, buildModel: buildModel, presetById: presetById,
+    applyLoads: applyLoads, solveLinear: solveLinear, memberGeom: memberGeom,
+    unitLoadDeflection: unitLoadDeflection, tubeK: tubeK
+  };
+})();
+// ENGINE>>>
+
+/* ══════════════════════════════════════════════════════════════════════
+   界面层
+   ══════════════════════════════════════════════════════════════════════ */
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+  var COL = { blue: '#3E6AE1', white: '#FFFFFF', carbon: '#171A20', graphite: '#393C41', pewter: '#5C5E62', fog: '#8E8E8E' };
+  var LS_STATE = 'trussStudio.state.v1', LS_SAVES = 'trussStudio.saves.v1';
+
+  var state = {
+    preset: 'warren', span: 24, height: 3.5, panels: 6,
+    load: 40, loadMode: 'uniform', mat: 'steel', sec: 'tube', area: 24,
+    selfWeight: false, showDeform: true, showForces: false, showReactions: true,
+    defScale: 0, overrides: null, sel: -1
+  };
+  var model = null, result = null, view = null, drag = null, hover = -1;
+
+  // ── 状态持久化 ───────────────────────────────────────────────────────
+  function saveState() {
+    try {
+      var s = {};
+      Object.keys(state).forEach(function (k) { if (k !== 'sel') s[k] = state[k]; });
+      localStorage.setItem(LS_STATE, JSON.stringify(s));
+    } catch (e) { /* 隐私模式等场景静默降级 */ }
+  }
+  function loadState() {
+    try {
+      var raw = localStorage.getItem(LS_STATE);
+      if (!raw) return;
+      var s = JSON.parse(raw);
+      if (!s || typeof s !== 'object') return;
+      Object.keys(state).forEach(function (k) { if (k in s && k !== 'sel') state[k] = s[k]; });
+      if (!TRUSS.MATERIALS[state.mat]) state.mat = 'steel';
+      if (!TRUSS.SECTIONS[state.sec]) state.sec = 'tube';
+      state.span = clamp(+state.span || 24, 4, 48);
+      state.height = clamp(+state.height || 3.5, 0.5, 10);
+      state.panels = clamp(Math.round(+state.panels || 6), 2, 12);
+      state.load = clamp(+state.load || 40, 1, 600);
+      state.area = clamp(+state.area || 24, 0.5, 2000);
+      // 荷载模式与型式必须自洽:风载只对塔架有意义,塔架也不支持「跨中集中」
+      if (state.preset === 'tower' && state.loadMode !== 'uniform') state.loadMode = 'wind';
+      else if (state.preset !== 'tower' && state.loadMode === 'wind') state.loadMode = 'uniform';
+      if (['uniform', 'center', 'wind'].indexOf(state.loadMode) < 0) state.loadMode = 'uniform';
+    } catch (e) { /* 坏数据不阻塞启动 */ }
+  }
+  function readSaves() {
+    try {
+      var v = JSON.parse(localStorage.getItem(LS_SAVES) || '[]');
+      return Array.isArray(v) ? v : [];
+    } catch (e) { return []; }
+  }
+  function writeSaves(list) {
+    try { localStorage.setItem(LS_SAVES, JSON.stringify(list.slice(0, 24))); } catch (e) { }
+  }
+
+  function clamp(v, lo, hi) { return v < lo ? lo : (v > hi ? hi : v); }
+  function fmt(v, d) {
+    if (!isFinite(v)) return '—';
+    var s = Math.abs(v) >= 1e5 ? v.toExponential(2) : v.toFixed(d == null ? 2 : d);
+    return s.replace(/^-0(\.0+)?$/, s.indexOf('.') > 0 ? '0' + s.slice(s.indexOf('.')) : '0');
+  }
+  // kN 显示精度:<100kN 保留 2 位(本站常见量级),100–1000kN 保留 1 位,更大取整
+  function kN(n) { var a = Math.abs(n); return fmt(n / 1000, a >= 1e6 ? 0 : (a >= 1e5 ? 1 : 2)); }
+
+  // ── 模型构建(含用户拖动后的几何覆盖) ────────────────────────────────
+  function buildModel() {
+    var m = TRUSS.buildModel({
+      preset: state.preset, span: state.span, height: state.height, panels: state.panels,
+      load: state.load * 1000, loadMode: state.loadMode, mat: state.mat, sec: state.sec,
+      area: state.area / 1e4, selfWeight: state.selfWeight
+    });
+    if (state.overrides && state.overrides.key === geomKey()) {
+      state.overrides.pos.forEach(function (p) {
+        if (p && m.nodes[p.i]) { m.nodes[p.i].x = p.x; m.nodes[p.i].y = p.y; }
+      });
+    } else if (state.overrides) {
+      state.overrides = null;
+    }
+    return m;
+  }
+  function geomKey() { return state.preset + '|' + state.span + '|' + state.height + '|' + state.panels; }
+
+  // ── 画布 ─────────────────────────────────────────────────────────────
+  var canvas = $('ts-canvas'), ctx = canvas.getContext('2d');
+  function sizeCanvas() {
+    var r = canvas.getBoundingClientRect();
+    var dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+    var w = Math.max(240, Math.round(r.width)), h = Math.max(200, Math.round(r.height));
+    if (canvas.width !== w * dpr || canvas.height !== h * dpr) {
+      canvas.width = w * dpr; canvas.height = h * dpr;
+    }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    return { w: w, h: h };
+  }
+
+  function computeView(size) {
+    var xs = [], ys = [];
+    model.nodes.forEach(function (n) { xs.push(n.x); ys.push(n.y); });
+    var minx = Math.min.apply(null, xs), maxx = Math.max.apply(null, xs);
+    var miny = Math.min.apply(null, ys), maxy = Math.max.apply(null, ys);
+    var narrow = size.w < 720, tiny = size.w < 480;
+    // 左右留白要能容下轮播箭头(手机上箭头贴边 8px + 36px 宽),上方要给标题让位
+    var padL = tiny ? 48 : (narrow ? 54 : 92), padR = padL;
+    var padT = tiny ? 90 : (narrow ? 104 : 132), padB = tiny ? 62 : (narrow ? 76 : 92);
+    var gw = Math.max(1e-6, maxx - minx), gh = Math.max(1e-6, maxy - miny);
+    var availW = Math.max(60, size.w - padL - padR), availH = Math.max(60, size.h - padT - padB);
+    var s = Math.min(availW / gw, availH / gh);
+    if (!isFinite(s) || s <= 0) s = 1;
+    var ox = padL + (availW - gw * s) / 2, oy = padT + (availH - gh * s) / 2;
+    return {
+      s: s, minx: minx, maxy: maxy, ox: ox, oy: oy, w: size.w, h: size.h, narrow: narrow,
+      X: function (x) { return ox + (x - minx) * s; },
+      Y: function (y) { return oy + (maxy - y) * s; }
+    };
+  }
+
+  function autoDefScale() {
+    if (!result || !result.ok || result.maxDisp <= 0) return 0;
+    var target = Math.min(view.w, view.h) * 0.055 / view.s;   // 最大位移映射到画布 5.5%
+    return target / result.maxDisp;
+  }
+  function defScale() { return autoDefScale() * Math.pow(2, state.defScale); }
+
+  function drawArrow(x1, y1, x2, y2, color, width) {
+    ctx.strokeStyle = color; ctx.lineWidth = width || 1.6; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+    var ang = Math.atan2(y2 - y1, x2 - x1), hl = 7;
+    ctx.beginPath();
+    ctx.moveTo(x2, y2);
+    ctx.lineTo(x2 - hl * Math.cos(ang - 0.42), y2 - hl * Math.sin(ang - 0.42));
+    ctx.lineTo(x2 - hl * Math.cos(ang + 0.42), y2 - hl * Math.sin(ang + 0.42));
+    ctx.closePath(); ctx.fillStyle = color; ctx.fill();
+  }
+
+  function drawSupport(n, px, py) {
+    var sz = 11;
+    ctx.strokeStyle = 'rgba(255,255,255,.66)'; ctx.lineWidth = 1.4; ctx.lineCap = 'butt';
+    if (n.sx && n.sy) {                        // 固定铰支座
+      ctx.beginPath();
+      ctx.moveTo(px, py); ctx.lineTo(px - sz, py + sz * 1.5); ctx.lineTo(px + sz, py + sz * 1.5); ctx.closePath();
+      ctx.stroke();
+      for (var i = -1; i <= 1; i++) {
+        ctx.beginPath();
+        ctx.moveTo(px + i * 8 - 4, py + sz * 1.5 + 6); ctx.lineTo(px + i * 8 + 2, py + sz * 1.5);
+        ctx.stroke();
+      }
+    } else if (n.sy) {                          // 竖向滚轴
+      ctx.beginPath();
+      ctx.moveTo(px, py); ctx.lineTo(px - sz, py + sz * 1.35); ctx.lineTo(px + sz, py + sz * 1.35); ctx.closePath();
+      ctx.stroke();
+      ctx.beginPath(); ctx.arc(px - 5, py + sz * 1.35 + 4, 3.4, 0, 6.284); ctx.stroke();
+      ctx.beginPath(); ctx.arc(px + 5, py + sz * 1.35 + 4, 3.4, 0, 6.284); ctx.stroke();
+    } else if (n.sx) {                          // 水平滚轴
+      ctx.beginPath();
+      ctx.moveTo(px, py); ctx.lineTo(px - sz * 1.35, py - sz); ctx.lineTo(px - sz * 1.35, py + sz); ctx.closePath();
+      ctx.stroke();
+      ctx.beginPath(); ctx.arc(px - sz * 1.35 - 4, py - 5, 3.4, 0, 6.284); ctx.stroke();
+      ctx.beginPath(); ctx.arc(px - sz * 1.35 - 4, py + 5, 3.4, 0, 6.284); ctx.stroke();
+    }
+  }
+
+  function draw() {
+    var size = sizeCanvas();
+    view = computeView(size);
+    ctx.clearRect(0, 0, size.w, size.h);
+    ctx.fillStyle = COL.carbon;
+    ctx.fillRect(0, 0, size.w, size.h);
+    if (!model) return;
+
+    // 全画布共享的标签占位表:成员轴力标注与荷载标注统一避让,先放的优先
+    var labelBoxes = [];
+    function tryLabel(text, cx, cy, weight) {
+      ctx.font = (weight || '400') + ' 11px "Helvetica Neue", Arial, sans-serif';
+      var w = ctx.measureText(text).width + 8;
+      var box = { x: cx - w / 2, y: cy - 8, r: cx + w / 2, b: cy + 8, w: w };
+      for (var k = 0; k < labelBoxes.length; k++) {
+        var q = labelBoxes[k];
+        if (box.x < q.r + 2 && q.x < box.r + 2 && box.y < q.b + 1 && q.y < box.b + 1) return null;
+      }
+      labelBoxes.push(box);
+      return box;
+    }
+
+    var solved = result && result.ok;
+    var maxN = 1;
+    if (solved) result.members.forEach(function (m) { maxN = Math.max(maxN, Math.abs(m.N)); });
+    var ds = solved && state.showDeform ? defScale() : 0;
+    var DX = function (i) { return view.X(model.nodes[i].x + (ds ? result.nodes[i].ux * ds : 0)); };
+    var DY = function (i) { return view.Y(model.nodes[i].y + (ds ? result.nodes[i].uy * ds : 0)); };
+
+    // 变形态下先画原始位置作参照
+    if (ds) {
+      ctx.strokeStyle = 'rgba(255,255,255,.14)'; ctx.lineWidth = 1; ctx.setLineDash([]);
+      model.members.forEach(function (m) {
+        ctx.beginPath();
+        ctx.moveTo(view.X(model.nodes[m.a].x), view.Y(model.nodes[m.a].y));
+        ctx.lineTo(view.X(model.nodes[m.b].x), view.Y(model.nodes[m.b].y));
+        ctx.stroke();
+      });
+    }
+
+    // 杆件
+    model.members.forEach(function (m, i) {
+      var r = solved ? result.members[i] : null;
+      var x1 = DX(m.a), y1 = DY(m.a), x2 = DX(m.b), y2 = DY(m.b);
+      var lw = 2, color = 'rgba(255,255,255,.6)';
+      ctx.setLineDash([]);
+      if (r) {
+        var t = Math.abs(r.N) / maxN;
+        lw = 1.6 + Math.sqrt(t) * 8.4;
+        if (r.kind === 'tension') color = COL.blue;
+        else if (r.kind === 'compression') color = '#FFFFFF';
+        else { color = COL.pewter; lw = 1.4; ctx.setLineDash([5, 5]); }
+      }
+      if (i === state.sel) { lw += 2.6; }
+      else if (i === hover) { lw += 1.4; }
+      ctx.strokeStyle = color; ctx.lineWidth = lw; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+      if (i === state.sel) {
+        ctx.setLineDash([]);
+        ctx.strokeStyle = 'rgba(62,106,225,.55)'; ctx.lineWidth = lw + 8;
+        ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+      }
+      ctx.setLineDash([]);
+    });
+
+    // 节点 + 支座。同时把节点/支座图形的占位登记进 labelBoxes,
+    // 这样后面的荷载标注与轴力标注都不会压在节点圆点或支座三角上。
+    model.nodes.forEach(function (n, i) {
+      var px = DX(i), py = DY(i);
+      ctx.fillStyle = '#FFFFFF';
+      ctx.beginPath(); ctx.arc(px, py, i === (drag && drag.node) ? 5.5 : 3.4, 0, 6.284); ctx.fill();
+      if (n.sx || n.sy) drawSupport(n, view.X(n.x), view.Y(n.y));
+      labelBoxes.push({ x: px - 9, y: py - 9, r: px + 9, b: py + (n.sx || n.sy ? 28 : 9), w: 18 });
+    });
+
+    // 荷载箭头
+    var maxLoad = 1;
+    model.loads.forEach(function (l) { maxLoad = Math.max(maxLoad, Math.hypot(l.fx, l.fy)); });
+    model.loads.forEach(function (l) {
+      var mag = Math.hypot(l.fx, l.fy);
+      if (mag < 1e-9) return;
+      var ux = l.fx / mag, uy = -l.fy / mag;             // 屏幕 y 向下
+      var len = 26 + 16 * (mag / maxLoad);
+      var px = DX(l.node), py = DY(l.node);
+      drawArrow(px - ux * len, py - uy * len, px - ux * 5, py - uy * 5, 'rgba(255,255,255,.9)', 1.7);
+      if (!view.narrow) {
+        var lt = fmt(mag / 1000, 1) + ' kN';
+        var lx = px - ux * (len + 12), ly = py - uy * (len + 12);
+        if (tryLabel(lt, lx, ly)) {
+          ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+          ctx.fillStyle = 'rgba(255,255,255,.62)';
+          ctx.fillText(lt, lx, ly);
+        }
+      }
+    });
+
+    // 轴力标注 —— 按 |N| 从大到小放置,与已放标签(含荷载标注)重叠就跳过。
+    // 密集桁架/窄塔架下否则会糊成一团;先放大力的,保证起控制作用的那几根一定可读。
+    if (solved && state.showForces) {
+      var skipped = 0;
+      result.members.map(function (r, i) { return { r: r, i: i }; })
+        .sort(function (a, b) { return Math.abs(b.r.N) - Math.abs(a.r.N); })
+        .forEach(function (o) {
+          var m = model.members[o.i];
+          var mx = (DX(m.a) + DX(m.b)) / 2, my = (DY(m.a) + DY(m.b)) / 2;
+          var label = (o.r.N > 0 ? '+' : '') + kN(o.r.N);
+          var box = tryLabel(label, mx, my, '500');
+          if (!box) { skipped++; return; }
+          ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+          ctx.fillStyle = 'rgba(23,26,32,.94)';
+          ctx.fillRect(box.x, box.y, box.w, 16);
+          ctx.fillStyle = o.r.kind === 'tension' ? '#7f9bf0' : (o.r.kind === 'zero' ? COL.fog : '#FFFFFF');
+          ctx.fillText(label, mx, my);
+        });
+      canvas.dataset.labelsSkipped = String(skipped);
+      $('ts-hintline').textContent = '标注单位 kN' + (skipped ? ' · 密集处省略 ' + skipped + ' 处' : '');
+    } else {
+      canvas.dataset.labelsSkipped = '0';
+    }
+
+    // 支座反力
+    if (solved && state.showReactions) {
+      var maxR = 1;
+      result.reactions.forEach(function (r) { maxR = Math.max(maxR, Math.hypot(r.rx, r.ry)); });
+      result.reactions.forEach(function (r) {
+        var mag = Math.hypot(r.rx, r.ry);
+        if (mag < 1e-6) return;
+        var ux = r.rx / mag, uy = -r.ry / mag;
+        var len = 24 + 14 * (mag / maxR);
+        var px = view.X(model.nodes[r.node].x), py = view.Y(model.nodes[r.node].y);
+        drawArrow(px - ux * (len + 16), py - uy * (len + 16), px - ux * 16, py - uy * 16, COL.blue, 1.8);
+      });
+    }
+  }
+
+  // ── 命中测试 ─────────────────────────────────────────────────────────
+  function pick(mx, my) {
+    if (!view || !model) return { member: -1, node: -1 };
+    var ds = result && result.ok && state.showDeform ? defScale() : 0;
+    var px = function (i) { return view.X(model.nodes[i].x + (ds ? result.nodes[i].ux * ds : 0)); };
+    var py = function (i) { return view.Y(model.nodes[i].y + (ds ? result.nodes[i].uy * ds : 0)); };
+    var bestN = -1, bestND = 15;
+    model.nodes.forEach(function (n, i) {
+      var d = Math.hypot(px(i) - mx, py(i) - my);
+      if (d < bestND) { bestND = d; bestN = i; }
+    });
+    var bestM = -1, bestMD = 11;
+    model.members.forEach(function (m, i) {
+      var x1 = px(m.a), y1 = py(m.a), x2 = px(m.b), y2 = py(m.b);
+      var dx = x2 - x1, dy = y2 - y1, len2 = dx * dx + dy * dy;
+      var t = len2 ? clamp(((mx - x1) * dx + (my - y1) * dy) / len2, 0, 1) : 0;
+      var d = Math.hypot(x1 + t * dx - mx, y1 + t * dy - my);
+      if (d < bestMD) { bestMD = d; bestM = i; }
+    });
+    return { member: bestM, node: bestN };
+  }
+  function canvasPos(ev) {
+    var r = canvas.getBoundingClientRect();
+    return { x: ev.clientX - r.left, y: ev.clientY - r.top };
+  }
+
+  function toModel(p) {
+    return { x: view.minx + (p.x - view.ox) / view.s, y: view.maxy - (p.y - view.oy) / view.s };
+  }
+
+  canvas.addEventListener('pointerdown', function (ev) {
+    var p = canvasPos(ev), hit = pick(p.x, p.y);
+    if (hit.node >= 0) {
+      // 记下「指针模型坐标 − 节点真实坐标」的差:之后只施加位移增量。
+      // 否则显示变形时抓取会把节点瞬移到变形后的位置(可达画布 5%),
+      // 抓偏一点也会让节点跳到光标下。
+      var gm = toModel(p);
+      drag = { node: hit.node, ox: gm.x - model.nodes[hit.node].x, oy: gm.y - model.nodes[hit.node].y };
+      canvas.setPointerCapture(ev.pointerId);
+      state.sel = -1;
+      renderAll();
+      return;
+    }
+    state.sel = hit.member;
+    renderAll();
+  });
+  canvas.addEventListener('pointermove', function (ev) {
+    var p = canvasPos(ev);
+    if (drag) {
+      var gm = toModel(p);
+      var gx = gm.x - drag.ox, gy = gm.y - drag.oy;
+      if (!state.overrides || state.overrides.key !== geomKey()) state.overrides = { key: geomKey(), pos: [] };
+      var found = false;
+      state.overrides.pos.forEach(function (q) { if (q.i === drag.node) { q.x = gx; q.y = gy; found = true; } });
+      if (!found) state.overrides.pos.push({ i: drag.node, x: gx, y: gy });
+      renderAll();
+      return;
+    }
+    var hit = pick(p.x, p.y);
+    var nh = hit.node >= 0 ? -1 : hit.member;
+    canvas.style.cursor = hit.node >= 0 ? 'grab' : (hit.member >= 0 ? 'pointer' : 'default');
+    if (nh !== hover) { hover = nh; draw(); }
+  });
+  function endDrag(ev) {
+    if (!drag) return;
+    drag = null;
+    if (ev && ev.pointerId != null && canvas.hasPointerCapture && canvas.hasPointerCapture(ev.pointerId)) {
+      canvas.releasePointerCapture(ev.pointerId);
+    }
+    saveState(); renderAll();
+  }
+  canvas.addEventListener('pointerup', endDrag);
+  canvas.addEventListener('pointercancel', endDrag);
+  canvas.addEventListener('pointerleave', function () { if (!drag && hover !== -1) { hover = -1; draw(); } });
+
+  // ── 轮播 ─────────────────────────────────────────────────────────────
+  function presetIndex() {
+    for (var i = 0; i < TRUSS.PRESETS.length; i++) if (TRUSS.PRESETS[i].id === state.preset) return i;
+    return 1;
+  }
+  function gotoPreset(idx) {
+    var n = TRUSS.PRESETS.length;
+    var p = TRUSS.PRESETS[((idx % n) + n) % n];
+    state.preset = p.id;
+    state.span = p.defaults.span; state.height = p.defaults.height; state.panels = p.defaults.panels;
+    // 塔架默认就该受水平风载:竖向加载时它只是两根受压柱、腹杆全为零杆(退化算例)
+    if (p.id === 'tower') state.loadMode = 'wind';
+    else if (state.loadMode === 'wind') state.loadMode = 'uniform';
+    state.overrides = null; state.sel = -1;
+    syncInputs(); saveState(); renderAll();
+  }
+  function buildDots() {
+    var wrap = $('ts-dots');
+    wrap.textContent = '';
+    TRUSS.PRESETS.forEach(function (p, i) {
+      var b = document.createElement('button');
+      b.type = 'button'; b.className = 'ts-dot'; b.dataset.preset = p.id;
+      b.setAttribute('role', 'tab');
+      b.setAttribute('aria-label', p.name);
+      b.addEventListener('click', function () { gotoPreset(i); });
+      wrap.appendChild(b);
+    });
+  }
+  $('ts-prev').addEventListener('click', function () { gotoPreset(presetIndex() - 1); });
+  $('ts-next').addEventListener('click', function () { gotoPreset(presetIndex() + 1); });
+  $('ts-stage').addEventListener('keydown', function (ev) {
+    if (ev.key === 'ArrowLeft') { gotoPreset(presetIndex() - 1); ev.preventDefault(); }
+    if (ev.key === 'ArrowRight') { gotoPreset(presetIndex() + 1); ev.preventDefault(); }
+  });
+
+  // ── 控件 ─────────────────────────────────────────────────────────────
+  var MODES = [
+    { id: 'uniform', name: '节点均布' },
+    { id: 'center', name: '跨中集中' },
+    { id: 'wind', name: '水平风载', tower: true }
+  ];
+  function buildModes() {
+    var wrap = $('ts-modes');
+    wrap.textContent = '';
+    MODES.forEach(function (m) {
+      var b = document.createElement('button');
+      b.type = 'button'; b.className = 'ts-segbtn'; b.dataset.mode = m.id; b.textContent = m.name;
+      b.addEventListener('click', function () { state.loadMode = m.id; state.sel = -1; syncInputs(); saveState(); renderAll(); });
+      wrap.appendChild(b);
+    });
+  }
+  function buildSelects() {
+    var ms = $('ts-mat');
+    Object.keys(TRUSS.MATERIALS).forEach(function (k) {
+      var o = document.createElement('option'); o.value = k; o.textContent = TRUSS.MATERIALS[k].name; ms.appendChild(o);
+    });
+    var ss = $('ts-sec');
+    Object.keys(TRUSS.SECTIONS).forEach(function (k) {
+      var o = document.createElement('option'); o.value = k; o.textContent = TRUSS.SECTIONS[k].name; ss.appendChild(o);
+    });
+  }
+
+  function bindRange(id, key, fmtFn, round) {
+    $(id).addEventListener('input', function () {
+      var v = parseFloat(this.value);
+      if (!isFinite(v)) return;
+      state[key] = round ? Math.round(v) : v;
+      state.overrides = null; state.sel = -1;
+      syncInputs(); renderAll();
+    });
+    $(id).addEventListener('change', saveState);
+  }
+
+  function syncInputs() {
+    var pre = TRUSS.presetById(state.preset);
+    var tower = state.preset === 'tower';
+    $('ts-span').value = state.span;
+    $('ts-height').value = state.height;
+    $('ts-panels').value = state.panels;
+    $('ts-load').value = state.load;
+    $('ts-area').value = state.area;
+    $('ts-sw').checked = !!state.selfWeight;
+    $('ts-defscale').value = state.defScale;
+    $('ts-mat').value = state.mat;
+    $('ts-sec').value = state.sec;
+    $('ts-spanlabel').textContent = tower ? '塔高' : (state.preset === 'cantilever' ? '悬挑长度' : '跨度');
+    $('ts-heightlabel').textContent = tower ? '塔宽' : '桁高';
+    $('ts-spanval').textContent = fmt(state.span, 1) + ' m';
+    $('ts-heightval').textContent = fmt(state.height, 1) + ' m';
+    $('ts-panelsval').textContent = pre.fixedPanels ? '固定' : String(pre.even && state.panels % 2 ? state.panels + 1 : state.panels);
+    $('ts-loadval').textContent = fmt(state.load, 0) + ' kN';
+    $('ts-matval').textContent = 'E = ' + (TRUSS.MATERIALS[state.mat].E / 1e9).toFixed(0) + ' GPa';
+    $('ts-secval').textContent = 'I = ' + TRUSS.SECTIONS[state.sec].k.toFixed(4) + '·A²';
+    $('ts-defscaleval').textContent = state.defScale === 0 ? '自动 ×1' : '自动 ×' + (Math.pow(2, state.defScale) < 1
+      ? '1/' + Math.round(1 / Math.pow(2, state.defScale)) : Math.round(Math.pow(2, state.defScale)));
+    $('ts-panelfield').hidden = !!pre.fixedPanels;
+    MODES.forEach(function (m) {
+      var b = $('ts-modes').querySelector('[data-mode="' + m.id + '"]');
+      if (!b) return;
+      b.hidden = tower ? m.id === 'center' : !!m.tower;
+      b.setAttribute('aria-pressed', String(state.loadMode === m.id));
+      if (state.loadMode === m.id) $('ts-modeval').textContent = m.name;
+    });
+    Array.prototype.forEach.call($('ts-dots').children, function (d) {
+      d.setAttribute('aria-current', String(d.dataset.preset === state.preset));
+      d.setAttribute('aria-selected', String(d.dataset.preset === state.preset));
+    });
+    $('ts-t-deform').setAttribute('aria-pressed', String(state.showDeform));
+    $('ts-t-forces').setAttribute('aria-pressed', String(state.showForces));
+    $('ts-t-react').setAttribute('aria-pressed', String(state.showReactions));
+  }
+
+  bindRange('ts-span', 'span');
+  bindRange('ts-height', 'height');
+  bindRange('ts-panels', 'panels', null, true);
+  bindRange('ts-load', 'load', null, true);
+  $('ts-defscale').addEventListener('input', function () {
+    state.defScale = parseFloat(this.value) || 0; syncInputs(); draw();
+  });
+  $('ts-defscale').addEventListener('change', saveState);
+  $('ts-area').addEventListener('input', function () {
+    var v = parseFloat(this.value);
+    if (!isFinite(v) || v <= 0) return;
+    state.area = clamp(v, 0.5, 2000); renderAll();
+  });
+  $('ts-area').addEventListener('change', function () {
+    var v = parseFloat(this.value);
+    state.area = isFinite(v) && v > 0 ? clamp(v, 0.5, 2000) : 24;
+    this.value = state.area; saveState(); renderAll();
+  });
+  $('ts-mat').addEventListener('change', function () { state.mat = this.value; syncInputs(); saveState(); renderAll(); });
+  $('ts-sec').addEventListener('change', function () { state.sec = this.value; syncInputs(); saveState(); renderAll(); });
+  $('ts-sw').addEventListener('change', function () { state.selfWeight = this.checked; saveState(); renderAll(); });
+  [['ts-t-deform', 'showDeform'], ['ts-t-forces', 'showForces'], ['ts-t-react', 'showReactions']].forEach(function (p) {
+    $(p[0]).addEventListener('click', function () {
+      state[p[1]] = !state[p[1]];
+      syncInputs(); saveState();
+      renderHero();   // 图例提示/判定条也随开关变化,不能只重绘画布
+      draw();
+    });
+  });
+  $('ts-reset').addEventListener('click', function () {
+    state.overrides = null; state.sel = -1; saveState(); renderAll();
+  });
+
+  // ── 结果渲染 ─────────────────────────────────────────────────────────
+  function statHTML(label, value, unit, hint, cls) {
+    var d = document.createElement('div');
+    d.className = 'ts-stat';
+    var dt = document.createElement('dt'); dt.textContent = label;
+    var dd = document.createElement('dd'); dd.className = cls || '';
+    dd.appendChild(document.createTextNode(value));
+    if (unit) { var s = document.createElement('small'); s.textContent = unit; dd.appendChild(s); }
+    d.appendChild(dt); d.appendChild(dd);
+    if (hint) { var p = document.createElement('p'); p.className = 'ts-hint'; p.textContent = hint; d.appendChild(p); }
+    return d;
+  }
+
+  function renderStats() {
+    var wrap = $('ts-stats');
+    wrap.textContent = '';
+    if (!result.ok) {
+      wrap.appendChild(statHTML('求解状态', '无解', '', result.reason));
+      return;
+    }
+    var tens = result.members.filter(function (m) { return m.kind === 'tension'; });
+    var comp = result.members.filter(function (m) { return m.kind === 'compression'; });
+    var zero = result.members.filter(function (m) { return m.kind === 'zero'; });
+    var maxT = tens.reduce(function (a, b) { return b.N > a ? b.N : a; }, 0);
+    var maxC = comp.reduce(function (a, b) { return b.N < a ? b.N : a; }, 0);
+    var totalP = Math.hypot(result.totalLoad.fx, result.totalLoad.fy);
+    wrap.appendChild(statHTML('最大拉力', kN(maxT), 'kN', '共 ' + tens.length + ' 根受拉杆', 'ts-blue'));
+    wrap.appendChild(statHTML('最大压力', kN(Math.abs(maxC)), 'kN', '共 ' + comp.length + ' 根受压杆'));
+    wrap.appendChild(statHTML('最大挠度', fmt(result.maxDisp * 1000, 2), 'mm',
+      '节点 N' + (result.maxDispNode + 1) + ' · 跨高比 1/' + (result.maxDisp > 0 ? Math.round(state.span / result.maxDisp) : '∞')));
+    wrap.appendChild(statHTML('最大利用率', fmt(result.maxUtil * 100, 0), '%',
+      result.maxUtilMember >= 0
+        ? '杆 M' + (result.maxUtilMember + 1) + ' · 由' + (result.members[result.maxUtilMember].governs === 'buckle' ? '屈曲' : '强度') + '控制'
+        : '—',
+      result.maxUtil > 1 ? '' : 'ts-blue'));
+    wrap.appendChild(statHTML('结构自重', fmt(result.mass, 1), 'kg',
+      '承载 / 自重 = ' + fmt(totalP / Math.max(1e-9, result.mass * TRUSS.G), 1) + ' 倍'));
+    wrap.appendChild(statHTML('零杆', String(zero.length), '根', zero.length ? '不受力,但维持几何不变' : '全部杆件参与受力'));
+    wrap.appendChild(statHTML('静定判别', result.determinacy.label, '',
+      'm+r = ' + result.determinacy.sum + ' , 2j = ' + result.determinacy.need));
+    wrap.appendChild(statHTML('应变能', fmt(result.strainEnergy, 1), 'J',
+      '与外力功之差 ' + (Math.abs(result.strainEnergy - result.externalWork) / Math.max(1e-12, Math.abs(result.externalWork))).toExponential(1)));
+  }
+
+  function renderMembers() {
+    var tb = $('ts-mbody');
+    tb.textContent = '';
+    if (!result.ok) return;
+    result.members.forEach(function (m, i) {
+      var tr = document.createElement('tr');
+      tr.dataset.m = String(i);
+      tr.setAttribute('aria-selected', String(i === state.sel));
+      var kindTxt = m.kind === 'tension' ? '受拉' : (m.kind === 'compression' ? '受压' : '零杆');
+      var cls = m.kind === 'tension' ? 'ts-t' : (m.kind === 'compression' ? 'ts-c' : 'ts-z');
+      var cells = [
+        ['M' + (i + 1) + '  N' + (m.a + 1) + '–N' + (m.b + 1), ''],
+        [kindTxt, cls],
+        [fmt(m.L, 2), ''],
+        [(m.N > 0 ? '+' : '') + kN(m.N), cls],
+        [fmt(m.sigma / 1e6, 1), ''],
+        [m.N < 0 ? kN(m.Pcr) : '—', ''],
+        [m.N < 0 ? (m.governs === 'buckle' ? '屈曲' : '强度') : '强度', '']
+      ];
+      cells.forEach(function (c) {
+        var td = document.createElement('td');
+        td.textContent = c[0]; if (c[1]) td.className = c[1];
+        tr.appendChild(td);
+      });
+      var tdu = document.createElement('td');
+      tdu.textContent = fmt(m.util * 100, 0) + '%';
+      if (m.util > 1) { var tag = document.createElement('span'); tag.className = 'ts-tag over'; tag.textContent = '超限'; tdu.textContent = ''; tdu.appendChild(tag); }
+      tr.appendChild(tdu);
+      var tdb = document.createElement('td');
+      var bar = document.createElement('span'); bar.className = 'ts-bar';
+      var fill = document.createElement('i');
+      fill.style.width = Math.min(100, m.util * 100) + '%';
+      if (m.util > 1) fill.className = 'over';
+      bar.appendChild(fill); tdb.appendChild(bar); tr.appendChild(tdb);
+      tr.addEventListener('click', function () { state.sel = i; renderAll(); });
+      tb.appendChild(tr);
+    });
+  }
+
+  function renderDetail() {
+    var wrap = $('ts-detail');
+    wrap.textContent = '';
+    if (!result.ok) { $('ts-dnote').textContent = result.reason; return; }
+    var idx = state.sel >= 0 && state.sel < result.members.length ? state.sel : result.maxUtilMember;
+    if (idx < 0) { $('ts-dnote').textContent = '—'; return; }
+    var m = result.members[idx];
+    $('ts-dtitle').textContent = '杆件 M' + (idx + 1) + ' 详情';
+    $('ts-dnote').textContent = (state.sel === idx ? '已选中' : '默认展示利用率最高的杆件') +
+      ' · 节点 N' + (m.a + 1) + ' → N' + (m.b + 1) +
+      ' · ' + TRUSS.MATERIALS[state.mat].name + ' · ' + TRUSS.SECTIONS[state.sec].name;
+    var rows = [
+      ['轴力', (m.N > 0 ? '+' : '') + kN(m.N) + ' kN'],
+      ['性质', m.kind === 'tension' ? '受拉' : (m.kind === 'compression' ? '受压' : '零杆')],
+      ['杆长', fmt(m.L, 3) + ' m'],
+      ['轴向变形', fmt(m.elong * 1000, 3) + ' mm'],
+      ['正应力', fmt(m.sigma / 1e6, 1) + ' MPa'],
+      ['容许应力', fmt(m.allow / 1e6, 0) + ' MPa'],
+      ['惯性矩', m.I.toExponential(2) + ' m⁴'],
+      ['欧拉临界力', kN(m.Pcr) + ' kN'],
+      ['强度利用率', fmt(m.utilYield * 100, 1) + '%'],
+      ['稳定利用率', m.N < 0 ? fmt(m.utilBuckle * 100, 1) + '%' : '不适用'],
+      ['长细比 λ', fmt(m.L / Math.sqrt(m.I / m.A), 0)],
+      ['本杆质量', fmt(m.mass, 1) + ' kg']
+    ];
+    rows.forEach(function (r) {
+      var d = document.createElement('div');
+      var dt = document.createElement('dt'); dt.textContent = r[0];
+      var dd = document.createElement('dd'); dd.textContent = r[1];
+      d.appendChild(dt); d.appendChild(dd); wrap.appendChild(d);
+    });
+  }
+
+  function renderReactions() {
+    var tb = $('ts-rbody');
+    tb.textContent = '';
+    if (!result.ok) return;
+    result.reactions.forEach(function (r) {
+      var tr = document.createElement('tr');
+      var n = model.nodes[r.node];
+      var cells = [
+        'N' + (r.node + 1),
+        r.sx && r.sy ? '固定铰' : (r.sy ? '竖向滚轴' : '水平滚轴'),
+        r.sx ? kN(r.rx) : '—',
+        r.sy ? kN(r.ry) : '—',
+        '(' + fmt(n.x, 2) + ', ' + fmt(n.y, 2) + ')'
+      ];
+      cells.forEach(function (c) { var td = document.createElement('td'); td.textContent = c; tr.appendChild(td); });
+      tb.appendChild(tr);
+    });
+    var nb = $('ts-nbody');
+    nb.textContent = '';
+    result.nodes.slice().sort(function (a, b) { return b.mag - a.mag; }).slice(0, 6).forEach(function (nn) {
+      var tr = document.createElement('tr');
+      var n = model.nodes[nn.i];
+      [
+        'N' + (nn.i + 1),
+        '(' + fmt(n.x, 2) + ', ' + fmt(n.y, 2) + ')',
+        fmt(nn.ux * 1000, 3), fmt(nn.uy * 1000, 3), fmt(nn.mag * 1000, 3)
+      ].forEach(function (c) { var td = document.createElement('td'); td.textContent = c; tr.appendChild(td); });
+      nb.appendChild(tr);
+    });
+  }
+
+  function renderHero() {
+    var pre = TRUSS.presetById(state.preset);
+    $('ts-title').textContent = model.presetName + (state.overrides && state.overrides.pos.length ? '(已编辑)' : '');
+    $('ts-subtitle').textContent = pre.desc + ' · ' + model.nodes.length + ' 节点 / ' + model.members.length + ' 杆件';
+    var v = $('ts-verdict');
+    v.textContent = '';
+    var b = document.createElement('b'), s = document.createElement('span');
+    if (result.ok) {
+      b.textContent = result.determinacy.label;
+      s.textContent = '最大利用率 ' + fmt(result.maxUtil * 100, 0) + '% · 挠度 ' + fmt(result.maxDisp * 1000, 1) + ' mm';
+    } else {
+      b.textContent = '无法求解';
+      s.textContent = result.reason;
+    }
+    v.appendChild(b); v.appendChild(s);
+    $('ts-hintline').textContent = state.showForces ? '标注单位 kN' : '线宽 ∝ 轴力大小';
+  }
+
+  function renderDock() {
+    if (!result.ok) {
+      $('ts-dock-det').textContent = '无解';
+      $('ts-dock-util').textContent = '—';
+      $('ts-dock-disp').textContent = '—';
+      $('ts-dock-mass').textContent = '—';
+      $('ts-dock-eq').textContent = '—';
+      return;
+    }
+    $('ts-dock-det').textContent = result.determinacy.label;
+    var u = $('ts-dock-util');
+    u.textContent = fmt(result.maxUtil * 100, 0) + '%';
+    u.className = result.maxUtil > 1 ? 'ts-warn' : '';
+    $('ts-dock-disp').textContent = fmt(result.maxDisp * 1000, 2) + ' mm';
+    $('ts-dock-mass').textContent = fmt(result.mass, 0) + ' kg';
+    var worst = Math.max(result.equilibrium.relFx, result.equilibrium.relFy, result.equilibrium.relMz, result.jointResidual);
+    $('ts-dock-eq').textContent = worst.toExponential(1);
+  }
+
+  function renderSaves() {
+    var wrap = $('ts-savelist');
+    wrap.textContent = '';
+    var list = readSaves();
+    if (!list.length) {
+      var p = document.createElement('p');
+      p.className = 'ts-empty';
+      p.textContent = '还没有保存的方案。调好参数后点「保存当前方案」,下次打开可一键复原。';
+      wrap.appendChild(p);
+      return;
+    }
+    list.forEach(function (it, i) {
+      var d = document.createElement('div');
+      d.className = 'ts-save'; d.dataset.save = String(i);
+      var open = document.createElement('button');
+      open.type = 'button'; open.className = 'ts-open'; open.textContent = it.name;
+      open.addEventListener('click', function () {
+        Object.keys(state).forEach(function (k) { if (k in it.state && k !== 'sel') state[k] = it.state[k]; });
+        state.sel = -1;
+        syncInputs(); saveState(); renderAll();
+        $('ts-stage').scrollIntoView({ block: 'start' });
+      });
+      var del = document.createElement('button');
+      del.type = 'button'; del.textContent = '✕'; del.setAttribute('aria-label', '删除方案 ' + it.name);
+      del.addEventListener('click', function () {
+        var l = readSaves(); l.splice(i, 1); writeSaves(l); renderSaves();
+      });
+      d.appendChild(open); d.appendChild(del);
+      wrap.appendChild(d);
+    });
+  }
+
+  $('ts-save').addEventListener('click', function () {
+    var name = ($('ts-savename').value || '').trim() ||
+      (model.presetName + ' ' + fmt(state.span, 0) + 'm/' + fmt(state.load, 0) + 'kN');
+    var l = readSaves();
+    var s = {};
+    Object.keys(state).forEach(function (k) { if (k !== 'sel') s[k] = state[k]; });
+    l.unshift({ name: name.slice(0, 40), state: s });
+    writeSaves(l);
+    $('ts-savename').value = '';
+    renderSaves();
+  });
+
+  $('ts-csv').addEventListener('click', function () {
+    if (!result.ok) return;
+    var rows = [['member', 'nodeA', 'nodeB', 'length_m', 'axial_kN', 'kind', 'stress_MPa', 'Pcr_kN', 'utilization']];
+    result.members.forEach(function (m, i) {
+      rows.push(['M' + (i + 1), 'N' + (m.a + 1), 'N' + (m.b + 1), m.L.toFixed(4), (m.N / 1000).toFixed(4),
+        m.kind, (m.sigma / 1e6).toFixed(3), (m.Pcr / 1000).toFixed(3), m.util.toFixed(4)]);
+    });
+    var csv = rows.map(function (r) { return r.join(','); }).join('\n');
+    var blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'truss-' + state.preset + '-' + Date.now() + '.csv';
+    document.body.appendChild(a); a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 0);
+  });
+
+  function renderAll() {
+    model = buildModel();
+    result = TRUSS.analyze(model);
+    renderHero();
+    renderStats();
+    renderMembers();
+    renderDetail();
+    renderReactions();
+    renderDock();
+    draw();
+    var a = $('ts-a11y');
+    a.textContent = result.ok
+      ? model.presetName + ':' + model.members.length + ' 根杆件,' + result.determinacy.label +
+        ',最大轴力 ' + kN(result.members.reduce(function (x, m) { return Math.abs(m.N) > Math.abs(x) ? m.N : x; }, 0)) +
+        ' kN,最大挠度 ' + fmt(result.maxDisp * 1000, 2) + ' 毫米,最大利用率 ' + fmt(result.maxUtil * 100, 0) + '%'
+      : '无法求解:' + result.reason;
+    document.body.dataset.ok = result.ok ? '1' : '0';
+    document.body.dataset.preset = state.preset;
+    document.body.dataset.sig = [state.preset, state.span, state.height, state.panels, state.load,
+      state.loadMode, state.mat, state.sec, state.area, state.selfWeight ? 1 : 0].join('|');
+  }
+
+  // ── 启动 ─────────────────────────────────────────────────────────────
+  loadState();
+  buildDots();
+  buildModes();
+  buildSelects();
+  syncInputs();
+  renderSaves();
+  renderAll();
+  $('ts-stage').tabIndex = 0;
+
+  var ro = new ResizeObserver(function () { draw(); });
+  ro.observe($('ts-stage'));
+  window.addEventListener('resize', draw);
+
+  // 节点在画布上的实际绘制坐标(含变形偏移)——供测试精确命中拖动目标
+  function screenOf(i) {
+    if (!view || !model || !model.nodes[i]) return null;
+    var ds = result && result.ok && state.showDeform ? defScale() : 0;
+    return {
+      x: view.X(model.nodes[i].x + (ds ? result.nodes[i].ux * ds : 0)),
+      y: view.Y(model.nodes[i].y + (ds ? result.nodes[i].uy * ds : 0))
+    };
+  }
+  window.__ts = {
+    TRUSS: TRUSS, state: state, render: renderAll, screenOf: screenOf, pick: pick,
+    get model() { return model; }, get result() { return result; }
+  };
+})();
+</script>
+</body>
+</html>
