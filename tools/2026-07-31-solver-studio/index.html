@@ -1,0 +1,1698 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>规划求解 · Solver Studio</title>
+<meta name="description" content="纯前端线性规划 / 整数规划求解器:两阶段单纯形法、影子价格、灵敏度区间、二维可行域与分支定界树,全部在浏览器本地计算。">
+<style>
+/* 结构性守卫:作者 CSS 与 UA 的 [hidden]{display:none} 同特异性,靠后即胜出 */
+[hidden]{display:none!important}
+
+*,*::before,*::after{box-sizing:border-box}
+:root{
+  --canvas:#0a0a0a; --soft:#121212; --card:#1a1a1a; --elev:#242424;
+  --y:#faff69; --y-active:#e6eb52; --y-dim:#3a3a1f;
+  --ink:#ffffff; --body:#cccccc; --strong:#e6e6e6; --muted:#888888; --muted2:#5a5a5a;
+  --line:#2a2a2a; --line2:#3a3a3a;
+  --rose:#ef4444; --emerald:#22c55e; --blue:#3b82f6;
+  --sans:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0; background:var(--canvas); color:var(--body);
+  font-family:var(--sans); font-size:16px; line-height:1.55;
+  -webkit-font-smoothing:antialiased;
+}
+a{color:var(--y)}
+h1,h2,h3{margin:0; color:var(--ink); font-weight:700}
+h1{font-size:52px; line-height:1.06; letter-spacing:-2px}
+h2{font-size:24px; line-height:1.3; letter-spacing:-.3px}
+h3{font-size:16px; line-height:1.4; font-weight:600; letter-spacing:0}
+p{margin:0}
+button,select,textarea,input{font-family:inherit; font-size:14px; color:inherit}
+:focus-visible{outline:2px solid var(--y); outline-offset:2px}
+
+.wrap{max-width:1280px; margin:0 auto; padding:0 24px}
+
+/* ── top nav ─────────────────────────────── */
+.nav{
+  height:64px; display:flex; align-items:center; gap:20px;
+  border-bottom:1px solid var(--line); background:var(--canvas);
+  position:sticky; top:0; z-index:20;
+}
+.nav .wrap{display:flex; align-items:center; gap:20px; width:100%}
+.back{
+  color:var(--body); text-decoration:none; font-size:14px; font-weight:500;
+  padding:8px 12px; border-radius:8px; background:var(--card); white-space:nowrap;
+}
+.back:hover{color:var(--ink)}
+.wordmark{
+  font-size:17px; font-weight:700; letter-spacing:-.4px; color:var(--ink);
+  display:flex; align-items:center; gap:7px; min-width:0;
+}
+.wordmark .mark{
+  width:10px; height:18px; background:var(--y); border-radius:2px; flex:none;
+  box-shadow:14px 0 0 -1px var(--y), 28px 0 0 -3px var(--y);
+  margin-right:26px;
+}
+.wordmark em{font-style:normal; color:var(--muted); font-weight:500}
+.nav-right{margin-left:auto; display:flex; align-items:center; gap:10px}
+
+.btn{
+  border:0; border-radius:8px; padding:0 20px; height:40px; font-weight:600; font-size:14px;
+  cursor:pointer; display:inline-flex; align-items:center; gap:8px; white-space:nowrap;
+}
+.btn-primary{background:var(--y); color:#0a0a0a}
+.btn-primary:active{background:var(--y-active)}
+.btn-secondary{background:var(--card); color:var(--ink)}
+.btn-ghost{background:transparent; color:var(--body); border:1px solid var(--line2)}
+.btn-ghost:hover{color:var(--ink)}
+.btn-sm{height:32px; padding:0 12px; font-size:13px; border-radius:6px}
+
+.pill{
+  display:inline-flex; align-items:center; border-radius:9999px; padding:4px 12px;
+  background:var(--card); color:var(--ink); font-size:13px; font-weight:500;
+}
+.pill-y{background:var(--y); color:#0a0a0a; font-size:12px; font-weight:600; letter-spacing:1.5px; text-transform:uppercase}
+
+/* ── hero ────────────────────────────────── */
+.hero{padding:56px 0 48px}
+.hero .grid{display:grid; grid-template-columns:minmax(0,7fr) minmax(0,9fr); gap:44px; align-items:start}
+.hero .grid>*{min-width:0}
+.eyebrow{font-size:12px; font-weight:600; letter-spacing:1.5px; text-transform:uppercase; color:var(--y); margin-bottom:16px}
+.lede{color:var(--body); font-size:16px; margin-top:20px; max-width:46ch}
+.hero-stats{display:flex; flex-wrap:wrap; gap:32px; margin-top:32px}
+.stat-num{font-size:34px; font-weight:700; letter-spacing:-1.2px; color:var(--y); line-height:1; font-family:var(--mono)}
+.stat-label{font-size:12px; font-weight:600; letter-spacing:1.2px; text-transform:uppercase; color:var(--muted); margin-top:8px}
+
+/* ── code window ─────────────────────────── */
+.code-window{background:var(--card); border:1px solid var(--line); border-radius:12px; overflow:hidden}
+.cw-bar{
+  display:flex; align-items:center; gap:10px; padding:10px 16px;
+  border-bottom:1px solid var(--line); background:var(--card);
+}
+.cw-dots{display:flex; gap:6px; flex:none}
+.cw-dots i{width:9px; height:9px; border-radius:50%; background:var(--line2); display:block}
+.cw-dots i:first-child{background:var(--y)}
+.cw-name{font-family:var(--mono); font-size:13px; color:var(--muted)}
+.cw-hint{margin-left:auto; font-family:var(--mono); font-size:12px; color:var(--muted); text-align:right}
+.cw-main{display:flex; align-items:stretch; background:var(--card)}
+.gutter{
+  flex:none; width:46px; padding:16px 8px 16px 0; text-align:right; overflow:hidden;
+  font-family:var(--mono); font-size:13px; line-height:1.7; color:var(--muted2);
+  border-right:1px solid var(--line); user-select:none; white-space:pre;
+}
+#src{
+  flex:1; min-width:0; border:0; background:transparent; color:var(--strong); resize:vertical;
+  font-family:var(--mono); font-size:13px; line-height:1.7; padding:16px; min-height:250px;
+  outline:none; white-space:pre; overflow:auto; tab-size:2;
+}
+.editor-actions{display:flex; flex-wrap:wrap; gap:10px; margin-top:14px; align-items:center}
+select{
+  background:var(--card); border:1px solid var(--line); color:var(--ink);
+  border-radius:8px; height:40px; padding:0 12px; cursor:pointer; max-width:100%;
+}
+.err{
+  margin-top:14px; padding:12px 16px; border-radius:8px; background:var(--card);
+  border-left:3px solid var(--rose); color:var(--strong); font-size:14px; font-family:var(--mono);
+}
+
+/* ── verdict band ────────────────────────── */
+.verdict{
+  background:var(--y); color:#0a0a0a; border-radius:12px; padding:32px;
+  display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.25fr); gap:32px; align-items:center;
+}
+.verdict>*{min-width:0}
+.verdict[data-status="infeasible"],.verdict[data-status="unbounded"],
+.verdict[data-status="error"],.verdict[data-status="maxiter"]{
+  background:var(--card); color:var(--body); border:1px solid var(--line);
+}
+.v-badge{
+  display:inline-block; background:#0a0a0a; color:var(--y); border-radius:9999px;
+  padding:4px 12px; font-size:12px; font-weight:600; letter-spacing:1.5px; text-transform:uppercase;
+}
+.verdict[data-status="infeasible"] .v-badge,.verdict[data-status="unbounded"] .v-badge,
+.verdict[data-status="error"] .v-badge,.verdict[data-status="maxiter"] .v-badge{background:var(--rose); color:#fff}
+.v-num{
+  font-family:var(--mono); font-size:56px; font-weight:700; line-height:1; letter-spacing:-2px;
+  margin-top:16px; word-break:break-all;
+}
+.verdict[data-status="infeasible"] .v-num,.verdict[data-status="unbounded"] .v-num,
+.verdict[data-status="error"] .v-num,.verdict[data-status="maxiter"] .v-num{font-size:26px; color:var(--rose); letter-spacing:-.5px}
+.v-label{font-size:13px; font-weight:600; margin-top:12px; opacity:.72}
+.v-sol{display:flex; flex-wrap:wrap; gap:8px}
+.chip{
+  font-family:var(--mono); font-size:14px; padding:6px 12px; border-radius:6px;
+  background:rgba(10,10,10,.09); border:1px solid rgba(10,10,10,.18); white-space:nowrap;
+}
+.chip b{font-weight:700}
+.chip.zero{opacity:.45}
+.verdict[data-status="infeasible"] .chip,.verdict[data-status="unbounded"] .chip,
+.verdict[data-status="error"] .chip,.verdict[data-status="maxiter"] .chip{background:var(--elev); border-color:var(--line2); color:var(--body)}
+.v-meta{margin-top:16px; font-size:13px; opacity:.75; line-height:1.7}
+
+/* ── tabs + panels ───────────────────────── */
+.tabs{display:flex; flex-wrap:wrap; gap:6px; margin:48px 0 20px; border-bottom:1px solid var(--line); padding-bottom:12px}
+.tab{
+  background:transparent; color:var(--muted); border:0; border-radius:8px; padding:8px 14px;
+  font-size:14px; font-weight:500; cursor:pointer;
+}
+.tab[aria-selected="true"]{background:var(--card); color:var(--ink)}
+.panel{padding-bottom:8px}
+.card{background:var(--card); border:1px solid var(--line); border-radius:12px; padding:24px; min-width:0}
+.card+.card{margin-top:20px}
+.card-head{display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; margin-bottom:16px}
+.card-head p{font-size:13px; color:var(--muted)}
+.two-col{display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:20px}
+.two-col>*{min-width:0}
+
+.tw{overflow-x:auto; margin:0 -4px; padding:0 4px}
+table{border-collapse:collapse; width:100%; font-size:14px}
+th,td{padding:9px 12px; text-align:right; white-space:nowrap; border-bottom:1px solid var(--line)}
+th:first-child,td:first-child{text-align:left}
+th{
+  font-size:12px; font-weight:600; letter-spacing:1.2px; text-transform:uppercase;
+  color:var(--muted); border-bottom:1px solid var(--line2);
+}
+td{font-family:var(--mono); color:var(--strong)}
+td.name{font-family:var(--sans); color:var(--ink); font-weight:500}
+tbody tr:last-child td{border-bottom:0}
+tbody tr.hot td{background:rgba(250,255,105,.06)}
+.num-y{color:var(--y); font-weight:700}
+.dim{color:var(--muted2)}
+.tag{
+  font-family:var(--sans); font-size:11px; font-weight:600; letter-spacing:.6px; text-transform:uppercase;
+  padding:2px 8px; border-radius:9999px; background:var(--elev); color:var(--muted);
+}
+.tag.on{background:var(--y); color:#0a0a0a}
+.tag.rose{background:rgba(239,68,68,.16); color:var(--rose)}
+.tag.em{background:rgba(34,197,94,.16); color:var(--emerald)}
+.note{font-size:13px; color:var(--muted); line-height:1.7}
+.note b{color:var(--strong); font-weight:600}
+.note code,.mono{font-family:var(--mono); color:var(--y)}
+
+/* ── tableau ─────────────────────────────── */
+.stepper{display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:16px}
+.step-txt{font-family:var(--mono); font-size:13px; color:var(--body)}
+#tableau td,#tableau th{padding:7px 10px; font-size:13px}
+#tableau td.entercol{background:rgba(250,255,105,.09)}
+#tableau tr.leaverow td{background:rgba(250,255,105,.06)}
+/* 主元格必须压过上面两条:`#tableau tr.leaverow td` 是 (1,1,2),纯 `td.piv` 只有 (1,1,1) 会输 */
+#tableau tbody tr td.piv{background:var(--y); color:#0a0a0a; font-weight:700}
+#tableau th{text-transform:none; letter-spacing:.4px}
+#tableau tr.zrow td{border-top:1px solid var(--line2); color:var(--muted)}
+#tableau th.basis-h,#tableau td.basis{text-align:left; font-family:var(--mono); color:var(--y)}
+
+/* ── geo ─────────────────────────────────── */
+.geo-wrap{background:var(--soft); border:1px solid var(--line); border-radius:8px; padding:8px}
+svg.plot{display:block; width:100%; height:auto; max-height:min(520px,62vh)}
+svg.plot text{font-family:var(--mono)}
+.geo-legend{display:flex; flex-wrap:wrap; gap:18px; margin-top:14px; font-size:12px; color:var(--muted)}
+.geo-legend i{display:inline-block; width:16px; height:3px; margin-right:6px; vertical-align:middle; border-radius:2px}
+.toggles{display:flex; flex-wrap:wrap; gap:8px; margin-bottom:14px}
+.toggle{
+  background:var(--elev); color:var(--muted); border:1px solid var(--line2); border-radius:9999px;
+  padding:5px 13px; font-size:13px; cursor:pointer;
+}
+.toggle[aria-pressed="true"]{background:var(--y); color:#0a0a0a; border-color:var(--y); font-weight:600}
+
+/* ── footer ──────────────────────────────── */
+footer{border-top:1px solid var(--line); margin-top:72px; padding:56px 0 72px; color:var(--muted); font-size:14px}
+.syntax{background:var(--card); border:1px solid var(--line); border-radius:12px; padding:24px; font-family:var(--mono); font-size:13px; line-height:1.9; overflow-x:auto}
+.syntax .k{color:var(--y)}
+.syntax .c{color:var(--muted2)}
+.foot-row{display:flex; justify-content:space-between; gap:24px; flex-wrap:wrap; margin-top:32px}
+
+@media (max-width:960px){
+  h1{font-size:40px; letter-spacing:-1.5px}
+  .hero .grid{grid-template-columns:minmax(0,1fr); gap:32px}
+  .verdict{grid-template-columns:minmax(0,1fr); gap:24px}
+  .two-col{grid-template-columns:minmax(0,1fr)}
+}
+@media (max-width:620px){
+  .wrap{padding:0 16px}
+  h1{font-size:32px; letter-spacing:-1px}
+  .hero{padding:36px 0 32px}
+  .v-num{font-size:40px}
+  .card{padding:18px}
+  .verdict{padding:22px}
+  .nav{height:auto; padding:10px 0}
+  .nav .wrap{flex-wrap:wrap; gap:10px}
+  .wordmark .mark{margin-right:24px}
+  .hero-stats{gap:22px}
+  .stat-num{font-size:26px}
+}
+</style>
+</head>
+<body>
+
+<header class="nav">
+  <div class="wrap">
+    <a class="back" href="../../">← 返回工具集</a>
+    <div class="wordmark"><span class="mark"></span>Solver&nbsp;Studio <em>规划求解</em></div>
+    <div class="nav-right">
+      <span class="pill" id="model-size">— 变量 · — 约束</span>
+      <button class="btn btn-primary" id="btn-solve">求解</button>
+    </div>
+  </div>
+</header>
+
+<main>
+<section class="hero">
+  <div class="wrap grid">
+    <div>
+      <p class="eyebrow">运筹优化 · 两阶段单纯形法</p>
+      <h1>线性规划<br>求解器</h1>
+      <p class="lede">把目标和约束写成几行文本,浏览器里跑完整的两阶段单纯形法与分支定界:最优解、影子价格、灵敏度区间、可行域几何全部本地算出,数据不出浏览器。</p>
+      <div class="hero-stats">
+        <div><div class="stat-num" id="s-vars">0</div><div class="stat-label">决策变量</div></div>
+        <div><div class="stat-num" id="s-cons">0</div><div class="stat-label">约束条件</div></div>
+        <div><div class="stat-num" id="s-iters">0</div><div class="stat-label">单纯形迭代</div></div>
+        <div><div class="stat-num" id="s-time">0</div><div class="stat-label">求解毫秒</div></div>
+      </div>
+    </div>
+    <div>
+      <div class="code-window">
+        <div class="cw-bar">
+          <span class="cw-dots"><i></i><i></i><i></i></span>
+          <span class="cw-name">model.lp</span>
+          <span class="cw-hint" id="parse-hint">—</span>
+        </div>
+        <div class="cw-main">
+          <div class="gutter" id="gutter" aria-hidden="true"></div>
+          <textarea id="src" spellcheck="false" autocapitalize="off" autocorrect="off" aria-label="线性规划模型源码"></textarea>
+        </div>
+      </div>
+      <div class="editor-actions">
+        <button class="btn btn-primary" id="btn-solve2">求解 ⌘⏎</button>
+        <select id="preset" aria-label="载入示例模型"><option value="">载入示例模型…</option></select>
+        <button class="btn btn-ghost btn-sm" id="btn-save">保存到模型库</button>
+        <select id="saved" aria-label="我保存的模型"><option value="">我的模型库(0)</option></select>
+        <button class="btn btn-ghost btn-sm" id="btn-del">删除</button>
+      </div>
+      <p class="err" id="parse-err" hidden></p>
+    </div>
+  </div>
+</section>
+
+<section class="wrap">
+  <div class="verdict" id="verdict" data-status="optimal">
+    <div>
+      <span class="v-badge" id="v-badge">最优解</span>
+      <div class="v-num" id="obj-value">—</div>
+      <div class="v-label" id="obj-label">目标函数最优值</div>
+    </div>
+    <div>
+      <div class="v-sol" id="solution-chips"></div>
+      <div class="v-meta" id="verdict-meta"></div>
+    </div>
+  </div>
+
+  <nav class="tabs" id="tabs" role="tablist" aria-label="求解结果视图">
+    <button class="tab" role="tab" id="t-solution" aria-controls="p-solution" aria-selected="true" data-panel="p-solution">解与影子价格</button>
+    <button class="tab" role="tab" id="t-tableau" aria-controls="p-tableau" aria-selected="false" tabindex="-1" data-panel="p-tableau">单纯形迭代</button>
+    <button class="tab" role="tab" id="t-sens" aria-controls="p-sens" aria-selected="false" tabindex="-1" data-panel="p-sens">灵敏度分析</button>
+    <button class="tab" role="tab" id="t-geo" aria-controls="p-geo" aria-selected="false" tabindex="-1" data-panel="p-geo">可行域</button>
+    <button class="tab" role="tab" id="t-bnb" aria-controls="p-bnb" aria-selected="false" tabindex="-1" data-panel="p-bnb">分支定界</button>
+  </nav>
+
+  <section class="panel" id="p-solution" role="tabpanel" aria-labelledby="t-solution">
+    <div class="two-col">
+      <div class="card">
+        <div class="card-head"><h2>决策变量</h2><p>检验数 = 该变量每增加一单位对目标的净影响</p></div>
+        <div class="tw"><table id="var-table"><thead><tr><th>变量</th><th>最优值</th><th>目标系数</th><th>检验数</th><th>状态</th></tr></thead><tbody></tbody></table></div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>约束与影子价格</h2><p>影子价格 = 右端项每放宽一单位,目标值的变化量</p></div>
+        <div class="tw"><table id="con-table"><thead><tr><th>约束</th><th>左端值</th><th>关系</th><th>右端</th><th>松弛量</th><th>影子价格</th></tr></thead><tbody></tbody></table></div>
+      </div>
+    </div>
+    <div class="card">
+      <p class="note" id="solution-note"></p>
+    </div>
+  </section>
+
+  <section class="panel" id="p-tableau" role="tabpanel" aria-labelledby="t-tableau" hidden>
+    <div class="card">
+      <div class="card-head"><h2>单纯形表</h2><p id="tableau-src-note">每一步高亮的格子就是主元:列 = 进基变量,行 = 出基变量</p></div>
+      <div class="stepper">
+        <button class="btn btn-secondary btn-sm" id="step-prev" aria-label="上一步">◀</button>
+        <span class="step-txt" id="step-label">—</span>
+        <button class="btn btn-secondary btn-sm" id="step-next" aria-label="下一步">▶</button>
+        <span class="pill" id="step-pivot">—</span>
+      </div>
+      <div class="tw"><table id="tableau"><thead></thead><tbody></tbody></table></div>
+      <p class="note" style="margin-top:16px">列名里 <code>s<i>k</i></code> 是第 k 条约束的松弛/剩余变量,<code>a<i>k</i></code> 是第一阶段的人工变量;最后一行是检验数行 <code>z<sub>j</sub> − c<sub>j</sub></code>,全部 ≥ 0 即达到最优。</p>
+    </div>
+  </section>
+
+  <section class="panel" id="p-sens" role="tabpanel" aria-labelledby="t-sens" hidden>
+    <p class="note card" id="sens-mip-note" hidden></p>
+    <div class="two-col" id="sens-tables">
+      <div class="card">
+        <div class="card-head"><h2>目标系数区间</h2><p>系数在区间内变动,最优解不变</p></div>
+        <div class="tw"><table id="sens-c"><thead><tr><th>变量</th><th>当前系数</th><th>允许下限</th><th>允许上限</th><th>可降</th><th>可涨</th></tr></thead><tbody></tbody></table></div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>右端项区间</h2><p>右端在区间内变动,影子价格保持有效</p></div>
+        <div class="tw"><table id="sens-b"><thead><tr><th>约束</th><th>当前右端</th><th>影子价格</th><th>允许下限</th><th>允许上限</th></tr></thead><tbody></tbody></table></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel" id="p-geo" role="tabpanel" aria-labelledby="t-geo" hidden>
+    <p class="note card" id="geo-na" hidden></p>
+    <div class="card" id="geo-card">
+      <div class="card-head"><h2>可行域与单纯形路径</h2><p id="geo-sub">—</p></div>
+      <div class="toggles">
+        <button class="toggle" id="tg-path" aria-pressed="true">单纯形路径</button>
+        <button class="toggle" id="tg-contour" aria-pressed="true">目标等值线</button>
+        <button class="toggle" id="tg-lines" aria-pressed="true">约束边界</button>
+      </div>
+      <div class="geo-wrap"><svg class="plot" id="geo-svg" viewBox="0 0 1000 430" role="img" aria-label="二维可行域图"></svg></div>
+      <div class="geo-legend">
+        <span><i style="background:var(--y);opacity:.35"></i>可行域</span>
+        <span><i style="background:#ffffff"></i>单纯形路径</span>
+        <span><i style="background:var(--muted2)"></i>约束边界</span>
+        <span><i style="background:var(--blue)"></i>目标等值线</span>
+      </div>
+      <div class="tw" style="margin-top:20px"><table id="vertex-table"><thead><tr><th>顶点</th><th id="vh-x">x</th><th id="vh-y">y</th><th>目标值</th><th>紧约束</th></tr></thead><tbody></tbody></table></div>
+      <p class="note" style="margin-top:12px">顶点表给出精确读数——图上重叠或被裁掉的点,都能在这里查到。</p>
+    </div>
+  </section>
+
+  <section class="panel" id="p-bnb" role="tabpanel" aria-labelledby="t-bnb" hidden>
+    <p class="note card" id="bnb-na" hidden></p>
+    <div class="card" id="bnb-card">
+      <div class="card-head"><h2>分支定界搜索树</h2><p>整数变量的松弛解出现小数时,沿该变量劈成两支继续搜索</p></div>
+      <div class="hero-stats" id="bnb-stats" style="margin:0 0 20px"></div>
+      <div class="tw"><table id="bnb-table"><thead><tr><th>节点</th><th>深度</th><th>附加约束</th><th>松弛目标值</th><th>结论</th></tr></thead><tbody></tbody></table></div>
+    </div>
+  </section>
+</section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <h2 style="margin-bottom:20px">模型语法</h2>
+    <div class="syntax">
+<span class="c"># 注释用 # 或 //</span><br>
+<span class="k">max</span> 利润: 3门 + 5窗 &nbsp;&nbsp;<span class="c">// 目标函数,max 或 min,可命名,支持中文变量</span><br>
+<span class="k">s.t.</span> &nbsp;&nbsp;<span class="c">// 可写可不写</span><br>
+车间1: 门 &lt;= 4 &nbsp;&nbsp;<span class="c">// 约束可命名;&lt;= &gt;= = ≤ ≥ 都认,两边都能有变量和常数</span><br>
+3门 + 2窗 &lt;= 18<br>
+<span class="k">int</span> 门, 窗 &nbsp;&nbsp;<span class="c">// 整数变量 → 走分支定界</span><br>
+<span class="k">bin</span> 甲, 乙 &nbsp;&nbsp;<span class="c">// 0-1 变量(自动加 ≤1)</span><br>
+<span class="k">free</span> z &nbsp;&nbsp;<span class="c">// 允许取负;未声明的变量默认 ≥ 0</span>
+    </div>
+    <div class="foot-row">
+      <span>全部计算在你的浏览器里完成,模型只存在 localStorage,不上传任何服务器。</span>
+      <span><a href="../../">← 返回每日工具集</a></span>
+    </div>
+  </div>
+</footer>
+
+<script>
+/* <<<ENGINE */
+const LP = (function () {
+  'use strict';
+  var EPS = 1e-9;
+  var FEAS = 1e-7;
+
+  function lpErr(msg) { var e = new Error(msg); e.lpError = true; return e; }
+
+  /* ============================ 解析器 ============================ */
+  var KW_MAX = { max: 1, maximize: 1, maximise: 1, '最大': 1, '最大化': 1 };
+  var KW_MIN = { min: 1, minimize: 1, minimise: 1, '最小': 1, '最小化': 1 };
+  var KW_INT = { int: 1, integer: 1, integers: 1, '整数': 1 };
+  var KW_BIN = { bin: 1, binary: 1, '二元': 1 };
+  var KW_FREE = { free: 1, '自由': 1 };
+
+  function normalizeLine(raw) {
+    return String(raw)
+      .replace(/＜/g, '<').replace(/＞/g, '>')
+      .replace(/≤/g, '<=').replace(/≥/g, '>=')
+      .replace(/＝/g, '=').replace(/：/g, ':').replace(/，/g, ',')
+      .replace(/＋/g, '+').replace(/－/g, '-').replace(/−/g, '-')
+      .replace(/＊/g, '*').replace(/×/g, '*');
+  }
+
+  function tokenize(src, lineNo) {
+    var toks = [], i = 0;
+    while (i < src.length) {
+      var ch = src[i];
+      if (ch === ' ' || ch === '\t') { i++; continue; }
+      if (/[0-9]/.test(ch) || (ch === '.' && /[0-9]/.test(src[i + 1] || ''))) {
+        var j = i;
+        while (j < src.length && /[0-9.]/.test(src[j])) j++;
+        if (src[j] === 'e' || src[j] === 'E') {
+          var k = j + 1;
+          if (src[k] === '+' || src[k] === '-') k++;
+          if (/[0-9]/.test(src[k] || '')) { j = k; while (j < src.length && /[0-9]/.test(src[j])) j++; }
+        }
+        var txt = src.slice(i, j), v = Number(txt);
+        if (!isFinite(v)) throw lpErr('第 ' + lineNo + ' 行:无法解析数字「' + txt + '」');
+        toks.push({ t: 'num', v: v }); i = j; continue;
+      }
+      if (/[A-Za-z_一-龥]/.test(ch)) {
+        var a = i;
+        while (a < src.length && /[A-Za-z0-9_一-龥]/.test(src[a])) a++;
+        toks.push({ t: 'id', v: src.slice(i, a) }); i = a; continue;
+      }
+      if (ch === '<' || ch === '>') {
+        if (src[i + 1] === '=') { toks.push({ t: 'rel', v: ch + '=' }); i += 2; }
+        else { toks.push({ t: 'rel', v: ch + '=' }); i++; }
+        continue;
+      }
+      if (ch === '=') {
+        if (src[i + 1] === '<') { toks.push({ t: 'rel', v: '<=' }); i += 2; continue; }
+        if (src[i + 1] === '>') { toks.push({ t: 'rel', v: '>=' }); i += 2; continue; }
+        if (src[i + 1] === '=') { toks.push({ t: 'rel', v: '=' }); i += 2; continue; }
+        toks.push({ t: 'rel', v: '=' }); i++; continue;
+      }
+      if ('+-*:,'.indexOf(ch) >= 0) { toks.push({ t: 'sym', v: ch }); i++; continue; }
+      throw lpErr('第 ' + lineNo + ' 行:无法识别的字符「' + ch + '」');
+    }
+    return toks;
+  }
+
+  function parseExpr(toks, k, lineNo) {
+    var coeffs = {}, cst = 0, any = false;
+    var sign = 1, expectTerm = true;
+    while (k < toks.length) {
+      var t = toks[k];
+      if (t.t === 'rel') break;
+      if (t.t === 'sym' && (t.v === '+' || t.v === '-')) {
+        if (t.v === '-') sign = -sign;   // 允许连写符号: 3 + -2y
+        k++; expectTerm = true; continue;
+      }
+      if (t.t === 'sym') throw lpErr('第 ' + lineNo + ' 行:多余的符号「' + t.v + '」');
+      if (!expectTerm) throw lpErr('第 ' + lineNo + ' 行:两项之间缺少 + 或 -');
+      var coef = 1;
+      if (t.t === 'num') {
+        coef = t.v; k++;
+        if (k < toks.length && toks[k].t === 'sym' && toks[k].v === '*') k++;
+        if (k < toks.length && toks[k].t === 'id') { addC(coeffs, toks[k].v, sign * coef); k++; }
+        else cst += sign * coef;
+      } else if (t.t === 'id') {
+        addC(coeffs, t.v, sign); k++;
+      } else break;
+      any = true; sign = 1; expectTerm = false;
+    }
+    if (expectTerm && any) throw lpErr('第 ' + lineNo + ' 行:表达式以运算符结尾');
+    if (!any) throw lpErr('第 ' + lineNo + ' 行:表达式为空');
+    return { coeffs: coeffs, const: cst, k: k };
+  }
+
+  function addC(o, name, v) { o[name] = (o[name] || 0) + v; }
+
+  function parse(src) {
+    var lines = String(src == null ? '' : src).split(/\r?\n/);
+    var sense = null, objCoeffs = null, objConst = 0, objName = 'Z';
+    var constraints = [], order = [], seen = {};
+    var intVars = {}, freeVars = {}, autoName = 0, binDecl = [];
+
+    function noteVars(o) { for (var v in o) if (!seen[v]) { seen[v] = 1; order.push(v); } }
+
+    for (var li = 0; li < lines.length; li++) {
+      var lineNo = li + 1;
+      var text = normalizeLine(lines[li]);
+      var cut = text.search(/#|\/\//);
+      if (cut >= 0) text = text.slice(0, cut);
+      text = text.trim();
+      if (!text) continue;
+      if (/^(s\.\s*t\.?|st\.|subject\s+to|such\s+that|约束条件|约束|满足|s\.t)\s*[:]?\s*$/i.test(text)) continue;
+      text = text.replace(/^(s\.\s*t\.?|st\.|subject\s+to|such\s+that|约束条件|约束|满足)\s*[:]?\s*/i, '').trim();
+      if (!text) continue;
+
+      var toks = tokenize(text, lineNo);
+      if (!toks.length) continue;
+      var head = toks[0].t === 'id' ? String(toks[0].v).toLowerCase() : null;
+
+      if (head && (KW_MAX[head] || KW_MIN[head])) {
+        if (sense) throw lpErr('第 ' + lineNo + ' 行:只能有一个目标函数');
+        sense = KW_MAX[head] ? 'max' : 'min';
+        var p0 = 1;
+        if (toks[1] && toks[1].t === 'id' && toks[2] && toks[2].t === 'sym' && toks[2].v === ':') { objName = toks[1].v; p0 = 3; }
+        var eo = parseExpr(toks, p0, lineNo);
+        if (eo.k !== toks.length) throw lpErr('第 ' + lineNo + ' 行:目标函数里有多余内容');
+        objCoeffs = eo.coeffs; objConst = eo.const;
+        noteVars(objCoeffs);
+        continue;
+      }
+
+      if (head && (KW_INT[head] || KW_BIN[head] || KW_FREE[head])) {
+        var target = KW_FREE[head] ? freeVars : intVars;
+        var isBin = !!KW_BIN[head], got = 0;
+        for (var q = 1; q < toks.length; q++) {
+          var tk = toks[q];
+          if (tk.t === 'sym' && tk.v === ',') continue;
+          if (tk.t !== 'id') throw lpErr('第 ' + lineNo + ' 行:「' + head + '」后面只能跟变量名');
+          target[tk.v] = 1; got++;
+          // 声明只是给已有变量贴标签,不引入新变量(未出现的变量在末尾统一报错)
+          if (isBin) binDecl.push({ v: tk.v, line: lineNo });
+        }
+        if (!got) throw lpErr('第 ' + lineNo + ' 行:「' + head + '」后面没有变量');
+        continue;
+      }
+
+      var start = 0, cname = null;
+      if (toks[0].t === 'id' && toks[1] && toks[1].t === 'sym' && toks[1].v === ':') { cname = toks[0].v; start = 2; }
+      var lhs = parseExpr(toks, start, lineNo);
+      if (lhs.k >= toks.length || toks[lhs.k].t !== 'rel') throw lpErr('第 ' + lineNo + ' 行:缺少关系符(<=、>= 或 =)');
+      var op = toks[lhs.k].v;
+      var rhs = parseExpr(toks, lhs.k + 1, lineNo);
+      if (rhs.k !== toks.length) throw lpErr('第 ' + lineNo + ' 行:关系符右边有多余内容');
+      var co = {};
+      for (var v1 in lhs.coeffs) addC(co, v1, lhs.coeffs[v1]);
+      for (var v2 in rhs.coeffs) addC(co, v2, -rhs.coeffs[v2]);
+      for (var vk in co) if (Math.abs(co[vk]) < EPS) delete co[vk];
+      if (!Object.keys(co).length) throw lpErr('第 ' + lineNo + ' 行:约束里没有变量');
+      noteVars(co);
+      autoName++;
+      constraints.push({ name: cname || ('c' + autoName), coeffs: co, op: op, rhs: rhs.const - lhs.const, line: lineNo });
+    }
+
+    if (!sense) throw lpErr('缺少目标函数:请以 max 或 min 开头写一行,例如 max 3x + 5y');
+    for (var bd = 0; bd < binDecl.length; bd++) {
+      if (!seen[binDecl[bd].v]) throw lpErr('第 ' + binDecl[bd].line + ' 行:0-1 变量「' + binDecl[bd].v + '」没有出现在模型中');
+      constraints.push({ name: binDecl[bd].v + '≤1', coeffs: mk(binDecl[bd].v, 1), op: '<=', rhs: 1, line: binDecl[bd].line, auto: true });
+    }
+    if (!constraints.length) throw lpErr('至少需要一条约束');
+    if (order.length > 60) throw lpErr('变量过多(' + order.length + '),本工具上限 60 个');
+    if (constraints.length > 60) throw lpErr('约束过多(' + constraints.length + '),本工具上限 60 条');
+    for (var iv in intVars) if (!seen[iv]) throw lpErr('整数声明里的变量「' + iv + '」没有出现在模型中');
+    for (var fv in freeVars) {
+      if (!seen[fv]) throw lpErr('自由变量声明里的「' + fv + '」没有出现在模型中');
+      if (intVars[fv]) throw lpErr('变量「' + fv + '」不能同时是整数和自由变量');
+    }
+    return {
+      sense: sense, objName: objName, objCoeffs: objCoeffs || {}, objConst: objConst,
+      constraints: constraints, vars: order, intVars: intVars, freeVars: freeVars
+    };
+  }
+
+  function mk(k, v) { var o = {}; o[k] = v; return o; }
+
+  /* ============================ 线性代数 ============================ */
+  function invert(M) {
+    var n = M.length, i, j, r, c;
+    var A = M.map(function (row, ri) {
+      var out = row.slice();
+      for (j = 0; j < n; j++) out.push(ri === j ? 1 : 0);
+      return out;
+    });
+    for (c = 0; c < n; c++) {
+      var piv = -1, best = 1e-11;
+      for (r = c; r < n; r++) if (Math.abs(A[r][c]) > best) { best = Math.abs(A[r][c]); piv = r; }
+      if (piv < 0) return null;
+      var tmp = A[c]; A[c] = A[piv]; A[piv] = tmp;
+      var d = A[c][c];
+      for (j = 0; j < 2 * n; j++) A[c][j] /= d;
+      for (r = 0; r < n; r++) {
+        if (r === c) continue;
+        var f = A[r][c];
+        if (Math.abs(f) < 1e-14) continue;
+        for (j = 0; j < 2 * n; j++) A[r][j] -= f * A[c][j];
+      }
+    }
+    return A.map(function (row) { return row.slice(n); });
+  }
+
+  /* ============================ 单纯形 ============================ */
+  // T: (m+1) x (n+1)，最后一行为检验数行 (z_j - c_j)，最后一列为右端；求 max
+  function pivotOn(T, basis, r, c) {
+    var m = T.length - 1, n = T[0].length - 1, j, i;
+    var p = T[r][c];
+    for (j = 0; j <= n; j++) T[r][j] /= p;
+    for (i = 0; i <= m; i++) {
+      if (i === r) continue;
+      var f = T[i][c];
+      if (Math.abs(f) < 1e-14) continue;
+      for (j = 0; j <= n; j++) T[i][j] -= f * T[r][j];
+    }
+    basis[r] = c;
+  }
+
+  function runSimplex(T, basis, allowed, snap) {
+    var m = T.length - 1, n = T[0].length - 1;
+    var iter = 0, MAXIT = 4000;
+    while (iter < MAXIT) {
+      var bland = iter > 60 + 2 * (m + n);
+      var enter = -1, bestv = -EPS * 10;
+      for (var j = 0; j < n; j++) {
+        if (!allowed[j]) continue;
+        if (T[m][j] < -1e-9) {
+          if (bland) { enter = j; break; }
+          if (T[m][j] < bestv) { bestv = T[m][j]; enter = j; }
+        }
+      }
+      if (enter < 0) return { status: 'optimal', iter: iter };
+      var leave = -1, ratio = Infinity;
+      for (var i = 0; i < m; i++) {
+        if (T[i][enter] > 1e-9) {
+          var rr = T[i][n] / T[i][enter];
+          if (rr < ratio - 1e-12 || (Math.abs(rr - ratio) <= 1e-12 && leave >= 0 && basis[i] < basis[leave])) {
+            ratio = rr; leave = i;
+          }
+        }
+      }
+      if (leave < 0) return { status: 'unbounded', iter: iter, enter: enter };
+      if (snap) snap(T, basis, enter, leave, iter);
+      pivotOn(T, basis, leave, enter);
+      iter++;
+    }
+    return { status: 'maxiter', iter: iter };
+  }
+
+  function buildCanonical(T, basis, cost) {
+    var m = T.length - 1, n = T[0].length - 1, j, i;
+    for (j = 0; j <= n; j++) T[m][j] = 0;
+    for (j = 0; j < n; j++) T[m][j] = -cost[j];
+    for (i = 0; i < m; i++) {
+      var cb = cost[basis[i]];
+      if (Math.abs(cb) < 1e-14) continue;
+      for (j = 0; j <= n; j++) T[m][j] += cb * T[i][j];
+    }
+  }
+
+  /* ---- 构造标准型 ---- */
+  function buildStandard(model) {
+    var vars = model.vars, nv = vars.length;
+    var cols = [], posOf = {}, negOf = {};
+    vars.forEach(function (v, j) { posOf[v] = cols.length; cols.push({ kind: 'x', name: v, varIdx: j }); });
+    vars.forEach(function (v) {
+      if (model.freeVars[v]) { negOf[v] = cols.length; cols.push({ kind: 'xneg', name: v + '⁻', varIdx: vars.indexOf(v) }); }
+    });
+    var nStruct = cols.length;
+    var rows = model.constraints.map(function (c, i) {
+      var a = new Array(nStruct).fill(0);
+      for (var v in c.coeffs) {
+        a[posOf[v]] += c.coeffs[v];
+        if (negOf[v] !== undefined) a[negOf[v]] -= c.coeffs[v];
+      }
+      var rhs = c.rhs, op = c.op, flip = false;
+      if (rhs < -EPS) {
+        a = a.map(function (x) { return -x; });
+        rhs = -rhs; flip = true;
+        op = op === '<=' ? '>=' : (op === '>=' ? '<=' : '=');
+      }
+      return { a: a, rhs: rhs, op: op, flip: flip, src: i };
+    });
+    var m = rows.length;
+    var nSlack = 0;
+    rows.forEach(function (r) {
+      if (r.op === '<=') { r.slackCol = nStruct + nSlack; cols.push({ kind: 'slack', name: 's' + (r.src + 1), rowIdx: r.src }); nSlack++; }
+      else if (r.op === '>=') { r.slackCol = nStruct + nSlack; cols.push({ kind: 'surplus', name: 's' + (r.src + 1), rowIdx: r.src }); nSlack++; }
+      else r.slackCol = -1;
+    });
+    var artStart = cols.length, nArt = 0;
+    rows.forEach(function (r) {
+      if (r.op === '<=') { r.artCol = -1; return; }
+      r.artCol = cols.length; cols.push({ kind: 'art', name: 'a' + (r.src + 1), rowIdx: r.src }); nArt++;
+    });
+    var n = cols.length;
+    var A = [], b = [];
+    rows.forEach(function (r) {
+      var row = new Array(n).fill(0);
+      for (var j = 0; j < nStruct; j++) row[j] = r.a[j];
+      if (r.slackCol >= 0) row[r.slackCol] = (r.op === '<=') ? 1 : -1;
+      if (r.artCol >= 0) row[r.artCol] = 1;
+      A.push(row); b.push(r.rhs);
+    });
+    // max 形式的目标系数
+    var cmax = new Array(n).fill(0);
+    for (var v3 in model.objCoeffs) {
+      var cc = model.objCoeffs[v3] * (model.sense === 'min' ? -1 : 1);
+      if (posOf[v3] === undefined) continue;
+      cmax[posOf[v3]] += cc;
+      if (negOf[v3] !== undefined) cmax[negOf[v3]] -= cc;
+    }
+    return { cols: cols, A: A, b: b, cmax: cmax, rows: rows, m: m, n: n, nStruct: nStruct, posOf: posOf, negOf: negOf, artStart: artStart, nArt: nArt };
+  }
+
+  /* ---- 核心求解（一次 LP） ---- */
+  function solveLP(model, opts) {
+    opts = opts || {};
+    var S = buildStandard(model);
+    var m = S.m, n = S.n, i, j;
+    var T = [];
+    for (i = 0; i < m; i++) T.push(S.A[i].concat([S.b[i]]));
+    T.push(new Array(n + 1).fill(0));
+    var basis = S.rows.map(function (r) { return r.artCol >= 0 ? r.artCol : r.slackCol; });
+    var allowedAll = new Array(n).fill(true);
+    var allowedNoArt = new Array(n).fill(true);
+    for (j = S.artStart; j < n; j++) allowedNoArt[j] = false;
+
+    var snaps = [], record = opts.snapshots !== false && m * n <= 6000;
+    var phase = 1;
+    function snapper(T2, basis2, enter, leave, it) {
+      if (!record || snaps.length >= 40) return;
+      snaps.push({
+        phase: phase, iter: it, enter: enter, leave: leave, basis: basis2.slice(),
+        T: T2.map(function (r) { return r.slice(); })
+      });
+    }
+
+    var phase1 = null;
+    if (S.nArt > 0) {
+      var c1 = new Array(n).fill(0);
+      for (j = S.artStart; j < n; j++) c1[j] = -1;
+      buildCanonical(T, basis, c1);
+      phase1 = runSimplex(T, basis, allowedAll, snapper);
+      if (phase1.status === 'maxiter') return { status: 'maxiter', message: '迭代次数超过上限,可能存在退化循环' };
+      if (T[m][n] < -1e-7) return { status: 'infeasible', message: '约束互相冲突,不存在可行解', phase1: phase1, standard: S };
+      // 把仍在基里的人工变量换出去
+      for (i = 0; i < m; i++) {
+        if (basis[i] >= S.artStart) {
+          var swap = -1;
+          for (j = 0; j < S.artStart; j++) if (Math.abs(T[i][j]) > 1e-9) { swap = j; break; }
+          if (swap >= 0) pivotOn(T, basis, i, swap);
+        }
+      }
+    }
+    phase = 2;
+    buildCanonical(T, basis, S.cmax);
+    var pathPts = [], snapCount0 = snaps.length;
+    function readX() {
+      var xs = new Array(S.nStruct).fill(0);
+      for (var q = 0; q < m; q++) if (basis[q] < S.nStruct) xs[basis[q]] = T[q][n];
+      return xs;
+    }
+    pathPts.push(readX());
+    var res2 = runSimplex(T, basis, allowedNoArt, function (T2, b2, e2, l2, it) {
+      snapper(T2, b2, e2, l2, it);
+    });
+    if (res2.status === 'maxiter') return { status: 'maxiter', message: '迭代次数超过上限,可能存在退化循环' };
+
+    // 逐步重放取路径:第一张快照就是起点,已经 push 过,从第二张起
+    for (var sIdx = snapCount0 + 1; sIdx < snaps.length; sIdx++) {
+      var sp = snaps[sIdx];
+      var xs = new Array(S.nStruct).fill(0);
+      for (var q2 = 0; q2 < m; q2++) if (sp.basis[q2] < S.nStruct) xs[sp.basis[q2]] = sp.T[q2][n];
+      pathPts.push(xs);
+    }
+    var xFinal = readX();
+    pathPts.push(xFinal);
+
+    if (res2.status === 'unbounded') {
+      return { status: 'unbounded', message: '目标函数在可行域上无界,可以取到任意大的值', standard: S, iterations: snaps, phase2Iters: res2.iter };
+    }
+    // 再存一张最优表:检验数行不再有负数,这一步本身就是最优性的证据
+    if (record && snaps.length < 42) {
+      snaps.push({
+        phase: 2, iter: res2.iter, enter: -1, leave: -1, final: true, basis: basis.slice(),
+        T: T.map(function (r) { return r.slice(); })
+      });
+    }
+
+    var zmax = T[m][n];
+    var objective = (model.sense === 'min' ? -zmax : zmax) + model.objConst;
+
+    /* 对偶价格 / 检验数 / 灵敏度 */
+    var B = [], k;
+    for (i = 0; i < m; i++) { var row = []; for (k = 0; k < m; k++) row.push(S.A[i][basis[k]]); B.push(row); }
+    var Binv = invert(B);
+    var y = null, rc = null, alpha = null, xB = null;
+    if (Binv) {
+      var cB = basis.map(function (jj) { return S.cmax[jj]; });
+      y = new Array(m).fill(0);
+      for (k = 0; k < m; k++) { if (!cB[k]) continue; for (i = 0; i < m; i++) y[i] += cB[k] * Binv[k][i]; }
+      rc = new Array(n).fill(0);
+      for (j = 0; j < n; j++) { var s = 0; for (i = 0; i < m; i++) s += y[i] * S.A[i][j]; rc[j] = S.cmax[j] - s; }
+      xB = new Array(m).fill(0);
+      for (k = 0; k < m; k++) { var s2 = 0; for (i = 0; i < m; i++) s2 += Binv[k][i] * S.b[i]; xB[k] = s2; }
+      alpha = [];
+      for (k = 0; k < m; k++) {
+        var arow = new Array(n).fill(0);
+        for (j = 0; j < n; j++) { var s3 = 0; for (i = 0; i < m; i++) s3 += Binv[k][i] * S.A[i][j]; arow[j] = s3; }
+        alpha.push(arow);
+      }
+    }
+
+    var xVals = {}, valOfCol = xFinal;
+    model.vars.forEach(function (v) {
+      var val = valOfCol[S.posOf[v]] || 0;
+      if (S.negOf[v] !== undefined) val -= (valOfCol[S.negOf[v]] || 0);
+      xVals[v] = clean(val);
+    });
+
+    // 变量报告
+    var varReport = model.vars.map(function (v) {
+      var col = S.posOf[v];
+      var isFree = !!model.freeVars[v];
+      var userCoef = model.objCoeffs[v] || 0;
+      var r = { name: v, value: xVals[v], coef: userCoef, reduced: null, lo: null, hi: null, basic: basis.indexOf(col) >= 0 };
+      if (!rc) return r;
+      var rcv = rc[col];
+      r.reduced = clean(model.sense === 'min' ? -rcv : rcv);
+      if (isFree) return r;
+      var bpos = basis.indexOf(col), lo = -Infinity, hi = Infinity;
+      if (bpos >= 0) {
+        for (var jj = 0; jj < S.artStart; jj++) {
+          if (basis.indexOf(jj) >= 0) continue;
+          var av = alpha[bpos][jj];
+          if (av > 1e-9) lo = Math.max(lo, rc[jj] / av);
+          else if (av < -1e-9) hi = Math.min(hi, rc[jj] / av);
+        }
+      } else { hi = -rcv; }
+      var cm = S.cmax[col];
+      var a1 = cm + lo, b1 = cm + hi;
+      if (model.sense === 'min') { r.lo = clean(-b1); r.hi = clean(-a1); }
+      else { r.lo = clean(a1); r.hi = clean(b1); }
+      return r;
+    });
+
+    // 约束报告
+    var conReport = model.constraints.map(function (c, ci) {
+      var lhs = 0;
+      for (var v in c.coeffs) lhs += c.coeffs[v] * (xVals[v] || 0);
+      lhs = clean(lhs);
+      var slack = clean(c.op === '>=' ? lhs - c.rhs : c.rhs - lhs);
+      var row = S.rows[ci];
+      var out = {
+        name: c.name, op: c.op, rhs: c.rhs, lhs: lhs, slack: slack,
+        binding: Math.abs(lhs - c.rhs) < 1e-7, dual: null, lo: null, hi: null, auto: !!c.auto
+      };
+      if (!y) return out;
+      var dw = y[ci];
+      var d = (row.flip ? -dw : dw) * (model.sense === 'min' ? -1 : 1);
+      out.dual = clean(d);
+      var dlo = -Infinity, dhi = Infinity;
+      for (var kk = 0; kk < m; kk++) {
+        var dk = Binv[kk][ci];
+        if (dk > 1e-9) dlo = Math.max(dlo, -xB[kk] / dk);
+        else if (dk < -1e-9) dhi = Math.min(dhi, -xB[kk] / dk);
+      }
+      var bw = S.b[ci];
+      var loW = bw + dlo, hiW = bw + dhi;
+      if (row.flip) { out.lo = clean(-hiW); out.hi = clean(-loW); }
+      else { out.lo = clean(loW); out.hi = clean(hiW); }
+      return out;
+    });
+
+    return {
+      status: 'optimal', message: '已找到最优解', objective: clean(objective), zmax: zmax,
+      values: xVals, vars: varReport, constraints: conReport,
+      iterations: snaps, standard: S, basis: basis.slice(),
+      phase1Iters: phase1 ? phase1.iter : 0, phase2Iters: res2.iter,
+      path: pathPts.map(function (p) { return p.slice(0, S.nStruct); }),
+      degenerate: xB ? xB.some(function (x) { return Math.abs(x) < 1e-9; }) : false
+    };
+  }
+
+  function clean(v) {
+    if (!isFinite(v)) return v;
+    if (Math.abs(v) < 1e-9) return 0;
+    var r = Math.round(v);
+    if (Math.abs(v - r) < 1e-9) return r;
+    return Math.round(v * 1e9) / 1e9;
+  }
+
+  /* ============================ 分支定界 ============================ */
+  function solve(src, opts) {
+    opts = opts || {};
+    var model = typeof src === 'string' ? parse(src) : src;
+    var intList = Object.keys(model.intVars);
+    var base = solveLP(model, opts);
+    base.model = model;
+    if (!intList.length || base.status !== 'optimal') {
+      base.integer = { used: intList.length > 0, nodes: [], explored: 0 };
+      if (intList.length && base.status !== 'optimal') base.integer.nodes = [];
+      return base;
+    }
+    var isMax = model.sense === 'max';
+    var best = null, bestObj = isMax ? -Infinity : Infinity;
+    var nodes = [], nid = 0, explored = 0, LIMIT = 400, truncated = false;
+    var stack = [{ id: nid++, parent: null, depth: 0, extra: [], label: '根节点' }];
+    while (stack.length) {
+      if (explored >= LIMIT) { truncated = true; break; }
+      var nd = stack.pop();
+      explored++;
+      var m2 = {
+        sense: model.sense, objName: model.objName, objCoeffs: model.objCoeffs, objConst: model.objConst,
+        constraints: model.constraints.concat(nd.extra), vars: model.vars,
+        intVars: model.intVars, freeVars: model.freeVars
+      };
+      var r = solveLP(m2, { snapshots: false });
+      var rec = { id: nd.id, parent: nd.parent, depth: nd.depth, label: nd.label, status: '', obj: null };
+      nodes.push(rec);
+      if (r.status !== 'optimal') {
+        rec.status = r.status === 'unbounded' ? '无界' : '不可行';
+        continue;
+      }
+      rec.obj = r.objective;
+      var worse = isMax ? (r.objective <= bestObj + 1e-9) : (r.objective >= bestObj - 1e-9);
+      if (best && worse) { rec.status = '界剪枝'; continue; }
+      var frac = -1, fbest = 0.5 + 1;
+      for (var t = 0; t < intList.length; t++) {
+        var v = intList[t], val = r.values[v] || 0;
+        var d = Math.abs(val - Math.round(val));
+        if (d > 1e-6) {
+          var score = Math.abs(0.5 - (val - Math.floor(val)));
+          if (score < fbest) { fbest = score; frac = t; }
+        }
+      }
+      if (frac < 0) {
+        rec.status = '整数解';
+        // 分支约束只是搜索用的临时约束,不属于用户模型 → 报告里剔除
+        r.branches = nd.extra.map(function (c) { return c.name; });
+        r.constraints = r.constraints.slice(0, model.constraints.length);
+        best = r; bestObj = r.objective;
+        continue;
+      }
+      rec.status = '分支 ' + intList[frac];
+      var bv = intList[frac], bval = r.values[bv];
+      var lo = Math.floor(bval + 1e-9), hi = Math.ceil(bval - 1e-9);
+      stack.push({
+        id: nid++, parent: nd.id, depth: nd.depth + 1,
+        extra: nd.extra.concat([{ name: bv + '≥' + hi, coeffs: mk(bv, 1), op: '>=', rhs: hi, auto: true }]),
+        label: bv + ' ≥ ' + hi
+      });
+      stack.push({
+        id: nid++, parent: nd.id, depth: nd.depth + 1,
+        extra: nd.extra.concat([{ name: bv + '≤' + lo, coeffs: mk(bv, 1), op: '<=', rhs: lo, auto: true }]),
+        label: bv + ' ≤ ' + lo
+      });
+    }
+    if (!best) {
+      return {
+        status: 'infeasible', message: '线性松弛可行,但不存在满足整数要求的解', model: model,
+        integer: { used: true, nodes: nodes, explored: explored, truncated: truncated, relaxObj: base.objective }
+      };
+    }
+    best.model = model;
+    best.relaxation = base;
+    best.tableauSource = base;   // 整数解所在节点带分支约束,迭代过程展示线性松弛的
+    best.integer = { used: true, nodes: nodes, explored: explored, truncated: truncated, relaxObj: base.objective, gap: clean(Math.abs(base.objective - best.objective)) };
+    best.message = truncated ? '已找到整数解(搜索节点达上限,可能非全局最优)' : '已找到最优整数解';
+    return best;
+  }
+
+  /* ============================ 二维可行域 ============================ */
+  function region2D(model, result) {
+    if (model.vars.length !== 2) return null;
+    if (Object.keys(model.freeVars).length) return null;
+    var vx = model.vars[0], vy = model.vars[1];
+    var H = [];
+    model.constraints.forEach(function (c) {
+      var a = c.coeffs[vx] || 0, b = c.coeffs[vy] || 0;
+      if (c.op === '<=') H.push({ a: a, b: b, c: c.rhs, con: c });
+      else if (c.op === '>=') H.push({ a: -a, b: -b, c: -c.rhs, con: c });
+      else { H.push({ a: a, b: b, c: c.rhs, con: c }); H.push({ a: -a, b: -b, c: -c.rhs, con: c, dup: true }); }
+    });
+    H.push({ a: -1, b: 0, c: 0, axis: vx + ' ≥ 0' });
+    H.push({ a: 0, b: -1, c: 0, axis: vy + ' ≥ 0' });
+
+    function verts(list) {
+      var out = [];
+      for (var i = 0; i < list.length; i++) for (var j = i + 1; j < list.length; j++) {
+        var p = list[i], q = list[j];
+        var det = p.a * q.b - q.a * p.b;
+        if (Math.abs(det) < 1e-12) continue;
+        var x = (p.c * q.b - q.c * p.b) / det;
+        var yy = (p.a * q.c - q.a * p.c) / det;
+        if (!isFinite(x) || !isFinite(yy)) continue;
+        var ok = true, scale = 1;
+        for (var k = 0; k < list.length; k++) {
+          var h = list[k];
+          var mag = Math.abs(h.a) + Math.abs(h.b) + Math.abs(h.c) + 1;
+          if (h.a * x + h.b * yy > h.c + 1e-7 * mag) { ok = false; break; }
+        }
+        if (ok) out.push([clean(x), clean(yy)]);
+      }
+      var uniq = [];
+      out.forEach(function (p) {
+        for (var i2 = 0; i2 < uniq.length; i2++) {
+          if (Math.abs(uniq[i2][0] - p[0]) < 1e-7 && Math.abs(uniq[i2][1] - p[1]) < 1e-7) return;
+        }
+        uniq.push(p);
+      });
+      return uniq;
+    }
+
+    var core = verts(H);
+    var maxc = 1;
+    core.forEach(function (p) { maxc = Math.max(maxc, Math.abs(p[0]), Math.abs(p[1])); });
+    if (result && result.status === 'optimal') {
+      maxc = Math.max(maxc, Math.abs(result.values[vx] || 0), Math.abs(result.values[vy] || 0));
+    }
+    var box = maxc * 1.35 + 1;
+    var H2 = H.concat([{ a: 1, b: 0, c: box, boxEdge: true }, { a: 0, b: 1, c: box, boxEdge: true }]);
+    var poly = verts(H2);
+    if (!poly.length) return { vertices: [], polygon: [], unbounded: false, empty: true, vx: vx, vy: vy, box: box, lines: H };
+    var cx = 0, cy = 0;
+    poly.forEach(function (p) { cx += p[0]; cy += p[1]; });
+    cx /= poly.length; cy /= poly.length;
+    poly.sort(function (p, q) { return Math.atan2(p[1] - cy, p[0] - cx) - Math.atan2(q[1] - cy, q[0] - cx); });
+    var clipped = poly.some(function (p) { return Math.abs(p[0] - box) < 1e-6 || Math.abs(p[1] - box) < 1e-6; });
+    var objf = function (p) {
+      return clean((model.objCoeffs[vx] || 0) * p[0] + (model.objCoeffs[vy] || 0) * p[1] + model.objConst);
+    };
+    return {
+      vx: vx, vy: vy, box: box, unbounded: clipped, empty: false,
+      polygon: poly, vertices: core.map(function (p) { return { x: p[0], y: p[1], obj: objf(p) }; }),
+      lines: H.filter(function (h) { return !h.dup; })
+    };
+  }
+
+  /* ============================ 工具 ============================ */
+  function fmt(v, digits) {
+    if (v === Infinity) return '+∞';
+    if (v === -Infinity) return '−∞';
+    if (v == null || !isFinite(v)) return '—';
+    var d = digits == null ? 4 : digits;
+    var r = Math.abs(v) < 1e-9 ? 0 : v;
+    if (Math.abs(r - Math.round(r)) < 1e-9) return String(Math.round(r));
+    var s = r.toFixed(d);
+    s = s.replace(/0+$/, '').replace(/\.$/, '');
+    return s;
+  }
+
+  return {
+    parse: parse, solve: solve, solveLP: solveLP, region2D: region2D,
+    buildStandard: buildStandard, invert: invert, fmt: fmt, clean: clean, EPS: EPS
+  };
+})();
+/* ENGINE>>> */
+
+(function () {
+  'use strict';
+  var $ = function (s) { return document.querySelector(s); };
+  var fmt = LP.fmt;
+
+  var PRESETS = [
+    ['生产计划 · 两条产线的产品组合', '# 每天该做多少扇门、多少扇窗?\n# 三个车间的工时是硬约束,利润最大化\nmax 利润: 3门 + 5窗\n\ns.t.\n车间1: 门 <= 4\n车间2: 2窗 <= 12\n车间3: 3门 + 2窗 <= 18'],
+    ['营养配餐 · 最低成本满足营养下限', '# 每份燕麦 0.6 元、牛奶 1.0 元\n# 蛋白/钙/纤维都要达标,求最省的搭配\nmin 成本: 0.6燕麦 + 1.0牛奶\n\ns.t.\n蛋白: 10燕麦 + 4牛奶 >= 20\n钙质: 5燕麦 + 5牛奶 >= 20\n纤维: 2燕麦 + 6牛奶 >= 12'],
+    ['运输调度 · 2 仓库 → 3 门店', '# 单位运费矩阵写进目标函数\n# a? = 从仓A发往第?个门店的量\nmin 4a1 + 6a2 + 8a3 + 5b1 + 3b2 + 7b3\n\ns.t.\n仓A库存: a1 + a2 + a3 <= 50\n仓B库存: b1 + b2 + b3 <= 60\n店1需求: a1 + b1 = 30\n店2需求: a2 + b2 = 40\n店3需求: a3 + b3 = 30'],
+    ['投资组合 · 100 万四类资产配置', '# 预期年化收益最大化,受风险与流动性约束\nmax 0.12科技 + 0.08消费 + 0.05债券 + 0.03现金\n\ns.t.\n预算: 科技 + 消费 + 债券 + 现金 = 100\n风险上限: 科技 + 0.6消费 <= 45\n流动性: 债券 + 现金 >= 30\n单一上限: 科技 <= 30'],
+    ['排班覆盖 · 六个班次的最少人力(整数)', '# 每个班次连上 8 小时,跨两个时段\n# 每个时段的在岗人数不得低于需求\nmin 班1 + 班2 + 班3 + 班4 + 班5 + 班6\n\ns.t.\n零点到四点: 班1 + 班6 >= 4\n四点到八点: 班1 + 班2 >= 8\n八点到十二点: 班2 + 班3 >= 10\n十二点到十六点: 班3 + 班4 >= 7\n十六点到二十点: 班4 + 班5 >= 12\n二十点到零点: 班5 + 班6 >= 4\n\nint 班1, 班2, 班3, 班4, 班5, 班6'],
+    ['背包选品 · 载重 50kg 的 0-1 选择', '# 每件货最多带一件 → bin 声明\n# 松弛解会给出小数,分支定界把它逼成整数\nmax 60甲 + 100乙 + 120丙 + 75丁\n\ns.t.\n载重: 10甲 + 20乙 + 30丙 + 15丁 <= 50\n\nbin 甲, 乙, 丙, 丁'],
+    ['广告投放 · 触达最大化(含等式与自由变量)', '# 预算 120 万,三个渠道\n# 余量 z 允许为负表示超支(free)\nmax 3.2信息流 + 2.4搜索 + 1.5线下\n\ns.t.\n预算: 信息流 + 搜索 + 线下 + z = 120\n品牌下限: 线下 >= 20\n效果占比: 信息流 + 搜索 >= 2线下\n单渠道上限: 信息流 <= 60\n\nfree z']
+  ];
+
+  var LSK = 'solver-studio.v1.src';
+  var LSM = 'solver-studio.v1.models';
+  var state = { model: null, res: null, region: null, step: 0, dur: 0 };
+  var opts = { path: true, contour: true, lines: true };
+
+  /* ───────── 存取 ───────── */
+  function readStore(k, dflt) {
+    try { var v = localStorage.getItem(k); return v == null ? dflt : JSON.parse(v); }
+    catch (e) { return dflt; }
+  }
+  function writeStore(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+
+  /* ───────── 编辑器 ───────── */
+  function syncGutter() {
+    var n = $('#src').value.split('\n').length;
+    var g = $('#gutter'), out = [];
+    for (var i = 1; i <= n; i++) out.push(i);
+    g.textContent = out.join('\n');
+    g.scrollTop = $('#src').scrollTop;
+  }
+
+  /* ───────── 主流程 ───────── */
+  function solveNow() {
+    var src = $('#src').value;
+    writeStore(LSK, src);
+    syncGutter();
+    var model, res, t0 = performance.now();
+    try { model = LP.parse(src); }
+    catch (e) { fail(e.message, 'error'); return; }
+    try { res = LP.solve(model); }
+    catch (e) { fail('求解失败:' + e.message, 'error'); return; }
+    state.dur = Math.max(1, Math.round(performance.now() - t0));
+    state.model = model; state.res = res; state.step = 0;
+    $('#parse-err').hidden = true;
+    $('#model-size').textContent = model.vars.length + ' 变量 · ' + model.constraints.length + ' 约束';
+    $('#parse-hint').textContent = (model.sense === 'max' ? '最大化' : '最小化') + ' · ' +
+      model.vars.length + ' 变量 / ' + model.constraints.length + ' 约束' +
+      (Object.keys(model.intVars).length ? ' / ' + Object.keys(model.intVars).length + ' 整数' : '');
+    render();
+  }
+
+  function fail(msg, status) {
+    state.model = null; state.res = null;
+    var e = $('#parse-err');
+    e.textContent = msg; e.hidden = false;
+    $('#parse-hint').textContent = '解析失败';
+    var v = $('#verdict');
+    v.dataset.status = status;
+    $('#v-badge').textContent = '模型有误';
+    $('#obj-value').textContent = msg;
+    $('#obj-label').textContent = '修好上面的模型后会自动重算';
+    $('#solution-chips').innerHTML = '';
+    $('#verdict-meta').textContent = '';
+    document.body.dataset.solved = status;
+    document.body.dataset.obj = '';
+    ['#s-vars', '#s-cons', '#s-iters', '#s-time'].forEach(function (s) { $(s).textContent = '0'; });
+    clearTables();
+    bump();
+  }
+
+  function bump() {
+    document.body.dataset.runs = String((Number(document.body.dataset.runs) || 0) + 1);
+  }
+
+  function clearTables() {
+    ['#var-table', '#con-table', '#sens-c', '#sens-b', '#bnb-table', '#vertex-table'].forEach(function (s) {
+      $(s).querySelector('tbody').innerHTML = '';
+    });
+    $('#tableau').querySelector('thead').innerHTML = '';
+    $('#tableau').querySelector('tbody').innerHTML = '';
+    $('#geo-svg').innerHTML = '';
+  }
+
+  function render() {
+    var res = state.res, model = state.model;
+    renderVerdict(res, model);
+    renderSolution(res, model);
+    renderTableau(res);
+    renderSens(res, model);
+    renderGeo(model, res);
+    renderBnB(res, model);
+    var it = tableauSource(res);
+    $('#s-vars').textContent = model.vars.length;
+    $('#s-cons').textContent = model.constraints.length;
+    $('#s-iters').textContent = (it && it.phase1Iters != null) ? (it.phase1Iters + it.phase2Iters) : 0;
+    $('#s-time').textContent = state.dur;
+    document.body.dataset.solved = res.status;
+    document.body.dataset.obj = res.status === 'optimal' ? String(res.objective) : '';
+    bump();
+  }
+
+  function tableauSource(res) { return res.tableauSource || (res.iterations ? res : (res.relaxation || null)); }
+
+  /* ───────── 结论条 ───────── */
+  function renderVerdict(res, model) {
+    var v = $('#verdict');
+    v.dataset.status = res.status;
+    var chips = $('#solution-chips'); chips.innerHTML = '';
+    var meta = $('#verdict-meta');
+    if (res.status !== 'optimal') {
+      $('#v-badge').textContent = res.status === 'infeasible' ? '无可行解' : res.status === 'unbounded' ? '目标无界' : '未能求解';
+      $('#obj-value').textContent = res.message || '无法求解';
+      $('#obj-label').textContent = res.status === 'infeasible'
+        ? '至少有两条约束互相矛盾——检查右端项或关系方向'
+        : res.status === 'unbounded'
+          ? '缺少限制该方向的约束——补一条上界试试'
+          : '请调整模型后重试';
+      meta.textContent = '';
+      return;
+    }
+    var isMip = res.integer && res.integer.used;
+    $('#v-badge').textContent = isMip ? '最优整数解' : '最优解';
+    $('#obj-value').textContent = fmt(res.objective, 6);
+    $('#obj-label').textContent = (model.sense === 'max' ? '最大化 ' : '最小化 ') + model.objName + ' 的最优值';
+    model.vars.forEach(function (name) {
+      var val = res.values[name] || 0;
+      var el = document.createElement('span');
+      el.className = 'chip' + (Math.abs(val) < 1e-9 ? ' zero' : '');
+      el.innerHTML = esc(name) + ' = <b>' + fmt(val, 4) + '</b>';
+      chips.appendChild(el);
+    });
+    var bits = [];
+    var tight = res.constraints.filter(function (c) { return c.binding; }).length;
+    bits.push(tight + ' / ' + res.constraints.length + ' 条约束取到紧');
+    if (isMip) {
+      bits.push('分支定界探索 ' + res.integer.explored + ' 个节点');
+      if (res.integer.relaxObj != null) bits.push('线性松弛界 ' + fmt(res.integer.relaxObj, 4) + '(整数间隙 ' + fmt(res.integer.gap, 4) + ')');
+    } else if (res.degenerate) {
+      bits.push('存在退化顶点(有基变量取 0)');
+    }
+    meta.textContent = bits.join(' · ');
+  }
+
+  /* ───────── 解与影子价格 ───────── */
+  function renderSolution(res, model) {
+    var tb = $('#var-table').querySelector('tbody'); tb.innerHTML = '';
+    var cb = $('#con-table').querySelector('tbody'); cb.innerHTML = '';
+    if (res.status !== 'optimal') { $('#solution-note').textContent = '当前模型没有最优解,先修好模型再看这里。'; return; }
+    res.vars.forEach(function (v) {
+      var tr = document.createElement('tr');
+      if (Math.abs(v.value) > 1e-9) tr.className = 'hot';
+      tr.innerHTML = '<td class="name">' + esc(v.name) + (model.intVars[v.name] ? ' <span class="tag">整数</span>' : '') +
+        (model.freeVars[v.name] ? ' <span class="tag">自由</span>' : '') + '</td>' +
+        '<td class="' + (Math.abs(v.value) > 1e-9 ? 'num-y' : 'dim') + '">' + fmt(v.value, 4) + '</td>' +
+        '<td>' + fmt(v.coef, 4) + '</td>' +
+        '<td class="' + (Math.abs(v.reduced) > 1e-9 ? '' : 'dim') + '">' + fmt(v.reduced, 4) + '</td>' +
+        '<td><span class="tag' + (v.basic ? ' on' : '') + '">' + (v.basic ? '基变量' : '非基') + '</span></td>';
+      tb.appendChild(tr);
+    });
+    var OPS = { '<=': '≤', '>=': '≥', '=': '=' };
+    res.constraints.forEach(function (c) {
+      var tr = document.createElement('tr');
+      if (c.binding) tr.className = 'hot';
+      tr.innerHTML = '<td class="name">' + esc(c.name) + (c.auto ? ' <span class="tag">自动</span>' : '') + '</td>' +
+        '<td>' + fmt(c.lhs, 4) + '</td>' +
+        '<td class="dim">' + OPS[c.op] + '</td>' +
+        '<td>' + fmt(c.rhs, 4) + '</td>' +
+        '<td class="' + (Math.abs(c.slack) < 1e-9 ? 'dim' : '') + '">' + fmt(c.slack, 4) + '</td>' +
+        '<td class="' + (Math.abs(c.dual) > 1e-9 ? 'num-y' : 'dim') + '">' + fmt(c.dual, 4) + '</td>';
+      cb.appendChild(tr);
+    });
+    var binding = res.constraints.filter(function (c) { return c.binding && Math.abs(c.dual) > 1e-9; });
+    var note;
+    if (res.integer && res.integer.used) {
+      note = '这是一个整数规划:上面的影子价格来自整数解所在分支的线性松弛,只能当作方向性参考,不能像纯线性规划那样直接解读为「每放宽一单位的边际价值」。';
+    } else if (binding.length) {
+      var top = binding.slice().sort(function (a, b) { return Math.abs(b.dual) - Math.abs(a.dual); })[0];
+      note = '瓶颈在「' + top.name + '」:它的影子价格是 ' + fmt(top.dual, 4) +
+        ',意味着把它的右端从 ' + fmt(top.rhs, 4) + ' 放宽 1 个单位,目标值会变化 ' + fmt(top.dual, 4) +
+        '——这个结论在右端项落在 [' + fmt(top.lo, 4) + ', ' + fmt(top.hi, 4) + '] 区间内始终成立。松弛量为 0 的约束才是真瓶颈,松弛量为正说明资源还没用完。';
+    } else {
+      note = '所有约束的影子价格都是 0:当前最优解没有被任何一条约束「卡住」,放宽资源也不会带来收益。';
+    }
+    $('#solution-note').textContent = note;
+  }
+
+  /* ───────── 单纯形表 ───────── */
+  function renderTableau(res) {
+    var srcRes = tableauSource(res);
+    var head = $('#tableau').querySelector('thead'), body = $('#tableau').querySelector('tbody');
+    head.innerHTML = ''; body.innerHTML = '';
+    var snaps = (srcRes && srcRes.iterations) || [];
+    var note = $('#tableau-src-note');
+    if (!snaps.length || !srcRes.standard) {
+      $('#step-label').textContent = '没有可展示的迭代';
+      $('#step-pivot').textContent = '—';
+      note.textContent = res.status === 'infeasible'
+        ? '模型不可行,第一阶段就无法把人工变量赶出基,故没有第二阶段的迭代表。'
+        : '当前模型规模较大或已在初始基上最优,未记录迭代表。';
+      return;
+    }
+    note.textContent = (res.integer && res.integer.used)
+      ? '整数解所在节点带有临时分支约束,这里展示的是原模型线性松弛的迭代过程。'
+      : '每一步高亮的格子就是主元:列 = 进基变量,行 = 出基变量。';
+    state.step = Math.min(state.step, snaps.length - 1);
+    var s = snaps[state.step];
+    var cols = srcRes.standard.cols;
+    var m = s.T.length - 1, n = s.T[0].length - 1;
+
+    var hr = '<tr><th class="basis-h">基</th>';
+    for (var j = 0; j < n; j++) hr += '<th>' + esc(cols[j] ? cols[j].name : ('c' + j)) + '</th>';
+    hr += '<th>右端</th></tr>';
+    head.innerHTML = hr;
+
+    for (var i = 0; i < m; i++) {
+      var tr = document.createElement('tr');
+      if (i === s.leave) tr.className = 'leaverow';
+      var html = '<td class="basis">' + esc(cols[s.basis[i]] ? cols[s.basis[i]].name : '?') + '</td>';
+      for (var jj = 0; jj < n; jj++) {
+        var cls = (jj === s.enter && i === s.leave) ? 'piv' : (jj === s.enter ? 'entercol' : '');
+        html += '<td class="' + cls + '">' + fmt(s.T[i][jj], 3) + '</td>';
+      }
+      html += '<td>' + fmt(s.T[i][n], 3) + '</td>';
+      tr.innerHTML = html;
+      body.appendChild(tr);
+    }
+    var zr = document.createElement('tr');
+    zr.className = 'zrow';
+    var zh = '<td class="basis">z<sub>j</sub>−c<sub>j</sub></td>';
+    for (var k = 0; k < n; k++) zh += '<td class="' + (k === s.enter ? 'entercol' : '') + '">' + fmt(s.T[m][k], 3) + '</td>';
+    zh += '<td>' + fmt(s.T[m][n], 3) + '</td>';
+    zr.innerHTML = zh;
+    body.appendChild(zr);
+
+    $('#step-label').textContent = '第 ' + (state.step + 1) + ' / ' + snaps.length + ' 步 · 阶段' + (s.phase === 1 ? '一(找可行解)' : '二(求最优)');
+    $('#step-pivot').textContent = s.final || s.enter < 0
+      ? '已达到最优:检验数行不再有负数'
+      : (cols[s.enter] ? cols[s.enter].name : '?') + ' 进基 / ' + (cols[s.basis[s.leave]] ? cols[s.basis[s.leave]].name : '?') + ' 出基';
+    $('#step-prev').disabled = state.step === 0;
+    $('#step-next').disabled = state.step >= snaps.length - 1;
+  }
+
+  /* ───────── 灵敏度 ───────── */
+  function renderSens(res, model) {
+    var cb = $('#sens-c').querySelector('tbody'), bb = $('#sens-b').querySelector('tbody');
+    cb.innerHTML = ''; bb.innerHTML = '';
+    var mipNote = $('#sens-mip-note'), tables = $('#sens-tables');
+    var isMip = !!(res.integer && res.integer.used);
+    if (res.status !== 'optimal' || isMip) {
+      mipNote.hidden = false;
+      tables.hidden = true;
+      mipNote.textContent = isMip
+        ? '灵敏度分析建立在「最优基不变」之上,而整数规划的最优解不由一个单纯形基决定——改动一点系数,分支定界可能跳到完全不同的整数解。因此这里不提供区间,请改用分支定界页观察松弛界与整数间隙。'
+        : '当前模型没有最优解,无法做灵敏度分析。';
+      return;
+    }
+    mipNote.hidden = true;
+    tables.hidden = false;
+    res.vars.forEach(function (v) {
+      var tr = document.createElement('tr');
+      var down = v.lo == null ? null : (v.lo === -Infinity ? Infinity : v.coef - v.lo);
+      var up = v.hi == null ? null : (v.hi === Infinity ? Infinity : v.hi - v.coef);
+      tr.innerHTML = '<td class="name">' + esc(v.name) + '</td><td>' + fmt(v.coef, 4) + '</td>' +
+        '<td>' + (v.lo == null ? '—' : fmt(v.lo, 4)) + '</td><td>' + (v.hi == null ? '—' : fmt(v.hi, 4)) + '</td>' +
+        '<td class="dim">' + (down == null ? '—' : fmt(down, 4)) + '</td>' +
+        '<td class="dim">' + (up == null ? '—' : fmt(up, 4)) + '</td>';
+      cb.appendChild(tr);
+    });
+    res.constraints.forEach(function (c) {
+      var tr = document.createElement('tr');
+      if (Math.abs(c.dual) > 1e-9) tr.className = 'hot';
+      tr.innerHTML = '<td class="name">' + esc(c.name) + '</td><td>' + fmt(c.rhs, 4) + '</td>' +
+        '<td class="' + (Math.abs(c.dual) > 1e-9 ? 'num-y' : 'dim') + '">' + fmt(c.dual, 4) + '</td>' +
+        '<td>' + (c.lo == null ? '—' : fmt(c.lo, 4)) + '</td><td>' + (c.hi == null ? '—' : fmt(c.hi, 4)) + '</td>';
+      bb.appendChild(tr);
+    });
+  }
+
+  /* ───────── 可行域(SVG) ───────── */
+  function renderGeo(model, res) {
+    var reg = null;
+    try { reg = LP.region2D(model, res); } catch (e) { reg = null; }
+    state.region = reg;
+    var na = $('#geo-na'), card = $('#geo-card');
+    var vt = $('#vertex-table').querySelector('tbody'); vt.innerHTML = '';
+    if (!reg || reg.empty) {
+      na.hidden = false; card.hidden = true;
+      na.textContent = model.vars.length !== 2
+        ? '可行域图只在模型恰好有 2 个决策变量时才画得出来——当前模型有 ' + model.vars.length + ' 个变量。换成两变量的模型(比如「生产计划」示例)就能看到多边形与单纯形路径。'
+        : (reg && reg.empty ? '这个模型的可行域是空集,画不出多边形——先让约束彼此相容。' : '含自由变量的模型暂不绘制可行域。');
+      $('#geo-svg').innerHTML = '';
+      return;
+    }
+    na.hidden = true; card.hidden = false;
+    $('#vh-x').textContent = reg.vx; $('#vh-y').textContent = reg.vy;
+
+    var W = 1000, H = 430, ML = 64, MR = 28, MT = 26, MB = 46;
+    var pw = W - ML - MR, ph = H - MT - MB;
+    var xmax = 1, ymax = 1;
+    reg.polygon.forEach(function (p) { xmax = Math.max(xmax, p[0]); ymax = Math.max(ymax, p[1]); });
+    reg.vertices.forEach(function (v) { xmax = Math.max(xmax, v.x); ymax = Math.max(ymax, v.y); });
+    xmax *= 1.08; ymax *= 1.08;
+    var X = function (x) { return ML + x / xmax * pw; };
+    var Y = function (y) { return MT + ph - y / ymax * ph; };
+
+    var occ = [];
+    function textW(t, fs) { var w = 0; for (var i = 0; i < t.length; i++) w += /[一-龥]/.test(t[i]) ? fs : fs * 0.58; return w; }
+    function place(x, y, t, fs, anchor) {
+      var w = textW(t, fs), h = fs * 1.15;
+      var cx = anchor === 'start' ? x + w / 2 : anchor === 'end' ? x - w / 2 : x;
+      var r = { x0: cx - w / 2 - 3, x1: cx + w / 2 + 3, y0: y - h / 2 - 2, y1: y + h / 2 + 2 };
+      if (r.x0 < 2 || r.x1 > W - 2 || r.y0 < 0 || r.y1 > H) return false;
+      for (var i = 0; i < occ.length; i++) {
+        var o = occ[i];
+        if (!(r.x1 < o.x0 || r.x0 > o.x1 || r.y1 < o.y0 || r.y0 > o.y1)) return false;
+      }
+      occ.push(r); return true;
+    }
+    function label(x, y, t, fs, anchor, fill, weight) {
+      if (!place(x, y, t, fs, anchor)) return '';
+      return '<text x="' + r2(x) + '" y="' + r2(y + fs * 0.36) + '" text-anchor="' + (anchor || 'middle') +
+        '" font-size="' + fs + '" fill="' + fill + '"' +
+        (weight ? ' font-weight="' + weight + '"' : '') + '>' + esc(t) + '</text>';
+    }
+    function r2(v) { return Math.round(v * 100) / 100; }
+    function niceStep(range, target) {
+      var raw = range / Math.max(1, target);
+      var mag = Math.pow(10, Math.floor(Math.log(raw) / Math.LN10));
+      var norm = raw / mag;
+      var st = norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 5 ? 5 : 10;
+      return st * mag;
+    }
+
+    var svg = [];
+    svg.push('<rect x="0" y="0" width="' + W + '" height="' + H + '" fill="#121212"/>');
+
+    // 网格
+    var sx = niceStep(xmax, 7), sy = niceStep(ymax, 5), t;
+    for (t = 0; t <= xmax + 1e-9; t += sx) svg.push('<line x1="' + r2(X(t)) + '" y1="' + MT + '" x2="' + r2(X(t)) + '" y2="' + (MT + ph) + '" stroke="#2a2a2a" stroke-width="1"/>');
+    for (t = 0; t <= ymax + 1e-9; t += sy) svg.push('<line x1="' + ML + '" y1="' + r2(Y(t)) + '" x2="' + (ML + pw) + '" y2="' + r2(Y(t)) + '" stroke="#2a2a2a" stroke-width="1"/>');
+
+    // 约束边界（先占位轴标签，保证刻度优先）
+    var axisLabels = [];
+    for (t = 0; t <= xmax + 1e-9; t += sx) axisLabels.push(label(X(t), MT + ph + 16, fmt(t, 3), 11, 'middle', '#888888'));
+    for (t = 0; t <= ymax + 1e-9; t += sy) axisLabels.push(label(ML - 10, Y(t), fmt(t, 3), 11, 'end', '#888888'));
+
+    var optLabel = '', ox = 0, oy = 0;
+    if (res.status === 'optimal') {
+      ox = res.values[reg.vx] || 0; oy = res.values[reg.vy] || 0;
+      optLabel = label(X(ox), Y(oy) - 20, '最优 (' + fmt(ox, 3) + ', ' + fmt(oy, 3) + ')', 12, 'middle', '#faff69', 700);
+    }
+
+    var conLabelJobs = [];
+    if (opts.lines) {
+      reg.lines.forEach(function (h) {
+        if (h.axis) return;
+        var seg = clipLine(h.a, h.b, h.c, xmax, ymax);
+        if (!seg) return;
+        svg.push('<line x1="' + r2(X(seg[0][0])) + '" y1="' + r2(Y(seg[0][1])) + '" x2="' + r2(X(seg[1][0])) + '" y2="' + r2(Y(seg[1][1])) +
+          '" stroke="#5a5a5a" stroke-width="1.5"/>');
+        var name = h.con ? h.con.name : '';
+        if (name) {
+          var mx = (seg[0][0] + seg[1][0]) / 2, my = (seg[0][1] + seg[1][1]) / 2;
+          conLabelJobs.push([X(mx), Y(my) - 9, name]);
+        }
+      });
+    }
+
+    // 可行域
+    if (reg.polygon.length >= 3) {
+      var pts = reg.polygon.map(function (p) { return r2(X(p[0])) + ',' + r2(Y(p[1])); }).join(' ');
+      svg.push('<polygon points="' + pts + '" fill="#faff69" fill-opacity="0.14" stroke="#faff69" stroke-width="2" stroke-opacity="0.75"/>');
+    }
+
+    // 目标等值线
+    var cvx = model.objCoeffs[reg.vx] || 0, cvy = model.objCoeffs[reg.vy] || 0;
+    if (opts.contour && (Math.abs(cvx) > 1e-12 || Math.abs(cvy) > 1e-12) && res.status === 'optimal') {
+      var zstar = cvx * (res.values[reg.vx] || 0) + cvy * (res.values[reg.vy] || 0);
+      var span = Math.abs(cvx) * xmax + Math.abs(cvy) * ymax;
+      for (var q = -3; q <= 1; q++) {
+        var kk = zstar + q * span / 6;
+        var s2 = clipLine(cvx, cvy, kk, xmax, ymax);
+        if (!s2) continue;
+        var isStar = q === 0;
+        svg.push('<line x1="' + r2(X(s2[0][0])) + '" y1="' + r2(Y(s2[0][1])) + '" x2="' + r2(X(s2[1][0])) + '" y2="' + r2(Y(s2[1][1])) +
+          '" stroke="#3b82f6" stroke-width="' + (isStar ? 2 : 1) + '" stroke-dasharray="' + (isStar ? '7 4' : '3 5') + '" stroke-opacity="' + (isStar ? 0.8 : 0.4) + '"/>');
+      }
+    }
+
+    // 单纯形路径
+    var path = (res.path || (res.relaxation && res.relaxation.path) || []).slice();
+    var uniq = [];
+    path.forEach(function (p) {
+      var last = uniq[uniq.length - 1];
+      if (!last || Math.abs(last[0] - p[0]) > 1e-9 || Math.abs(last[1] - p[1]) > 1e-9) uniq.push(p);
+    });
+    if (opts.path && uniq.length > 1) {
+      var d = uniq.map(function (p, i) { return (i ? 'L' : 'M') + r2(X(p[0])) + ' ' + r2(Y(p[1])); }).join(' ');
+      svg.push('<path d="' + d + '" fill="none" stroke="#ffffff" stroke-width="2.5" stroke-linejoin="round" stroke-dasharray="6 4"/>');
+      uniq.forEach(function (p, i) {
+        svg.push('<circle cx="' + r2(X(p[0])) + '" cy="' + r2(Y(p[1])) + '" r="5" fill="#0a0a0a" stroke="#ffffff" stroke-width="2"/>');
+        svg.push(label(X(p[0]) + 12, Y(p[1]) - 10, '第' + i + '步', 11, 'start', '#e6e6e6'));
+      });
+    }
+
+    // 约束名最后放置：撞上刻度/最优/路径标签就跳过，绝不叠字
+    conLabelJobs.forEach(function (j) { svg.push(label(j[0], j[1], j[2], 11, 'middle', '#888888')); });
+
+    // 顶点 + 最优点
+    reg.vertices.forEach(function (v) {
+      svg.push('<circle cx="' + r2(X(v.x)) + '" cy="' + r2(Y(v.y)) + '" r="3.5" fill="#888888"/>');
+    });
+    if (res.status === 'optimal') {
+      svg.push('<circle cx="' + r2(X(ox)) + '" cy="' + r2(Y(oy)) + '" r="9" fill="#faff69" stroke="#0a0a0a" stroke-width="2"/>');
+      svg.push(optLabel);
+    }
+
+    // 坐标轴
+    svg.push('<line x1="' + ML + '" y1="' + (MT + ph) + '" x2="' + (ML + pw) + '" y2="' + (MT + ph) + '" stroke="#3a3a3a" stroke-width="1.5"/>');
+    svg.push('<line x1="' + ML + '" y1="' + MT + '" x2="' + ML + '" y2="' + (MT + ph) + '" stroke="#3a3a3a" stroke-width="1.5"/>');
+    svg.push(axisLabels.join(''));
+    svg.push('<text x="' + (ML + pw) + '" y="' + (MT + ph + 38) + '" text-anchor="end" font-size="12" fill="#faff69" font-weight="600">' + esc(reg.vx) + '</text>');
+    svg.push('<text x="' + (ML - 46) + '" y="' + (MT + 4) + '" font-size="12" fill="#faff69" font-weight="600">' + esc(reg.vy) + '</text>');
+
+    $('#geo-svg').innerHTML = svg.join('');
+    $('#geo-sub').textContent = reg.vertices.length + ' 个顶点' + (reg.unbounded ? ' · 可行域无界,图中已按取值范围裁剪' : ' · 有界凸多边形') +
+      (uniq.length > 1 ? ' · 单纯形走过 ' + (uniq.length - 1) + ' 步' : '');
+
+    // 顶点表（图上可能重叠/被裁,表里给精确读数）
+    var best = null;
+    if (res.status === 'optimal') {
+      reg.vertices.forEach(function (v) {
+        var isOpt = Math.abs(v.x - (res.values[reg.vx] || 0)) < 1e-6 && Math.abs(v.y - (res.values[reg.vy] || 0)) < 1e-6;
+        if (isOpt) best = v;
+      });
+    }
+    reg.vertices.slice().sort(function (a, b) { return (b.obj - a.obj) * (model.sense === 'max' ? 1 : -1); }).forEach(function (v, i) {
+      var tight = [];
+      model.constraints.forEach(function (c) {
+        var lhs = (c.coeffs[reg.vx] || 0) * v.x + (c.coeffs[reg.vy] || 0) * v.y;
+        if (Math.abs(lhs - c.rhs) < 1e-7) tight.push(c.name);
+      });
+      if (Math.abs(v.x) < 1e-9) tight.push(reg.vx + '=0');
+      if (Math.abs(v.y) < 1e-9) tight.push(reg.vy + '=0');
+      var tr = document.createElement('tr');
+      var isOpt = best && Math.abs(v.x - best.x) < 1e-9 && Math.abs(v.y - best.y) < 1e-9;
+      if (isOpt) tr.className = 'hot';
+      tr.innerHTML = '<td class="name">V' + (i + 1) + (isOpt ? ' <span class="tag on">最优</span>' : '') + '</td>' +
+        '<td>' + fmt(v.x, 4) + '</td><td>' + fmt(v.y, 4) + '</td>' +
+        '<td class="' + (isOpt ? 'num-y' : '') + '">' + fmt(v.obj, 4) + '</td>' +
+        '<td class="dim" style="font-family:var(--sans)">' + esc(tight.join(' · ') || '—') + '</td>';
+      vt.appendChild(tr);
+    });
+  }
+
+  // 直线 a·x+b·y=c 与矩形 [0,xmax]×[0,ymax] 的可见线段
+  function clipLine(a, b, c, xmax, ymax) {
+    var pts = [];
+    function push(x, y) {
+      if (x < -1e-7 || x > xmax + 1e-7 || y < -1e-7 || y > ymax + 1e-7) return;
+      for (var i = 0; i < pts.length; i++) if (Math.abs(pts[i][0] - x) < 1e-9 && Math.abs(pts[i][1] - y) < 1e-9) return;
+      pts.push([x, y]);
+    }
+    if (Math.abs(b) > 1e-12) { push(0, c / b); push(xmax, (c - a * xmax) / b); }
+    if (Math.abs(a) > 1e-12) { push(c / a, 0); push((c - b * ymax) / a, ymax); }
+    if (pts.length < 2) return null;
+    var best = null;
+    for (var i = 0; i < pts.length; i++) for (var j = i + 1; j < pts.length; j++) {
+      var d = Math.hypot(pts[i][0] - pts[j][0], pts[i][1] - pts[j][1]);
+      if (!best || d > best.d) best = { d: d, p: [pts[i], pts[j]] };
+    }
+    return best && best.d > 1e-9 ? best.p : null;
+  }
+
+  /* ───────── 分支定界 ───────── */
+  function renderBnB(res, model) {
+    var na = $('#bnb-na'), card = $('#bnb-card');
+    var tb = $('#bnb-table').querySelector('tbody'); tb.innerHTML = '';
+    var info = res.integer;
+    if (!info || !info.used) {
+      na.hidden = false; card.hidden = true;
+      na.textContent = '当前模型没有整数变量,直接由单纯形法一次求解,不需要分支定界。想看这一页,给某个变量加上 int 或 bin 声明(比如「背包选品」示例)。';
+      return;
+    }
+    na.hidden = true; card.hidden = false;
+    var stats = [
+      ['探索节点', info.explored],
+      ['线性松弛界', info.relaxObj == null ? '—' : fmt(info.relaxObj, 4)],
+      ['整数最优值', res.status === 'optimal' ? fmt(res.objective, 4) : '无解'],
+      ['整数间隙', info.gap == null ? '—' : fmt(info.gap, 4)]
+    ];
+    $('#bnb-stats').innerHTML = stats.map(function (s) {
+      return '<div><div class="stat-num">' + s[1] + '</div><div class="stat-label">' + s[0] + '</div></div>';
+    }).join('');
+    info.nodes.forEach(function (nd) {
+      var tr = document.createElement('tr');
+      if (nd.status === '整数解') tr.className = 'hot';
+      var tagCls = nd.status === '整数解' ? 'tag em' : (nd.status === '不可行' || nd.status === '界剪枝') ? 'tag rose' : 'tag';
+      tr.innerHTML = '<td class="name">#' + nd.id + '</td>' +
+        '<td class="dim">' + nd.depth + '</td>' +
+        '<td class="name" style="font-family:var(--mono);text-align:left;padding-left:' + (12 + Math.min(nd.depth, 6) * 18) + 'px">' + esc(nd.label) + '</td>' +
+        '<td>' + (nd.obj == null ? '—' : fmt(nd.obj, 4)) + '</td>' +
+        '<td><span class="' + tagCls + '">' + esc(nd.status) + '</span></td>';
+      tb.appendChild(tr);
+    });
+    if (info.truncated) {
+      var tr2 = document.createElement('tr');
+      tr2.innerHTML = '<td colspan="5" class="dim">搜索节点已达上限,结果可能不是全局最优</td>';
+      tb.appendChild(tr2);
+    }
+  }
+
+  function esc(s) {
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  /* ───────── 模型库 ───────── */
+  function refreshSaved() {
+    var models = readStore(LSM, {});
+    var names = Object.keys(models);
+    var sel = $('#saved');
+    sel.innerHTML = '<option value="">我的模型库(' + names.length + ')</option>' +
+      names.map(function (n) { return '<option value="' + esc(n) + '">' + esc(n) + '</option>'; }).join('');
+  }
+
+  /* ───────── 事件绑定 ───────── */
+  function switchTab(id) {
+    ['p-solution', 'p-tableau', 'p-sens', 'p-geo', 'p-bnb'].forEach(function (p) {
+      $('#' + p).hidden = (p !== id);
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (b) {
+      var on = b.dataset.panel === id;
+      b.setAttribute('aria-selected', on ? 'true' : 'false');
+      b.tabIndex = on ? 0 : -1;
+    });
+    document.body.dataset.tab = id;
+  }
+
+  document.querySelectorAll('.tab').forEach(function (b) {
+    b.addEventListener('click', function () { switchTab(b.dataset.panel); });
+  });
+  $('#tabs').addEventListener('keydown', function (e) {
+    if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+    var tabs = Array.prototype.slice.call(document.querySelectorAll('.tab'));
+    var i = tabs.indexOf(document.activeElement);
+    if (i < 0) return;
+    e.preventDefault();
+    var next = tabs[(i + (e.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length];
+    next.focus(); switchTab(next.dataset.panel);
+  });
+
+  $('#btn-solve').addEventListener('click', solveNow);
+  $('#btn-solve2').addEventListener('click', solveNow);
+  $('#src').addEventListener('input', syncGutter);
+  $('#src').addEventListener('scroll', function () { $('#gutter').scrollTop = $('#src').scrollTop; });
+  $('#src').addEventListener('keydown', function (e) {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); solveNow(); }
+  });
+  $('#step-prev').addEventListener('click', function () { if (state.step > 0) { state.step--; renderTableau(state.res); } });
+  $('#step-next').addEventListener('click', function () {
+    var src = tableauSource(state.res);
+    var n = src && src.iterations ? src.iterations.length : 0;
+    if (state.step < n - 1) { state.step++; renderTableau(state.res); }
+  });
+  [['tg-path', 'path'], ['tg-contour', 'contour'], ['tg-lines', 'lines']].forEach(function (pair) {
+    $('#' + pair[0]).addEventListener('click', function () {
+      opts[pair[1]] = !opts[pair[1]];
+      this.setAttribute('aria-pressed', opts[pair[1]] ? 'true' : 'false');
+      if (state.model && state.res) renderGeo(state.model, state.res);
+    });
+  });
+  $('#preset').addEventListener('change', function () {
+    var i = Number(this.value);
+    if (this.value === '' || !PRESETS[i]) return;
+    $('#src').value = PRESETS[i][1];
+    this.value = '';
+    solveNow();
+  });
+  $('#btn-save').addEventListener('click', function () {
+    var name = prompt('给这个模型起个名字:', '模型 ' + (Object.keys(readStore(LSM, {})).length + 1));
+    if (!name) return;
+    var models = readStore(LSM, {});
+    models[name] = $('#src').value;
+    writeStore(LSM, models);
+    refreshSaved();
+    $('#saved').value = name;
+  });
+  $('#saved').addEventListener('change', function () {
+    if (!this.value) return;
+    var models = readStore(LSM, {});
+    if (models[this.value] != null) { $('#src').value = models[this.value]; solveNow(); }
+  });
+  $('#btn-del').addEventListener('click', function () {
+    var sel = $('#saved');
+    if (!sel.value) return;
+    var models = readStore(LSM, {});
+    delete models[sel.value];
+    writeStore(LSM, models);
+    refreshSaved();
+  });
+
+  /* ───────── 启动 ───────── */
+  $('#preset').innerHTML = '<option value="">载入示例模型…</option>' +
+    PRESETS.map(function (p, i) { return '<option value="' + i + '">' + esc(p[0]) + '</option>'; }).join('');
+  refreshSaved();
+  $('#src').value = readStore(LSK, null) || PRESETS[0][1];
+  syncGutter();
+  solveNow();
+  switchTab('p-solution');
+})();
+</script>
+</body>
+</html>
