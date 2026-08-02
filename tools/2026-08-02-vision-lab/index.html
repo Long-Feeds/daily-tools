@@ -1,0 +1,2061 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>视觉工作台 · Vision Lab — 每日工具集</title>
+<meta name="description" content="浏览器内的图像处理流水线:卷积核、高斯/中值滤波、Sobel 与 Canny 边缘、大津法二值化、形态学、直方图均衡、误差扩散抖动 —— 16 个算子可任意串联,图片不上传。">
+<style>
+/* 顶部守卫:作者 CSS 与 UA 的 [hidden] 同特异性,靠后即胜出,必须显式压过 */
+[hidden]{display:none!important}
+
+:root{
+  --ink:#000; --canvas:#fff; --hair:#e6e6e6; --hair2:#f1f1f1; --soft:#f7f7f5;
+  --lime:#dceeb1; --lilac:#c5b0f4; --cream:#f4ecd6; --pink:#efd4d4; --mint:#c8e6cd; --coral:#f3c9b6;
+  --navy:#1f1d3d; --magenta:#ff3d8b; --ok:#1ea64a;
+  --sans:"Inter","SF Pro Display",system-ui,-apple-system,"Helvetica Neue",Arial,"PingFang SC","Microsoft Yahei",sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:var(--canvas); color:var(--ink); font-family:var(--sans);
+  font-size:16px; font-weight:330; line-height:1.45; letter-spacing:-.14px;
+  font-feature-settings:"kern" 1; -webkit-font-smoothing:antialiased;
+}
+h1,h2,h3,p,dl,dd,ol,ul{margin:0}
+ol,ul{list-style:none;padding:0}
+button,input,select,textarea{font:inherit;color:inherit}
+a{color:inherit}
+:focus-visible{outline:2px solid var(--ink); outline-offset:2px; border-radius:4px}
+
+.vl-eyebrow{font-family:var(--mono);font-size:12px;font-weight:400;line-height:1;letter-spacing:.6px;text-transform:uppercase}
+.vl-mono{font-family:var(--mono);font-variant-numeric:tabular-nums;letter-spacing:.2px}
+
+/* ── 顶栏 ───────────────────────────────────────────── */
+.vl-skip{position:absolute;left:-9999px;top:0}
+.vl-skip:focus{left:12px;top:8px;z-index:50;background:var(--ink);color:#fff;padding:8px 16px;border-radius:50px}
+
+.vl-nav{
+  position:sticky;top:0;z-index:30;background:var(--canvas);border-bottom:1px solid var(--hair);
+  min-height:56px;display:flex;align-items:center;gap:16px;padding:8px 24px;flex-wrap:wrap;
+}
+.vl-back{font-size:14px;font-weight:480;text-decoration:none;white-space:nowrap}
+.vl-back:hover{text-decoration:underline}
+.vl-brand{display:flex;align-items:baseline;gap:10px;min-width:0}
+.vl-wordmark{font-size:20px;font-weight:700;letter-spacing:-.4px;white-space:nowrap}
+.vl-brand .vl-eyebrow{white-space:nowrap}
+.vl-navspace{flex:1 1 auto;min-width:8px}
+.vl-navacts{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+
+.vl-pill{
+  border:1px solid var(--ink);background:var(--canvas);color:var(--ink);
+  font-size:14px;font-weight:480;letter-spacing:-.1px;
+  border-radius:50px;padding:8px 18px;cursor:pointer;white-space:nowrap;
+  transition:background .12s ease,color .12s ease;
+}
+.vl-pill:hover{background:var(--soft)}
+.vl-pill.vl-primary{background:var(--ink);color:#fff;border-color:var(--ink)}
+.vl-pill.vl-primary:hover{background:#222}
+.vl-pill.vl-sm{font-size:13px;padding:6px 14px}
+.vl-pill[aria-pressed="true"]{background:var(--ink);color:#fff}
+.vl-pill:disabled{opacity:.35;cursor:not-allowed}
+
+/* 黑色细带:Figma 的 marquee strip,这里承载算法名册(静态,不做动画) */
+.vl-strip{
+  background:var(--ink);color:#fff;min-height:36px;display:flex;align-items:center;gap:0;
+  overflow:hidden;padding:0 24px;
+}
+.vl-strip ul{display:flex;gap:0;flex-wrap:wrap;align-items:center}
+.vl-strip li{font-family:var(--mono);font-size:11px;letter-spacing:.6px;text-transform:uppercase;padding:4px 0}
+.vl-strip li::after{content:"·";padding:0 12px;opacity:.5}
+.vl-strip li:last-child::after{content:""}
+
+/* ── 三栏工作区 ─────────────────────────────────────── */
+.vl-shell{
+  display:grid;grid-template-columns:288px minmax(0,1fr) 316px;gap:20px;
+  padding:20px 24px 0;align-items:start;
+}
+.vl-shell>*{min-width:0}
+.vl-panel{border:1px solid var(--hair);border-radius:24px;padding:18px;background:var(--canvas)}
+.vl-ph{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 0 10px}
+.vl-ph+.vl-ph{margin-top:22px}
+.vl-ph h2{font-size:13px;font-family:var(--mono);font-weight:400;letter-spacing:.6px;text-transform:uppercase}
+.vl-ph .vl-count{font-family:var(--mono);font-size:11px;letter-spacing:.4px}
+
+/* 便利贴式的步骤卡(FigJam 语汇) */
+.vl-notes{display:flex;flex-direction:column;gap:8px}
+.vl-note{border-radius:6px;padding:0;position:relative;display:flex;align-items:stretch;overflow:hidden}
+.vl-note[data-fam="色调"]{background:var(--cream)}
+.vl-note[data-fam="颜色"]{background:var(--pink)}
+.vl-note[data-fam="滤波"]{background:var(--lilac)}
+.vl-note[data-fam="边缘"]{background:var(--mint)}
+.vl-note[data-fam="形态"]{background:var(--lime)}
+.vl-note[data-fam="风格"]{background:var(--coral)}
+.vl-note.vl-sel{box-shadow:inset 0 0 0 2px var(--ink)}
+.vl-note.vl-muted .vl-notename,.vl-note.vl-muted .vl-notesum{text-decoration:line-through}
+.vl-notemain{flex:1 1 auto;min-width:0;text-align:left;background:none;border:0;padding:10px 4px 10px 12px;cursor:pointer;display:block}
+.vl-noteidx{font-family:var(--mono);font-size:10px;letter-spacing:.6px;display:block;margin-bottom:2px}
+.vl-notename{font-size:15px;font-weight:540;letter-spacing:-.2px;display:block;line-height:1.25}
+.vl-notesum{font-family:var(--mono);font-size:11px;letter-spacing:.2px;display:block;margin-top:3px;word-break:break-word}
+.vl-noteacts{display:flex;flex-direction:column;justify-content:center;gap:2px;padding:6px 6px 6px 0}
+.vl-icon{
+  width:24px;height:24px;min-width:24px;border-radius:9999px;border:0;background:rgba(255,255,255,.62);
+  cursor:pointer;display:grid;place-items:center;font-size:11px;line-height:1;padding:0;
+}
+.vl-icon:hover{background:#fff}
+.vl-icon[aria-pressed="false"]{background:rgba(255,255,255,.28)}
+.vl-empty{font-size:14px;font-weight:330;padding:14px;border:1px dashed var(--hair);border-radius:8px}
+
+.vl-addwrap{position:relative;margin-top:10px}
+.vl-menu{
+  position:absolute;left:0;right:0;top:calc(100% + 8px);z-index:20;background:var(--canvas);
+  border:1px solid var(--hair);border-radius:8px;padding:12px;box-shadow:0 4px 16px rgba(0,0,0,.06);
+  max-height:340px;overflow:auto;
+}
+.vl-menugrp{margin-bottom:10px}
+.vl-menugrp:last-child{margin-bottom:0}
+.vl-menugrp h3{font-family:var(--mono);font-size:10px;letter-spacing:.6px;text-transform:uppercase;font-weight:400;margin-bottom:6px}
+.vl-chips{display:flex;flex-wrap:wrap;gap:6px}
+.vl-chip{
+  border:1px solid transparent;border-radius:6px;padding:5px 10px;font-size:13px;font-weight:480;
+  letter-spacing:-.1px;cursor:pointer;background:var(--soft);
+}
+.vl-chip:hover{border-color:var(--ink)}
+.vl-chip[data-fam="色调"]{background:var(--cream)}
+.vl-chip[data-fam="颜色"]{background:var(--pink)}
+.vl-chip[data-fam="滤波"]{background:var(--lilac)}
+.vl-chip[data-fam="边缘"]{background:var(--mint)}
+.vl-chip[data-fam="形态"]{background:var(--lime)}
+.vl-chip[data-fam="风格"]{background:var(--coral)}
+.vl-rowbtns{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+
+/* ── 舞台 ───────────────────────────────────────────── */
+.vl-stage{border:1px solid var(--hair);border-radius:24px;padding:18px;background:var(--canvas)}
+.vl-stagebar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+.vl-seg{display:flex;gap:4px;background:var(--soft);border-radius:50px;padding:4px}
+.vl-seg button{
+  border:0;background:none;border-radius:50px;padding:5px 14px;font-size:13px;font-weight:480;cursor:pointer;white-space:nowrap;
+}
+.vl-seg button[aria-pressed="true"]{background:var(--ink);color:#fff}
+.vl-meta{font-family:var(--mono);font-size:11px;letter-spacing:.3px;margin-left:auto;text-align:right}
+
+.vl-canvasbox{
+  position:relative;border-radius:8px;overflow:hidden;background:var(--soft);
+  aspect-ratio:var(--ar,3/2);touch-action:none;
+}
+.vl-canvasbox.vl-side{aspect-ratio:auto;display:flex;gap:10px;background:none}
+.vl-pane{position:absolute;inset:0;overflow:hidden}
+.vl-canvasbox.vl-side .vl-pane{position:relative;inset:auto;flex:1 1 0;min-width:0;border-radius:8px;background:var(--soft)}
+.vl-pane canvas{display:block;width:100%;height:100%;object-fit:contain;image-rendering:auto}
+.vl-canvasbox.vl-side .vl-pane canvas{height:auto}
+#vl-paneB{clip-path:inset(0 calc(100% - var(--split,50%)) 0 0)}
+.vl-canvasbox.vl-side #vl-paneB,.vl-canvasbox.vl-after #vl-paneB{clip-path:none}
+.vl-tag{
+  position:absolute;top:10px;font-family:var(--mono);font-size:10px;letter-spacing:.6px;text-transform:uppercase;
+  background:var(--canvas);border-radius:50px;padding:4px 10px;pointer-events:none;
+}
+#vl-paneA .vl-tag{left:10px}
+#vl-paneB .vl-tag{right:10px}
+.vl-divider{
+  position:absolute;top:0;bottom:0;left:var(--split,50%);width:2px;background:var(--ink);
+  transform:translateX(-1px);cursor:ew-resize;z-index:5;border:0;padding:0;
+}
+.vl-divider::after{
+  content:"";position:absolute;left:50%;top:50%;width:40px;height:40px;margin:-20px 0 0 -20px;
+  border-radius:9999px;background:var(--canvas);border:2px solid var(--ink);
+}
+.vl-divider::before{
+  content:"◄ ►";position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:1;
+  font-size:9px;letter-spacing:1px;line-height:1;
+}
+.vl-drop{
+  position:absolute;inset:0;z-index:8;display:grid;place-items:center;background:rgba(197,176,244,.86);
+  font-size:20px;font-weight:540;letter-spacing:-.26px;
+}
+.vl-trace{display:flex;gap:6px;flex-wrap:wrap;margin-top:14px}
+.vl-tracechip{
+  border:1px solid var(--hair);border-radius:6px;padding:5px 10px;font-family:var(--mono);font-size:11px;letter-spacing:.2px;
+}
+.vl-tracechip.vl-off{border-style:dashed}
+.vl-tracechip b{font-family:var(--sans);font-weight:540;font-size:12px;letter-spacing:-.1px}
+.vl-note-hint{font-size:13px;font-weight:330;margin-top:12px}
+
+/* ── 参数面板 ───────────────────────────────────────── */
+.vl-field{margin-bottom:14px}
+.vl-field:last-child{margin-bottom:0}
+.vl-flabel{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:5px}
+.vl-flabel span:first-child{font-size:13px;font-weight:480}
+.vl-fval{font-family:var(--mono);font-size:11px;letter-spacing:.3px}
+input[type=range]{
+  -webkit-appearance:none;appearance:none;width:100%;height:22px;background:none;margin:0;cursor:pointer;
+  accent-color:var(--ink);
+}
+input[type=range]::-webkit-slider-runnable-track{height:2px;background:var(--ink)}
+input[type=range]::-webkit-slider-thumb{
+  -webkit-appearance:none;appearance:none;width:16px;height:16px;border-radius:9999px;background:var(--canvas);
+  border:2px solid var(--ink);margin-top:-7px;
+}
+input[type=range]::-moz-range-track{height:2px;background:var(--ink)}
+input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:9999px;background:var(--canvas);border:2px solid var(--ink)}
+select,input[type=text],textarea{
+  width:100%;background:var(--canvas);border:1px solid var(--hair);border-radius:8px;padding:9px 12px;
+  font-size:14px;font-weight:330;
+}
+select:focus,input:focus,textarea:focus{border-color:var(--ink);outline:none}
+.vl-switch{
+  border:1px solid var(--ink);background:var(--canvas);border-radius:50px;padding:6px 14px;font-size:13px;font-weight:480;cursor:pointer;
+}
+.vl-switch[aria-pressed="true"]{background:var(--ink);color:#fff}
+.vl-kernel{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin-bottom:8px}
+.vl-kernel input{
+  width:100%;text-align:center;padding:7px 2px;font-family:var(--mono);font-size:12px;
+  border:1px solid var(--hair);border-radius:6px;background:var(--canvas);
+}
+.vl-hint{font-size:12px;font-weight:330;margin-top:-4px}
+
+#vl-hist{width:100%;height:118px;display:block;border:1px solid var(--hair);border-radius:8px;background:var(--canvas)}
+.vl-histrow{display:flex;gap:5px;margin-top:8px;flex-wrap:wrap}
+.vl-histrow button{
+  border:1px solid var(--hair);background:var(--canvas);border-radius:50px;padding:3px 11px;
+  font-family:var(--mono);font-size:10px;letter-spacing:.6px;cursor:pointer;
+}
+.vl-histrow button[aria-pressed="true"]{background:var(--ink);color:#fff;border-color:var(--ink)}
+
+.vl-readout{display:grid;grid-template-columns:1fr auto;gap:5px 10px;font-size:13px}
+.vl-readout dt{font-weight:330}
+.vl-readout dd{font-family:var(--mono);font-size:12px;letter-spacing:.2px;text-align:right;font-variant-numeric:tabular-nums}
+
+/* ── 色块小节(Figma 招牌) ─────────────────────────── */
+.vl-wrap{max-width:1280px;margin:0 auto;padding:0 24px}
+.vl-block{border-radius:24px;padding:48px}
+.vl-block.vl-lime{background:var(--lime)}
+.vl-block h2{font-size:40px;font-weight:340;line-height:1.08;letter-spacing:-.7px;margin:10px 0 14px;max-width:22ch}
+.vl-block p{font-size:20px;font-weight:330;line-height:1.4;letter-spacing:-.14px;max-width:60ch}
+.vl-facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px;margin-top:32px}
+.vl-fact{background:rgba(255,255,255,.72);border-radius:8px;padding:16px}
+.vl-fact b{display:block;font-size:28px;font-weight:700;letter-spacing:-.6px;line-height:1.1;font-variant-numeric:tabular-nums}
+.vl-fact span{display:block;font-family:var(--mono);font-size:10px;letter-spacing:.6px;text-transform:uppercase;margin-top:6px}
+
+.vl-ref{margin-top:96px}
+.vl-ref h2{font-size:26px;font-weight:540;letter-spacing:-.26px;margin-bottom:6px}
+.vl-reftiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(232px,1fr));gap:12px;margin-top:20px}
+.vl-tile{background:var(--soft);border-radius:8px;padding:16px}
+.vl-tile b{font-size:15px;font-weight:540;letter-spacing:-.2px}
+.vl-tile .vl-eyebrow{display:block;margin-bottom:8px}
+.vl-tile p{font-size:13px;font-weight:330;line-height:1.42;margin-top:5px}
+
+.vl-foot{margin-top:96px;border-top:1px solid var(--hair2);padding:32px 0 64px}
+.vl-foot .vl-wordmark{display:block;margin-bottom:10px}
+.vl-foot p{font-family:var(--mono);font-size:12px;letter-spacing:.6px;line-height:1.5}
+
+/* ── 响应式 ─────────────────────────────────────────── */
+@media (max-width:1180px){
+  .vl-shell{grid-template-columns:264px minmax(0,1fr)}
+  .vl-right{grid-column:1 / -1}
+  .vl-rightgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:20px}
+}
+@media (max-width:820px){
+  .vl-shell{grid-template-columns:minmax(0,1fr);padding:16px 16px 0;gap:16px}
+  .vl-right{grid-column:auto}
+  .vl-wrap{padding:0 16px}
+  .vl-block{padding:28px 20px}
+  .vl-block h2{font-size:30px;letter-spacing:-.5px}
+  .vl-block p{font-size:17px}
+  .vl-nav{padding:8px 16px;gap:10px}
+  .vl-strip{padding:0 16px}
+  .vl-canvasbox.vl-side{flex-direction:column}
+  .vl-meta{margin-left:0;text-align:left;width:100%}
+  .vl-ref,.vl-foot{margin-top:56px}
+}
+@media (max-width:430px){
+  .vl-wordmark{font-size:17px}
+  .vl-brand .vl-eyebrow{display:none}
+  .vl-pill{padding:7px 14px;font-size:13px}
+  .vl-fact b{font-size:24px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<a class="vl-skip" href="#vl-main">跳到工作区</a>
+
+<header class="vl-nav">
+  <a class="vl-back" href="../../">← 返回工具集</a>
+  <span class="vl-brand">
+    <span class="vl-wordmark">Vision Lab</span>
+    <span class="vl-eyebrow">视觉工作台 / 图像处理流水线</span>
+  </span>
+  <span class="vl-navspace"></span>
+  <span class="vl-navacts">
+    <button class="vl-pill vl-sm" id="vl-sample-scene" data-sample="scene">风景</button>
+    <button class="vl-pill vl-sm" id="vl-sample-doc" data-sample="doc">文档</button>
+    <button class="vl-pill vl-sm" id="vl-sample-chart" data-sample="chart">色卡</button>
+    <button class="vl-pill" id="vl-open">导入图片</button>
+    <button class="vl-pill vl-primary" id="vl-export">导出 PNG</button>
+    <input type="file" id="vl-file" accept="image/*" hidden>
+  </span>
+</header>
+
+<div class="vl-strip">
+  <ul>
+    <li>Sobel</li><li>Canny NMS</li><li>Otsu</li><li>Huang median</li><li>Separable gaussian</li>
+    <li>Floyd–Steinberg</li><li>Morphology</li><li>Histogram EQ</li><li>0 upload</li>
+  </ul>
+</div>
+
+<main class="vl-shell" id="vl-main">
+  <!-- 左:流水线 -->
+  <aside class="vl-panel vl-left">
+    <div class="vl-ph"><h2>流水线</h2><span class="vl-count" id="vl-stepcount">0 步</span></div>
+    <ol class="vl-notes" id="vl-steps" aria-label="处理步骤"></ol>
+    <p class="vl-empty" id="vl-stepsempty" hidden>还没有处理步骤。点下面的按钮加一个,或直接选一个配方。</p>
+
+    <div class="vl-addwrap">
+      <button class="vl-pill" id="vl-add" aria-expanded="false" aria-controls="vl-opmenu">+ 添加处理</button>
+      <div class="vl-menu" id="vl-opmenu" hidden></div>
+    </div>
+
+    <div class="vl-ph"><h2>配方</h2></div>
+    <div class="vl-chips" id="vl-presets"></div>
+
+    <div class="vl-ph"><h2>我的配方</h2><span class="vl-count" id="vl-recipecount">0</span></div>
+    <div class="vl-chips" id="vl-recipes"></div>
+    <p class="vl-empty" id="vl-recipesempty" hidden>保存后会留在这台设备上,下次打开还在。</p>
+    <div class="vl-rowbtns">
+      <button class="vl-pill vl-sm" id="vl-saverecipe">保存当前配方</button>
+      <button class="vl-pill vl-sm" id="vl-clear">清空</button>
+    </div>
+    <details style="margin-top:14px">
+      <summary style="font-size:13px;font-weight:480;cursor:pointer">配方 JSON</summary>
+      <textarea id="vl-json" rows="5" spellcheck="false" style="margin-top:8px;font-family:var(--mono);font-size:11px"></textarea>
+      <div class="vl-rowbtns"><button class="vl-pill vl-sm" id="vl-applyjson">应用 JSON</button></div>
+      <p class="vl-hint" id="vl-jsonmsg" hidden></p>
+    </details>
+  </aside>
+
+  <!-- 中:画布 -->
+  <section class="vl-stage">
+    <div class="vl-stagebar">
+      <div class="vl-seg" role="group" aria-label="对比方式">
+        <button data-mode="split" aria-pressed="true">滑动对比</button>
+        <button data-mode="side" aria-pressed="false">并排</button>
+        <button data-mode="after" aria-pressed="false">仅结果</button>
+      </div>
+      <div class="vl-meta" id="vl-meta">—</div>
+    </div>
+
+    <div class="vl-canvasbox" id="vl-box">
+      <div class="vl-pane" id="vl-paneA"><canvas id="vl-before" width="900" height="600"></canvas><span class="vl-tag">原图</span></div>
+      <div class="vl-pane" id="vl-paneB"><canvas id="vl-after" width="900" height="600"></canvas><span class="vl-tag">结果</span></div>
+      <button class="vl-divider" id="vl-divider" role="slider" aria-label="对比分界位置" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50"></button>
+      <div class="vl-drop" id="vl-drop" hidden>松手即可载入这张图</div>
+    </div>
+
+    <div class="vl-trace" id="vl-trace"></div>
+    <p class="vl-note-hint">拖一张图片进来、粘贴剪贴板里的图,或者用上面的三张内置示例图。所有像素运算都在本页完成,图片不会离开这台设备。</p>
+  </section>
+
+  <!-- 右:参数 + 直方图 + 读数 -->
+  <aside class="vl-panel vl-right">
+    <div class="vl-rightgrid">
+      <div>
+        <div class="vl-ph"><h2>参数</h2><span class="vl-count" id="vl-paramop">未选中</span></div>
+        <p class="vl-empty" id="vl-paramsempty">在左边点一个步骤来调参数。</p>
+        <div id="vl-params" hidden></div>
+      </div>
+      <div>
+        <div class="vl-ph"><h2>直方图</h2><span class="vl-count">结果</span></div>
+        <canvas id="vl-hist" width="560" height="236"></canvas>
+        <div class="vl-histrow" id="vl-chans">
+          <button data-ch="0" aria-pressed="false">R</button>
+          <button data-ch="1" aria-pressed="false">G</button>
+          <button data-ch="2" aria-pressed="false">B</button>
+          <button data-ch="3" aria-pressed="true">亮度</button>
+        </div>
+      </div>
+      <div>
+        <div class="vl-ph"><h2>读数</h2></div>
+        <dl class="vl-readout" id="vl-readout"></dl>
+      </div>
+    </div>
+  </aside>
+</main>
+
+<div class="vl-wrap" style="margin-top:40px">
+  <section class="vl-block vl-lime">
+    <p class="vl-eyebrow">How it works</p>
+    <h2>每一个像素都是在你这台设备上算出来的</h2>
+    <p>没有服务器、没有上传、没有第三方图像库 —— 16 个算子全部是这一页里手写的数值代码:可分离高斯核、Huang 滑动直方图中值、Sobel 差分、Canny 的非极大值抑制与滞后阈值、大津法的类间方差、Floyd–Steinberg 误差扩散。改一个滑块,整条流水线就在本地重跑一遍。</p>
+    <div class="vl-facts" id="vl-factgrid"></div>
+  </section>
+
+  <section class="vl-ref">
+    <p class="vl-eyebrow">Operators</p>
+    <h2>16 个算子,任意串联</h2>
+    <div class="vl-reftiles" id="vl-reftiles"></div>
+  </section>
+
+  <footer class="vl-foot">
+    <span class="vl-wordmark">Vision Lab</span>
+    <p>视觉工作台 · 每日工具集 · 纯前端 · 零上传 · 设计语言 Figma</p>
+  </footer>
+</div>
+
+<script>
+/* <<<ENGINE */
+/* Vision Lab 图像处理引擎 —— 纯函数、零依赖、不碰 DOM。
+   图像表示: { w, h, data: Uint8ClampedArray(w*h*4) } (RGBA)
+   每个算子都返回新图像; alpha 通道一律原样保留。 */
+const VLEngine = (() => {
+  'use strict';
+
+  const clamp255 = (v) => (v < 0 ? 0 : v > 255 ? 255 : v);
+  const clampi = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
+  const now = () => (typeof performance !== 'undefined' && performance.now ? performance.now() : 0);
+
+  function makeImage(w, h) { return { w, h, data: new Uint8ClampedArray(w * h * 4) }; }
+  function clone(img) { return { w: img.w, h: img.h, data: new Uint8ClampedArray(img.data) }; }
+
+  function mapRGB(img, lut) {
+    const o = clone(img), d = o.data;
+    for (let i = 0; i < d.length; i += 4) { d[i] = lut[d[i]]; d[i + 1] = lut[d[i + 1]]; d[i + 2] = lut[d[i + 2]]; }
+    return o;
+  }
+
+  const LUMA = { r: 0.2126, g: 0.7152, b: 0.0722 };
+  const luma = (r, g, b) => LUMA.r * r + LUMA.g * g + LUMA.b * b;
+
+  /* ── 色调 ───────────────────────────────────────────── */
+
+  function grayscale(img, p) {
+    const mode = (p && p.mode) || '709';
+    const o = clone(img), d = o.data;
+    for (let i = 0; i < d.length; i += 4) {
+      const r = d[i], g = d[i + 1], b = d[i + 2];
+      let v;
+      if (mode === '601') v = 0.299 * r + 0.587 * g + 0.114 * b;
+      else if (mode === 'avg') v = (r + g + b) / 3;
+      else if (mode === 'r') v = r;
+      else if (mode === 'g') v = g;
+      else if (mode === 'b') v = b;
+      else v = luma(r, g, b);
+      const q = Math.round(v);
+      d[i] = q; d[i + 1] = q; d[i + 2] = q;
+    }
+    return o;
+  }
+
+  function brightnessContrast(img, p) {
+    const b = (+(p && p.brightness) || 0) * 2.55;
+    const c = clampi((+(p && p.contrast) || 0) * 2.55, -255, 255);
+    const f = (259 * (c + 255)) / (255 * (259 - c));
+    const lut = new Uint8ClampedArray(256);
+    for (let v = 0; v < 256; v++) lut[v] = clamp255(Math.round(f * (v + b - 128) + 128));
+    return mapRGB(img, lut);
+  }
+
+  function levels(img, p) {
+    p = p || {};
+    const inB = +p.inB || 0;
+    const inW = p.inW === undefined ? 255 : +p.inW;
+    const g = Math.max(0.05, p.gamma === undefined ? 1 : +p.gamma);
+    const outB = +p.outB || 0;
+    const outW = p.outW === undefined ? 255 : +p.outW;
+    const span = Math.max(1e-6, inW - inB);
+    const lut = new Uint8ClampedArray(256);
+    for (let v = 0; v < 256; v++) {
+      let t = (v - inB) / span;
+      t = t < 0 ? 0 : t > 1 ? 1 : t;
+      t = Math.pow(t, 1 / g);
+      lut[v] = clamp255(Math.round(outB + t * (outW - outB)));
+    }
+    return mapRGB(img, lut);
+  }
+
+  function invert(img) {
+    const lut = new Uint8ClampedArray(256);
+    for (let v = 0; v < 256; v++) lut[v] = 255 - v;
+    return mapRGB(img, lut);
+  }
+
+  function equalize(img, p) {
+    const mode = (p && p.mode) || 'luma';
+    const { w, h, data } = img, n = w * h;
+    const o = clone(img), d = o.data;
+    const buildMap = (hist) => {
+      const cdf = new Float64Array(256);
+      let acc = 0, cdfMin = -1;
+      for (let i = 0; i < 256; i++) {
+        acc += hist[i];
+        cdf[i] = acc;
+        if (cdfMin < 0 && hist[i] > 0) cdfMin = acc;
+      }
+      if (cdfMin < 0) cdfMin = 0;
+      const denom = Math.max(1e-9, n - cdfMin);
+      const map = new Uint8ClampedArray(256);
+      for (let i = 0; i < 256; i++) map[i] = clamp255(Math.round((255 * (cdf[i] - cdfMin)) / denom));
+      return map;
+    };
+    if (mode === 'rgb') {
+      const hs = [new Float64Array(256), new Float64Array(256), new Float64Array(256)];
+      for (let i = 0; i < data.length; i += 4) { hs[0][data[i]]++; hs[1][data[i + 1]]++; hs[2][data[i + 2]]++; }
+      const maps = hs.map(buildMap);
+      for (let i = 0; i < d.length; i += 4) { d[i] = maps[0][d[i]]; d[i + 1] = maps[1][d[i + 1]]; d[i + 2] = maps[2][d[i + 2]]; }
+    } else {
+      const hist = new Float64Array(256);
+      for (let i = 0; i < data.length; i += 4) hist[Math.round(luma(data[i], data[i + 1], data[i + 2]))]++;
+      const map = buildMap(hist);
+      for (let i = 0; i < d.length; i += 4) {
+        const l = Math.round(luma(data[i], data[i + 1], data[i + 2]));
+        const f = l === 0 ? map[0] : map[l] / l;
+        if (l === 0) { d[i] = map[0]; d[i + 1] = map[0]; d[i + 2] = map[0]; }
+        else { d[i] = clamp255(Math.round(data[i] * f)); d[i + 1] = clamp255(Math.round(data[i + 1] * f)); d[i + 2] = clamp255(Math.round(data[i + 2] * f)); }
+      }
+    }
+    return o;
+  }
+
+  /* ── 颜色 ───────────────────────────────────────────── */
+
+  function rgb2hsl(r, g, b) {
+    r /= 255; g /= 255; b /= 255;
+    const mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2, dd = mx - mn;
+    let h = 0, s = 0;
+    if (dd > 0) {
+      s = l > 0.5 ? dd / (2 - mx - mn) : dd / (mx + mn);
+      if (mx === r) h = ((g - b) / dd + (g < b ? 6 : 0)) / 6;
+      else if (mx === g) h = ((b - r) / dd + 2) / 6;
+      else h = ((r - g) / dd + 4) / 6;
+    }
+    return [h, s, l];
+  }
+  function hue2rgb(p, q, t) {
+    if (t < 0) t += 1; if (t > 1) t -= 1;
+    if (t < 1 / 6) return p + (q - p) * 6 * t;
+    if (t < 1 / 2) return q;
+    if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+    return p;
+  }
+  function hsl2rgb(h, s, l) {
+    if (s <= 0) { const v = l * 255; return [v, v, v]; }
+    const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+    const p = 2 * l - q;
+    return [hue2rgb(p, q, h + 1 / 3) * 255, hue2rgb(p, q, h) * 255, hue2rgb(p, q, h - 1 / 3) * 255];
+  }
+
+  function hueSat(img, p) {
+    p = p || {};
+    const dh = (+p.hue || 0) / 360, sat = +p.sat || 0, lig = +p.light || 0;
+    const o = clone(img), d = o.data;
+    for (let i = 0; i < d.length; i += 4) {
+      let [h, s, l] = rgb2hsl(d[i], d[i + 1], d[i + 2]);
+      h = (h + dh) % 1; if (h < 0) h += 1;
+      s = sat >= 0 ? s + (1 - s) * (sat / 100) : s * (1 + sat / 100);
+      l = lig >= 0 ? l + (1 - l) * (lig / 100) : l * (1 + lig / 100);
+      const rgb = hsl2rgb(h, clampi(s, 0, 1), clampi(l, 0, 1));
+      d[i] = Math.round(rgb[0]); d[i + 1] = Math.round(rgb[1]); d[i + 2] = Math.round(rgb[2]);
+    }
+    return o;
+  }
+
+  /* ── 滤波 ───────────────────────────────────────────── */
+
+  function convolve(img, p) {
+    p = p || {};
+    const k = (p.kernel && p.kernel.length ? p.kernel : [0, 0, 0, 0, 1, 0, 0, 0, 0]).map(Number);
+    const n = Math.round(Math.sqrt(k.length));
+    if (n * n !== k.length || n % 2 === 0) throw new Error('卷积核必须是奇数边长的方阵');
+    const r = (n - 1) / 2;
+    let div = p.divisor;
+    if (div === undefined || div === null || div === '' || !isFinite(+div) || +div === 0) {
+      let s = 0; for (let i = 0; i < k.length; i++) s += k[i];
+      div = Math.abs(s) < 1e-9 ? 1 : s;
+    } else div = +div;
+    const bias = +p.bias || 0;
+    const { w, h, data } = img, o = makeImage(w, h), od = o.data;
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        let ar = 0, ag = 0, ab = 0;
+        for (let ky = -r; ky <= r; ky++) {
+          const sy = clampi(y + ky, 0, h - 1) * w;
+          for (let kx = -r; kx <= r; kx++) {
+            const kv = k[(ky + r) * n + (kx + r)];
+            if (kv === 0) continue;
+            const si = (sy + clampi(x + kx, 0, w - 1)) * 4;
+            ar += data[si] * kv; ag += data[si + 1] * kv; ab += data[si + 2] * kv;
+          }
+        }
+        const oi = (y * w + x) * 4;
+        od[oi] = clamp255(Math.round(ar / div + bias));
+        od[oi + 1] = clamp255(Math.round(ag / div + bias));
+        od[oi + 2] = clamp255(Math.round(ab / div + bias));
+        od[oi + 3] = data[oi + 3];
+      }
+    }
+    return o;
+  }
+
+  function gaussKernel(sigma) {
+    const s = Math.max(0.05, +sigma || 0);
+    const r = Math.max(1, Math.ceil(s * 3));
+    const k = new Float64Array(2 * r + 1);
+    let sum = 0;
+    for (let i = -r; i <= r; i++) { const v = Math.exp(-(i * i) / (2 * s * s)); k[i + r] = v; sum += v; }
+    for (let i = 0; i < k.length; i++) k[i] /= sum;
+    return { k, r };
+  }
+
+  /* 可分离高斯:两趟一维卷积,趟间保持浮点精度 */
+  function gaussianBlur(img, p) {
+    const sigma = +(p && p.sigma) || 0;
+    if (sigma <= 0.02) return clone(img);
+    const { w, h, data } = img;
+    const { k, r } = gaussKernel(sigma);
+    const tmp = new Float64Array(w * h * 3);
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        let ar = 0, ag = 0, ab = 0;
+        for (let i = -r; i <= r; i++) {
+          const si = (y * w + clampi(x + i, 0, w - 1)) * 4, kv = k[i + r];
+          ar += data[si] * kv; ag += data[si + 1] * kv; ab += data[si + 2] * kv;
+        }
+        const ti = (y * w + x) * 3;
+        tmp[ti] = ar; tmp[ti + 1] = ag; tmp[ti + 2] = ab;
+      }
+    }
+    const o = makeImage(w, h), od = o.data;
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        let ar = 0, ag = 0, ab = 0;
+        for (let i = -r; i <= r; i++) {
+          const ti = (clampi(y + i, 0, h - 1) * w + x) * 3, kv = k[i + r];
+          ar += tmp[ti] * kv; ag += tmp[ti + 1] * kv; ab += tmp[ti + 2] * kv;
+        }
+        const oi = (y * w + x) * 4;
+        od[oi] = clamp255(Math.round(ar)); od[oi + 1] = clamp255(Math.round(ag)); od[oi + 2] = clamp255(Math.round(ab));
+        od[oi + 3] = data[oi + 3];
+      }
+    }
+    return o;
+  }
+
+  /* 中值滤波 —— Huang 滑动直方图:窗口右移只换进/换出一列,
+     中位数游标增量修正,复杂度与半径近似无关(朴素排序在 r=3 时会慢 20 倍)。 */
+  function median(img, p) {
+    const r = Math.max(1, Math.round(+(p && p.radius) || 1));
+    const { w, h, data } = img, o = makeImage(w, h), od = o.data;
+    const n = (2 * r + 1) * (2 * r + 1);
+    const th = (n + 1) >> 1; /* 中位数 = 第 th 小(1-based) */
+    const hist = new Int32Array(256);
+    for (let c = 0; c < 3; c++) {
+      for (let y = 0; y < h; y++) {
+        hist.fill(0);
+        for (let ky = -r; ky <= r; ky++) {
+          const sy = clampi(y + ky, 0, h - 1) * w;
+          for (let kx = -r; kx <= r; kx++) hist[data[(sy + clampi(kx, 0, w - 1)) * 4 + c]]++;
+        }
+        let mdn = 0, lt = 0;
+        while (lt + hist[mdn] < th) { lt += hist[mdn]; mdn++; }
+        od[(y * w) * 4 + c] = mdn;
+        for (let x = 1; x < w; x++) {
+          const xo = clampi(x - 1 - r, 0, w - 1), xi = clampi(x + r, 0, w - 1);
+          for (let ky = -r; ky <= r; ky++) {
+            const sy = clampi(y + ky, 0, h - 1) * w;
+            const vo = data[(sy + xo) * 4 + c];
+            hist[vo]--; if (vo < mdn) lt--;
+            const vi = data[(sy + xi) * 4 + c];
+            hist[vi]++; if (vi < mdn) lt++;
+          }
+          while (lt + hist[mdn] < th) { lt += hist[mdn]; mdn++; }
+          while (lt >= th) { mdn--; lt -= hist[mdn]; }
+          od[(y * w + x) * 4 + c] = mdn;
+        }
+      }
+    }
+    for (let i = 3; i < od.length; i += 4) od[i] = data[i];
+    return o;
+  }
+
+  function unsharp(img, p) {
+    p = p || {};
+    const amount = (+p.amount === undefined || isNaN(+p.amount) ? 100 : +p.amount) / 100;
+    const thr = +p.threshold || 0;
+    const blur = gaussianBlur(img, { sigma: p.sigma === undefined ? 1 : +p.sigma });
+    const o = clone(img), d = o.data, bd = blur.data, sd = img.data;
+    for (let i = 0; i < d.length; i += 4) {
+      for (let c = 0; c < 3; c++) {
+        const diff = sd[i + c] - bd[i + c];
+        d[i + c] = Math.abs(diff) < thr ? sd[i + c] : clamp255(Math.round(sd[i + c] + amount * diff));
+      }
+    }
+    return o;
+  }
+
+  /* ── 边缘 ───────────────────────────────────────────── */
+
+  /* 灰度平面(浮点亮度),供梯度算子使用 */
+  function lumaPlane(img) {
+    const { w, h, data } = img, out = new Float64Array(w * h);
+    for (let i = 0, j = 0; i < data.length; i += 4, j++) out[j] = luma(data[i], data[i + 1], data[i + 2]);
+    return out;
+  }
+
+  /* Sobel 原始梯度(未量化),这是可被独立校验的核心 */
+  function sobelRaw(img) {
+    const { w, h } = img, L = lumaPlane(img);
+    const gx = new Float64Array(w * h), gy = new Float64Array(w * h), mag = new Float64Array(w * h);
+    const at = (x, y) => L[clampi(y, 0, h - 1) * w + clampi(x, 0, w - 1)];
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const tl = at(x - 1, y - 1), t = at(x, y - 1), tr = at(x + 1, y - 1);
+        const l = at(x - 1, y), rr = at(x + 1, y);
+        const bl = at(x - 1, y + 1), b = at(x, y + 1), br = at(x + 1, y + 1);
+        const a = -tl + tr - 2 * l + 2 * rr - bl + br;
+        const c = -tl - 2 * t - tr + bl + 2 * b + br;
+        const i = y * w + x;
+        gx[i] = a; gy[i] = c; mag[i] = Math.sqrt(a * a + c * c);
+      }
+    }
+    return { w, h, gx, gy, mag };
+  }
+
+  function sobel(img, p) {
+    const out = (p && p.output) || 'mag';
+    const scale = +(p && p.scale) || 1;
+    const g = sobelRaw(img);
+    const { w, h } = img, o = makeImage(w, h), od = o.data;
+    let peak = 0;
+    for (let i = 0; i < g.mag.length; i++) if (g.mag[i] > peak) peak = g.mag[i];
+    for (let i = 0, j = 0; i < od.length; i += 4, j++) {
+      let v;
+      if (out === 'x') v = g.gx[j] / 4 * scale + 128;
+      else if (out === 'y') v = g.gy[j] / 4 * scale + 128;
+      else if (out === 'dir') v = ((Math.atan2(g.gy[j], g.gx[j]) + Math.PI) / (2 * Math.PI)) * 255;
+      else v = (g.mag[j] / 4) * scale;
+      const q = clamp255(Math.round(v));
+      od[i] = q; od[i + 1] = q; od[i + 2] = q; od[i + 3] = img.data[i + 3];
+    }
+    return { img: o, note: '梯度峰值 ' + peak.toFixed(1) };
+  }
+
+  /* Canny: 高斯 → 梯度 → 非极大值抑制 → 双阈值 → 滞后连接 */
+  function cannyMask(img, p) {
+    p = p || {};
+    const sigma = p.sigma === undefined ? 1.4 : +p.sigma;
+    let low = p.low === undefined ? 20 : +p.low;
+    let high = p.high === undefined ? 60 : +p.high;
+    if (high < low) { const t = high; high = low; low = t; }
+    const sm = gaussianBlur(img, { sigma });
+    const g = sobelRaw(sm);
+    const { w, h, gx, gy, mag } = g;
+    const nms = new Float64Array(w * h);
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const i = y * w + x, m = mag[i];
+        if (m === 0) continue;
+        let ang = (Math.atan2(gy[i], gx[i]) * 180) / Math.PI;
+        if (ang < 0) ang += 180;
+        let dx, dy;
+        if (ang < 22.5 || ang >= 157.5) { dx = 1; dy = 0; }
+        else if (ang < 67.5) { dx = 1; dy = 1; }
+        else if (ang < 112.5) { dx = 0; dy = 1; }
+        else { dx = 1; dy = -1; }
+        const ax = x + dx, ay = y + dy, bx = x - dx, by = y - dy;
+        const ma = ax >= 0 && ax < w && ay >= 0 && ay < h ? mag[ay * w + ax] : 0;
+        const mb = bx >= 0 && bx < w && by >= 0 && by < h ? mag[by * w + bx] : 0;
+        /* 一侧严格、一侧非严格:对称脊(边缘正落在两像素之间)时只留一个,
+           否则并列极大值会双双存活,边被抽成 2px 宽 —— 细化就白做了。 */
+        if (m > ma && m >= mb) nms[i] = m;
+      }
+    }
+    /* 阈值以 0..255 的梯度强度表达: mag/4 与 Sobel 显示口径一致 */
+    const mask = new Uint8Array(w * h);
+    const stack = [];
+    for (let i = 0; i < mask.length; i++) {
+      const s = nms[i] / 4;
+      if (s >= high) { mask[i] = 255; stack.push(i); }
+      else if (s >= low) mask[i] = 1;
+    }
+    while (stack.length) {
+      const i = stack.pop(), x = i % w, y = (i / w) | 0;
+      for (let ky = -1; ky <= 1; ky++) {
+        for (let kx = -1; kx <= 1; kx++) {
+          const nx = x + kx, ny = y + ky;
+          if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+          const j = ny * w + nx;
+          if (mask[j] === 1) { mask[j] = 255; stack.push(j); }
+        }
+      }
+    }
+    for (let i = 0; i < mask.length; i++) if (mask[i] !== 255) mask[i] = 0;
+    return { w, h, mask };
+  }
+
+  function canny(img, p) {
+    const { w, h, mask } = cannyMask(img, p);
+    const o = makeImage(w, h), od = o.data;
+    let n = 0;
+    for (let i = 0, j = 0; i < od.length; i += 4, j++) {
+      const v = mask[j];
+      if (v) n++;
+      od[i] = v; od[i + 1] = v; od[i + 2] = v; od[i + 3] = 255;
+    }
+    const pct = (100 * n) / (w * h);
+    return { img: o, note: '边缘 ' + n.toLocaleString('en-US') + ' px (' + pct.toFixed(2) + '%)' };
+  }
+
+  /* ── 二值 / 形态学 ──────────────────────────────────── */
+
+  function lumaHistogram(img) {
+    const hist = new Float64Array(256), d = img.data;
+    for (let i = 0; i < d.length; i += 4) hist[Math.round(luma(d[i], d[i + 1], d[i + 2]))]++;
+    return hist;
+  }
+
+  /* 大津法: 最大化类间方差 */
+  function otsu(hist) {
+    let total = 0, sum = 0;
+    for (let i = 0; i < 256; i++) { total += hist[i]; sum += i * hist[i]; }
+    if (total === 0) return 128;
+    let sumB = 0, wB = 0, best = -1, t = 0;
+    for (let i = 0; i < 256; i++) {
+      wB += hist[i];
+      if (wB === 0) continue;
+      const wF = total - wB;
+      if (wF === 0) break;
+      sumB += i * hist[i];
+      const mB = sumB / wB, mF = (sum - sumB) / wF;
+      const between = wB * wF * (mB - mF) * (mB - mF);
+      if (between > best) { best = between; t = i; }
+    }
+    return t;
+  }
+
+  /* 方窗局部均值:先横后竖两趟滑动求和,每像素 O(1),与朴素二维方窗逐点等价
+     (二维方窗均值本身可分解为「行均值再列均值」)。自适应二值化就靠它。 */
+  function localMean(L, w, h, r) {
+    const n = 2 * r + 1, tmp = new Float64Array(w * h), out = new Float64Array(w * h);
+    for (let y = 0; y < h; y++) {
+      const row = y * w;
+      let s = 0;
+      for (let k = -r; k <= r; k++) s += L[row + clampi(k, 0, w - 1)];
+      tmp[row] = s / n;
+      for (let x = 1; x < w; x++) {
+        s -= L[row + clampi(x - 1 - r, 0, w - 1)];
+        s += L[row + clampi(x + r, 0, w - 1)];
+        tmp[row + x] = s / n;
+      }
+    }
+    for (let x = 0; x < w; x++) {
+      let s = 0;
+      for (let k = -r; k <= r; k++) s += tmp[clampi(k, 0, h - 1) * w + x];
+      out[x] = s / n;
+      for (let y = 1; y < h; y++) {
+        s -= tmp[clampi(y - 1 - r, 0, h - 1) * w + x];
+        s += tmp[clampi(y + r, 0, h - 1) * w + x];
+        out[y * w + x] = s / n;
+      }
+    }
+    return out;
+  }
+
+  function threshold(img, p) {
+    p = p || {};
+    const method = p.method || 'otsu';
+    const inv = !!p.invert;
+    const { w, h, data } = img, o = makeImage(w, h), od = o.data;
+    let on = 0, note;
+    if (method === 'adaptive') {
+      const r = Math.max(1, Math.round(+p.win || 15));
+      const c = +p.bias || 0;
+      const L = lumaPlane(img);
+      const mean = localMean(L, w, h, r);
+      for (let i = 0, j = 0; i < data.length; i += 4, j++) {
+        let v = L[j] > mean[j] - c ? 255 : 0;
+        if (inv) v = 255 - v;
+        if (v) on++;
+        od[i] = v; od[i + 1] = v; od[i + 2] = v; od[i + 3] = data[i + 3];
+      }
+      note = '自适应 · 窗口 ' + (2 * r + 1) + '×' + (2 * r + 1) + ' · 偏置 ' + c;
+    } else {
+      const auto = method === 'otsu';
+      const t = auto ? otsu(lumaHistogram(img)) : clampi(Math.round(+p.t || 0), 0, 255);
+      for (let i = 0; i < data.length; i += 4) {
+        let v = Math.round(luma(data[i], data[i + 1], data[i + 2])) > t ? 255 : 0;
+        if (inv) v = 255 - v;
+        if (v) on++;
+        od[i] = v; od[i + 1] = v; od[i + 2] = v; od[i + 3] = data[i + 3];
+      }
+      note = (auto ? 'Otsu 阈值 ' : '阈值 ') + t;
+    }
+    const pct = (100 * on) / (w * h);
+    return { img: o, note: note + ' · 前景 ' + pct.toFixed(1) + '%' };
+  }
+
+  function morphology(img, p) {
+    p = p || {};
+    const op = p.op || 'erode';
+    const r = Math.max(1, Math.round(+p.radius || 1));
+    /* 方形结构元的 min/max 可分离:先横一趟再竖一趟,与二维窗口逐点等价 */
+    const rank = (src, take) => {
+      const { w, h, data } = src, mid = new Uint8ClampedArray(w * h * 4), o = makeImage(w, h), od = o.data;
+      const isMin = take === 'min';
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          const oi = (y * w + x) * 4;
+          for (let c = 0; c < 3; c++) {
+            let acc = isMin ? 255 : 0;
+            for (let kx = -r; kx <= r; kx++) {
+              const v = data[(y * w + clampi(x + kx, 0, w - 1)) * 4 + c];
+              if (isMin ? v < acc : v > acc) acc = v;
+            }
+            mid[oi + c] = acc;
+          }
+          mid[oi + 3] = data[oi + 3];
+        }
+      }
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          const oi = (y * w + x) * 4;
+          for (let c = 0; c < 3; c++) {
+            let acc = isMin ? 255 : 0;
+            for (let ky = -r; ky <= r; ky++) {
+              const v = mid[(clampi(y + ky, 0, h - 1) * w + x) * 4 + c];
+              if (isMin ? v < acc : v > acc) acc = v;
+            }
+            od[oi + c] = acc;
+          }
+          od[oi + 3] = data[oi + 3];
+        }
+      }
+      return o;
+    };
+    if (op === 'erode') return rank(img, 'min');
+    if (op === 'dilate') return rank(img, 'max');
+    if (op === 'open') return rank(rank(img, 'min'), 'max');
+    return rank(rank(img, 'max'), 'min');
+  }
+
+  /* ── 风格 ───────────────────────────────────────────── */
+
+  const BAYER4 = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+
+  function dither(img, p) {
+    p = p || {};
+    const mode = p.mode || 'floyd';
+    const levels = Math.max(2, Math.round(+p.levels || 2));
+    const mono = p.mono === undefined ? true : !!p.mono;
+    const src = mono ? grayscale(img, { mode: '709' }) : clone(img);
+    const { w, h } = src;
+    const step = 255 / (levels - 1);
+    const quant = (v) => clampi(Math.round(Math.round(v / step) * step), 0, 255);
+    const o = makeImage(w, h), od = o.data;
+    if (mode === 'bayer') {
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          const i = (y * w + x) * 4;
+          const bias = (BAYER4[(y % 4) * 4 + (x % 4)] / 16 - 0.5) * step;
+          for (let c = 0; c < 3; c++) od[i + c] = quant(src.data[i + c] + bias);
+          od[i + 3] = src.data[i + 3];
+        }
+      }
+      return o;
+    }
+    const buf = new Float64Array(w * h * 3);
+    for (let i = 0, j = 0; i < src.data.length; i += 4, j += 3) { buf[j] = src.data[i]; buf[j + 1] = src.data[i + 1]; buf[j + 2] = src.data[i + 2]; }
+    const spread = mode === 'atkinson'
+      ? [[1, 0, 1 / 8], [2, 0, 1 / 8], [-1, 1, 1 / 8], [0, 1, 1 / 8], [1, 1, 1 / 8], [0, 2, 1 / 8]]
+      : [[1, 0, 7 / 16], [-1, 1, 3 / 16], [0, 1, 5 / 16], [1, 1, 1 / 16]];
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const bi = (y * w + x) * 3, oi = (y * w + x) * 4;
+        for (let c = 0; c < 3; c++) {
+          const old = buf[bi + c], nv = quant(old), err = old - nv;
+          od[oi + c] = nv;
+          for (const [dx, dy, f] of spread) {
+            const nx = x + dx, ny = y + dy;
+            if (nx < 0 || nx >= w || ny >= h) continue;
+            buf[(ny * w + nx) * 3 + c] += err * f;
+          }
+        }
+        od[oi + 3] = src.data[oi + 3];
+      }
+    }
+    return o;
+  }
+
+  function pixelate(img, p) {
+    const s = Math.max(2, Math.round(+(p && p.size) || 8));
+    const { w, h, data } = img, o = makeImage(w, h), od = o.data;
+    for (let by = 0; by < h; by += s) {
+      for (let bx = 0; bx < w; bx += s) {
+        const x1 = Math.min(w, bx + s), y1 = Math.min(h, by + s);
+        let sr = 0, sg = 0, sb = 0, n = 0;
+        for (let y = by; y < y1; y++) for (let x = bx; x < x1; x++) { const i = (y * w + x) * 4; sr += data[i]; sg += data[i + 1]; sb += data[i + 2]; n++; }
+        const r = Math.round(sr / n), g = Math.round(sg / n), b = Math.round(sb / n);
+        for (let y = by; y < y1; y++) for (let x = bx; x < x1; x++) { const i = (y * w + x) * 4; od[i] = r; od[i + 1] = g; od[i + 2] = b; od[i + 3] = data[i + 3]; }
+      }
+    }
+    return o;
+  }
+
+  /* ── 统计 ───────────────────────────────────────────── */
+
+  function stats(img) {
+    const d = img.data, n = img.w * img.h;
+    const sum = [0, 0, 0], sq = [0, 0, 0], mn = [255, 255, 255], mx = [0, 0, 0];
+    const hist = [new Float64Array(256), new Float64Array(256), new Float64Array(256), new Float64Array(256)];
+    let onlyBinary = true, bright = 0;
+    for (let i = 0; i < d.length; i += 4) {
+      for (let c = 0; c < 3; c++) {
+        const v = d[i + c];
+        sum[c] += v; sq[c] += v * v;
+        if (v < mn[c]) mn[c] = v;
+        if (v > mx[c]) mx[c] = v;
+        hist[c][v]++;
+        if (v !== 0 && v !== 255) onlyBinary = false;
+      }
+      const l = Math.round(luma(d[i], d[i + 1], d[i + 2]));
+      hist[3][l]++;
+      if (l > 127) bright++;
+    }
+    const mean = sum.map((s) => s / n);
+    const std = sq.map((s, c) => Math.sqrt(Math.max(0, s / n - mean[c] * mean[c])));
+    let lsum = 0, lsq = 0;
+    for (let v = 0; v < 256; v++) { lsum += v * hist[3][v]; lsq += v * v * hist[3][v]; }
+    const lmean = lsum / n;
+    return {
+      n, mean, std, min: mn, max: mx, hist,
+      lumaMean: lmean,
+      lumaStd: Math.sqrt(Math.max(0, lsq / n - lmean * lmean)),
+      binary: onlyBinary,
+      brightRatio: bright / n,
+    };
+  }
+
+  /* ── 算子注册表 ────────────────────────────────────── */
+
+  const KERNEL_PRESETS = {
+    identity: [0, 0, 0, 0, 1, 0, 0, 0, 0],
+    sharpen: [0, -1, 0, -1, 5, -1, 0, -1, 0],
+    box: [1, 1, 1, 1, 1, 1, 1, 1, 1],
+    emboss: [-2, -1, 0, -1, 1, 1, 0, 1, 2],
+    laplace: [0, 1, 0, 1, -4, 1, 0, 1, 0],
+    outline: [-1, -1, -1, -1, 8, -1, -1, -1, -1],
+  };
+
+  const OPS = [
+    {
+      id: 'gray', name: '灰度', family: '色调', hint: '按亮度权重合并 RGB',
+      params: [{ k: 'mode', t: 'select', label: '权重', d: '709', options: [['709', 'Rec.709 亮度'], ['601', 'Rec.601 亮度'], ['avg', '三通道平均'], ['r', '仅红通道'], ['g', '仅绿通道'], ['b', '仅蓝通道']] }],
+      apply: grayscale,
+    },
+    {
+      id: 'bc', name: '亮度对比度', family: '色调', hint: '先平移再围绕中灰拉伸',
+      params: [
+        { k: 'brightness', t: 'range', label: '亮度', min: -100, max: 100, step: 1, d: 0 },
+        { k: 'contrast', t: 'range', label: '对比度', min: -100, max: 100, step: 1, d: 0 },
+      ],
+      apply: brightnessContrast,
+    },
+    {
+      id: 'levels', name: '色阶', family: '色调', hint: '黑白场重映射 + 中间调伽马',
+      params: [
+        { k: 'inB', t: 'range', label: '输入黑场', min: 0, max: 254, step: 1, d: 0 },
+        { k: 'inW', t: 'range', label: '输入白场', min: 1, max: 255, step: 1, d: 255 },
+        { k: 'gamma', t: 'range', label: '伽马', min: 0.1, max: 3, step: 0.05, d: 1 },
+        { k: 'outB', t: 'range', label: '输出黑场', min: 0, max: 255, step: 1, d: 0 },
+        { k: 'outW', t: 'range', label: '输出白场', min: 0, max: 255, step: 1, d: 255 },
+      ],
+      apply: levels,
+    },
+    { id: 'invert', name: '反相', family: '色调', hint: '255 − v', params: [], apply: invert },
+    {
+      id: 'equalize', name: '直方图均衡', family: '色调', hint: '按累计分布把直方图摊平',
+      params: [{ k: 'mode', t: 'select', label: '通道', d: 'luma', options: [['luma', '亮度(保色相)'], ['rgb', 'RGB 各自均衡']] }],
+      apply: equalize,
+    },
+    {
+      id: 'hsl', name: '色相饱和度', family: '颜色', hint: 'RGB↔HSL 往返调整',
+      params: [
+        { k: 'hue', t: 'range', label: '色相', min: -180, max: 180, step: 1, d: 0, unit: '°' },
+        { k: 'sat', t: 'range', label: '饱和度', min: -100, max: 100, step: 1, d: 0 },
+        { k: 'light', t: 'range', label: '明度', min: -100, max: 100, step: 1, d: 0 },
+      ],
+      apply: hueSat,
+    },
+    {
+      id: 'conv', name: '卷积核', family: '滤波', hint: '3×3 自定义核,边缘按最近像素延拓',
+      params: [
+        { k: 'kernel', t: 'kernel', label: '核', d: KERNEL_PRESETS.sharpen },
+        { k: 'bias', t: 'range', label: '偏置', min: -128, max: 128, step: 1, d: 0 },
+      ],
+      apply: convolve,
+    },
+    {
+      id: 'blur', name: '高斯模糊', family: '滤波', hint: '可分离一维核,两趟卷积',
+      params: [{ k: 'sigma', t: 'range', label: 'σ', min: 0, max: 8, step: 0.1, d: 1.5 }],
+      apply: (img, p) => ({ img: gaussianBlur(img, p), note: '核半径 ' + gaussKernel(Math.max(0.05, +p.sigma || 0)).r + ' px' }),
+    },
+    {
+      id: 'median', name: '中值滤波', family: '滤波', hint: '窗口内取中位数,保边去椒盐',
+      params: [{ k: 'radius', t: 'range', label: '半径', min: 1, max: 4, step: 1, d: 1, unit: ' px' }],
+      apply: (img, p) => ({ img: median(img, p), note: '窗口 ' + (2 * Math.round(+p.radius || 1) + 1) + '×' + (2 * Math.round(+p.radius || 1) + 1) }),
+    },
+    {
+      id: 'unsharp', name: '锐化蒙版', family: '滤波', hint: '原图 + 强度×(原图 − 模糊)',
+      params: [
+        { k: 'sigma', t: 'range', label: '半径 σ', min: 0.2, max: 5, step: 0.1, d: 1.2 },
+        { k: 'amount', t: 'range', label: '强度', min: 0, max: 300, step: 5, d: 120, unit: '%' },
+        { k: 'threshold', t: 'range', label: '阈值', min: 0, max: 60, step: 1, d: 0 },
+      ],
+      apply: unsharp,
+    },
+    {
+      id: 'sobel', name: 'Sobel 梯度', family: '边缘', hint: '3×3 差分算子,输出梯度幅值',
+      params: [
+        { k: 'output', t: 'select', label: '输出', d: 'mag', options: [['mag', '梯度幅值'], ['x', '水平分量 Gx'], ['y', '垂直分量 Gy'], ['dir', '梯度方向']] },
+        { k: 'scale', t: 'range', label: '增益', min: 0.2, max: 4, step: 0.1, d: 1 },
+      ],
+      apply: sobel,
+    },
+    {
+      id: 'canny', name: 'Canny 边缘', family: '边缘', hint: '高斯 → 梯度 → 非极大值抑制 → 滞后阈值',
+      params: [
+        { k: 'sigma', t: 'range', label: '平滑 σ', min: 0.4, max: 4, step: 0.1, d: 1.4 },
+        { k: 'low', t: 'range', label: '低阈值', min: 1, max: 120, step: 1, d: 12 },
+        { k: 'high', t: 'range', label: '高阈值', min: 2, max: 200, step: 1, d: 32 },
+      ],
+      apply: canny,
+    },
+    {
+      id: 'threshold', name: '二值化', family: '形态', hint: '全局阈值(手动/大津法)或局部自适应阈值',
+      params: [
+        { k: 'method', t: 'select', label: '方式', d: 'otsu', options: [['otsu', '大津法(自动全局)'], ['manual', '手动阈值'], ['adaptive', '自适应(局部均值)']] },
+        { k: 't', t: 'range', label: '阈值', min: 0, max: 255, step: 1, d: 128, when: (p) => p.method === 'manual' },
+        { k: 'win', t: 'range', label: '局部窗口半径', min: 2, max: 40, step: 1, d: 15, unit: ' px', when: (p) => p.method === 'adaptive' },
+        { k: 'bias', t: 'range', label: '偏置 C', min: 0, max: 40, step: 1, d: 8, when: (p) => p.method === 'adaptive' },
+        { k: 'invert', t: 'toggle', label: '前景取反', d: false },
+      ],
+      apply: threshold,
+    },
+    {
+      id: 'morph', name: '形态学', family: '形态', hint: '窗口内取最小/最大值',
+      params: [
+        { k: 'op', t: 'select', label: '运算', d: 'erode', options: [['erode', '腐蚀'], ['dilate', '膨胀'], ['open', '开运算(去噪点)'], ['close', '闭运算(补孔洞)']] },
+        { k: 'radius', t: 'range', label: '结构元半径', min: 1, max: 4, step: 1, d: 1, unit: ' px' },
+      ],
+      apply: (img, p) => ({ img: morphology(img, p), note: '结构元 ' + (2 * Math.round(+p.radius || 1) + 1) + '×' + (2 * Math.round(+p.radius || 1) + 1) }),
+    },
+    {
+      id: 'dither', name: '抖动', family: '风格', hint: '误差扩散 / 有序抖动量化',
+      params: [
+        { k: 'mode', t: 'select', label: '算法', d: 'floyd', options: [['floyd', 'Floyd–Steinberg'], ['atkinson', 'Atkinson'], ['bayer', 'Bayer 4×4 有序']] },
+        { k: 'levels', t: 'range', label: '每通道级数', min: 2, max: 8, step: 1, d: 2 },
+        { k: 'mono', t: 'toggle', label: '先转灰度', d: true },
+      ],
+      apply: dither,
+    },
+    {
+      id: 'pixelate', name: '像素化', family: '风格', hint: '按块取平均色',
+      params: [{ k: 'size', t: 'range', label: '块边长', min: 2, max: 48, step: 1, d: 10, unit: ' px' }],
+      apply: pixelate,
+    },
+  ];
+
+  const OP_BY_ID = {};
+  for (const op of OPS) OP_BY_ID[op.id] = op;
+
+  function defaultParams(id) {
+    const op = OP_BY_ID[id];
+    if (!op) throw new Error('未知算子: ' + id);
+    const p = {};
+    for (const q of op.params) p[q.k] = Array.isArray(q.d) ? q.d.slice() : q.d;
+    return p;
+  }
+
+  /* 流水线:按顺序把启用的算子作用在图像上,记录每步耗时与读数 */
+  function runPipeline(img, steps) {
+    let cur = img;
+    const trace = [];
+    for (const st of steps || []) {
+      const op = OP_BY_ID[st.op];
+      if (!op) continue;
+      if (st.on === false) { trace.push({ op: st.op, name: op.name, skipped: true, ms: 0, note: '已停用' }); continue; }
+      const params = Object.assign(defaultParams(st.op), st.params || {});
+      const t0 = now();
+      const r = op.apply(cur, params);
+      const outImg = r && r.data ? r : r.img;
+      const note = r && r.note ? r.note : '';
+      cur = outImg;
+      trace.push({ op: st.op, name: op.name, skipped: false, ms: now() - t0, note });
+    }
+    return { img: cur, trace };
+  }
+
+  /* ── 内置示例图(程序生成,确定性,零外部资源) ────── */
+
+  function mulberry32(a) {
+    return function () {
+      a |= 0; a = (a + 0x6d2b79f5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  function makeSample(kind, w, h) {
+    w = w || 720; h = h || 480;
+    const img = makeImage(w, h), d = img.data;
+    const rnd = mulberry32(kind === 'doc' ? 7 : kind === 'scene' ? 21 : 99);
+    const put = (x, y, r, g, b) => { const i = (y * w + x) * 4; d[i] = r; d[i + 1] = g; d[i + 2] = b; d[i + 3] = 255; };
+
+    if (kind === 'doc') {
+      /* 照明场:左上亮、右下暗(手机翻拍/台灯下的真实扫描件)。
+         墨迹反射率恒定 ⇒ 墨的绝对灰度随照明一起变暗,于是「亮处的纸」比
+         「暗处的墨」还亮 —— 这正是全局阈值必然失手、需要自适应阈值的场景。 */
+      const lightAt = (x, y) => {
+        const dx = (x - w * 0.28) / (w * 0.9), dy = (y - h * 0.2) / (h * 1.1);
+        return Math.max(38, 252 - 190 * Math.sqrt(dx * dx + dy * dy));
+      };
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          const v = lightAt(x, y) + (rnd() - 0.5) * 8;
+          put(x, y, v, v, v * 0.985);
+        }
+      }
+      let y = 44;
+      const lineH = 13, gap = 9;
+      while (y < h - 60) {
+        const indent = 52 + (rnd() < 0.25 ? 26 : 0);
+        let x = indent;
+        const right = w - 52 - (rnd() < 0.3 ? 90 : 0);
+        while (x < right) {
+          const wordW = 16 + Math.floor(rnd() * 46);
+          const end = Math.min(right, x + wordW);
+          for (let yy = y; yy < y + lineH; yy++) {
+            for (let xx = x; xx < end; xx++) {
+              const i = (yy * w + xx) * 4;
+              const ink = lightAt(xx, yy) * 0.17 + rnd() * 6;
+              d[i] = ink; d[i + 1] = ink; d[i + 2] = ink + 4;
+            }
+          }
+          x = end + 8 + Math.floor(rnd() * 8);
+        }
+        y += lineH + gap;
+        if (rnd() < 0.12) y += 16;
+      }
+      /* 少量椒盐噪点,给中值滤波一个真实靶子 */
+      for (let k = 0; k < 900; k++) {
+        const x = Math.floor(rnd() * w), yy = Math.floor(rnd() * h), v = rnd() < 0.5 ? 0 : 255;
+        put(x, yy, v, v, v);
+      }
+      return gaussianBlur(img, { sigma: 0.5 });
+    }
+
+    if (kind === 'scene') {
+      for (let y = 0; y < h; y++) {
+        const t = y / h;
+        for (let x = 0; x < w; x++) {
+          let r, g, b;
+          if (t < 0.62) {
+            const k = t / 0.62;
+            r = 44 + 168 * k; g = 76 + 138 * k; b = 128 + 82 * k;
+          } else {
+            const k = (t - 0.62) / 0.38;
+            r = 32 + 26 * k; g = 58 + 30 * k; b = 74 + 26 * k;
+          }
+          put(x, y, r, g, b);
+        }
+      }
+      const sx = w * 0.72, sy = h * 0.3, sr = h * 0.085;
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+        const dd = Math.hypot(x - sx, y - sy);
+        if (dd < sr) { put(x, y, 252, 232, 186); }
+        else if (dd < sr * 2.4) {
+          const k = 1 - (dd - sr) / (sr * 1.4), i = (y * w + x) * 4;
+          d[i] = clamp255(d[i] + 70 * k); d[i + 1] = clamp255(d[i + 1] + 54 * k); d[i + 2] = clamp255(d[i + 2] + 24 * k);
+        }
+      }
+      const ridges = [
+        { base: h * 0.66, amp: h * 0.16, freq: 2.1, tone: [58, 66, 78], ph: 0.4 },
+        { base: h * 0.71, amp: h * 0.11, freq: 3.3, tone: [40, 48, 60], ph: 2.1 },
+      ];
+      for (const rg of ridges) {
+        for (let x = 0; x < w; x++) {
+          const yTop = rg.base - rg.amp * (0.6 + 0.4 * Math.sin((x / w) * Math.PI * rg.freq + rg.ph)) * Math.abs(Math.sin((x / w) * Math.PI * 1.7 + rg.ph));
+          for (let y = Math.max(0, Math.round(yTop)); y < h * 0.72; y++) put(x, y, rg.tone[0], rg.tone[1], rg.tone[2]);
+        }
+      }
+      for (let y = Math.round(h * 0.72); y < h; y++) {
+        const k = (y - h * 0.72) / (h * 0.28);
+        for (let x = 0; x < w; x++) {
+          const ripple = Math.sin(x * 0.06 + y * 0.35) * 6 * (1 - k);
+          const i = (y * w + x) * 4;
+          d[i] = clamp255(d[i] + ripple); d[i + 1] = clamp255(d[i + 1] + ripple); d[i + 2] = clamp255(d[i + 2] + ripple * 1.4);
+        }
+      }
+      for (let i = 0; i < d.length; i += 4) {
+        const n = (rnd() - 0.5) * 16;
+        d[i] = clamp255(d[i] + n); d[i + 1] = clamp255(d[i + 1] + n); d[i + 2] = clamp255(d[i + 2] + n);
+      }
+      return img;
+    }
+
+    /* chart: 色带 + 灰阶楼梯 + 圆 + 斜边 + 棋盘 + 噪声块 */
+    const bars = [[229, 57, 53], [251, 192, 45], [67, 160, 71], [30, 136, 229], [142, 68, 173], [0, 172, 193]];
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        let r = 246, g = 246, b = 244;
+        if (y < h * 0.26) {
+          const c = bars[Math.min(bars.length - 1, Math.floor((x / w) * bars.length))];
+          r = c[0]; g = c[1]; b = c[2];
+        } else if (y < h * 0.4) {
+          const stepN = 12, s = Math.floor((x / w) * stepN), v = Math.round((s / (stepN - 1)) * 255);
+          r = v; g = v; b = v;
+        }
+        put(x, y, r, g, b);
+      }
+    }
+    const cx = w * 0.22, cy = h * 0.68, cr = h * 0.2;
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      if (Math.hypot(x - cx, y - cy) < cr) put(x, y, 31, 29, 61);
+    }
+    for (let y = Math.round(h * 0.44); y < h; y++) {
+      for (let x = Math.round(w * 0.42); x < w * 0.66; x++) {
+        if (x - w * 0.42 > (y - h * 0.44) * 0.8) put(x, y, 255, 61, 139);
+      }
+    }
+    const bx0 = Math.round(w * 0.7), by0 = Math.round(h * 0.46), cell = 9;
+    for (let y = by0; y < h * 0.78; y++) {
+      for (let x = bx0; x < w * 0.95; x++) {
+        const on = (Math.floor((x - bx0) / cell) + Math.floor((y - by0) / cell)) % 2 === 0;
+        put(x, y, on ? 20 : 240, on ? 20 : 240, on ? 20 : 240);
+      }
+    }
+    for (let y = Math.round(h * 0.82); y < h * 0.96; y++) {
+      for (let x = bx0; x < w * 0.95; x++) {
+        const v = 60 + rnd() * 180;
+        put(x, y, v, v, v);
+      }
+    }
+    return img;
+  }
+
+  return {
+    makeImage, clone, stats, otsu, localMean, lumaHistogram, lumaPlane, sobelRaw, cannyMask,
+    gaussKernel, gaussianBlur, median, convolve, unsharp, grayscale, brightnessContrast,
+    levels, invert, equalize, hueSat, sobel, canny, threshold, morphology, dither,
+    pixelate, rgb2hsl, hsl2rgb, luma,
+    OPS, OP_BY_ID, KERNEL_PRESETS, defaultParams, runPipeline, makeSample,
+  };
+})();
+/* ENGINE>>> */
+
+/* ── 应用层 ─────────────────────────────────────────── */
+(() => {
+  'use strict';
+  const E = VLEngine;
+  const $ = (s) => document.querySelector(s);
+  const $$ = (s) => Array.prototype.slice.call(document.querySelectorAll(s));
+  const MAX_SIDE = 960;          /* 工作分辨率上限:兼顾画质与实时性 */
+  const SAMPLE_W = 900, SAMPLE_H = 600;
+  const LS_PIPE = 'vl.pipeline.v1', LS_RECIPES = 'vl.recipes.v1', LS_UI = 'vl.ui.v1';
+
+  const PRESETS = [
+    { name: '黑白点描', steps: [
+      { op: 'gray' }, { op: 'bc', params: { contrast: 18 } },
+      { op: 'dither', params: { mode: 'floyd', levels: 2 } } ] },
+    { name: '素描线稿', steps: [
+      { op: 'gray' }, { op: 'blur', params: { sigma: 0.8 } },
+      { op: 'canny', params: { sigma: 1, low: 4, high: 10 } }, { op: 'invert' } ] },
+    { name: '扫描件增强', steps: [
+      { op: 'gray' }, { op: 'threshold', params: { method: 'adaptive', win: 15, bias: 8 } },
+      { op: 'morph', params: { op: 'open', radius: 1 } } ] },
+    { name: '去噪 + 锐化', steps: [
+      { op: 'median', params: { radius: 1 } }, { op: 'unsharp', params: { sigma: 1.4, amount: 140, threshold: 6 } } ] },
+    { name: '浮雕', steps: [
+      { op: 'gray' }, { op: 'conv', params: { kernel: E.KERNEL_PRESETS.emboss, bias: 128 } } ] },
+    { name: '胶片调色', steps: [
+      { op: 'levels', params: { inB: 8, inW: 245, gamma: 1.08 } },
+      { op: 'hsl', params: { hue: -6, sat: -14, light: 4 } },
+      { op: 'unsharp', params: { sigma: 1.2, amount: 90, threshold: 4 } } ] },
+  ];
+
+  const state = {
+    src: null, srcW: 0, srcH: 0, scaled: false,
+    steps: [], sel: -1, out: null, trace: [],
+    mode: 'split', split: 50, chans: [false, false, false, true],
+    sample: 'scene', srcName: '风景(内置)', totalMs: 0, histLabels: [],
+  };
+
+  const nfmt = (v, d) => Number(v).toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
+
+  /* ── 存取 ─────────────────────────────────────────── */
+  const load = (k, fb) => { try { const v = JSON.parse(localStorage.getItem(k)); return v === null ? fb : v; } catch (e) { return fb; } };
+  const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* 隐私模式忽略 */ } };
+  const savePipe = () => save(LS_PIPE, state.steps);
+  const saveUI = () => save(LS_UI, { mode: state.mode, split: state.split, chans: state.chans, sample: state.sample });
+
+  /* ── 图像源 ───────────────────────────────────────── */
+  function setSource(img, name, srcW, srcH) {
+    state.src = img;
+    state.srcW = srcW || img.w; state.srcH = srcH || img.h;
+    state.scaled = state.srcW !== img.w || state.srcH !== img.h;
+    state.srcName = name;
+    const box = $('#vl-box');
+    box.style.setProperty('--ar', img.w + ' / ' + img.h);
+    paint($('#vl-before'), img);
+    schedule();
+  }
+
+  function loadSample(kind) {
+    state.sample = kind;
+    const label = kind === 'doc' ? '文档(内置)' : kind === 'chart' ? '色卡(内置)' : '风景(内置)';
+    setSource(E.makeSample(kind, SAMPLE_W, SAMPLE_H), label, SAMPLE_W, SAMPLE_H);
+    $$('[data-sample]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.sample === kind)));
+    saveUI();
+  }
+
+  function loadFile(file) {
+    if (!file || !/^image\//.test(file.type)) return;
+    const url = URL.createObjectURL(file);
+    const im = new Image();
+    im.onload = () => {
+      const sw = im.naturalWidth, sh = im.naturalHeight;
+      const k = Math.min(1, MAX_SIDE / Math.max(sw, sh));
+      const w = Math.max(1, Math.round(sw * k)), h = Math.max(1, Math.round(sh * k));
+      const cv = document.createElement('canvas');
+      cv.width = w; cv.height = h;
+      const cx = cv.getContext('2d');
+      cx.imageSmoothingQuality = 'high';
+      cx.drawImage(im, 0, 0, w, h);
+      const id = cx.getImageData(0, 0, w, h);
+      URL.revokeObjectURL(url);
+      state.sample = '';
+      $$('[data-sample]').forEach((b) => b.setAttribute('aria-pressed', 'false'));
+      setSource({ w, h, data: id.data }, (file.name || '导入图片').slice(0, 28), sw, sh);
+    };
+    im.onerror = () => URL.revokeObjectURL(url);
+    im.src = url;
+  }
+
+  function paint(cv, img) {
+    cv.width = img.w; cv.height = img.h;
+    cv.getContext('2d').putImageData(new ImageData(img.data, img.w, img.h), 0, 0);
+  }
+
+  /* ── 流水线执行 ───────────────────────────────────── */
+  let pending = false;
+  function schedule() {
+    if (pending) return;
+    pending = true;
+    requestAnimationFrame(() => { pending = false; run(); });
+  }
+
+  function run() {
+    if (!state.src) return;
+    const t0 = performance.now();
+    let res;
+    try {
+      res = E.runPipeline(state.src, state.steps);
+    } catch (err) {
+      res = { img: state.src, trace: [{ op: '', name: '出错', skipped: false, ms: 0, note: String(err.message || err) }] };
+    }
+    state.out = res.img; state.trace = res.trace;
+    state.totalMs = performance.now() - t0;
+    paint($('#vl-after'), state.out);
+    renderTrace(); renderReadout(); renderMeta(); drawHist(); renderFacts();
+    document.body.dataset.runs = String((+document.body.dataset.runs || 0) + 1);
+    document.body.dataset.ready = '1';
+  }
+
+  /* ── 步骤列表 ─────────────────────────────────────── */
+  function summarize(step) {
+    const op = E.OP_BY_ID[step.op];
+    if (!op || !op.params.length) return op ? op.hint : '';
+    const p = Object.assign(E.defaultParams(step.op), step.params || {});
+    const bits = [];
+    for (const q of op.params) {
+      if (q.when && !q.when(p)) continue;
+      const v = p[q.k];
+      if (q.t === 'select') {
+        const hit = q.options.filter((o) => o[0] === v)[0];
+        bits.push(hit ? hit[1] : String(v));
+      } else if (q.t === 'toggle') { if (v) bits.push(q.label); }
+      else if (q.t === 'kernel') { bits.push('[' + v.join(' ') + ']'); }
+      else bits.push(q.label + ' ' + (Math.abs(v) < 10 && String(v).indexOf('.') >= 0 ? nfmt(v, 1) : Math.round(v)) + (q.unit || ''));
+    }
+    return bits.join(' · ');
+  }
+
+  function renderSteps() {
+    const ol = $('#vl-steps');
+    ol.textContent = '';
+    state.steps.forEach((st, i) => {
+      const op = E.OP_BY_ID[st.op];
+      if (!op) return;
+      const li = document.createElement('li');
+      li.className = 'vl-note' + (i === state.sel ? ' vl-sel' : '') + (st.on === false ? ' vl-muted' : '');
+      li.dataset.fam = op.family; li.dataset.i = String(i); li.dataset.op = st.op;
+      const main = document.createElement('button');
+      main.className = 'vl-notemain';
+      main.setAttribute('aria-pressed', String(i === state.sel));
+      main.innerHTML = '<span class="vl-noteidx">' + String(i + 1).padStart(2, '0') + ' / ' + op.family + '</span>'
+        + '<span class="vl-notename"></span><span class="vl-notesum"></span>';
+      main.querySelector('.vl-notename').textContent = op.name;
+      main.querySelector('.vl-notesum').textContent = summarize(st);
+      main.addEventListener('click', () => { state.sel = i; renderSteps(); renderParams(); });
+      const acts = document.createElement('div');
+      acts.className = 'vl-noteacts';
+      const mk = (txt, label, fn, pressed) => {
+        const b = document.createElement('button');
+        b.className = 'vl-icon'; b.type = 'button'; b.textContent = txt;
+        b.setAttribute('aria-label', label);
+        if (pressed !== undefined) b.setAttribute('aria-pressed', String(pressed));
+        b.addEventListener('click', (ev) => { ev.stopPropagation(); fn(); });
+        return b;
+      };
+      acts.appendChild(mk(st.on === false ? '◌' : '●', (st.on === false ? '启用' : '停用') + op.name, () => {
+        st.on = st.on === false; commit();
+      }, st.on !== false));
+      acts.appendChild(mk('↑', '上移' + op.name, () => move(i, -1)));
+      acts.appendChild(mk('↓', '下移' + op.name, () => move(i, 1)));
+      acts.appendChild(mk('×', '删除' + op.name, () => {
+        state.steps.splice(i, 1);
+        if (state.sel >= state.steps.length) state.sel = state.steps.length - 1;
+        commit();
+      }));
+      li.appendChild(main); li.appendChild(acts);
+      ol.appendChild(li);
+    });
+    $('#vl-stepcount').textContent = state.steps.length + ' 步';
+    $('#vl-stepsempty').hidden = state.steps.length > 0;
+    $('#vl-json').value = JSON.stringify(state.steps.map((s) => ({ op: s.op, on: s.on !== false, params: s.params || {} })));
+  }
+
+  function move(i, d) {
+    const j = i + d;
+    if (j < 0 || j >= state.steps.length) return;
+    const t = state.steps[i]; state.steps[i] = state.steps[j]; state.steps[j] = t;
+    if (state.sel === i) state.sel = j; else if (state.sel === j) state.sel = i;
+    commit();
+  }
+
+  function commit() { renderSteps(); renderParams(); savePipe(); schedule(); }
+
+  function addStep(id, params) {
+    if (!E.OP_BY_ID[id]) return;
+    state.steps.push({ op: id, on: true, params: params ? Object.assign({}, params) : {} });
+    state.sel = state.steps.length - 1;
+    commit();
+  }
+
+  function applyPreset(list) {
+    state.steps = list.map((s) => ({ op: s.op, on: true, params: s.params ? Object.assign({}, s.params) : {} }));
+    state.sel = state.steps.length - 1;
+    commit();
+  }
+
+  /* ── 参数面板 ─────────────────────────────────────── */
+  function renderParams() {
+    const wrap = $('#vl-params'), empty = $('#vl-paramsempty');
+    const st = state.steps[state.sel];
+    const op = st && E.OP_BY_ID[st.op];
+    wrap.textContent = '';
+    if (!op) {
+      wrap.hidden = true; empty.hidden = false;
+      $('#vl-paramop').textContent = '未选中';
+      return;
+    }
+    wrap.hidden = false; empty.hidden = true;
+    $('#vl-paramop').textContent = op.name;
+    const p = Object.assign(E.defaultParams(st.op), st.params || {});
+    const setP = (k, v) => {
+      st.params = st.params || {};
+      st.params[k] = v;
+      renderSteps();
+      savePipe();
+      schedule();
+    };
+
+    const hint = document.createElement('p');
+    hint.className = 'vl-hint'; hint.style.marginBottom = '12px'; hint.textContent = op.hint;
+    wrap.appendChild(hint);
+
+    for (const q of op.params) {
+      const field = document.createElement('div');
+      field.className = 'vl-field';
+      field.dataset.k = q.k;
+      field.id = 'vl-f-' + q.k;
+      if (q.when && !q.when(p)) field.hidden = true;
+
+      if (q.t === 'kernel') {
+        const lab = document.createElement('div');
+        lab.className = 'vl-flabel';
+        lab.innerHTML = '<span>' + q.label + '</span><span class="vl-fval">3 × 3</span>';
+        field.appendChild(lab);
+        const grid = document.createElement('div');
+        grid.className = 'vl-kernel';
+        const vals = (p[q.k] || []).slice();
+        vals.forEach((v, idx) => {
+          const inp = document.createElement('input');
+          inp.type = 'text'; inp.inputMode = 'decimal'; inp.value = String(v);
+          inp.className = 'vl-kcell'; inp.dataset.idx = String(idx);
+          inp.setAttribute('aria-label', '核系数 ' + (idx + 1));
+          inp.addEventListener('input', () => {
+            const arr = $$('#vl-params .vl-kcell').map((el) => {
+              const n = parseFloat(el.value);
+              return isFinite(n) ? n : 0;
+            });
+            setP(q.k, arr);
+          });
+          grid.appendChild(inp);
+        });
+        field.appendChild(grid);
+        const chips = document.createElement('div');
+        chips.className = 'vl-chips';
+        Object.keys(E.KERNEL_PRESETS).forEach((name) => {
+          const b = document.createElement('button');
+          b.className = 'vl-chip'; b.type = 'button'; b.dataset.kp = name;
+          b.textContent = { identity: '恒等', sharpen: '锐化', box: '均值', emboss: '浮雕', laplace: '拉普拉斯', outline: '描边' }[name] || name;
+          b.addEventListener('click', () => { setP(q.k, E.KERNEL_PRESETS[name].slice()); renderParams(); });
+          chips.appendChild(b);
+        });
+        field.appendChild(chips);
+      } else if (q.t === 'select') {
+        const lab = document.createElement('div');
+        lab.className = 'vl-flabel';
+        lab.innerHTML = '<span>' + q.label + '</span>';
+        field.appendChild(lab);
+        const sel = document.createElement('select');
+        sel.id = 'vl-p-' + q.k;
+        q.options.forEach((o) => {
+          const opt = document.createElement('option');
+          opt.value = o[0]; opt.textContent = o[1];
+          if (o[0] === p[q.k]) opt.selected = true;
+          sel.appendChild(opt);
+        });
+        sel.addEventListener('change', () => { setP(q.k, sel.value); renderParams(); });
+        field.appendChild(sel);
+      } else if (q.t === 'toggle') {
+        const b = document.createElement('button');
+        b.className = 'vl-switch'; b.type = 'button'; b.id = 'vl-p-' + q.k;
+        b.textContent = q.label;
+        b.setAttribute('aria-pressed', String(!!p[q.k]));
+        b.addEventListener('click', () => { setP(q.k, !(st.params && st.params[q.k] !== undefined ? st.params[q.k] : p[q.k])); renderParams(); });
+        field.appendChild(b);
+      } else {
+        const lab = document.createElement('div');
+        lab.className = 'vl-flabel';
+        const dec = q.step < 1 ? (String(q.step).split('.')[1] || '').length : 0;
+        lab.innerHTML = '<span>' + q.label + '</span><span class="vl-fval" id="vl-v-' + q.k + '">' + nfmt(p[q.k], dec) + (q.unit || '') + '</span>';
+        field.appendChild(lab);
+        const inp = document.createElement('input');
+        inp.type = 'range'; inp.min = String(q.min); inp.max = String(q.max); inp.step = String(q.step);
+        inp.value = String(p[q.k]); inp.id = 'vl-p-' + q.k;
+        inp.setAttribute('aria-label', op.name + ' ' + q.label);
+        inp.addEventListener('input', () => {
+          const v = parseFloat(inp.value);
+          const el = $('#vl-v-' + q.k);
+          if (el) el.textContent = nfmt(v, dec) + (q.unit || '');
+          setP(q.k, v);
+        });
+        field.appendChild(inp);
+      }
+      wrap.appendChild(field);
+    }
+  }
+
+  /* ── 读数 / 追踪 / 事实 ───────────────────────────── */
+  function renderTrace() {
+    const box = $('#vl-trace');
+    box.textContent = '';
+    if (!state.trace.length) {
+      const chip = document.createElement('span');
+      chip.className = 'vl-tracechip';
+      chip.textContent = '流水线为空 · 显示原图';
+      box.appendChild(chip);
+      return;
+    }
+    state.trace.forEach((t, i) => {
+      const chip = document.createElement('span');
+      chip.className = 'vl-tracechip' + (t.skipped ? ' vl-off' : '');
+      const b = document.createElement('b');
+      b.textContent = (i + 1) + ' ' + t.name;
+      chip.appendChild(b);
+      chip.appendChild(document.createTextNode(' ' + (t.skipped ? '已停用' : nfmt(t.ms, 0) + ' ms' + (t.note ? ' · ' + t.note : ''))));
+      box.appendChild(chip);
+    });
+  }
+
+  function renderReadout() {
+    const s = E.stats(state.out);
+    const dl = $('#vl-readout');
+    const rows = [
+      ['源尺寸', state.srcW + ' × ' + state.srcH + ' px'],
+      ['工作分辨率', state.out.w + ' × ' + state.out.h + (state.scaled ? ' (已缩放)' : '')],
+      ['亮度均值', nfmt(s.lumaMean, 1)],
+      ['亮度标准差', nfmt(s.lumaStd, 1)],
+      ['动态范围', Math.min(s.min[0], s.min[1], s.min[2]) + ' – ' + Math.max(s.max[0], s.max[1], s.max[2])],
+      ['通道均值 R/G/B', nfmt(s.mean[0], 0) + ' / ' + nfmt(s.mean[1], 0) + ' / ' + nfmt(s.mean[2], 0)],
+      ['亮像素占比', nfmt(s.brightRatio * 100, 1) + '%'],
+      ['是否二值图', s.binary ? '是(仅 0/255)' : '否'],
+      ['本次总耗时', nfmt(state.totalMs, 0) + ' ms'],
+    ];
+    dl.textContent = '';
+    rows.forEach((r) => {
+      const dt = document.createElement('dt'); dt.textContent = r[0];
+      const dd = document.createElement('dd'); dd.textContent = r[1];
+      dl.appendChild(dt); dl.appendChild(dd);
+    });
+    dl.dataset.mean = String(Math.round(s.lumaMean * 100) / 100);
+    dl.dataset.binary = s.binary ? '1' : '0';
+  }
+
+  function renderMeta() {
+    const active = state.trace.filter((t) => !t.skipped).length;
+    const bits = [
+      '源 ' + state.srcName + ' ' + state.srcW + '×' + state.srcH,
+      (state.scaled ? '工作 ' + state.out.w + '×' + state.out.h + '(已缩放)' : '工作 ' + state.out.w + '×' + state.out.h),
+      active + ' 个算子 · ' + nfmt(state.totalMs, 0) + ' ms',
+    ];
+    const el = $('#vl-meta');
+    el.textContent = bits.join('  ·  ');
+    el.dataset.ops = String(active);
+  }
+
+  function renderFacts() {
+    const active = state.trace.filter((t) => !t.skipped).length;
+    const mp = (state.out.w * state.out.h * Math.max(1, active)) / 1e6;
+    const facts = [
+      [String(E.OPS.length), '内置算子'],
+      [nfmt(mp, 1) + ' M', '本次处理的像素次数'],
+      [nfmt(state.totalMs, 0) + ' ms', '本次流水线耗时'],
+      ['0', '离开这台设备的字节'],
+    ];
+    const g = $('#vl-factgrid');
+    g.textContent = '';
+    facts.forEach((f) => {
+      const d = document.createElement('div');
+      d.className = 'vl-fact';
+      const b = document.createElement('b'); b.textContent = f[0];
+      const s = document.createElement('span'); s.textContent = f[1];
+      d.appendChild(b); d.appendChild(s);
+      g.appendChild(d);
+    });
+  }
+
+  /* ── 直方图(带标签避让) ─────────────────────────── */
+  function drawHist() {
+    const cv = $('#vl-hist');
+    const rect = cv.getBoundingClientRect();
+    const cssW = Math.max(200, Math.round(rect.width || 280)), cssH = 118;
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    cv.width = Math.round(cssW * dpr); cv.height = Math.round(cssH * dpr);
+    const g = cv.getContext('2d');
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.clearRect(0, 0, cssW, cssH);
+
+    const s = E.stats(state.out);
+    const padL = 8, padR = 8, padT = 10, padB = 18;
+    const plotW = cssW - padL - padR, plotH = cssH - padT - padB;
+    const colors = ['#e5484d', '#1ea64a', '#1f6feb', '#000000'];
+    const on = state.chans;
+
+    let peak = 1;
+    for (let c = 0; c < 4; c++) if (on[c]) for (let v = 0; v < 256; v++) if (s.hist[c][v] > peak) peak = s.hist[c][v];
+
+    g.strokeStyle = '#e6e6e6'; g.lineWidth = 1;
+    g.beginPath(); g.moveTo(padL, padT + plotH + .5); g.lineTo(padL + plotW, padT + plotH + .5); g.stroke();
+
+    for (let c = 0; c < 4; c++) {
+      if (!on[c]) continue;
+      g.beginPath();
+      g.moveTo(padL, padT + plotH);
+      for (let v = 0; v < 256; v++) {
+        const x = padL + (v / 255) * plotW;
+        const y = padT + plotH - Math.min(1, s.hist[c][v] / peak) * plotH;
+        g.lineTo(x, y);
+      }
+      g.lineTo(padL + plotW, padT + plotH);
+      g.closePath();
+      g.globalAlpha = c === 3 ? .16 : .22;
+      g.fillStyle = colors[c]; g.fill();
+      g.globalAlpha = 1;
+      g.strokeStyle = colors[c]; g.lineWidth = c === 3 ? 1.4 : 1; g.stroke();
+    }
+
+    /* 均值标线 */
+    const mx = padL + (s.lumaMean / 255) * plotW;
+    g.strokeStyle = '#000'; g.lineWidth = 1;
+    g.setLineDash([3, 3]); g.beginPath(); g.moveTo(mx, padT); g.lineTo(mx, padT + plotH); g.stroke(); g.setLineDash([]);
+
+    /* 刻度标签:维护 lastRight 做碰撞避让,重叠就整条跳过 —— canvas 里循环
+       fillText 必然会撞,靠「看着间距够」是不行的(见站点历次教训) */
+    g.font = '10px ' + getComputedStyle(document.body).getPropertyValue('--mono');
+    g.fillStyle = '#000'; g.textBaseline = 'top';
+    const labels = [];
+    let lastRight = -1e9;
+    const ticks = [[0, '0'], [64, '64'], [128, '128'], [192, '192'], [255, '255'],
+      [s.lumaMean, 'μ ' + Math.round(s.lumaMean)]];
+    for (const t of ticks) {
+      const text = t[1];
+      const wpx = g.measureText(text).width;
+      let left = padL + (t[0] / 255) * plotW - wpx / 2;
+      left = Math.max(2, Math.min(cssW - wpx - 2, left));
+      if (left < lastRight + 6) continue;
+      const y = padT + plotH + 4;
+      g.fillText(text, left, y);
+      labels.push({ x: left, y, w: wpx, h: 10, text });
+      lastRight = left + wpx;
+    }
+    state.histLabels = labels;
+    cv.dataset.labels = String(labels.length);
+  }
+
+  /* ── 对比控制 ─────────────────────────────────────── */
+  function setMode(m) {
+    state.mode = m;
+    const box = $('#vl-box');
+    box.classList.toggle('vl-side', m === 'side');
+    box.classList.toggle('vl-after', m === 'after');
+    $('#vl-divider').hidden = m !== 'split';
+    $('#vl-paneA').hidden = m === 'after';
+    $$('.vl-seg button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.mode === m)));
+    saveUI();
+  }
+  function setSplit(p) {
+    state.split = Math.max(0, Math.min(100, p));
+    $('#vl-box').style.setProperty('--split', state.split + '%');
+    $('#vl-divider').setAttribute('aria-valuenow', String(Math.round(state.split)));
+    saveUI();
+  }
+
+  /* ── 配方库 ───────────────────────────────────────── */
+  function renderRecipes() {
+    const list = load(LS_RECIPES, []);
+    const box = $('#vl-recipes');
+    box.textContent = '';
+    list.forEach((r, i) => {
+      const b = document.createElement('button');
+      b.className = 'vl-chip'; b.type = 'button'; b.dataset.recipe = String(i);
+      b.textContent = r.name;
+      b.addEventListener('click', () => applyPreset(r.steps));
+      const del = document.createElement('button');
+      del.className = 'vl-icon'; del.type = 'button'; del.textContent = '×';
+      del.setAttribute('aria-label', '删除配方 ' + r.name);
+      del.style.marginLeft = '2px';
+      del.addEventListener('click', () => {
+        const cur = load(LS_RECIPES, []); cur.splice(i, 1); save(LS_RECIPES, cur); renderRecipes();
+      });
+      const wrap = document.createElement('span');
+      wrap.style.display = 'inline-flex'; wrap.style.alignItems = 'center'; wrap.style.gap = '2px';
+      wrap.appendChild(b); wrap.appendChild(del);
+      box.appendChild(wrap);
+    });
+    $('#vl-recipecount').textContent = String(list.length);
+    $('#vl-recipesempty').hidden = list.length > 0;
+  }
+
+  /* ── 静态区块 ─────────────────────────────────────── */
+  function renderMenu() {
+    const menu = $('#vl-opmenu');
+    menu.textContent = '';
+    const fams = [];
+    E.OPS.forEach((op) => { if (fams.indexOf(op.family) < 0) fams.push(op.family); });
+    fams.forEach((fam) => {
+      const grp = document.createElement('div');
+      grp.className = 'vl-menugrp';
+      const h = document.createElement('h3'); h.textContent = fam;
+      const chips = document.createElement('div'); chips.className = 'vl-chips';
+      E.OPS.filter((o) => o.family === fam).forEach((op) => {
+        const b = document.createElement('button');
+        b.className = 'vl-chip'; b.type = 'button'; b.dataset.op = op.id; b.dataset.fam = fam;
+        b.textContent = op.name;
+        b.addEventListener('click', () => { addStep(op.id); toggleMenu(false); });
+        chips.appendChild(b);
+      });
+      grp.appendChild(h); grp.appendChild(chips);
+      menu.appendChild(grp);
+    });
+  }
+
+  function renderPresets() {
+    const box = $('#vl-presets');
+    box.textContent = '';
+    PRESETS.forEach((p, i) => {
+      const b = document.createElement('button');
+      b.className = 'vl-chip'; b.type = 'button'; b.dataset.preset = String(i);
+      b.textContent = p.name;
+      b.addEventListener('click', () => applyPreset(p.steps));
+      box.appendChild(b);
+    });
+  }
+
+  function renderReference() {
+    const box = $('#vl-reftiles');
+    box.textContent = '';
+    E.OPS.forEach((op) => {
+      const d = document.createElement('div');
+      d.className = 'vl-tile';
+      const e = document.createElement('span'); e.className = 'vl-eyebrow'; e.textContent = op.family;
+      const b = document.createElement('b'); b.textContent = op.name;
+      const p = document.createElement('p'); p.textContent = op.hint;
+      d.appendChild(e); d.appendChild(b); d.appendChild(p);
+      box.appendChild(d);
+    });
+  }
+
+  function toggleMenu(force) {
+    const menu = $('#vl-opmenu'), btn = $('#vl-add');
+    const open = force === undefined ? menu.hidden : force;
+    menu.hidden = !open;
+    btn.setAttribute('aria-expanded', String(open));
+  }
+
+  /* ── 事件绑定 ─────────────────────────────────────── */
+  function bind() {
+    $$('[data-sample]').forEach((b) => b.addEventListener('click', () => loadSample(b.dataset.sample)));
+    $('#vl-open').addEventListener('click', () => $('#vl-file').click());
+    $('#vl-file').addEventListener('change', (e) => { loadFile(e.target.files[0]); e.target.value = ''; });
+    $('#vl-add').addEventListener('click', () => toggleMenu());
+    document.addEventListener('click', (e) => {
+      if (!$('#vl-opmenu').hidden && !e.target.closest('.vl-addwrap')) toggleMenu(false);
+    });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') toggleMenu(false); });
+
+    $$('.vl-seg button').forEach((b) => b.addEventListener('click', () => setMode(b.dataset.mode)));
+    $$('#vl-chans button').forEach((b) => b.addEventListener('click', () => {
+      const c = +b.dataset.ch;
+      state.chans[c] = !state.chans[c];
+      if (!state.chans.some(Boolean)) state.chans[3] = true;
+      $$('#vl-chans button').forEach((x) => x.setAttribute('aria-pressed', String(state.chans[+x.dataset.ch])));
+      drawHist(); saveUI();
+    }));
+
+    /* 滑动分界:指针拖拽 + 键盘 */
+    const box = $('#vl-box'), div = $('#vl-divider');
+    const posFromEvent = (ev) => {
+      const r = box.getBoundingClientRect();
+      return ((ev.clientX - r.left) / Math.max(1, r.width)) * 100;
+    };
+    let dragging = false;
+    div.addEventListener('pointerdown', (ev) => {
+      dragging = true; div.setPointerCapture(ev.pointerId); ev.preventDefault();
+    });
+    div.addEventListener('pointermove', (ev) => { if (dragging) setSplit(posFromEvent(ev)); });
+    div.addEventListener('pointerup', (ev) => { dragging = false; try { div.releasePointerCapture(ev.pointerId); } catch (e) {} });
+    box.addEventListener('dblclick', () => setSplit(50));
+    div.addEventListener('keydown', (ev) => {
+      const k = ev.key;
+      if (k === 'ArrowLeft' || k === 'ArrowRight') { setSplit(state.split + (k === 'ArrowLeft' ? -4 : 4)); ev.preventDefault(); }
+      else if (k === 'Home') { setSplit(0); ev.preventDefault(); }
+      else if (k === 'End') { setSplit(100); ev.preventDefault(); }
+    });
+
+    /* 拖放 + 粘贴 */
+    const drop = $('#vl-drop');
+    ['dragenter', 'dragover'].forEach((t) => box.addEventListener(t, (e) => { e.preventDefault(); drop.hidden = false; }));
+    ['dragleave', 'drop'].forEach((t) => box.addEventListener(t, (e) => { e.preventDefault(); drop.hidden = true; }));
+    box.addEventListener('drop', (e) => { if (e.dataTransfer && e.dataTransfer.files[0]) loadFile(e.dataTransfer.files[0]); });
+    document.addEventListener('paste', (e) => {
+      const items = (e.clipboardData && e.clipboardData.items) || [];
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].type.indexOf('image/') === 0) { loadFile(items[i].getAsFile()); break; }
+      }
+    });
+
+    $('#vl-export').addEventListener('click', () => {
+      const cv = document.createElement('canvas');
+      paint(cv, state.out);
+      cv.toBlob((blob) => {
+        if (!blob) return;
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'vision-lab-' + state.out.w + 'x' + state.out.h + '.png';
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+        document.body.dataset.exports = String((+document.body.dataset.exports || 0) + 1);
+      }, 'image/png');
+    });
+
+    $('#vl-saverecipe').addEventListener('click', () => {
+      if (!state.steps.length) return;
+      const list = load(LS_RECIPES, []);
+      const names = state.steps.filter((s) => s.on !== false).map((s) => (E.OP_BY_ID[s.op] || {}).name).filter(Boolean);
+      list.unshift({ name: names.slice(0, 2).join('+') + (names.length > 2 ? '…' : '') + ' (' + names.length + ')', steps: state.steps.map((s) => ({ op: s.op, params: s.params || {} })) });
+      save(LS_RECIPES, list.slice(0, 12));
+      renderRecipes();
+    });
+    $('#vl-clear').addEventListener('click', () => { state.steps = []; state.sel = -1; commit(); });
+
+    $('#vl-applyjson').addEventListener('click', () => {
+      const msg = $('#vl-jsonmsg');
+      try {
+        const v = JSON.parse($('#vl-json').value);
+        if (!Array.isArray(v)) throw new Error('应该是一个数组');
+        const clean = v.filter((s) => s && E.OP_BY_ID[s.op]).map((s) => ({ op: s.op, on: s.on !== false, params: s.params || {} }));
+        if (!clean.length) throw new Error('没有认识的算子');
+        state.steps = clean; state.sel = clean.length - 1;
+        msg.hidden = true;
+        commit();
+      } catch (err) {
+        msg.hidden = false;
+        msg.textContent = '读不懂这段 JSON:' + (err.message || err);
+      }
+    });
+
+    let rw = 0;
+    window.addEventListener('resize', () => {
+      clearTimeout(rw);
+      rw = setTimeout(() => { drawHist(); }, 120);
+    });
+  }
+
+  /* ── 启动 ─────────────────────────────────────────── */
+  function boot() {
+    renderMenu(); renderPresets(); renderReference(); renderRecipes(); bind();
+
+    const ui = load(LS_UI, null);
+    if (ui) {
+      if (ui.chans && ui.chans.length === 4) state.chans = ui.chans;
+      if (typeof ui.split === 'number') state.split = ui.split;
+      if (ui.sample) state.sample = ui.sample;
+    }
+    $$('#vl-chans button').forEach((x) => x.setAttribute('aria-pressed', String(state.chans[+x.dataset.ch])));
+    setSplit(state.split);
+    setMode((ui && ui.mode) || 'split');
+
+    const saved = load(LS_PIPE, null);
+    state.steps = Array.isArray(saved) && saved.length
+      ? saved.filter((s) => s && E.OP_BY_ID[s.op]).map((s) => ({ op: s.op, on: s.on !== false, params: s.params || {} }))
+      : PRESETS[0].steps.map((s) => ({ op: s.op, on: true, params: s.params ? Object.assign({}, s.params) : {} }));
+    state.sel = state.steps.length - 1;
+    renderSteps(); renderParams();
+    loadSample(state.sample || 'scene');
+  }
+
+  /* 测试钩子:让集成测试能断言真实像素与真实状态,而不是只查元素在不在 */
+  window.VL = {
+    engine: E, state, PRESETS,
+    addStep, applyPreset, setMode, setSplit,
+    outPixel: (x, y) => { const i = (y * state.out.w + x) * 4; const d = state.out.data; return [d[i], d[i + 1], d[i + 2], d[i + 3]]; },
+    srcPixel: (x, y) => { const i = (y * state.src.w + x) * 4; const d = state.src.data; return [d[i], d[i + 1], d[i + 2], d[i + 3]]; },
+    outStats: () => E.stats(state.out),
+    hash: (which) => {
+      const d = (which === 'src' ? state.src : state.out).data;
+      let h = 2166136261;
+      for (let i = 0; i < d.length; i++) { h ^= d[i]; h = Math.imul(h, 16777619); }
+      return (h >>> 0).toString(16);
+    },
+    histLabels: () => state.histLabels.slice(),
+    exportPNG: () => { const cv = document.createElement('canvas'); paint(cv, state.out); return cv.toDataURL('image/png'); },
+  };
+
+  boot();
+})();
+</script>
+</body>
+</html>
