@@ -1,0 +1,1958 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>压缩实验室 · Compression Lab</title>
+<meta name="description" content="纯前端数据压缩实验室:七种手写编码器(游程/霍夫曼/LZSS/Deflate-lite/自适应算术零阶与一阶/BWT-bzip-lite)真实编码并逐字节解码校验,对照香农熵理论下界与浏览器原生 gzip,可视化霍夫曼码树、LZ 匹配、字节分布与位流。">
+<style>
+/* 结构性守卫:作者 CSS 与 UA 的 [hidden]{display:none} 同特异性,靠后即胜出 */
+[hidden]{display:none!important}
+
+*,*::before,*::after{box-sizing:border-box}
+:root{
+  /* Sentry design language — deep violet midnight canvas + electric lime */
+  --cl-primary:#150f23;
+  --cl-ink-deep:#1f1633;
+  --cl-on-primary:#ffffff;
+  --cl-lime:#c2ef4e;
+  --cl-pink:#fa7faa;
+  --cl-violet:#6a5fc1;
+  --cl-violet-deep:#422082;
+  --cl-violet-mid:#79628c;
+  --cl-canvas:#1f1633;
+  --cl-night:#150f23;
+  --cl-hairline:#362d59;
+  --cl-hairline-soft:rgba(255,255,255,.09);
+  --cl-muted:rgba(255,255,255,.72);
+  --cl-faint:rgba(255,255,255,.18);
+  --cl-dim:rgba(255,255,255,.45);
+  --cl-ring:#9dc1f5;
+  --cl-sans:Rubik,-apple-system,system-ui,"Segoe UI",Helvetica,Arial,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  --cl-display:"Space Grotesk",Archivo,Rubik,-apple-system,system-ui,"Segoe UI",Helvetica,sans-serif;
+  --cl-mono:Monaco,Menlo,"Ubuntu Mono","SF Mono",Consolas,"Courier New",monospace;
+  --cl-r-xs:4px; --cl-r-sm:6px; --cl-r-md:8px; --cl-r-lg:10px; --cl-r-xl:12px; --cl-r-xxl:18px;
+}
+html,body{margin:0;padding:0}
+body{
+  background:var(--cl-canvas);
+  color:var(--cl-on-primary);
+  font-family:var(--cl-sans);
+  font-size:16px;
+  font-weight:500;
+  line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+  /* starfield texture — faint white pinpricks on violet */
+  background-image:
+    radial-gradient(1px 1px at 12% 18%, rgba(255,255,255,.20), transparent 60%),
+    radial-gradient(1px 1px at 78% 9%, rgba(255,255,255,.16), transparent 60%),
+    radial-gradient(1px 1px at 33% 62%, rgba(255,255,255,.12), transparent 60%),
+    radial-gradient(1px 1px at 88% 44%, rgba(255,255,255,.14), transparent 60%),
+    radial-gradient(1px 1px at 57% 82%, rgba(255,255,255,.10), transparent 60%),
+    radial-gradient(1px 1px at 5% 91%, rgba(255,255,255,.13), transparent 60%),
+    radial-gradient(900px 520px at 76% -8%, rgba(66,32,130,.55), transparent 70%);
+  background-attachment:fixed;
+}
+a{color:inherit}
+button,input,select,textarea{font-family:inherit;font-size:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--cl-ring);outline-offset:2px}
+
+/* ---------- shell ---------- */
+.cl-wrap{max-width:1152px;margin:0 auto;padding:0 24px 72px}
+.cl-top{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px 0;flex-wrap:wrap}
+.cl-back{
+  display:inline-flex;align-items:center;gap:8px;
+  text-decoration:none;background:var(--cl-faint);color:var(--cl-on-primary);
+  font-size:14px;font-weight:700;letter-spacing:.2px;text-transform:uppercase;
+  padding:8px 14px;border-radius:var(--cl-r-xl);border:1px solid var(--cl-hairline);
+}
+.cl-back:hover{background:rgba(255,255,255,.26)}
+.cl-brandmark{
+  display:inline-flex;align-items:center;gap:10px;
+  font-family:var(--cl-mono);font-size:12px;letter-spacing:.25px;color:var(--cl-dim);
+}
+.cl-dot{width:9px;height:9px;border-radius:9999px;background:var(--cl-lime);display:inline-block}
+
+.cl-hero{padding:24px 0 32px;max-width:820px}
+.cl-eyebrow{
+  font-size:12px;font-weight:600;letter-spacing:.25px;text-transform:uppercase;
+  color:var(--cl-violet-mid);margin:0 0 12px;font-family:var(--cl-mono)
+}
+.cl-title{
+  font-family:var(--cl-display);font-size:56px;font-weight:700;line-height:1.08;
+  letter-spacing:-.5px;margin:0 0 16px;
+}
+.cl-chip{
+  background:var(--cl-lime);color:var(--cl-ink-deep);
+  border-radius:var(--cl-r-xs);padding:0 12px;display:inline-block;
+}
+.cl-lede{font-size:16px;line-height:2.0;color:var(--cl-muted);margin:0;font-weight:400;max-width:70ch}
+
+/* ---------- layout ---------- */
+.cl-grid{display:grid;grid-template-columns:352px minmax(0,1fr);gap:24px;align-items:start}
+.cl-side{position:sticky;top:16px;display:flex;flex-direction:column;gap:16px;min-width:0}
+.cl-main{display:flex;flex-direction:column;gap:24px;min-width:0}
+
+.cl-card{
+  background:var(--cl-night);border:1px solid var(--cl-hairline);
+  border-radius:var(--cl-r-xl);padding:20px;min-width:0;
+}
+.cl-card-lg{border-radius:var(--cl-r-xxl);padding:24px}
+.cl-card-h{
+  display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:0 0 14px
+}
+.cl-h{font-size:20px;font-weight:600;line-height:1.25;margin:0;font-family:var(--cl-display)}
+.cl-h-sub{font-size:14px;font-weight:400;color:var(--cl-dim);margin:0}
+.cl-label{
+  display:block;font-size:10px;font-weight:600;letter-spacing:.25px;line-height:1.8;
+  text-transform:uppercase;color:var(--cl-violet-mid);margin:0 0 6px;font-family:var(--cl-mono)
+}
+
+/* ---------- controls ---------- */
+.cl-ta{
+  width:100%;min-height:150px;resize:vertical;
+  background:var(--cl-primary);color:var(--cl-on-primary);
+  border:1px solid var(--cl-hairline);border-radius:var(--cl-r-sm);
+  padding:10px 12px;font-family:var(--cl-mono);font-size:13px;line-height:1.55;
+}
+.cl-ta:focus{box-shadow:rgba(0,0,0,.35) 0 2px 10px inset;border-color:var(--cl-violet)}
+.cl-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.cl-row-tight{gap:6px}
+.cl-field{display:flex;flex-direction:column;gap:0;min-width:0;flex:1 1 120px}
+.cl-sel,.cl-txt{
+  width:100%;background:var(--cl-violet-deep);color:var(--cl-on-primary);
+  border:1px solid var(--cl-hairline);border-radius:var(--cl-r-md);
+  padding:8px 12px;font-size:14px;font-weight:500;min-height:38px;
+}
+.cl-txt{background:var(--cl-primary);font-family:var(--cl-mono);font-size:13px}
+.cl-btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  background:var(--cl-on-primary);color:var(--cl-ink-deep);
+  border:1px solid transparent;border-radius:var(--cl-r-md);
+  padding:12px 16px;font-size:14px;font-weight:700;letter-spacing:.2px;
+  text-transform:uppercase;cursor:pointer;line-height:1.14;min-height:40px;
+}
+.cl-btn:hover{background:#f0f0f0}
+.cl-btn:active{background:#efefef;color:#1a1a1a}
+.cl-btn[disabled]{opacity:.45;cursor:not-allowed}
+.cl-btn-ghost{
+  background:var(--cl-faint);color:var(--cl-on-primary);
+  border:1px solid var(--cl-hairline);border-radius:var(--cl-r-xl);
+  padding:8px 14px;font-size:14px;font-weight:500;letter-spacing:.2px;
+  text-transform:uppercase;cursor:pointer;min-height:36px;
+}
+.cl-btn-ghost:hover{background:rgba(255,255,255,.26)}
+.cl-btn-ghost:active{background:rgba(255,255,255,.32)}
+.cl-tag{
+  background:var(--cl-violet-mid);border:1px solid var(--cl-violet-deep);
+  color:var(--cl-on-primary);border-radius:var(--cl-r-xl);
+  padding:6px 12px;font-size:13px;font-weight:500;letter-spacing:.2px;
+  cursor:pointer;line-height:1.29;
+}
+.cl-tag:hover{background:#8b73a0}
+.cl-tag[aria-pressed="true"]{background:var(--cl-on-primary);color:var(--cl-ink-deep);border-color:var(--cl-on-primary)}
+.cl-hint{font-size:12px;line-height:1.5;color:var(--cl-dim);margin:8px 0 0}
+.cl-hint code{font-family:var(--cl-mono);color:var(--cl-muted)}
+.cl-drop{
+  border:1px dashed var(--cl-hairline);border-radius:var(--cl-r-md);
+  padding:10px 12px;font-size:12px;color:var(--cl-dim);text-align:center;cursor:pointer;
+}
+.cl-drop.cl-drag{border-color:var(--cl-lime);color:var(--cl-lime)}
+.cl-saved{list-style:none;margin:10px 0 0;padding:0;display:flex;flex-direction:column;gap:6px;max-height:150px;overflow:auto}
+.cl-saved li{display:flex;align-items:center;gap:6px}
+.cl-saved-name{
+  flex:1 1 auto;min-width:0;text-align:left;background:var(--cl-primary);
+  border:1px solid var(--cl-hairline);border-radius:var(--cl-r-sm);color:var(--cl-on-primary);
+  padding:6px 10px;font-size:13px;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap
+}
+.cl-saved-name:hover{border-color:var(--cl-violet)}
+.cl-x{
+  background:transparent;border:1px solid var(--cl-hairline);border-radius:var(--cl-r-sm);
+  color:var(--cl-dim);cursor:pointer;padding:4px 8px;font-size:12px;line-height:1
+}
+.cl-x:hover{color:var(--cl-pink);border-color:var(--cl-pink)}
+
+/* ---------- stats ---------- */
+.cl-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px}
+.cl-stat{
+  background:var(--cl-night);border:1px solid var(--cl-hairline);
+  border-radius:var(--cl-r-xl);padding:14px 16px;min-width:0
+}
+.cl-stat-v{font-family:var(--cl-mono);font-size:24px;font-weight:700;line-height:1.2;display:block;word-break:break-all}
+.cl-stat-u{font-size:12px;color:var(--cl-dim);font-family:var(--cl-mono)}
+
+/* ---------- results table ---------- */
+.cl-tablewrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+table.cl-table{border-collapse:collapse;width:100%;font-size:14px;min-width:660px}
+table.cl-table th,table.cl-table td{
+  text-align:right;padding:9px 10px;border-bottom:1px solid var(--cl-hairline);white-space:nowrap
+}
+table.cl-table th{
+  font-size:10px;font-weight:600;letter-spacing:.25px;text-transform:uppercase;
+  color:var(--cl-violet-mid);font-family:var(--cl-mono);border-bottom-color:var(--cl-violet-deep)
+}
+table.cl-table td:first-child,table.cl-table th:first-child{text-align:left;white-space:normal}
+table.cl-table td.cl-num{font-family:var(--cl-mono)}
+tr.cl-best td{background:rgba(194,239,78,.10)}
+tr.cl-best td:first-child{box-shadow:inset 3px 0 0 var(--cl-lime)}
+tr.cl-ref td{color:var(--cl-muted)}
+.cl-codec-name{font-weight:600}
+.cl-codec-note{display:block;font-size:12px;font-weight:400;color:var(--cl-dim);line-height:1.4}
+.cl-badge{
+  display:inline-block;background:var(--cl-night);border:1px solid var(--cl-hairline);
+  border-radius:var(--cl-r-xs);padding:2px 8px;font-size:12px;font-family:var(--cl-mono)
+}
+.cl-badge-ok{color:var(--cl-lime);border-color:rgba(194,239,78,.4)}
+.cl-badge-bad{color:var(--cl-pink);border-color:rgba(250,127,170,.5)}
+.cl-badge-grow{color:var(--cl-pink)}
+.cl-mini{font-size:12px;color:var(--cl-dim);font-family:var(--cl-mono)}
+
+/* ---------- chart ---------- */
+.cl-chart{width:100%;height:auto;display:block;overflow:visible}
+.cl-legend{display:flex;gap:16px;flex-wrap:wrap;margin-top:12px;font-size:12px;color:var(--cl-dim)}
+.cl-swatch{display:inline-block;width:22px;height:10px;border-radius:2px;vertical-align:middle;margin-right:6px}
+
+/* ---------- tabs ---------- */
+.cl-tabs{display:flex;gap:6px;flex-wrap:wrap;border-bottom:1px solid var(--cl-hairline);padding-bottom:12px;margin-bottom:16px}
+.cl-tab{
+  background:transparent;border:1px solid var(--cl-hairline);color:var(--cl-muted);
+  border-radius:var(--cl-r-xl);padding:8px 14px;font-size:13px;font-weight:500;
+  letter-spacing:.2px;cursor:pointer;line-height:1.29
+}
+.cl-tab:hover{color:var(--cl-on-primary);border-color:var(--cl-violet)}
+.cl-tab[aria-selected="true"]{background:var(--cl-on-primary);color:var(--cl-ink-deep);border-color:var(--cl-on-primary);font-weight:700}
+
+/* ---------- huffman ---------- */
+.cl-two{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,320px);gap:20px;align-items:start}
+.cl-tree{width:100%;height:auto;display:block;overflow:visible}
+.cl-codetable{max-height:340px;overflow:auto}
+table.cl-codes{border-collapse:collapse;width:100%;font-size:13px}
+table.cl-codes th,table.cl-codes td{padding:5px 8px;border-bottom:1px solid var(--cl-hairline);text-align:right;white-space:nowrap}
+table.cl-codes th{
+  position:sticky;top:0;background:var(--cl-night);z-index:1;
+  font-size:10px;letter-spacing:.25px;text-transform:uppercase;color:var(--cl-violet-mid);font-family:var(--cl-mono)
+}
+table.cl-codes td:first-child,table.cl-codes th:first-child{text-align:left}
+td.cl-sym{font-family:var(--cl-mono)}
+td.cl-code{font-family:var(--cl-mono);color:var(--cl-lime);letter-spacing:.5px}
+
+/* ---------- lz view ---------- */
+.cl-lzview{
+  font-family:var(--cl-mono);font-size:13px;line-height:2.1;
+  background:var(--cl-primary);border:1px solid var(--cl-hairline);
+  border-radius:var(--cl-r-md);padding:14px;max-height:330px;overflow:auto;word-break:break-all
+}
+.cl-lit{color:var(--cl-muted);padding:2px 0}
+.cl-mat{
+  background:var(--cl-violet-deep);color:#fff;border-radius:var(--cl-r-xs);
+  padding:2px 4px;margin:0 1px;border-bottom:2px solid var(--cl-pink);cursor:pointer
+}
+.cl-mat-long{border-bottom-color:var(--cl-lime)}
+.cl-mat.cl-mat-sel{outline:2px solid var(--cl-lime);outline-offset:1px}
+.cl-src{background:rgba(194,239,78,.22);border-radius:var(--cl-r-xs)}
+.cl-detail{
+  font-family:var(--cl-mono);font-size:13px;color:var(--cl-muted);margin-top:12px;
+  background:var(--cl-primary);border:1px solid var(--cl-hairline);border-radius:var(--cl-r-md);padding:10px 12px
+}
+
+/* ---------- bit ribbon ---------- */
+.cl-bits{
+  display:grid;grid-template-columns:repeat(auto-fill,minmax(11px,1fr));gap:2px;
+  background:var(--cl-primary);border:1px solid var(--cl-hairline);
+  border-radius:var(--cl-r-md);padding:12px
+}
+.cl-bit{height:11px;border-radius:2px;background:rgba(255,255,255,.10)}
+.cl-bit-1{background:var(--cl-lime)}
+
+/* ---------- misc ---------- */
+.cl-note{font-size:14px;line-height:1.5;color:var(--cl-muted)}
+.cl-warn{
+  border:1px solid var(--cl-pink);background:rgba(250,127,170,.12);
+  border-radius:var(--cl-r-md);padding:10px 12px;font-size:13px;color:#ffd9e6
+}
+.cl-squiggle{display:block;width:100%;height:16px;margin:56px 0 20px;color:var(--cl-lime)}
+.cl-foot{font-size:14px;line-height:1.43;color:var(--cl-dim);display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.cl-foot a{color:var(--cl-muted)}
+.cl-busy{color:var(--cl-lime);font-family:var(--cl-mono);font-size:12px}
+
+@media (max-width:980px){
+  .cl-grid{grid-template-columns:minmax(0,1fr)}
+  .cl-side{position:static}
+  .cl-two{grid-template-columns:minmax(0,1fr)}
+  .cl-title{font-size:40px}
+}
+@media (max-width:600px){
+  .cl-wrap{padding:0 16px 56px}
+  .cl-title{font-size:32px}
+  .cl-chip{padding:0 8px}
+  .cl-card{padding:16px}
+}
+</style>
+</head>
+<body>
+<div class="cl-wrap">
+
+<header class="cl-top">
+  <a class="cl-back" href="../../">← 返回工具集</a>
+  <span class="cl-brandmark"><i class="cl-dot"></i>COMPRESSION LAB · 每日工具集</span>
+</header>
+
+<section class="cl-hero">
+  <p class="cl-eyebrow">信息论 · 七种手写编码器 · 零上传</p>
+  <h1 class="cl-title">把数据<span class="cl-chip">压</span>到香农极限</h1>
+  <p class="cl-lede">粘一段文本或拖进一个文件,浏览器里当场跑七种自研压缩算法——游程、霍夫曼、LZSS、Deflate-lite、自适应算术编码(零阶/一阶)、BWT。每一种都真的把字节解码回来逐字节校验,再和香农熵理论下界、浏览器原生 gzip 摆在一起比。</p>
+</section>
+
+<main class="cl-grid">
+  <aside class="cl-side">
+    <section class="cl-card">
+      <div class="cl-card-h"><h2 class="cl-h">输入</h2><span id="cl-busy" class="cl-busy" hidden>计算中…</span></div>
+      <label class="cl-label" for="cl-input">原始数据(UTF-8 编码后按字节压缩)</label>
+      <textarea id="cl-input" class="cl-ta" spellcheck="false" aria-describedby="cl-input-hint"></textarea>
+      <p id="cl-input-hint" class="cl-hint">全部计算在本机完成,数据不出浏览器。</p>
+      <div class="cl-row cl-row-tight" id="cl-samples" style="margin-top:10px"></div>
+      <div class="cl-drop" id="cl-drop" tabindex="0" role="button" aria-label="选择或拖入文件">拖入文件 / 点击选择(≤ 1 MB,按字节处理)</div>
+      <input type="file" id="cl-file" hidden>
+    </section>
+
+    <section class="cl-card">
+      <div class="cl-card-h"><h2 class="cl-h">参数</h2></div>
+      <div class="cl-row">
+        <div class="cl-field">
+          <label class="cl-label" for="cl-window">LZ 窗口</label>
+          <select id="cl-window" class="cl-sel">
+            <option value="12">4 KB</option>
+            <option value="13">8 KB</option>
+            <option value="15" selected>32 KB</option>
+            <option value="16">64 KB</option>
+          </select>
+        </div>
+        <div class="cl-field">
+          <label class="cl-label" for="cl-block">BWT 块</label>
+          <select id="cl-block" class="cl-sel">
+            <option value="13">8 KB</option>
+            <option value="14">16 KB</option>
+            <option value="15" selected>32 KB</option>
+            <option value="16">64 KB</option>
+          </select>
+        </div>
+      </div>
+      <p class="cl-hint">窗口越大,LZSS/Deflate 能引用得越远;BWT 块越大,上下文归并越充分,但排序更慢。</p>
+    </section>
+
+    <section class="cl-card">
+      <div class="cl-card-h"><h2 class="cl-h">样本库</h2><span class="cl-h-sub">本地保存</span></div>
+      <div class="cl-row cl-row-tight">
+        <input id="cl-save-name" class="cl-txt" style="flex:1 1 120px" placeholder="命名当前输入" aria-label="样本名称">
+        <button id="cl-save" class="cl-btn-ghost" type="button">保存</button>
+      </div>
+      <ul id="cl-saved" class="cl-saved"></ul>
+      <p id="cl-saved-empty" class="cl-hint">还没有保存的样本。</p>
+    </section>
+  </aside>
+
+  <div class="cl-main">
+    <section>
+      <div class="cl-stats" id="cl-stats">
+        <div class="cl-stat"><span class="cl-label">原始大小</span><span class="cl-stat-v" id="cl-stat-bytes">0</span><span class="cl-stat-u">bytes</span></div>
+        <div class="cl-stat"><span class="cl-label">不同字节</span><span class="cl-stat-v" id="cl-stat-syms">0</span><span class="cl-stat-u">/ 256 symbols</span></div>
+        <div class="cl-stat"><span class="cl-label">零阶熵 H₀</span><span class="cl-stat-v" id="cl-stat-h0">0.00</span><span class="cl-stat-u">bits / byte</span></div>
+        <div class="cl-stat"><span class="cl-label">一阶熵 H₁</span><span class="cl-stat-v" id="cl-stat-h1">0.00</span><span class="cl-stat-u">bits / byte</span></div>
+        <div class="cl-stat"><span class="cl-label">H₀ 理论下界</span><span class="cl-stat-v" id="cl-stat-floor">0</span><span class="cl-stat-u">bytes</span></div>
+      </div>
+    </section>
+
+    <section class="cl-card cl-card-lg">
+      <div class="cl-card-h">
+        <h2 class="cl-h">编码器对照</h2>
+        <p class="cl-h-sub" id="cl-rt-note">每一行都真的解码回原文并逐字节比对</p>
+      </div>
+      <div class="cl-tablewrap">
+        <table class="cl-table" id="cl-results">
+          <thead><tr>
+            <th scope="col">编码器</th><th scope="col">输出</th><th scope="col">压缩率</th>
+            <th scope="col">bits/byte</th><th scope="col">编码</th><th scope="col">解码</th><th scope="col">往返校验</th>
+          </tr></thead>
+          <tbody id="cl-results-body"></tbody>
+        </table>
+      </div>
+      <div class="cl-row" style="margin-top:14px">
+        <div class="cl-field" style="flex:0 1 240px">
+          <label class="cl-label" for="cl-dl-codec">下载压缩结果</label>
+          <select id="cl-dl-codec" class="cl-sel"></select>
+        </div>
+        <button id="cl-dl" class="cl-btn-ghost" type="button" style="align-self:flex-end">下载 .bin</button>
+        <button id="cl-dl-report" class="cl-btn-ghost" type="button" style="align-self:flex-end">导出报告 CSV</button>
+      </div>
+    </section>
+
+    <section class="cl-card cl-card-lg">
+      <div class="cl-card-h"><h2 class="cl-h">压缩率对照</h2><p class="cl-h-sub">越短越好 · 虚线为香农熵下界</p></div>
+      <svg id="cl-chart" class="cl-chart" role="img" aria-label="各编码器输出大小对照条形图"></svg>
+      <div class="cl-legend">
+        <span><i class="cl-swatch" style="background:#6a5fc1"></i>手写编码器</span>
+        <span><i class="cl-swatch" style="background:#79628c"></i>浏览器原生(参照)</span>
+        <span><i class="cl-swatch" style="background:#c2ef4e"></i>本轮最优</span>
+        <span><i class="cl-swatch" style="background:#fa7faa"></i>比原始更大</span>
+      </div>
+    </section>
+
+    <section class="cl-card cl-card-lg">
+      <div class="cl-tabs" role="tablist" aria-label="细节视图">
+        <button class="cl-tab" id="cl-tab-huff" role="tab" aria-selected="true" aria-controls="cl-pane-huff" type="button">霍夫曼码树</button>
+        <button class="cl-tab" id="cl-tab-lz" role="tab" aria-selected="false" aria-controls="cl-pane-lz" type="button">LZ 匹配</button>
+        <button class="cl-tab" id="cl-tab-hist" role="tab" aria-selected="false" aria-controls="cl-pane-hist" type="button">字节分布</button>
+        <button class="cl-tab" id="cl-tab-bits" role="tab" aria-selected="false" aria-controls="cl-pane-bits" type="button">位流</button>
+      </div>
+
+      <div id="cl-pane-huff" role="tabpanel" aria-labelledby="cl-tab-huff">
+        <div class="cl-two">
+          <div>
+            <p class="cl-label">码树(展开出现频次最高的 12 个叶子,其余子树折叠)</p>
+            <svg id="cl-tree" class="cl-tree" role="img" aria-label="霍夫曼码树"></svg>
+          </div>
+          <div>
+            <p class="cl-label">码表 · 按频次降序</p>
+            <div class="cl-codetable">
+              <table class="cl-codes" id="cl-codes">
+                <thead><tr><th scope="col">符号</th><th scope="col">频次</th><th scope="col">码长</th><th scope="col">码字</th></tr></thead>
+                <tbody id="cl-codes-body"></tbody>
+              </table>
+            </div>
+            <p class="cl-hint" id="cl-huff-note"></p>
+          </div>
+        </div>
+      </div>
+
+      <div id="cl-pane-lz" role="tabpanel" aria-labelledby="cl-tab-lz" hidden>
+        <p class="cl-label">前 <span id="cl-lz-shown">0</span> 字节的 LZSS 分词 · 点一个匹配块看它引用了哪里</p>
+        <div class="cl-lzview" id="cl-lzview"></div>
+        <div class="cl-detail" id="cl-lz-detail">点击上方任意紫色匹配块查看 (offset, length)。</div>
+        <div class="cl-legend">
+          <span><i class="cl-swatch" style="background:rgba(255,255,255,.14)"></i>字面量</span>
+          <span><i class="cl-swatch" style="background:#422082;border-bottom:2px solid #fa7faa"></i>匹配(&lt; 16 字节)</span>
+          <span><i class="cl-swatch" style="background:#422082;border-bottom:2px solid #c2ef4e"></i>长匹配(≥ 16 字节)</span>
+          <span id="cl-lz-stats" class="cl-mini"></span>
+        </div>
+      </div>
+
+      <div id="cl-pane-hist" role="tabpanel" aria-labelledby="cl-tab-hist" hidden>
+        <p class="cl-label">256 个字节值的出现频次 · 分布越平越难压</p>
+        <svg id="cl-hist" class="cl-chart" role="img" aria-label="字节值频次分布图"></svg>
+        <p class="cl-hint" id="cl-hist-note"></p>
+      </div>
+
+      <div id="cl-pane-bits" role="tabpanel" aria-labelledby="cl-tab-bits" hidden>
+        <div class="cl-row" style="margin-bottom:12px">
+          <div class="cl-field" style="flex:0 1 240px">
+            <label class="cl-label" for="cl-bits-codec">查看谁的输出位流</label>
+            <select id="cl-bits-codec" class="cl-sel"></select>
+          </div>
+        </div>
+        <div class="cl-bits" id="cl-bits" aria-label="输出位流前 512 位"></div>
+        <p class="cl-hint" id="cl-bits-note"></p>
+      </div>
+    </section>
+  </div>
+</main>
+
+<svg class="cl-squiggle" viewBox="0 0 1200 16" preserveAspectRatio="none" aria-hidden="true">
+  <path d="M0 8 Q 25 0 50 8 T 100 8 T 150 8 T 200 8 T 250 8 T 300 8 T 350 8 T 400 8 T 450 8 T 500 8 T 550 8 T 600 8 T 650 8 T 700 8 T 750 8 T 800 8 T 850 8 T 900 8 T 950 8 T 1000 8 T 1050 8 T 1100 8 T 1150 8 T 1200 8"
+        fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+</svg>
+<footer class="cl-foot">
+  <span>压缩实验室 · 全部算法手写实现,编码后一律解码回原文逐字节校验</span>
+  <span><a href="../../">← 返回每日工具集</a></span>
+</footer>
+
+</div>
+<script>
+"use strict";
+/* <<<ENGINE */
+/* ==========================================================================
+   压缩引擎 —— 全部手写,无任何外部库。
+   每个编码器都提供 encode/decode 一对,UI 侧一律「编码后立即解码 + 逐字节比对」。
+   ========================================================================== */
+
+var MAX_INPUT = 1 << 20;      // 1 MB
+var ARITH_LIMIT = 262144;     // 算术编码是 O(n·|Σ|),超过这个长度跳过
+
+/* ---------------- 字节 / 位 读写 ---------------- */
+function ByteWriter(cap) { this.buf = new Uint8Array(cap || 1024); this.len = 0; }
+ByteWriter.prototype._grow = function (n) {
+  if (this.len + n <= this.buf.length) return;
+  var c = this.buf.length; while (c < this.len + n) c *= 2;
+  var nb = new Uint8Array(c); nb.set(this.buf.subarray(0, this.len)); this.buf = nb;
+};
+ByteWriter.prototype.byte = function (v) { this._grow(1); this.buf[this.len++] = v & 255; };
+ByteWriter.prototype.bytes = function (a) { this._grow(a.length); this.buf.set(a, this.len); this.len += a.length; };
+ByteWriter.prototype.u32 = function (v) {
+  this._grow(4);
+  this.buf[this.len++] = (v >>> 24) & 255; this.buf[this.len++] = (v >>> 16) & 255;
+  this.buf[this.len++] = (v >>> 8) & 255; this.buf[this.len++] = v & 255;
+};
+ByteWriter.prototype.done = function () { return this.buf.slice(0, this.len); };
+
+function ByteReader(b) { this.b = b; this.p = 0; }
+ByteReader.prototype.byte = function () { return this.b[this.p++]; };
+ByteReader.prototype.u32 = function () {
+  var b = this.b, p = this.p; this.p += 4;
+  return ((b[p] * 16777216) + (b[p + 1] << 16) + (b[p + 2] << 8) + b[p + 3]);
+};
+
+function BitWriter() { this.w = new ByteWriter(); this.acc = 0; this.n = 0; }
+BitWriter.prototype.bit = function (b) {
+  this.acc = ((this.acc << 1) | (b & 1)) & 255;
+  if (++this.n === 8) { this.w.byte(this.acc); this.acc = 0; this.n = 0; }
+};
+BitWriter.prototype.bits = function (v, c) { for (var i = c - 1; i >= 0; i--) this.bit((v >>> i) & 1); };
+BitWriter.prototype.flush = function () { while (this.n) this.bit(0); return this.w.done(); };
+
+function BitReader(b, p) { this.b = b; this.p = p || 0; this.acc = 0; this.n = 0; }
+BitReader.prototype.bit = function () {
+  if (this.n === 0) { this.acc = this.p < this.b.length ? this.b[this.p] : 0; this.p++; this.n = 8; }
+  this.n--; return (this.acc >>> this.n) & 1;
+};
+BitReader.prototype.bits = function (c) { var v = 0; for (var i = 0; i < c; i++) v = v * 2 + this.bit(); return v; };
+
+/* ---------------- 统计与熵 ---------------- */
+function histogram(src) {
+  var h = new Float64Array(256);
+  for (var i = 0; i < src.length; i++) h[src[i]]++;
+  return h;
+}
+function entropy0(hist, n) {
+  if (!n) return 0;
+  var H = 0;
+  for (var i = 0; i < 256; i++) { var c = hist[i]; if (c > 0) { var p = c / n; H -= p * Math.log2(p); } }
+  return H;
+}
+/* 一阶条件熵 H(X | 前一个字节) */
+function entropy1(src) {
+  var n = src.length;
+  if (n < 2) return entropy0(histogram(src), n);
+  var ctxTotal = new Float64Array(256);
+  var pair = new Map();
+  for (var i = 1; i < n; i++) {
+    var c = src[i - 1], x = src[i];
+    ctxTotal[c]++;
+    var k = c * 256 + x;
+    pair.set(k, (pair.get(k) || 0) + 1);
+  }
+  var H = 0, N = n - 1;
+  pair.forEach(function (cnt, k) {
+    var c = Math.floor(k / 256);
+    H -= (cnt / N) * Math.log2(cnt / ctxTotal[c]);
+  });
+  return H;
+}
+function analyze(src) {
+  var hist = histogram(src), n = src.length, uniq = 0;
+  for (var i = 0; i < 256; i++) if (hist[i] > 0) uniq++;
+  var h0 = entropy0(hist, n), h1 = entropy1(src);
+  return { n: n, hist: hist, unique: uniq, h0: h0, h1: h1, floor0: Math.ceil(n * h0 / 8), floor1: Math.ceil(n * h1 / 8) };
+}
+
+/* ---------------- 霍夫曼核心(规范码) ---------------- */
+/* 频次 → 码长。超过 maxLen 就把频次整体减半重建(牺牲一点最优性换可控码长)。 */
+function huffLengths(freq, A, maxLen) {
+  maxLen = maxLen || 24;
+  var w = new Float64Array(A), i;
+  for (i = 0; i < A; i++) w[i] = freq[i];
+  for (var guard = 0; guard < 64; guard++) {
+    var lens = new Int32Array(A);
+    var leaves = [];
+    for (i = 0; i < A; i++) if (w[i] > 0) leaves.push({ f: w[i], sym: i, l: null, r: null });
+    if (leaves.length === 0) return lens;
+    if (leaves.length === 1) { lens[leaves[0].sym] = 1; return lens; }
+    leaves.sort(function (a, b) { return a.f - b.f || a.sym - b.sym; });
+    var q2 = [], i1 = 0, i2 = 0;
+    var take = function () {
+      if (i1 < leaves.length && (i2 >= q2.length || leaves[i1].f <= q2[i2].f)) return leaves[i1++];
+      return q2[i2++];
+    };
+    while ((leaves.length - i1) + (q2.length - i2) > 1) {
+      var a = take(), b = take();
+      q2.push({ f: a.f + b.f, sym: -1, l: a, r: b });
+    }
+    var root = i1 < leaves.length ? leaves[i1] : q2[i2];
+    var maxd = 0, st = [root], sd = [0];
+    while (st.length) {
+      var nd = st.pop(), d = sd.pop();
+      if (nd.sym >= 0) { var L = d === 0 ? 1 : d; lens[nd.sym] = L; if (L > maxd) maxd = L; }
+      else { st.push(nd.l); sd.push(d + 1); st.push(nd.r); sd.push(d + 1); }
+    }
+    if (maxd <= maxLen) return lens;
+    for (i = 0; i < A; i++) if (w[i] > 0) w[i] = Math.floor(w[i] / 2) + 1;
+  }
+  throw new Error('huffman length limiting did not converge');
+}
+/* 也返回树根,供码树可视化用 */
+function huffTree(freq, A) {
+  var leaves = [], i;
+  for (i = 0; i < A; i++) if (freq[i] > 0) leaves.push({ f: freq[i], sym: i, l: null, r: null });
+  if (leaves.length === 0) return null;
+  if (leaves.length === 1) return { f: leaves[0].f, sym: -1, l: leaves[0], r: null };
+  leaves.sort(function (a, b) { return a.f - b.f || a.sym - b.sym; });
+  var q2 = [], i1 = 0, i2 = 0;
+  var take = function () {
+    if (i1 < leaves.length && (i2 >= q2.length || leaves[i1].f <= q2[i2].f)) return leaves[i1++];
+    return q2[i2++];
+  };
+  while ((leaves.length - i1) + (q2.length - i2) > 1) {
+    var a = take(), b = take();
+    q2.push({ f: a.f + b.f, sym: -1, l: a, r: b });
+  }
+  return i1 < leaves.length ? leaves[i1] : q2[i2];
+}
+function maxOf(lens, A) { var m = 0; for (var i = 0; i < A; i++) if (lens[i] > m) m = lens[i]; return m; }
+function canonicalCodes(lens, A) {
+  var maxLen = maxOf(lens, A);
+  var codes = new Int32Array(A);
+  if (maxLen === 0) return { codes: codes, maxLen: 0 };
+  var blCount = new Int32Array(maxLen + 1), i;
+  for (i = 0; i < A; i++) if (lens[i]) blCount[lens[i]]++;
+  var nextCode = new Int32Array(maxLen + 2), code = 0;
+  for (var bits = 1; bits <= maxLen; bits++) { code = (code + (bits >= 2 ? blCount[bits - 1] : 0)) * 2; nextCode[bits] = code; }
+  for (i = 0; i < A; i++) if (lens[i]) codes[i] = nextCode[lens[i]]++;
+  return { codes: codes, maxLen: maxLen };
+}
+function huffDecoder(lens, A) {
+  var maxLen = maxOf(lens, A);
+  if (maxLen === 0) return null;
+  var blCount = new Int32Array(maxLen + 1), i, total = 0;
+  for (i = 0; i < A; i++) if (lens[i]) { blCount[lens[i]]++; total++; }
+  var firstCode = new Int32Array(maxLen + 2), firstIdx = new Int32Array(maxLen + 2);
+  var code = 0, idx = 0;
+  for (var bits = 1; bits <= maxLen; bits++) {
+    code = (code + (bits >= 2 ? blCount[bits - 1] : 0)) * 2;
+    firstCode[bits] = code; firstIdx[bits] = idx; idx += blCount[bits];
+  }
+  var offs = new Int32Array(maxLen + 2); offs.set(firstIdx);
+  var symArr = new Int32Array(total);
+  for (i = 0; i < A; i++) if (lens[i]) symArr[offs[lens[i]]++] = i;
+  return { maxLen: maxLen, blCount: blCount, firstCode: firstCode, firstIdx: firstIdx, symArr: symArr };
+}
+function huffRead(br, d) {
+  var code = 0;
+  for (var len = 1; len <= d.maxLen; len++) {
+    code = code * 2 + br.bit();
+    var cnt = d.blCount[len];
+    if (cnt) { var off = code - d.firstCode[len]; if (off >= 0 && off < cnt) return d.symArr[d.firstIdx[len] + off]; }
+  }
+  throw new Error('损坏的霍夫曼码流');
+}
+/* 码长表串行化:5 bit 一个码长(1..24),31 = 零游程转义 + 8 bit 长度 */
+function writeLens(bw, lens, A) {
+  var i = 0;
+  while (i < A) {
+    if (lens[i] === 0) {
+      var j = i; while (j < A && lens[j] === 0 && j - i < 256) j++;
+      bw.bits(31, 5); bw.bits(j - i - 1, 8); i = j;
+    } else { bw.bits(lens[i], 5); i++; }
+  }
+}
+function readLens(br, A) {
+  var lens = new Int32Array(A), i = 0;
+  while (i < A) {
+    var v = br.bits(5);
+    if (v === 31) { i += br.bits(8) + 1; } else { lens[i++] = v; }
+  }
+  return lens;
+}
+
+/* ---------------- 1. 游程编码 RLE(PackBits) ---------------- */
+function rleEncode(src) {
+  var w = new ByteWriter(), n = src.length, i = 0;
+  w.u32(n);
+  while (i < n) {
+    var run = 1;
+    while (i + run < n && src[i + run] === src[i] && run < 128) run++;
+    if (run >= 3) { w.byte(257 - run); w.byte(src[i]); i += run; }
+    else {
+      var j = i, cnt = 0;
+      while (j < n && cnt < 128) {
+        var r = 1;
+        while (j + r < n && src[j + r] === src[j] && r < 3) r++;
+        if (r >= 3) break;
+        j++; cnt++;
+      }
+      if (cnt === 0) { j = i + 1; cnt = 1; }
+      w.byte(cnt - 1);
+      w.bytes(src.subarray(i, i + cnt));
+      i = j;
+    }
+  }
+  return w.done();
+}
+function rleDecode(enc) {
+  var r = new ByteReader(enc), n = r.u32(), out = new Uint8Array(n), o = 0;
+  while (o < n) {
+    var h = r.byte();
+    if (h < 128) { var c = h + 1; for (var k = 0; k < c; k++) out[o++] = r.byte(); }
+    else if (h > 128) { var rc = 257 - h, v = r.byte(); for (var m = 0; m < rc; m++) out[o++] = v; }
+    else break;
+  }
+  return out;
+}
+
+/* ---------------- 2. 静态霍夫曼 ---------------- */
+function huffmanEncode(src) {
+  var w = new ByteWriter(), n = src.length, i;
+  w.u32(n);
+  if (n === 0) { w.byte(0); return w.done(); }
+  var freq = histogram(src);
+  var lens = huffLengths(freq, 256, 24);
+  var codes = canonicalCodes(lens, 256).codes;
+  var used = 0;
+  for (i = 0; i < 256; i++) if (lens[i]) used++;
+  w.byte(used === 256 ? 0 : used);
+  for (i = 0; i < 256; i++) if (lens[i]) { w.byte(i); w.byte(lens[i]); }
+  var bw = new BitWriter();
+  for (i = 0; i < n; i++) { var s = src[i]; bw.bits(codes[s], lens[s]); }
+  w.bytes(bw.flush());
+  return w.done();
+}
+function huffmanDecode(enc) {
+  var r = new ByteReader(enc), n = r.u32(), out = new Uint8Array(n);
+  if (n === 0) return out;
+  var used = r.byte(); if (used === 0) used = 256;
+  var lens = new Int32Array(256);
+  for (var k = 0; k < used; k++) { var s = r.byte(); lens[s] = r.byte(); }
+  var d = huffDecoder(lens, 256);
+  var br = new BitReader(enc, r.p);
+  for (var i = 0; i < n; i++) out[i] = huffRead(br, d);
+  return out;
+}
+
+/* ---------------- LZ 分词(LZSS / Deflate 共用) ---------------- */
+function lzTokens(src, wbits, maxMatch) {
+  var W = 1 << wbits, MINM = 3, MAXM = maxMatch || 258, n = src.length;
+  var HSIZE = 1 << 16, HMASK = HSIZE - 1, MAXCHAIN = 96;
+  var head = new Int32Array(HSIZE).fill(-1);
+  var prev = new Int32Array(n > 0 ? n : 1).fill(-1);
+  var cap = n + 1;
+  var type = new Uint8Array(cap), ta = new Int32Array(cap), tb = new Int32Array(cap), tp = new Int32Array(cap);
+  var count = 0, i = 0, k;
+  var hash = function (p) { return ((src[p] << 10) ^ (src[p + 1] << 5) ^ src[p + 2]) & HMASK; };
+  while (i < n) {
+    var bestLen = 0, bestDist = 0;
+    if (i + MINM <= n) {
+      var key = hash(i), cand = head[key], chain = 0;
+      var limit = i - W > 0 ? i - W : 0;
+      var max = Math.min(MAXM, n - i);
+      while (cand >= 0 && cand >= limit && chain < MAXCHAIN) {
+        chain++;
+        if (src[cand + bestLen] === src[i + bestLen] && src[cand] === src[i]) {
+          var l = 0;
+          while (l < max && src[cand + l] === src[i + l]) l++;
+          if (l > bestLen) { bestLen = l; bestDist = i - cand; if (l >= max) break; }
+        }
+        cand = prev[cand];
+      }
+    }
+    if (bestLen >= MINM) {
+      type[count] = 1; ta[count] = bestDist; tb[count] = bestLen; tp[count] = i; count++;
+      for (k = 0; k < bestLen; k++) { if (i + k + MINM <= n) { var kk = hash(i + k); prev[i + k] = head[kk]; head[kk] = i + k; } }
+      i += bestLen;
+    } else {
+      type[count] = 0; ta[count] = src[i]; tb[count] = 1; tp[count] = i; count++;
+      if (i + MINM <= n) { var k2 = hash(i); prev[i] = head[k2]; head[k2] = i; }
+      i++;
+    }
+  }
+  return { type: type, a: ta, b: tb, pos: tp, count: count };
+}
+
+/* ---------------- 3. LZSS ---------------- */
+function lzssEncode(src, wbits) {
+  var w = new ByteWriter();
+  w.byte(wbits); w.u32(src.length);
+  if (src.length === 0) return w.done();
+  var tk = lzTokens(src, wbits, 258);
+  var bw = new BitWriter();
+  for (var i = 0; i < tk.count; i++) {
+    if (tk.type[i] === 0) { bw.bit(0); bw.bits(tk.a[i], 8); }
+    else { bw.bit(1); bw.bits(tk.a[i] - 1, wbits); bw.bits(tk.b[i] - 3, 8); }
+  }
+  w.bytes(bw.flush());
+  return w.done();
+}
+function lzssDecode(enc) {
+  var r = new ByteReader(enc), wbits = r.byte(), n = r.u32();
+  var out = new Uint8Array(n);
+  if (n === 0) return out;
+  var br = new BitReader(enc, r.p), o = 0;
+  while (o < n) {
+    if (br.bit() === 0) out[o++] = br.bits(8);
+    else {
+      var dist = br.bits(wbits) + 1, len = br.bits(8) + 3, from = o - dist;
+      for (var k = 0; k < len; k++) out[o++] = out[from + k];
+    }
+  }
+  return out;
+}
+
+/* ---------------- 4. Deflate-lite(LZSS + 霍夫曼) ---------------- */
+var DFL_LA = 513, DFL_DA = 18;   /* 0..255 字面量,256 = EOB,257..512 = 长度 3..258 */
+function distSlot(d) { return 31 - Math.clz32(d); }
+function deflateLiteEncode(src, wbits) {
+  var w = new ByteWriter();
+  w.byte(wbits); w.u32(src.length);
+  if (src.length === 0) return w.done();
+  var tk = lzTokens(src, wbits, 258), i;
+  var lf = new Float64Array(DFL_LA), df = new Float64Array(DFL_DA);
+  for (i = 0; i < tk.count; i++) {
+    if (tk.type[i] === 0) lf[tk.a[i]]++;
+    else { lf[257 + tk.b[i] - 3]++; df[distSlot(tk.a[i])]++; }
+  }
+  lf[256]++;
+  var llens = huffLengths(lf, DFL_LA, 24), dlens = huffLengths(df, DFL_DA, 15);
+  var lc = canonicalCodes(llens, DFL_LA).codes, dc = canonicalCodes(dlens, DFL_DA).codes;
+  var bw = new BitWriter();
+  writeLens(bw, llens, DFL_LA); writeLens(bw, dlens, DFL_DA);
+  for (i = 0; i < tk.count; i++) {
+    if (tk.type[i] === 0) { var v = tk.a[i]; bw.bits(lc[v], llens[v]); }
+    else {
+      var ls = 257 + tk.b[i] - 3; bw.bits(lc[ls], llens[ls]);
+      var d = tk.a[i], sl = distSlot(d);
+      bw.bits(dc[sl], dlens[sl]);
+      if (sl > 0) bw.bits(d - (1 << sl), sl);
+    }
+  }
+  bw.bits(lc[256], llens[256]);
+  w.bytes(bw.flush());
+  return w.done();
+}
+function deflateLiteDecode(enc) {
+  var r = new ByteReader(enc); r.byte();
+  var n = r.u32(), out = new Uint8Array(n);
+  if (n === 0) return out;
+  var br = new BitReader(enc, r.p);
+  var llens = readLens(br, DFL_LA), dlens = readLens(br, DFL_DA);
+  var ld = huffDecoder(llens, DFL_LA), dd = huffDecoder(dlens, DFL_DA);
+  var o = 0;
+  for (var guard = 0; guard < n * 2 + 16; guard++) {
+    var s = huffRead(br, ld);
+    if (s === 256) break;
+    if (s < 256) { out[o++] = s; }
+    else {
+      var len = s - 257 + 3;
+      var sl = huffRead(br, dd);
+      var d = (1 << sl) + (sl > 0 ? br.bits(sl) : 0);
+      var from = o - d;
+      for (var k = 0; k < len; k++) out[o++] = out[from + k];
+    }
+    if (o >= n) { break; }
+  }
+  return out;
+}
+
+/* ---------------- 5/6. 自适应算术编码(零阶 / 一阶) ---------------- */
+var AR_TOP = 65535, AR_Q1 = 16384, AR_HALF = 32768, AR_Q3 = 49152, AR_MAXTOT = 16383, AR_INC = 32;
+function ArModel(nsym) {
+  this.n = nsym;
+  this.freq = new Int32Array(nsym).fill(1);
+  this.cum = new Int32Array(nsym + 1);
+  this.rebuild();
+}
+ArModel.prototype.rebuild = function () {
+  var s = 0;
+  for (var i = 0; i < this.n; i++) { this.cum[i] = s; s += this.freq[i]; }
+  this.cum[this.n] = s; this.total = s;
+};
+ArModel.prototype.halve = function () {
+  for (var i = 0; i < this.n; i++) { var f = this.freq[i] >> 1; this.freq[i] = f > 0 ? f : 1; }
+  this.rebuild();
+};
+ArModel.prototype.update = function (s) {
+  this.freq[s] += AR_INC;
+  for (var i = s + 1; i <= this.n; i++) this.cum[i] += AR_INC;
+  this.total += AR_INC;
+  while (this.total > AR_MAXTOT) this.halve();
+};
+function arModels(order) {
+  if (order === 0) return [new ArModel(256)];
+  var a = new Array(256);
+  for (var i = 0; i < 256; i++) a[i] = new ArModel(256);
+  return a;
+}
+function arEncode(src, order) {
+  var w = new ByteWriter();
+  w.byte(order); w.u32(src.length);
+  if (src.length === 0) return w.done();
+  var bw = new BitWriter();
+  var low = 0, high = AR_TOP, pending = 0;
+  function emit(b) { bw.bit(b); while (pending > 0) { bw.bit(b ^ 1); pending--; } }
+  var models = arModels(order), ctx = 0;
+  for (var i = 0; i < src.length; i++) {
+    var m = order === 0 ? models[0] : models[ctx];
+    var s = src[i], t = m.total, range = high - low + 1;
+    high = low + Math.floor(range * m.cum[s + 1] / t) - 1;
+    low = low + Math.floor(range * m.cum[s] / t);
+    for (;;) {
+      if (high < AR_HALF) { emit(0); }
+      else if (low >= AR_HALF) { emit(1); low -= AR_HALF; high -= AR_HALF; }
+      else if (low >= AR_Q1 && high < AR_Q3) { pending++; low -= AR_Q1; high -= AR_Q1; }
+      else break;
+      low = low * 2; high = high * 2 + 1;
+    }
+    m.update(s); ctx = s;
+  }
+  pending++;
+  if (low < AR_Q1) emit(0); else emit(1);
+  w.bytes(bw.flush());
+  return w.done();
+}
+function arDecode(enc) {
+  var r = new ByteReader(enc), order = r.byte(), n = r.u32();
+  var out = new Uint8Array(n);
+  if (n === 0) return out;
+  var br = new BitReader(enc, r.p);
+  var low = 0, high = AR_TOP, value = 0, i;
+  for (i = 0; i < 16; i++) value = value * 2 + br.bit();
+  var models = arModels(order), ctx = 0;
+  for (i = 0; i < n; i++) {
+    var m = order === 0 ? models[0] : models[ctx];
+    var t = m.total, range = high - low + 1;
+    var target = Math.floor(((value - low + 1) * t - 1) / range);
+    var s = 0;
+    while (s < m.n - 1 && m.cum[s + 1] <= target) s++;
+    out[i] = s;
+    high = low + Math.floor(range * m.cum[s + 1] / t) - 1;
+    low = low + Math.floor(range * m.cum[s] / t);
+    for (;;) {
+      if (high < AR_HALF) { /* nothing */ }
+      else if (low >= AR_HALF) { value -= AR_HALF; low -= AR_HALF; high -= AR_HALF; }
+      else if (low >= AR_Q1 && high < AR_Q3) { value -= AR_Q1; low -= AR_Q1; high -= AR_Q1; }
+      else break;
+      low = low * 2; high = high * 2 + 1; value = value * 2 + br.bit();
+    }
+    m.update(s); ctx = s;
+  }
+  return out;
+}
+
+/* ---------------- 7. BWT + MTF + 零游程 + 霍夫曼(bzip-lite) ---------------- */
+/* 倍增法 + 计数排序后缀数组,O(n log n) */
+function suffixArray(s, n, K) {
+  var sa = new Int32Array(n), rank = new Int32Array(n), tmp = new Int32Array(n), i;
+  if (n === 0) return sa;
+  var cnt = new Int32Array(Math.max(K, n) + 1);
+  for (i = 0; i < n; i++) cnt[s[i]]++;
+  for (i = 1; i < K; i++) cnt[i] += cnt[i - 1];
+  for (i = n - 1; i >= 0; i--) sa[--cnt[s[i]]] = i;
+  rank[sa[0]] = 0;
+  for (i = 1; i < n; i++) rank[sa[i]] = rank[sa[i - 1]] + (s[sa[i]] !== s[sa[i - 1]] ? 1 : 0);
+  for (var k = 1; k < n; k <<= 1) {
+    if (rank[sa[n - 1]] === n - 1) break;
+    var p = 0;
+    for (i = n - k; i < n; i++) tmp[p++] = i;
+    for (i = 0; i < n; i++) if (sa[i] >= k) tmp[p++] = sa[i] - k;
+    var m = rank[sa[n - 1]] + 1;
+    var c2 = new Int32Array(m + 1);
+    for (i = 0; i < n; i++) c2[rank[i]]++;
+    for (i = 1; i < m; i++) c2[i] += c2[i - 1];
+    for (i = n - 1; i >= 0; i--) sa[--c2[rank[tmp[i]]]] = tmp[i];
+    var nr = new Int32Array(n);
+    nr[sa[0]] = 0;
+    for (i = 1; i < n; i++) {
+      var a = sa[i - 1], b = sa[i];
+      var ra = a + k < n ? rank[a + k] : -1, rb = b + k < n ? rank[b + k] : -1;
+      nr[b] = nr[a] + ((rank[a] === rank[b] && ra === rb) ? 0 : 1);
+    }
+    rank = nr;
+  }
+  return sa;
+}
+function bwtBlock(block) {
+  var n = block.length;
+  if (n === 0) return { last: new Uint8Array(0), primary: 0 };
+  var t = new Uint8Array(2 * n); t.set(block, 0); t.set(block, n);
+  var sa = suffixArray(t, 2 * n, 256);
+  var last = new Uint8Array(n), p = 0, primary = 0;
+  for (var i = 0; i < 2 * n; i++) {
+    var st = sa[i];
+    if (st < n) { last[p] = block[(st + n - 1) % n]; if (st === 0) primary = p; p++; }
+  }
+  return { last: last, primary: primary };
+}
+function ibwt(last, primary) {
+  var n = last.length;
+  if (n === 0) return new Uint8Array(0);
+  var C = new Int32Array(257), i;
+  for (i = 0; i < n; i++) C[last[i] + 1]++;
+  for (i = 1; i < 257; i++) C[i] += C[i - 1];
+  var seen = new Int32Array(256), LF = new Int32Array(n);
+  for (i = 0; i < n; i++) { LF[i] = C[last[i]] + seen[last[i]]; seen[last[i]]++; }
+  var out = new Uint8Array(n), p = primary;
+  for (i = n - 1; i >= 0; i--) { out[i] = last[p]; p = LF[p]; }
+  return out;
+}
+function mtfEncode(buf) {
+  var tbl = new Uint8Array(256), i, j, k;
+  for (i = 0; i < 256; i++) tbl[i] = i;
+  var out = new Uint8Array(buf.length);
+  for (i = 0; i < buf.length; i++) {
+    var c = buf[i]; j = 0;
+    while (tbl[j] !== c) j++;
+    out[i] = j;
+    for (k = j; k > 0; k--) tbl[k] = tbl[k - 1];
+    tbl[0] = c;
+  }
+  return out;
+}
+function mtfDecode(buf) {
+  var tbl = new Uint8Array(256), i, k;
+  for (i = 0; i < 256; i++) tbl[i] = i;
+  var out = new Uint8Array(buf.length);
+  for (i = 0; i < buf.length; i++) {
+    var j = buf[i], c = tbl[j];
+    out[i] = c;
+    for (k = j; k > 0; k--) tbl[k] = tbl[k - 1];
+    tbl[0] = c;
+  }
+  return out;
+}
+/* 零游程用双射二进制 RUNA(0)/RUNB(1) 表示,其余符号整体上移 1 → 字母表 257 */
+function zrleEncode(mtf) {
+  var out = [], i = 0;
+  while (i < mtf.length) {
+    if (mtf[i] === 0) {
+      var run = 0;
+      while (i < mtf.length && mtf[i] === 0) { run++; i++; }
+      var r = run;
+      while (r > 0) { r--; out.push(r & 1); r = Math.floor(r / 2); }
+    } else { out.push(mtf[i] + 1); i++; }
+  }
+  return out;
+}
+function zrleDecode(syms, outLen) {
+  var out = new Uint8Array(outLen), o = 0, i = 0;
+  while (i < syms.length && o < outLen) {
+    if (syms[i] <= 1) {
+      var run = 0, k = 0;
+      while (i < syms.length && syms[i] <= 1) { run += (syms[i] + 1) * Math.pow(2, k); k++; i++; }
+      for (var j = 0; j < run && o < outLen; j++) out[o++] = 0;
+    } else { out[o++] = syms[i] - 1; i++; }
+  }
+  return out;
+}
+var BZ_A = 257;
+function bzEncode(src, blockBits) {
+  var w = new ByteWriter();
+  w.byte(blockBits); w.u32(src.length);
+  if (src.length === 0) return w.done();
+  var B = 1 << blockBits, bw = new BitWriter();
+  for (var off = 0; off < src.length; off += B) {
+    var block = src.subarray(off, Math.min(off + B, src.length));
+    var bt = bwtBlock(block);
+    var mtf = mtfEncode(bt.last);
+    var syms = zrleEncode(mtf);
+    var f = new Float64Array(BZ_A), i;
+    for (i = 0; i < syms.length; i++) f[syms[i]]++;
+    var lens = huffLengths(f, BZ_A, 24);
+    var codes = canonicalCodes(lens, BZ_A).codes;
+    bw.bits(bt.primary, 32);
+    bw.bits(syms.length, 32);
+    writeLens(bw, lens, BZ_A);
+    for (i = 0; i < syms.length; i++) bw.bits(codes[syms[i]], lens[syms[i]]);
+  }
+  w.bytes(bw.flush());
+  return w.done();
+}
+function bzDecode(enc) {
+  var r = new ByteReader(enc), blockBits = r.byte(), n = r.u32();
+  var out = new Uint8Array(n);
+  if (n === 0) return out;
+  var B = 1 << blockBits, br = new BitReader(enc, r.p), o = 0;
+  while (o < n) {
+    var blockLen = Math.min(B, n - o);
+    var primary = br.bits(32), symCount = br.bits(32);
+    var lens = readLens(br, BZ_A);
+    var d = huffDecoder(lens, BZ_A);
+    var syms = new Int32Array(symCount);
+    for (var i = 0; i < symCount; i++) syms[i] = huffRead(br, d);
+    var mtf = zrleDecode(syms, blockLen);
+    var last = mtfDecode(mtf);
+    var block = ibwt(last, primary);
+    out.set(block, o);
+    o += blockLen;
+  }
+  return out;
+}
+
+/* ---------------- 编码器登记表 ---------------- */
+var CODECS = [
+  {
+    id: 'rle', name: '游程编码 RLE', note: 'PackBits · 只吃连续重复',
+    encode: function (s) { return rleEncode(s); },
+    decode: function (e) { return rleDecode(e); }
+  },
+  {
+    id: 'huffman', name: '静态霍夫曼', note: '规范码 + 码长表随流下发',
+    encode: function (s) { return huffmanEncode(s); },
+    decode: function (e) { return huffmanDecode(e); }
+  },
+  {
+    id: 'lzss', name: 'LZSS', note: '滑动窗口 · 定长标记位',
+    encode: function (s, o) { return lzssEncode(s, o.wbits); },
+    decode: function (e) { return lzssDecode(e); }
+  },
+  {
+    id: 'deflate', name: 'Deflate-lite', note: 'LZSS 分词 + 双霍夫曼树',
+    encode: function (s, o) { return deflateLiteEncode(s, o.wbits); },
+    decode: function (e) { return deflateLiteDecode(e); }
+  },
+  {
+    id: 'ar0', name: '算术编码 · 零阶', note: '自适应频次模型 · 逼近 H₀', limit: ARITH_LIMIT,
+    encode: function (s) { return arEncode(s, 0); },
+    decode: function (e) { return arDecode(e); }
+  },
+  {
+    id: 'ar1', name: '算术编码 · 一阶', note: '前一字节作上下文 · 逼近 H₁', limit: ARITH_LIMIT,
+    encode: function (s) { return arEncode(s, 1); },
+    decode: function (e) { return arDecode(e); }
+  },
+  {
+    id: 'bwt', name: 'BWT · bzip-lite', note: '后缀排序 + MTF + 零游程 + 霍夫曼',
+    encode: function (s, o) { return bzEncode(s, o.blockBits); },
+    decode: function (e) { return bzDecode(e); }
+  }
+];
+
+function sameBytes(a, b) {
+  if (a.length !== b.length) return false;
+  for (var i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+}
+function runCodec(codec, src, opts) {
+  if (codec.limit && src.length > codec.limit) {
+    return { id: codec.id, skipped: true, reason: '输入超过 ' + Math.round(codec.limit / 1024) + ' KB,已跳过' };
+  }
+  var t0 = now();
+  var enc = codec.encode(src, opts);
+  var t1 = now();
+  var dec = codec.decode(enc, opts);
+  var t2 = now();
+  return {
+    id: codec.id, skipped: false, size: enc.length, bytes: enc,
+    encMs: t1 - t0, decMs: t2 - t1,
+    roundTrip: sameBytes(src, dec),
+    ratio: src.length ? enc.length / src.length : 0,
+    bpb: src.length ? enc.length * 8 / src.length : 0
+  };
+}
+function now() {
+  return (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+}
+/* ENGINE>>> */
+
+/* ==========================================================================
+   UI
+   ========================================================================== */
+var $ = function (id) { return document.getElementById(id); };
+var TE = new TextEncoder();
+
+/* ---------------- 内置样本 ---------------- */
+/* xorshift32:必须全程 >>>0 留在 32 位内 —— 用 s*1103515245 的经典 LCG 会越过 2^53
+   精度墙,低位塌成常数,样本会退化成一串同样的字节(2026-08-04 实撞,DNA 样本 H0 掉到 0.298)。 */
+function prng(seed) {
+  var s = seed >>> 0;
+  return function () { s ^= s << 13; s >>>= 0; s ^= s >> 17; s >>>= 0; s ^= s << 5; s >>>= 0; return s / 4294967296; };
+}
+function makeLog() {
+  var lv = ['INFO ', 'INFO ', 'INFO ', 'WARN ', 'ERROR', 'DEBUG'];
+  var mods = ['api.gateway', 'auth.session', 'db.pool', 'cache.redis', 'worker.queue'];
+  var paths = ['/v1/users/', '/v1/orders/', '/v1/search?q=', '/v1/assets/', '/healthz'];
+  var out = [], r = prng(20260804);
+  for (var i = 0; i < 220; i++) {
+    var mm = String(Math.floor(i / 60)).padStart(2, '0');
+    var ss = String(i % 60).padStart(2, '0');
+    var st = r() < 0.88 ? 200 : (r() < 0.6 ? 404 : 500);
+    out.push('2026-08-04T07:' + mm + ':' + ss + 'Z ' + lv[Math.floor(r() * lv.length)] +
+      ' [' + mods[Math.floor(r() * mods.length)] + '] request id=' +
+      Math.floor(r() * 16777215).toString(16).padStart(6, '0') +
+      ' method=' + (r() < 0.7 ? 'GET' : 'POST') +
+      ' path=' + paths[Math.floor(r() * paths.length)] + Math.floor(r() * 9000 + 1000) +
+      ' status=' + st + ' dur=' + Math.floor(r() * 180 + 3) + 'ms');
+  }
+  return out.join('\n');
+}
+function makeDNA() {
+  var b = 'ACGT', out = [], r = prng(0x51ed270b);
+  for (var i = 0; i < 6000; i++) out.push(b[Math.floor(r() * 4)]);
+  var lines = [];
+  for (var j = 0; j < out.length; j += 60) lines.push(out.slice(j, j + 60).join(''));
+  return '>chr-synthetic random draw, H0 should sit at exactly 2 bits/base\n' + lines.join('\n');
+}
+function makeNoise() {
+  var abc = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+  var out = [], r = prng(0x2545f491);
+  for (var i = 0; i < 6000; i++) out.push(abc[Math.floor(r() * 64)]);
+  var lines = [];
+  for (var j = 0; j < out.length; j += 76) lines.push(out.slice(j, j + 76).join(''));
+  return lines.join('\n');
+}
+var SAMPLES = [
+  { id: 'log', label: '服务器日志', text: makeLog() },
+  {
+    id: 'prose', label: '英文散文', text:
+      ('Information theory begins with a deceptively simple question: how few bits does it take to write something down? ' +
+        'Shannon answered it in 1948 by pointing at probability. A symbol that surprises you carries more information than one you expected, ' +
+        'and the average surprise of a source is its entropy. Everything a compressor does is an attempt to spend fewer bits on the things you ' +
+        'could have guessed. Run-length coding guesses that the next byte repeats. Huffman coding guesses that some bytes are simply more common. ' +
+        'Lempel and Ziv guessed that whatever you just said, you are about to say again. Arithmetic coding stops rounding to whole bits at all. ' +
+        'None of them beat the entropy of the source, and that is the point: the bound is not an engineering limit, it is a law. ').repeat(4)
+  },
+  {
+    id: 'cn', label: '中文段落', text:
+      ('香农在一九四八年提出:信息量的本质是意外程度。一个你早就猜到的符号几乎不携带信息,而一个出乎意料的符号才值得花比特去记。' +
+        '压缩算法做的所有事情,都是把「本来能猜到的部分」少花几个比特写下来。游程编码赌下一个字节和上一个一样;霍夫曼编码赌有些字节天生更常见;' +
+        'Lempel 与 Ziv 赌你刚说过的话马上还会再说一遍;算术编码干脆不再把每个符号凑成整数个比特。它们谁也压不过信源的熵——这不是工程上的难处,而是一条定律。').repeat(6)
+  },
+  {
+    id: 'code', label: '源代码', text:
+      ('function huffLengths(freq, A, maxLen) {\n' +
+        '  var leaves = [];\n' +
+        '  for (var i = 0; i < A; i++) if (freq[i] > 0) leaves.push({ f: freq[i], sym: i });\n' +
+        '  leaves.sort(function (a, b) { return a.f - b.f; });\n' +
+        '  while (leaves.length > 1) {\n' +
+        '    var a = leaves.shift(), b = leaves.shift();\n' +
+        '    leaves.push({ f: a.f + b.f, l: a, r: b });\n' +
+        '    leaves.sort(function (a, b) { return a.f - b.f; });\n' +
+        '  }\n' +
+        '  return leaves[0];\n' +
+        '}\n\n').repeat(30)
+  },
+  { id: 'repeat', label: '高重复串', text: ('压缩实验室 compression lab '.repeat(40) + '\n' + 'ABABABABABAB'.repeat(60) + '\n').repeat(6) },
+  { id: 'dna', label: 'DNA 序列', text: makeDNA() },
+  { id: 'noise', label: '随机 Base64', text: makeNoise() }
+];
+
+/* ---------------- 小工具 ---------------- */
+function fmtBytes(n) {
+  if (n < 1024) return n + ' B';
+  if (n < 1024 * 1024) return (n / 1024).toFixed(n < 10240 ? 2 : 1) + ' KB';
+  return (n / 1048576).toFixed(2) + ' MB';
+}
+function fmtInt(n) { return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
+function fmtMs(ms) { return ms < 1 ? ms.toFixed(2) + ' ms' : (ms < 1000 ? ms.toFixed(0) + ' ms' : (ms / 1000).toFixed(2) + ' s'); }
+function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+function symLabel(b) {
+  if (b === 32) return "' '";
+  if (b === 10) return '\\n';
+  if (b === 13) return '\\r';
+  if (b === 9) return '\\t';
+  if (b >= 33 && b <= 126) return String.fromCharCode(b);
+  return '0x' + b.toString(16).padStart(2, '0').toUpperCase();
+}
+function glyph(b) {
+  if (b === 10) return '⏎';
+  if (b === 9) return '⇥';
+  if (b === 32) return ' ';
+  if (b >= 33 && b <= 126) return String.fromCharCode(b);
+  return '·';
+}
+function svgEl(tag, attrs) {
+  var e = document.createElementNS('http://www.w3.org/2000/svg', tag);
+  for (var k in attrs) if (attrs[k] !== undefined && attrs[k] !== null) e.setAttribute(k, attrs[k]);
+  return e;
+}
+/* 标签避让:按 x 升序放进若干行,与本行上一个标签重叠就换下一行 —— 任何循环画文字都必须走这里 */
+function placeLabels(items, minGap) {
+  var rows = [];
+  items.slice().sort(function (a, b) { return a.x - b.x; }).forEach(function (it) {
+    var w = (it.w !== undefined ? it.w : String(it.text).length * 6.2) + (minGap || 8);
+    var r = 0;
+    while (rows[r] !== undefined && it.x - w / 2 < rows[r]) r++;
+    rows[r] = it.x + w / 2;
+    it.row = r;
+  });
+  return items;
+}
+
+/* ---------------- 状态 ---------------- */
+var state = {
+  bytes: new Uint8Array(0), analysis: null, results: [], native: [], fileBytes: null,
+  tokens: null, huff: null, tab: 'huff', selMatch: -1, truncated: false
+};
+var runSeq = 0;
+var OPT = { wbits: 15, blockBits: 15 };
+var LS_SAMPLES = 'cl.samples.v1', LS_OPTS = 'cl.opts.v1', LS_INPUT = 'cl.input.v1';
+var LZ_SHOW = 700;
+
+/* ---------------- 主流程 ---------------- */
+function currentBytes() {
+  if (state.fileBytes) { state.truncated = false; return state.fileBytes; }
+  var b = TE.encode($('cl-input').value);
+  if (b.length > MAX_INPUT) { state.truncated = true; return b.subarray(0, MAX_INPUT); }
+  state.truncated = false;
+  return b;
+}
+function useTextInput() {
+  state.fileBytes = null;
+  $('cl-input').placeholder = '';
+}
+var pending = null;
+function scheduleRun(delay) {
+  if (pending) clearTimeout(pending);
+  pending = setTimeout(function () { pending = null; run(); }, delay || 0);
+}
+function run() {
+  var seq = ++runSeq;
+  var src = currentBytes();
+  state.bytes = src;
+  document.body.dataset.state = 'busy';
+  document.body.dataset.native = 'pending';
+  $('cl-busy').hidden = false;
+  state.analysis = analyze(src);
+  renderStats();
+  state.results = [];
+  state.native = [];
+  var i = 0;
+  function step() {
+    if (seq !== runSeq) return;
+    if (i < CODECS.length) {
+      var c = CODECS[i++];
+      var r;
+      try { r = runCodec(c, src, OPT); }
+      catch (e) { r = { id: c.id, skipped: true, reason: '异常:' + e.message }; }
+      r.codec = c;
+      state.results.push(r);
+      renderResults();
+      setTimeout(step, 0);
+      return;
+    }
+    state.tokens = src.length ? lzTokens(src.subarray(0, Math.min(src.length, 200000)), OPT.wbits, 258) : null;
+    state.huff = buildHuffView(src);
+    fillCodecPickers();
+    renderChart(); renderHuff(); renderLZ(); renderHist(); renderBits();
+    $('cl-rt-note').textContent = state.truncated
+      ? '输入超过 1 MB,已截断到前 1 MB 参与计算'
+      : '每一行都真的解码回原文并逐字节比对';
+    nativeRefs(src, seq);
+    $('cl-busy').hidden = true;
+    document.body.dataset.state = 'ready';
+    document.body.dataset.run = String(seq);
+  }
+  setTimeout(step, 0);
+}
+function nativeRefs(src, seq) {
+  if (typeof CompressionStream === 'undefined' || !src.length) {
+    document.body.dataset.native = 'none';
+    renderResults();
+    return;
+  }
+  var jobs = [['deflate-raw', 'deflate(浏览器原生)'], ['gzip', 'gzip(浏览器原生)']];
+  var left = jobs.length;
+  jobs.forEach(function (j) {
+    var t0 = now();
+    var cs = new CompressionStream(j[0]);
+    var w = cs.writable.getWriter();
+    w.write(src); w.close();
+    new Response(cs.readable).arrayBuffer().then(function (buf) {
+      if (seq !== runSeq) return;
+      state.native.push({ id: j[0], name: j[1], size: buf.byteLength, encMs: now() - t0, ref: true });
+      state.native.sort(function (a, b) { return a.id < b.id ? -1 : 1; });
+      renderResults(); renderChart();
+      if (--left === 0) document.body.dataset.native = 'done';
+    }).catch(function () {
+      if (seq === runSeq && --left === 0) document.body.dataset.native = 'none';
+    });
+  });
+}
+
+/* ---------------- 渲染:统计 ---------------- */
+function renderStats() {
+  var a = state.analysis;
+  $('cl-stat-bytes').textContent = fmtInt(a.n);
+  $('cl-stat-syms').textContent = a.unique;
+  $('cl-stat-h0').textContent = a.h0.toFixed(3);
+  $('cl-stat-h1').textContent = a.h1.toFixed(3);
+  $('cl-stat-floor').textContent = fmtInt(a.floor0);
+}
+
+/* ---------------- 渲染:结果表 ---------------- */
+function allRows() {
+  var rows = state.results.map(function (r) {
+    return {
+      id: r.id, name: r.codec.name, note: r.codec.note, skipped: r.skipped, reason: r.reason,
+      size: r.size, ratio: r.ratio, bpb: r.bpb, encMs: r.encMs, decMs: r.decMs, rt: r.roundTrip, ref: false
+    };
+  });
+  state.native.forEach(function (nv) {
+    rows.push({
+      id: nv.id, name: nv.name, note: '参照组 · CompressionStream', skipped: false,
+      size: nv.size, ratio: state.bytes.length ? nv.size / state.bytes.length : 0,
+      bpb: state.bytes.length ? nv.size * 8 / state.bytes.length : 0,
+      encMs: nv.encMs, decMs: null, rt: null, ref: true
+    });
+  });
+  return rows;
+}
+function bestId() {
+  var best = null;
+  allRows().forEach(function (r) { if (!r.skipped && !r.ref && r.rt && (best === null || r.size < best.size)) best = r; });
+  return best ? best.id : null;
+}
+function renderResults() {
+  var tb = $('cl-results-body');
+  tb.textContent = '';
+  var n = state.bytes.length;
+  var bid = bestId();
+  allRows().forEach(function (r) {
+    var tr = document.createElement('tr');
+    tr.dataset.codec = r.id;
+    if (r.ref) tr.className = 'cl-ref';
+    else if (r.id === bid) tr.className = 'cl-best';
+    var c1 = document.createElement('td');
+    c1.innerHTML = '<span class="cl-codec-name">' + esc(r.name) + '</span><span class="cl-codec-note">' + esc(r.note) + '</span>';
+    tr.appendChild(c1);
+    if (r.skipped) {
+      var td = document.createElement('td');
+      td.colSpan = 6; td.className = 'cl-mini'; td.style.textAlign = 'left';
+      td.textContent = r.reason;
+      tr.appendChild(td);
+    } else {
+      var grew = n > 0 && r.size > n;
+      var cells = [
+        { t: fmtBytes(r.size), cls: 'cl-num' + (grew ? ' cl-badge-grow' : ''), d: 'size' },
+        { t: n ? (r.ratio * 100).toFixed(1) + '%' : '—', cls: 'cl-num' + (grew ? ' cl-badge-grow' : ''), d: 'ratio' },
+        { t: n ? r.bpb.toFixed(3) : '—', cls: 'cl-num', d: 'bpb' },
+        { t: fmtMs(r.encMs), cls: 'cl-num cl-mini', d: 'enc' },
+        { t: r.decMs === null ? '—' : fmtMs(r.decMs), cls: 'cl-num cl-mini', d: 'dec' }
+      ];
+      cells.forEach(function (c) {
+        var td = document.createElement('td');
+        td.className = c.cls; td.dataset.f = c.d; td.textContent = c.t;
+        tr.appendChild(td);
+      });
+      var td6 = document.createElement('td');
+      td6.dataset.f = 'rt';
+      if (r.rt === null) td6.innerHTML = '<span class="cl-badge">参照</span>';
+      else td6.innerHTML = r.rt ? '<span class="cl-badge cl-badge-ok">✓ 一致</span>' : '<span class="cl-badge cl-badge-bad">✗ 不一致</span>';
+      tr.appendChild(td6);
+    }
+    tb.appendChild(tr);
+  });
+}
+
+/* ---------------- 渲染:条形图 ---------------- */
+function renderChart() {
+  var svg = $('cl-chart');
+  svg.textContent = '';
+  var rows = allRows().filter(function (r) { return !r.skipped; });
+  var n = state.bytes.length;
+  if (!n || !rows.length) { svg.setAttribute('viewBox', '0 0 800 40'); return; }
+  var a = state.analysis;
+  var W = 800, padL = 150, padR = 16, rowH = 30;
+  var maxVal = n;
+  rows.forEach(function (r) { if (r.size > maxVal) maxVal = r.size; });
+  maxVal = maxVal * 1.02;
+  var avail = W - padL - padR - 62;
+  var x = function (v) { return padL + v / maxVal * avail; };
+  var bid = bestId();
+
+  /* 参考竖线 + 标签避让:同一行内与上一个标签重叠就下沉一行,顶部留够行数 */
+  var marks = [
+    { x: x(n), text: '原始 100%', color: 'rgba(255,255,255,.45)', dash: '' },
+    { x: x(a.floor0), text: 'H₀ 下界 ' + fmtBytes(a.floor0), color: '#c2ef4e', dash: '5 4' },
+    { x: x(a.floor1), text: 'H₁ 下界 ' + fmtBytes(a.floor1), color: '#fa7faa', dash: '5 4' }
+  ];
+  marks.forEach(function (m) { m.tx = Math.max(46, Math.min(W - 46, m.x)); m.w = m.text.length * 6.6; });
+  placeLabels(marks.map(function (m) { m.x = m.tx; return m; }), 14);
+  var labelRows = 1;
+  marks.forEach(function (m) { if (m.row + 1 > labelRows) labelRows = m.row + 1; });
+  var top = 8 + labelRows * 14;
+  var H = top + rows.length * rowH + 12;
+  svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+  marks.forEach(function (m) {
+    svg.appendChild(svgEl('line', { x1: m.tx, y1: top - 5, x2: m.tx, y2: H - 8, stroke: m.color, 'stroke-width': 1, 'stroke-dasharray': m.dash, opacity: .8 }));
+    var t = svgEl('text', { x: m.tx, y: 11 + m.row * 14, fill: m.color, 'font-size': 11, 'text-anchor': 'middle', 'font-family': 'Monaco,Menlo,monospace' });
+    t.textContent = m.text;
+    t.setAttribute('data-mark', '1');
+    svg.appendChild(t);
+  });
+
+  rows.forEach(function (r, i) {
+    var y = top + i * rowH;
+    var lbl = svgEl('text', { x: padL - 10, y: y + 15, fill: r.ref ? 'rgba(255,255,255,.55)' : '#fff', 'font-size': 12, 'text-anchor': 'end' });
+    lbl.textContent = r.name.length > 20 ? r.name.slice(0, 19) + '…' : r.name;
+    svg.appendChild(lbl);
+    svg.appendChild(svgEl('rect', { x: padL, y: y + 3, width: avail, height: 16, fill: 'rgba(255,255,255,.05)', rx: 3 }));
+    var w = Math.max(2, x(r.size) - padL);
+    var fill = r.ref ? '#79628c' : (r.size > n ? '#fa7faa' : (r.id === bid ? '#c2ef4e' : '#6a5fc1'));
+    var bar = svgEl('rect', { x: padL, y: y + 3, width: w, height: 16, fill: fill, rx: 3 });
+    bar.setAttribute('data-bar', r.id);
+    svg.appendChild(bar);
+    var vt = svgEl('text', { x: padL + w + 8, y: y + 16, fill: 'rgba(255,255,255,.8)', 'font-size': 11, 'font-family': 'Monaco,Menlo,monospace' });
+    vt.textContent = fmtBytes(r.size) + '  ' + (r.ratio * 100).toFixed(1) + '%';
+    svg.appendChild(vt);
+  });
+}
+
+/* ---------------- 渲染:霍夫曼 ---------------- */
+function buildHuffView(src) {
+  if (!src.length) return null;
+  var hist = histogram(src);
+  var lens = huffLengths(hist, 256, 24);
+  var codes = canonicalCodes(lens, 256).codes;
+  var root = huffTree(hist, 256);
+  var syms = [];
+  for (var i = 0; i < 256; i++) if (hist[i] > 0) syms.push({ b: i, f: hist[i], len: lens[i], code: codes[i] });
+  syms.sort(function (a, b) { return b.f - a.f || a.b - b.b; });
+  var bits = 0;
+  syms.forEach(function (s) { bits += s.f * s.len; });
+  return { root: root, syms: syms, lens: lens, codes: codes, bits: bits, hist: hist };
+}
+function codeStr(code, len) {
+  if (!len) return '';
+  var s = code.toString(2);
+  while (s.length < len) s = '0' + s;
+  return s;
+}
+function renderHuff() {
+  var svg = $('cl-tree'), tb = $('cl-codes-body');
+  svg.textContent = ''; tb.textContent = '';
+  var hv = state.huff;
+  if (!hv) { svg.setAttribute('viewBox', '0 0 640 40'); $('cl-huff-note').textContent = '输入为空。'; return; }
+  /* 码表 */
+  hv.syms.slice(0, 40).forEach(function (s) {
+    var tr = document.createElement('tr');
+    tr.dataset.sym = s.b;
+    tr.innerHTML = '<td class="cl-sym">' + esc(symLabel(s.b)) + '</td><td>' + fmtInt(s.f) + '</td><td>' + s.len + '</td><td class="cl-code">' + codeStr(s.code, s.len) + '</td>';
+    tb.appendChild(tr);
+  });
+  var avgLen = hv.bits / state.bytes.length;
+  $('cl-huff-note').textContent = '共 ' + hv.syms.length + ' 个符号,平均码长 ' + avgLen.toFixed(3) +
+    ' bit/符号,零阶熵 ' + state.analysis.h0.toFixed(3) + ' bit —— 霍夫曼的冗余来自「码长必须是整数」,表里最长 ' +
+    Math.max.apply(null, hv.syms.map(function (s) { return s.len; })) + ' bit。' + (hv.syms.length > 40 ? '(表中仅列前 40 个)' : '');
+
+  /* 剪枝码树:只展开出现频次最高的 12 个叶子 */
+  var keep = {};
+  hv.syms.slice(0, 12).forEach(function (s) { keep[s.b] = true; });
+  var terminals = [];
+  function mark(node) {
+    if (!node) return false;
+    if (node.sym >= 0) { node._keep = !!keep[node.sym]; node._leaves = 1; return node._keep; }
+    var a = mark(node.l), b = mark(node.r);
+    node._leaves = (node.l ? node.l._leaves : 0) + (node.r ? node.r._leaves : 0);
+    node._keep = a || b;
+    return node._keep;
+  }
+  mark(hv.root);
+  var maxDepth = 0;
+  function walk(node, depth, path) {
+    if (!node) return;
+    node._depth = depth; node._path = path;
+    if (depth > maxDepth) maxDepth = depth;
+    if (node.sym >= 0 || !node._keep) { node._term = true; terminals.push(node); return; }
+    node._term = false;
+    walk(node.l, depth + 1, path + '0');
+    walk(node.r, depth + 1, path + '1');
+  }
+  walk(hv.root, 0, '');
+  var rowH = 24, W = 600;
+  var labelX = W - 172;
+  var xstep = Math.min(46, Math.max(16, (labelX - 40) / Math.max(1, maxDepth)));
+  var H = Math.max(80, terminals.length * rowH + 30);
+  svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+  var slot = 0;
+  function assign(node) {
+    if (!node) return null;
+    if (node._term) { node._y = 18 + slot * rowH; slot++; return node._y; }
+    var vals = [assign(node.l), assign(node.r)].filter(function (v) { return v !== null; });
+    node._y = vals.reduce(function (s, v) { return s + v; }, 0) / (vals.length || 1);
+    return node._y;
+  }
+  assign(hv.root);
+  function draw(node) {
+    var nx = 20 + node._depth * xstep;
+    if (!node._term) {
+      [[node.l, '0'], [node.r, '1']].forEach(function (pair) {
+        var ch = pair[0]; if (!ch) return;
+        var cx = 20 + ch._depth * xstep;
+        var p = svgEl('path', {
+          d: 'M' + nx + ' ' + node._y + ' L' + nx + ' ' + ch._y + ' L' + cx + ' ' + ch._y,
+          fill: 'none', stroke: '#362d59', 'stroke-width': 1.4
+        });
+        svg.appendChild(p);
+        var t = svgEl('text', { x: nx + 4, y: (node._y + ch._y) / 2 + 3, fill: '#79628c', 'font-size': 10, 'font-family': 'Monaco,Menlo,monospace' });
+        t.textContent = pair[1];
+        svg.appendChild(t);
+        draw(ch);
+      });
+      svg.appendChild(svgEl('circle', { cx: nx, cy: node._y, r: 3, fill: '#6a5fc1' }));
+    } else {
+      var isLeaf = node.sym >= 0;
+      svg.appendChild(svgEl('line', { x1: nx + 5, y1: node._y, x2: labelX - 6, y2: node._y, stroke: 'rgba(255,255,255,.10)', 'stroke-width': 1, 'stroke-dasharray': '2 3' }));
+      svg.appendChild(svgEl('circle', { cx: nx, cy: node._y, r: 4, fill: isLeaf ? '#c2ef4e' : '#79628c' }));
+      var g = svgEl('text', {
+        x: labelX, y: node._y + 4, fill: isLeaf ? '#fff' : 'rgba(255,255,255,.5)',
+        'font-size': 12, 'font-family': 'Monaco,Menlo,monospace'
+      });
+      g.setAttribute('data-term', isLeaf ? 'leaf' : 'fold');
+      g.textContent = isLeaf
+        ? symLabel(node.sym) + '  ×' + fmtInt(node.f) + '  ' + codeStr(hv.codes[node.sym], hv.lens[node.sym])
+        : '⋯ ' + node._leaves + ' 个符号';
+      svg.appendChild(g);
+    }
+  }
+  draw(hv.root);
+}
+
+/* ---------------- 渲染:LZ 匹配 ---------------- */
+function renderLZ() {
+  var host = $('cl-lzview');
+  host.textContent = '';
+  var tk = state.tokens, src = state.bytes;
+  if (!tk || !src.length) { $('cl-lz-shown').textContent = '0'; $('cl-lz-stats').textContent = ''; return; }
+  var shown = Math.min(src.length, LZ_SHOW);
+  $('cl-lz-shown').textContent = fmtInt(shown);
+  var lits = 0, mats = 0, matBytes = 0, longest = 0;
+  for (var i = 0; i < tk.count; i++) {
+    if (tk.type[i] === 0) lits++;
+    else { mats++; matBytes += tk.b[i]; if (tk.b[i] > longest) longest = tk.b[i]; }
+  }
+  $('cl-lz-stats').textContent = '全文:' + fmtInt(lits) + ' 个字面量 · ' + fmtInt(mats) + ' 个匹配 · 匹配覆盖 ' +
+    (src.length ? (matBytes / src.length * 100).toFixed(1) : '0') + '% 字节 · 最长匹配 ' + longest + ' B';
+
+  /* 每个字节归属哪个 token */
+  var meta = new Int32Array(shown).fill(-1);
+  for (var t = 0; t < tk.count; t++) {
+    var st = tk.pos[t]; if (st >= shown) break;
+    var en = Math.min(shown, st + (tk.type[t] === 0 ? 1 : tk.b[t]));
+    for (var k = st; k < en; k++) meta[k] = t;
+  }
+  var srcRange = null;
+  if (state.selMatch >= 0 && state.selMatch < tk.count && tk.type[state.selMatch] === 1) {
+    var p = tk.pos[state.selMatch], d = tk.a[state.selMatch], L = tk.b[state.selMatch];
+    srcRange = [p - d, p - d + L];
+  }
+  var frag = document.createDocumentFragment();
+  var i2 = 0;
+  while (i2 < shown) {
+    var ti = meta[i2];
+    var inSrc = srcRange && i2 >= srcRange[0] && i2 < srcRange[1];
+    var j = i2;
+    /* 字面量合并成一段;匹配保持整块 */
+    if (ti >= 0 && tk.type[ti] === 1) {
+      while (j < shown && meta[j] === ti && (srcRange ? (j >= srcRange[0] && j < srcRange[1]) === inSrc : true)) j++;
+    } else {
+      while (j < shown && meta[j] >= 0 && tk.type[meta[j]] === 0 && (srcRange ? (j >= srcRange[0] && j < srcRange[1]) === inSrc : true)) j++;
+    }
+    if (j === i2) j++;
+    var txt = '';
+    for (var q = i2; q < j; q++) txt += glyph(src[q]);
+    var sp = document.createElement('span');
+    if (ti >= 0 && tk.type[ti] === 1) {
+      sp.className = 'cl-mat' + (tk.b[ti] >= 16 ? ' cl-mat-long' : '') + (ti === state.selMatch ? ' cl-mat-sel' : '');
+      sp.dataset.tok = ti;
+      sp.title = 'offset ' + tk.a[ti] + ' · length ' + tk.b[ti];
+      sp.setAttribute('role', 'button');
+      sp.tabIndex = 0;
+    } else {
+      sp.className = 'cl-lit';
+    }
+    if (inSrc) sp.className += ' cl-src';
+    sp.textContent = txt;
+    frag.appendChild(sp);
+    i2 = j;
+  }
+  host.appendChild(frag);
+}
+function selectMatch(ti) {
+  var tk = state.tokens;
+  if (!tk || ti < 0 || ti >= tk.count || tk.type[ti] !== 1) return;
+  state.selMatch = ti;
+  renderLZ();
+  var p = tk.pos[ti], d = tk.a[ti], L = tk.b[ti];
+  var txt = '';
+  for (var q = p; q < p + L && q < state.bytes.length; q++) txt += glyph(state.bytes[q]);
+  var savedBits = L * 8 - (1 + OPT.wbits + 8);
+  $('cl-lz-detail').textContent =
+    '位置 ' + fmtInt(p) + ' 处发出匹配 (offset=' + fmtInt(d) + ', length=' + L + '):内容「' + txt + '」' +
+    ' 复制自位置 ' + fmtInt(p - d) + (p - d < LZ_SHOW ? '(已在上方高亮)' : '(在可视窗口之外)') +
+    ' · 该 token 用 ' + (1 + OPT.wbits + 8) + ' bit 表示了 ' + (L * 8) + ' bit 原文,净省 ' + savedBits + ' bit。';
+}
+
+/* ---------------- 渲染:字节分布 ---------------- */
+function renderHist() {
+  var svg = $('cl-hist');
+  svg.textContent = '';
+  var a = state.analysis;
+  if (!a || !a.n) { svg.setAttribute('viewBox', '0 0 800 40'); $('cl-hist-note').textContent = '输入为空。'; return; }
+  var W = 800, H = 220, padB = 26, padT = 10, padL = 8, padR = 8;
+  svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+  var maxC = 0, i;
+  for (i = 0; i < 256; i++) if (a.hist[i] > maxC) maxC = a.hist[i];
+  var bw = (W - padL - padR) / 256;
+  /* 可打印 ASCII 区间底色 */
+  svg.appendChild(svgEl('rect', { x: padL + 32 * bw, y: padT, width: 95 * bw, height: H - padB - padT, fill: 'rgba(255,255,255,.035)' }));
+  for (i = 0; i < 256; i++) {
+    var c = a.hist[i];
+    if (!c) continue;
+    var h = Math.max(1.2, Math.sqrt(c / maxC) * (H - padB - padT));
+    svg.appendChild(svgEl('rect', {
+      x: padL + i * bw, y: H - padB - h, width: Math.max(1, bw - 0.4), height: h,
+      fill: (i >= 32 && i <= 126) ? '#c2ef4e' : '#6a5fc1', opacity: .92
+    }));
+  }
+  svg.appendChild(svgEl('line', { x1: padL, y1: H - padB, x2: W - padR, y2: H - padB, stroke: '#362d59', 'stroke-width': 1 }));
+  [0, 32, 64, 96, 128, 160, 192, 224, 255].forEach(function (v) {
+    var t = svgEl('text', { x: padL + v * bw, y: H - padB + 15, fill: 'rgba(255,255,255,.45)', 'font-size': 10, 'text-anchor': 'middle', 'font-family': 'Monaco,Menlo,monospace' });
+    t.textContent = v;
+    svg.appendChild(t);
+  });
+  var top = state.huff ? state.huff.syms.slice(0, 3).map(function (s) {
+    return symLabel(s.b) + ' ×' + fmtInt(s.f) + '(' + (s.f / a.n * 100).toFixed(1) + '%)';
+  }).join(' · ') : '';
+  $('cl-hist-note').textContent = '纵轴为平方根刻度(否则小频次看不见);峰值 ' + fmtInt(maxC) +
+    ' 次。绿色为可打印 ASCII(32–126),紫色为其余字节。最常见:' + top +
+    ' —— 分布越尖,零阶熵越低,霍夫曼/算术编码收益越大。';
+}
+
+/* ---------------- 渲染:位流 ---------------- */
+function renderBits() {
+  var host = $('cl-bits');
+  host.textContent = '';
+  var sel = $('cl-bits-codec').value;
+  var r = state.results.filter(function (x) { return x.id === sel && !x.skipped; })[0];
+  if (!r) { $('cl-bits-note').textContent = '该编码器本轮没有输出。'; return; }
+  var total = Math.min(512, r.size * 8);
+  var frag = document.createDocumentFragment();
+  var ones = 0;
+  for (var i = 0; i < total; i++) {
+    var b = (r.bytes[i >> 3] >>> (7 - (i & 7))) & 1;
+    if (b) ones++;
+    var d = document.createElement('i');
+    d.className = 'cl-bit' + (b ? ' cl-bit-1' : '');
+    frag.appendChild(d);
+  }
+  host.appendChild(frag);
+  var allOnes = 0;
+  for (var k = 0; k < r.size; k++) { var v = r.bytes[k]; while (v) { allOnes += v & 1; v >>= 1; } }
+  $('cl-bits-note').textContent = '显示前 ' + total + ' bit(共 ' + fmtInt(r.size * 8) + ' bit)。整段输出 1 的占比 ' +
+    (r.size ? (allOnes / (r.size * 8) * 100).toFixed(1) : '0') + '% —— 压得越彻底,输出越接近随机,这个比例就越靠近 50%。';
+}
+
+/* ---------------- 下载 ---------------- */
+function fillCodecPickers() {
+  [['cl-dl-codec', false], ['cl-bits-codec', true]].forEach(function (pair) {
+    var el = $(pair[0]), prev = el.value;
+    el.textContent = '';
+    state.results.forEach(function (r) {
+      if (r.skipped) return;
+      var o = document.createElement('option');
+      o.value = r.id; o.textContent = r.codec.name + ' · ' + fmtBytes(r.size);
+      el.appendChild(o);
+    });
+    if (prev && Array.prototype.some.call(el.options, function (o) { return o.value === prev; })) el.value = prev;
+  });
+}
+function download(name, blob) {
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  document.body.appendChild(a); a.click();
+  setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 0);
+}
+
+/* ---------------- 样本库(localStorage) ---------------- */
+function loadSaved() {
+  try { return JSON.parse(localStorage.getItem(LS_SAMPLES) || '[]'); } catch (e) { return []; }
+}
+function storeSaved(list) {
+  try { localStorage.setItem(LS_SAMPLES, JSON.stringify(list)); } catch (e) { }
+}
+function renderSaved() {
+  var list = loadSaved(), ul = $('cl-saved');
+  ul.textContent = '';
+  $('cl-saved-empty').hidden = list.length > 0;
+  list.forEach(function (s, idx) {
+    var li = document.createElement('li');
+    var b = document.createElement('button');
+    b.type = 'button'; b.className = 'cl-saved-name'; b.dataset.idx = idx;
+    b.textContent = s.name + ' · ' + fmtBytes(TE.encode(s.text).length);
+    b.addEventListener('click', function () {
+      useTextInput();
+      $('cl-input').value = s.text;
+      markSample(null);
+      state.selMatch = -1;
+      persistInput();
+      scheduleRun(0);
+    });
+    var x = document.createElement('button');
+    x.type = 'button'; x.className = 'cl-x'; x.dataset.del = idx;
+    x.setAttribute('aria-label', '删除样本 ' + s.name);
+    x.textContent = '✕';
+    x.addEventListener('click', function () {
+      var l = loadSaved(); l.splice(idx, 1); storeSaved(l); renderSaved();
+    });
+    li.appendChild(b); li.appendChild(x);
+    ul.appendChild(li);
+  });
+}
+
+/* ---------------- 事件绑定 ---------------- */
+function markSample(id) {
+  Array.prototype.forEach.call(document.querySelectorAll('#cl-samples .cl-tag'), function (b) {
+    b.setAttribute('aria-pressed', b.dataset.sample === id ? 'true' : 'false');
+  });
+}
+function persistInput() {
+  try {
+    var v = $('cl-input').value;
+    localStorage.setItem(LS_INPUT, v.length > 200000 ? v.slice(0, 200000) : v);
+  } catch (e) { }
+}
+function persistOpts() {
+  try { localStorage.setItem(LS_OPTS, JSON.stringify(OPT)); } catch (e) { }
+}
+function setTab(name) {
+  state.tab = name;
+  var map = { huff: ['cl-tab-huff', 'cl-pane-huff'], lz: ['cl-tab-lz', 'cl-pane-lz'], hist: ['cl-tab-hist', 'cl-pane-hist'], bits: ['cl-tab-bits', 'cl-pane-bits'] };
+  Object.keys(map).forEach(function (k) {
+    var on = k === name;
+    $(map[k][0]).setAttribute('aria-selected', on ? 'true' : 'false');
+    $(map[k][1]).hidden = !on;
+  });
+}
+function init() {
+  /* 样本按钮 */
+  var host = $('cl-samples');
+  SAMPLES.forEach(function (s) {
+    var b = document.createElement('button');
+    b.type = 'button'; b.className = 'cl-tag'; b.dataset.sample = s.id;
+    b.setAttribute('aria-pressed', 'false');
+    b.textContent = s.label;
+    b.addEventListener('click', function () {
+      useTextInput();
+      $('cl-input').value = s.text;
+      markSample(s.id);
+      persistInput();
+      state.selMatch = -1;
+      scheduleRun(0);
+    });
+    host.appendChild(b);
+  });
+
+  /* 选项 */
+  try {
+    var o = JSON.parse(localStorage.getItem(LS_OPTS) || 'null');
+    if (o && o.wbits && o.blockBits) OPT = o;
+  } catch (e) { }
+  $('cl-window').value = String(OPT.wbits);
+  $('cl-block').value = String(OPT.blockBits);
+  $('cl-window').addEventListener('change', function () { OPT.wbits = Number(this.value); persistOpts(); state.selMatch = -1; scheduleRun(0); });
+  $('cl-block').addEventListener('change', function () { OPT.blockBits = Number(this.value); persistOpts(); scheduleRun(0); });
+
+  /* 输入 */
+  $('cl-input').addEventListener('input', function () { useTextInput(); markSample(null); state.selMatch = -1; persistInput(); scheduleRun(260); });
+
+  /* 文件拖入 */
+  var drop = $('cl-drop'), file = $('cl-file');
+  drop.addEventListener('click', function () { file.click(); });
+  drop.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); file.click(); } });
+  file.addEventListener('change', function () { if (this.files && this.files[0]) loadFile(this.files[0]); });
+  ['dragenter', 'dragover'].forEach(function (ev) {
+    drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.add('cl-drag'); });
+  });
+  ['dragleave', 'drop'].forEach(function (ev) {
+    drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.remove('cl-drag'); });
+  });
+  drop.addEventListener('drop', function (e) {
+    if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]) loadFile(e.dataTransfer.files[0]);
+  });
+
+  /* 保存样本 */
+  $('cl-save').addEventListener('click', function () {
+    var name = ($('cl-save-name').value || '').trim() || ('样本 ' + (loadSaved().length + 1));
+    var text = $('cl-input').value;
+    if (!text) return;
+    var list = loadSaved();
+    list.unshift({ name: name, text: text.length > 100000 ? text.slice(0, 100000) : text });
+    storeSaved(list.slice(0, 20));
+    $('cl-save-name').value = '';
+    renderSaved();
+  });
+
+  /* tabs */
+  var tabs = [['cl-tab-huff', 'huff'], ['cl-tab-lz', 'lz'], ['cl-tab-hist', 'hist'], ['cl-tab-bits', 'bits']];
+  tabs.forEach(function (t, i) {
+    $(t[0]).addEventListener('click', function () { setTab(t[1]); });
+    $(t[0]).addEventListener('keydown', function (e) {
+      var d = e.key === 'ArrowRight' ? 1 : (e.key === 'ArrowLeft' ? -1 : 0);
+      if (!d) return;
+      e.preventDefault();
+      var j = (i + d + tabs.length) % tabs.length;
+      $(tabs[j][0]).focus(); setTab(tabs[j][1]);
+    });
+  });
+
+  /* LZ 点击 */
+  $('cl-lzview').addEventListener('click', function (e) {
+    var t = e.target.closest ? e.target.closest('.cl-mat') : null;
+    if (t && t.dataset.tok !== undefined) selectMatch(Number(t.dataset.tok));
+  });
+  $('cl-lzview').addEventListener('keydown', function (e) {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    var t = e.target.closest ? e.target.closest('.cl-mat') : null;
+    if (t && t.dataset.tok !== undefined) { e.preventDefault(); selectMatch(Number(t.dataset.tok)); }
+  });
+
+  /* 位流选择 */
+  $('cl-bits-codec').addEventListener('change', renderBits);
+
+  /* 下载 */
+  $('cl-dl').addEventListener('click', function () {
+    var id = $('cl-dl-codec').value;
+    var r = state.results.filter(function (x) { return x.id === id && !x.skipped; })[0];
+    if (!r) return;
+    download(id + '-' + r.size + 'B.bin', new Blob([r.bytes], { type: 'application/octet-stream' }));
+  });
+  $('cl-dl-report').addEventListener('click', function () {
+    var rows = [['codec', 'input_bytes', 'output_bytes', 'ratio_percent', 'bits_per_byte', 'encode_ms', 'decode_ms', 'round_trip']];
+    var n = state.bytes.length;
+    allRows().forEach(function (r) {
+      if (r.skipped) return;
+      rows.push([r.name, n, r.size, (r.ratio * 100).toFixed(2), r.bpb.toFixed(4),
+        r.encMs.toFixed(2), r.decMs === null ? '' : r.decMs.toFixed(2), r.rt === null ? 'n/a' : (r.rt ? 'pass' : 'FAIL')]);
+    });
+    var csv = rows.map(function (r) {
+      return r.map(function (c) { return /[",\n]/.test(String(c)) ? '"' + String(c).replace(/"/g, '""') + '"' : c; }).join(',');
+    }).join('\n');
+    download('compression-report.csv', new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+  });
+
+  /* 初始输入 */
+  var saved = null;
+  try { saved = localStorage.getItem(LS_INPUT); } catch (e) { }
+  if (saved) { $('cl-input').value = saved; markSample(null); }
+  else { $('cl-input').value = SAMPLES[0].text; markSample(SAMPLES[0].id); }
+  renderSaved();
+  setTab('huff');
+  scheduleRun(0);
+}
+/* 文件走原始字节路径:textarea 存不下任意字节(latin1 往返会破坏内容),所以直接接管 */
+function loadFile(f) {
+  var fr = new FileReader();
+  fr.onload = function () {
+    var buf = new Uint8Array(fr.result);
+    if (buf.length > MAX_INPUT) buf = buf.subarray(0, MAX_INPUT);
+    state.fileBytes = buf;
+    state.selMatch = -1;
+    $('cl-input').value = '';
+    $('cl-input').placeholder = '已载入文件 ' + f.name + '(' + fmtBytes(buf.length) + ',按原始字节压缩);在此输入任意文本即可切回文本模式';
+    markSample(null);
+    scheduleRun(0);
+  };
+  fr.readAsArrayBuffer(f);
+}
+
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+else init();
+</script>
+</body>
+</html>
