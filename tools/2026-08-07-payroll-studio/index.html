@@ -1,0 +1,1577 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>薪税工作台 · Payroll Studio</title>
+<meta name="description" content="中国个税工资薪金全流程工作台:累计预扣预缴逐月表、五险一金基数上下限、专项附加扣除、年终奖单独计税盲区与最优拆分、汇算清缴退补税、税负边际曲线、Offer A/B 对比。纯前端本地计算,数据不上传。">
+<style>
+/* 结构性守卫:作者 CSS 与 UA 的 [hidden] 同特异性,靠后即胜出 —— 必须置顶重申 */
+[hidden]{display:none!important}
+
+:root{
+  --ps-primary:#9fe870; --ps-on-primary:#0e0f0c; --ps-primary-active:#cdffad;
+  --ps-primary-neutral:#c5edab; --ps-primary-pale:#e2f6d5;
+  --ps-ink:#0e0f0c; --ps-ink-deep:#163300; --ps-body:#454745; --ps-mute:#868685;
+  --ps-canvas:#ffffff; --ps-canvas-soft:#e8ebe6;
+  --ps-positive:#2ead4b; --ps-positive-deep:#054d28;
+  --ps-warning:#ffd11a; --ps-warning-deep:#b86700; --ps-warning-content:#4a3b1c;
+  --ps-negative:#d03238; --ps-negative-deep:#a72027; --ps-negative-bg:#320707;
+  --ps-orange:#ffc091; --ps-cyan:#38c8ff;
+  --ps-r-sm:8px; --ps-r-md:12px; --ps-r-lg:16px; --ps-r-xl:24px; --ps-r-pill:9999px;
+  --ps-s-xs:4px; --ps-s-sm:8px; --ps-s-md:12px; --ps-s-lg:16px; --ps-s-xl:24px; --ps-s-2xl:32px; --ps-s-3xl:48px;
+  --ps-font:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,sans-serif;
+  --ps-mono:"SF Mono",ui-monospace,Menlo,Consolas,"Liberation Mono",monospace;
+}
+
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0; background:var(--ps-canvas-soft); color:var(--ps-ink);
+  font-family:var(--ps-font); font-size:16px; line-height:24px;
+  font-feature-settings:"calt","tnum";
+  -webkit-font-smoothing:antialiased;
+}
+h1,h2,h3,h4,p,figure{margin:0}
+button{font-family:inherit}
+a{color:inherit}
+
+/* ───────── nav ───────── */
+.ps-nav{
+  position:sticky; top:0; z-index:40; background:var(--ps-canvas);
+  display:flex; align-items:center; gap:var(--ps-s-lg);
+  padding:var(--ps-s-md) var(--ps-s-xl); flex-wrap:wrap;
+}
+.ps-back{
+  font-size:14px; font-weight:600; line-height:20px; text-decoration:none;
+  color:var(--ps-ink); padding:6px 14px; border-radius:var(--ps-r-pill);
+  background:var(--ps-canvas-soft);
+}
+.ps-back:hover{background:var(--ps-primary-pale)}
+.ps-nav-brand{font-size:14px; font-weight:600; line-height:20px; letter-spacing:.02em}
+.ps-nav-brand em{font-style:normal; color:var(--ps-mute); font-weight:400}
+.ps-nav-sp{flex:1 1 auto}
+
+.ps-btn{
+  border:0; cursor:pointer; border-radius:var(--ps-r-xl);
+  font-size:16px; font-weight:600; line-height:24px;
+  padding:var(--ps-s-md) var(--ps-s-xl);
+  background:var(--ps-canvas-soft); color:var(--ps-ink);
+  transition:background .15s ease, color .15s ease;
+}
+.ps-btn:hover{background:var(--ps-primary-neutral)}
+.ps-btn--primary{background:var(--ps-primary); color:var(--ps-on-primary)}
+.ps-btn--primary:hover{background:var(--ps-primary-active)}
+.ps-btn--ghost{background:var(--ps-canvas); color:var(--ps-ink); box-shadow:inset 0 0 0 1px var(--ps-ink)}
+.ps-btn--ghost:hover{background:var(--ps-canvas-soft)}
+.ps-btn--sm{font-size:14px; line-height:20px; padding:8px 16px}
+.ps-btn:focus-visible,.ps-tab:focus-visible,.ps-back:focus-visible,
+input:focus-visible,select:focus-visible{outline:3px solid var(--ps-ink); outline-offset:2px}
+
+/* ───────── hero ───────── */
+.ps-hero{background:var(--ps-canvas-soft); padding:var(--ps-s-3xl) var(--ps-s-xl)}
+.ps-wrap{max-width:1200px; margin:0 auto}
+.ps-hero-grid{display:grid; grid-template-columns:minmax(0,1fr) minmax(0,420px); gap:var(--ps-s-3xl); align-items:center}
+.ps-eyebrow{
+  font-size:12px; line-height:16px; font-weight:600; letter-spacing:.14em;
+  text-transform:none; color:var(--ps-ink-deep);
+  background:var(--ps-primary-pale); display:inline-block;
+  padding:var(--ps-s-xs) var(--ps-s-md); border-radius:var(--ps-r-pill);
+}
+.ps-display{
+  font-size:64px; font-weight:900; line-height:1.02; letter-spacing:-.02em;
+  margin:var(--ps-s-lg) 0 var(--ps-s-lg);
+}
+.ps-lead{font-size:20px; line-height:30px; color:var(--ps-body); max-width:36em}
+.ps-hero-tags{display:flex; flex-wrap:wrap; gap:var(--ps-s-sm); margin-top:var(--ps-s-xl)}
+.ps-tag{
+  font-size:14px; font-weight:600; line-height:20px;
+  background:var(--ps-canvas); border-radius:var(--ps-r-pill); padding:var(--ps-s-xs) var(--ps-s-md);
+}
+
+/* Wise 招牌「汇率换算卡」→ 功能化为「税前 → 到手」拆解卡 */
+.ps-conv{
+  background:var(--ps-canvas); border:1px solid var(--ps-ink);
+  border-radius:var(--ps-r-xl); padding:var(--ps-s-xl);
+}
+.ps-conv-line{display:flex; align-items:baseline; justify-content:space-between; gap:var(--ps-s-md)}
+.ps-conv-label{font-size:14px; font-weight:600; line-height:20px; color:var(--ps-body)}
+.ps-conv-big{font-size:32px; font-weight:900; line-height:38px; letter-spacing:-.02em; font-variant-numeric:tabular-nums}
+.ps-conv-net{font-size:40px; font-weight:900; line-height:44px; letter-spacing:-.02em; font-variant-numeric:tabular-nums}
+.ps-conv-rail{margin:var(--ps-s-lg) 0; padding-left:var(--ps-s-xl); position:relative}
+.ps-conv-rail::before{
+  content:""; position:absolute; left:5px; top:4px; bottom:4px; width:2px; background:var(--ps-canvas-soft);
+}
+.ps-conv-fee{display:flex; justify-content:space-between; gap:var(--ps-s-md); font-size:14px; line-height:22px; color:var(--ps-body); position:relative}
+.ps-conv-fee::before{
+  content:""; position:absolute; left:-23px; top:8px; width:8px; height:8px; border-radius:50%;
+  background:var(--ps-canvas); box-shadow:0 0 0 2px var(--ps-canvas-soft);
+}
+.ps-conv-fee b{font-weight:600; color:var(--ps-ink); font-variant-numeric:tabular-nums}
+.ps-conv-foot{
+  margin-top:var(--ps-s-lg); padding-top:var(--ps-s-lg); border-top:1px solid var(--ps-canvas-soft);
+  font-size:14px; line-height:20px; color:var(--ps-body); display:flex; justify-content:space-between; gap:var(--ps-s-md); flex-wrap:wrap;
+}
+.ps-conv-foot b{color:var(--ps-ink)}
+
+/* ───────── bands & cards ───────── */
+.ps-band{background:var(--ps-canvas); padding:var(--ps-s-3xl) var(--ps-s-xl)}
+.ps-band--soft{background:var(--ps-canvas-soft)}
+.ps-h2{font-size:40px; font-weight:900; line-height:44px; letter-spacing:-.02em}
+.ps-h3{font-size:24px; font-weight:600; line-height:31px; letter-spacing:-.02em}
+.ps-h4{font-size:16px; font-weight:600; line-height:24px}
+.ps-sub{font-size:16px; line-height:24px; color:var(--ps-body); margin-top:var(--ps-s-sm)}
+.ps-note{font-size:12px; line-height:18px; color:var(--ps-mute); margin-top:var(--ps-s-sm)}
+
+/* 顶部 nav 是 sticky 的:锚点滚动时给它让出高度,否则标题会被压在 nav 底下 */
+.ps-card,.ps-fs,.ps-band{scroll-margin-top:88px}
+.ps-card{background:var(--ps-canvas); border-radius:var(--ps-r-xl); padding:var(--ps-s-xl)}
+.ps-card--sage{background:var(--ps-canvas-soft)}
+.ps-card--green{background:var(--ps-primary-pale)}
+.ps-card--dark{background:var(--ps-ink); color:var(--ps-primary)}
+.ps-card--dark .ps-card-sub{color:var(--ps-canvas-soft)}
+
+/* ───────── form ───────── */
+.ps-formgrid{display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:var(--ps-s-lg); margin-top:var(--ps-s-xl)}
+.ps-fs{border:0; margin:0; padding:var(--ps-s-xl); background:var(--ps-canvas-soft); border-radius:var(--ps-r-xl); min-width:0}
+/* 注意:legend 一旦 float,Chromium 会让同一 fieldset 内的 grid 列被浮动挤到近乎 0 宽
+   (2026-08-07 实测:数字输入框被压成 34px)。这里保持不浮动。 */
+.ps-fs legend{
+  font-size:12px; font-weight:600; line-height:16px; letter-spacing:.12em; color:var(--ps-ink-deep);
+  padding:0; margin:0 0 var(--ps-s-md);
+}
+.ps-field{display:block; margin-bottom:var(--ps-s-md); min-width:0}
+.ps-field:last-child{margin-bottom:0}
+.ps-field > span{display:block; font-size:14px; font-weight:600; line-height:20px; margin-bottom:var(--ps-s-xs)}
+.ps-field small{display:block; font-weight:400; font-size:12px; line-height:16px; color:var(--ps-mute)}
+.ps-field input[type=number], .ps-field input[type=text], .ps-field select{
+  width:100%; min-width:0; background:var(--ps-canvas); color:var(--ps-ink);
+  border:1px solid var(--ps-ink); border-radius:var(--ps-r-md);
+  padding:10px var(--ps-s-lg); font-size:16px; line-height:24px; font-family:inherit;
+  font-variant-numeric:tabular-nums;
+}
+.ps-field select{appearance:none; background-image:linear-gradient(45deg,transparent 49%,var(--ps-ink) 51%),linear-gradient(-45deg,transparent 49%,var(--ps-ink) 51%); background-size:6px 6px,6px 6px; background-position:calc(100% - 18px) 18px,calc(100% - 12px) 18px; background-repeat:no-repeat; padding-right:36px}
+.ps-check{display:flex; align-items:center; gap:var(--ps-s-sm); font-size:14px; font-weight:600; line-height:20px; margin-bottom:var(--ps-s-md)}
+.ps-check input{width:20px; height:20px; accent-color:var(--ps-ink); margin:0}
+.ps-two{display:grid; grid-template-columns:1fr 1fr; gap:var(--ps-s-sm)}
+
+.ps-alerts{margin-top:var(--ps-s-lg); display:flex; flex-direction:column; gap:var(--ps-s-sm)}
+.ps-alert{
+  font-size:14px; line-height:20px; border-radius:var(--ps-r-md);
+  padding:10px var(--ps-s-lg); background:var(--ps-primary-pale); color:var(--ps-ink-deep);
+}
+.ps-alert--warn{background:#fff4c9; color:var(--ps-warning-content)}
+.ps-alert--bad{background:#fbe4e5; color:var(--ps-negative-deep)}
+
+/* ───────── tabs ───────── */
+.ps-tabs{display:flex; gap:var(--ps-s-sm); flex-wrap:wrap; margin-bottom:var(--ps-s-xl)}
+.ps-tab{
+  border:0; cursor:pointer; background:var(--ps-canvas); color:var(--ps-ink);
+  font-size:14px; font-weight:600; line-height:20px; padding:10px var(--ps-s-xl);
+  border-radius:var(--ps-r-pill);
+}
+.ps-tab:hover{background:var(--ps-primary-pale)}
+.ps-tab[aria-selected="true"]{background:var(--ps-ink); color:var(--ps-primary)}
+
+/* ───────── stats ───────── */
+.ps-stats{display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:var(--ps-s-lg)}
+.ps-stat{background:var(--ps-canvas-soft); border-radius:var(--ps-r-lg); padding:var(--ps-s-lg)}
+.ps-stat b{display:block; font-size:28px; font-weight:900; line-height:34px; letter-spacing:-.02em; font-variant-numeric:tabular-nums}
+.ps-stat span{display:block; font-size:12px; line-height:16px; color:var(--ps-body); margin-top:var(--ps-s-xs)}
+
+/* ───────── tables ───────── */
+.ps-tablewrap{overflow-x:auto; margin-top:var(--ps-s-lg); border-radius:var(--ps-r-lg)}
+table.ps-table{border-collapse:collapse; width:100%; font-size:14px; line-height:20px; min-width:640px}
+table.ps-table th{
+  background:var(--ps-canvas-soft); text-align:right; font-size:12px; line-height:16px;
+  font-weight:600; color:var(--ps-ink-deep); padding:var(--ps-s-md) var(--ps-s-lg); white-space:nowrap;
+}
+table.ps-table th:first-child, table.ps-table td:first-child{text-align:left}
+table.ps-table td{
+  padding:10px var(--ps-s-lg); text-align:right; border-bottom:1px solid var(--ps-canvas-soft);
+  font-variant-numeric:tabular-nums; white-space:nowrap;
+}
+table.ps-table tbody tr:hover td{background:#fafcf8}
+.ps-rowmark td{background:var(--ps-primary-pale)!important; font-weight:600}
+.ps-badge{
+  display:inline-block; font-size:12px; font-weight:600; line-height:16px;
+  border-radius:var(--ps-r-pill); padding:2px 10px;
+  background:var(--ps-primary-pale); color:var(--ps-ink-deep);
+}
+.ps-badge--up{background:#fff4c9; color:var(--ps-warning-deep)}
+.ps-badge--bad{background:#fbe4e5; color:var(--ps-negative-deep)}
+.ps-badge--flat{background:var(--ps-canvas-soft); color:var(--ps-body)}
+
+/* ───────── charts ───────── */
+.ps-chart{position:relative; width:100%; margin-top:var(--ps-s-lg)}
+.ps-chart canvas{display:block; width:100%; height:auto; border-radius:var(--ps-r-lg); background:var(--ps-canvas)}
+.ps-legend{display:flex; flex-wrap:wrap; gap:var(--ps-s-lg); margin-top:var(--ps-s-md); font-size:12px; line-height:18px; color:var(--ps-body)}
+.ps-legend span{display:inline-flex; align-items:center; gap:6px}
+.ps-swatch{width:14px; height:10px; border-radius:3px; display:inline-block; flex:0 0 auto}
+
+/* ───────── option cards ───────── */
+.ps-opts{display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:var(--ps-s-lg); margin-top:var(--ps-s-lg)}
+.ps-opt{background:var(--ps-canvas-soft); border-radius:var(--ps-r-xl); padding:var(--ps-s-xl); position:relative}
+.ps-opt--best{background:var(--ps-ink); color:var(--ps-primary)}
+.ps-opt--best .ps-opt-note, .ps-opt--best .ps-opt-name{color:var(--ps-canvas-soft)}
+.ps-opt-name{font-size:14px; font-weight:600; line-height:20px; color:var(--ps-body)}
+.ps-opt-val{font-size:32px; font-weight:900; line-height:38px; letter-spacing:-.02em; margin-top:var(--ps-s-sm); font-variant-numeric:tabular-nums}
+.ps-opt-note{font-size:12px; line-height:18px; color:var(--ps-body); margin-top:var(--ps-s-sm)}
+.ps-opt-active{color:var(--ps-ink-deep); font-weight:600}
+.ps-opt--best .ps-opt-active{color:var(--ps-primary)}
+.ps-crown{
+  position:absolute; top:-10px; right:var(--ps-s-lg);
+  background:var(--ps-primary); color:var(--ps-on-primary);
+  font-size:12px; font-weight:600; line-height:16px; padding:2px 10px; border-radius:var(--ps-r-pill);
+}
+
+.ps-split{display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:var(--ps-s-xl)}
+.ps-savebar{display:flex; flex-wrap:wrap; gap:var(--ps-s-sm); align-items:center; margin-top:var(--ps-s-lg)}
+.ps-savebar select, .ps-savebar input{
+  background:var(--ps-canvas); border:1px solid var(--ps-ink); border-radius:var(--ps-r-md);
+  padding:8px var(--ps-s-lg); font-size:14px; line-height:20px; font-family:inherit; min-width:0;
+}
+.ps-kv{display:flex; justify-content:space-between; gap:var(--ps-s-md); padding:8px 0; border-bottom:1px solid rgba(14,15,12,.08); font-size:14px; line-height:20px}
+.ps-kv:last-child{border-bottom:0}
+.ps-kv b{font-variant-numeric:tabular-nums}
+.ps-kv--total{font-size:16px; font-weight:600; border-top:2px solid var(--ps-ink); border-bottom:0; margin-top:var(--ps-s-sm); padding-top:var(--ps-s-md)}
+
+/* ───────── footer ───────── */
+.ps-footer{background:var(--ps-ink); color:var(--ps-canvas-soft); padding:var(--ps-s-3xl) var(--ps-s-xl)}
+.ps-footer h3{color:var(--ps-primary); font-size:40px; font-weight:900; line-height:44px; letter-spacing:-.02em}
+.ps-footer p{font-size:14px; line-height:22px; color:#b9bdb6; margin-top:var(--ps-s-lg); max-width:70ch}
+.ps-footer a{color:var(--ps-primary)}
+
+@media (max-width:960px){
+  .ps-hero-grid{grid-template-columns:1fr}
+  .ps-display{font-size:44px}
+  .ps-h2{font-size:32px; line-height:38px}
+}
+@media (max-width:560px){
+  .ps-hero,.ps-band{padding:var(--ps-s-2xl) var(--ps-s-lg)}
+  .ps-display{font-size:36px}
+  .ps-lead{font-size:16px; line-height:24px}
+  .ps-conv-net{font-size:32px; line-height:36px}
+  .ps-two{grid-template-columns:1fr}
+  .ps-nav{padding:var(--ps-s-sm) var(--ps-s-lg)}
+}
+</style>
+</head>
+<body data-runs="0" data-drawn="0">
+
+<header class="ps-nav">
+  <a class="ps-back" href="../../">← 返回工具集</a>
+  <div class="ps-nav-brand">薪税工作台 <em>· Payroll Studio</em></div>
+  <div class="ps-nav-sp"></div>
+  <button class="ps-btn ps-btn--sm ps-btn--ghost" id="ps-reset" type="button">恢复默认</button>
+  <button class="ps-btn ps-btn--sm ps-btn--primary" id="ps-export" type="button">导出逐月表 CSV</button>
+</header>
+
+<section class="ps-hero">
+  <div class="ps-wrap ps-hero-grid">
+    <div>
+      <p class="ps-eyebrow">中国个税 · 工资薪金综合所得</p>
+      <h1 class="ps-display">工资条上<br>那笔钱去哪了</h1>
+      <p class="ps-lead">累计预扣预缴让你下半年「莫名降薪」;年终奖多发 1 元可能多缴 8 万税。这里把五险一金、专项附加扣除、年终奖计税方式和汇算清缴一次算清 —— 全部在你的浏览器里完成,不上传任何数据。</p>
+      <div class="ps-hero-tags">
+        <span class="ps-tag">逐月预扣表</span>
+        <span class="ps-tag">年终奖盲区</span>
+        <span class="ps-tag">最优拆分</span>
+        <span class="ps-tag">退补税测算</span>
+        <span class="ps-tag">Offer 对比</span>
+      </div>
+    </div>
+    <div class="ps-conv" id="ps-conv">
+      <div class="ps-conv-line">
+        <span class="ps-conv-label">税前年度总包</span>
+        <b class="ps-conv-big" id="ps-gross">—</b>
+      </div>
+      <div class="ps-conv-rail">
+        <div class="ps-conv-fee"><span>五险一金(个人缴纳)</span><b id="ps-fee-si">—</b></div>
+        <div class="ps-conv-fee"><span>个人所得税(全年)</span><b id="ps-fee-tax">—</b></div>
+      </div>
+      <div class="ps-conv-line">
+        <span class="ps-conv-label">全年到手</span>
+        <b class="ps-conv-net" id="ps-net">—</b>
+      </div>
+      <div class="ps-conv-foot">
+        <span>综合税负率 <b id="ps-eff">—</b></span>
+        <span>月均到手 <b id="ps-permonth">—</b></span>
+        <span>企业总成本 <b id="ps-cost">—</b></span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="ps-band">
+  <div class="ps-wrap">
+    <h2 class="ps-h2">填你的数</h2>
+    <p class="ps-sub">城市预设只是<strong>参考口径</strong>(社保年度基数每年 7 月调整),所有数字都可以直接改成你工资条上的真实值。</p>
+
+    <div class="ps-formgrid">
+      <fieldset class="ps-fs">
+        <legend>收入</legend>
+        <label class="ps-field"><span>税前月薪(元)</span><input type="number" id="ps-salary" min="0" step="100" value="25000"></label>
+        <label class="ps-field"><span>每月其他应税收入(元)<small>餐补/车补/加班费等并入工资计税的部分</small></span><input type="number" id="ps-allowance" min="0" step="100" value="0"></label>
+        <div class="ps-two">
+          <label class="ps-field"><span>年终奖(元)</span><input type="number" id="ps-bonus" min="0" step="1000" value="60000"></label>
+          <label class="ps-field"><span>发放月份</span>
+            <select id="ps-bonus-month">
+              <option value="1" selected>1 月</option><option value="2">2 月</option><option value="3">3 月</option>
+              <option value="4">4 月</option><option value="5">5 月</option><option value="6">6 月</option>
+              <option value="7">7 月</option><option value="8">8 月</option><option value="9">9 月</option>
+              <option value="10">10 月</option><option value="11">11 月</option><option value="12">12 月</option>
+            </select>
+          </label>
+        </div>
+        <label class="ps-field"><span>年终奖计税方式<small>公司通常默认「单独计税」;拆分需与薪酬发放方式配合</small></span>
+          <select id="ps-bonus-mode">
+            <option value="separate" selected>单独计税(默认)</option>
+            <option value="merge">并入综合所得</option>
+            <option value="auto">按最优拆分</option>
+          </select>
+        </label>
+        <label class="ps-field"><span>本年首次任职月份<small>年中入职/应届生第一年,汇算通常能退税</small></span>
+          <select id="ps-start-month">
+            <option value="1" selected>1 月(全年在职)</option><option value="2">2 月</option><option value="3">3 月</option>
+            <option value="4">4 月</option><option value="5">5 月</option><option value="6">6 月</option>
+            <option value="7">7 月</option><option value="8">8 月</option><option value="9">9 月</option>
+            <option value="10">10 月</option><option value="11">11 月</option><option value="12">12 月</option>
+          </select>
+        </label>
+      </fieldset>
+
+      <fieldset class="ps-fs">
+        <legend>五险一金</legend>
+        <label class="ps-field"><span>参保城市</span>
+          <select id="ps-city"></select>
+        </label>
+        <label class="ps-field"><span>缴费基数<small>低于下限按下限、高于上限按上限计缴</small></span>
+          <select id="ps-si-mode">
+            <option value="actual" selected>按实际工资</option>
+            <option value="custom">自定义基数</option>
+          </select>
+        </label>
+        <label class="ps-field" id="ps-si-base-wrap" hidden><span>自定义缴费基数(元/月)</span><input type="number" id="ps-si-base" min="0" step="100" value="25000"></label>
+        <div class="ps-two">
+          <label class="ps-field"><span>社保基数下限</span><input type="number" id="ps-si-floor" min="0" step="1" value="6821"></label>
+          <label class="ps-field"><span>社保基数上限</span><input type="number" id="ps-si-ceil" min="0" step="1" value="35283"></label>
+        </div>
+        <div class="ps-two">
+          <label class="ps-field"><span>公积金基数上限</span><input type="number" id="ps-fund-ceil" min="0" step="1" value="35283"></label>
+          <label class="ps-field"><span>公积金比例 %</span><input type="number" id="ps-fund-rate" min="0" max="12" step="0.5" value="12"></label>
+        </div>
+        <div class="ps-two">
+          <label class="ps-field"><span>养老 %</span><input type="number" id="ps-r-pension" min="0" max="30" step="0.1" value="8"></label>
+          <label class="ps-field"><span>医疗 %</span><input type="number" id="ps-r-medical" min="0" max="30" step="0.1" value="2"></label>
+        </div>
+        <label class="ps-field"><span>失业 %</span><input type="number" id="ps-r-unemp" min="0" max="30" step="0.1" value="0.5"></label>
+      </fieldset>
+
+      <fieldset class="ps-fs">
+        <legend>专项附加扣除(元/月)</legend>
+        <div class="ps-two">
+          <label class="ps-field"><span>子女教育(人)<small>2000/人/月</small></span><input type="number" id="ps-sd-children" min="0" max="10" step="1" value="1"></label>
+          <label class="ps-field"><span>3岁以下婴幼儿(人)<small>2000/人/月</small></span><input type="number" id="ps-sd-infants" min="0" max="10" step="1" value="0"></label>
+        </div>
+        <label class="ps-field"><span>住房租金</span>
+          <select id="ps-sd-rent">
+            <option value="0">无</option>
+            <option value="1500" selected>1500(直辖市/省会/计划单列市)</option>
+            <option value="1100">1100(市辖区户籍人口 &gt; 100 万)</option>
+            <option value="800">800(市辖区户籍人口 ≤ 100 万)</option>
+          </select>
+        </label>
+        <div class="ps-check"><input type="checkbox" id="ps-sd-loan"><label for="ps-sd-loan">首套住房贷款利息 1000/月</label></div>
+        <label class="ps-field"><span>赡养老人</span>
+          <select id="ps-sd-elder">
+            <option value="0" selected>无</option>
+            <option value="3000">独生子女 3000</option>
+            <option value="1500">非独生分摊 1500</option>
+            <option value="1000">非独生分摊 1000</option>
+          </select>
+        </label>
+        <label class="ps-field"><span>继续教育</span>
+          <select id="ps-sd-edu">
+            <option value="0" selected>无</option>
+            <option value="400">学历(学位)继续教育 400</option>
+          </select>
+        </label>
+        <div class="ps-two">
+          <label class="ps-field"><span>个人养老金<small>上限 1000/月</small></span><input type="number" id="ps-sd-pp" min="0" max="1000" step="100" value="0"></label>
+          <label class="ps-field"><span>其他扣除<small>年金/商业健康险</small></span><input type="number" id="ps-other" min="0" step="100" value="0"></label>
+        </div>
+        <label class="ps-field"><span>全年大病医疗自付(元)<small>超 1.5 万部分可扣,限 8 万;仅汇算时扣除</small></span><input type="number" id="ps-medical" min="0" step="1000" value="0"></label>
+      </fieldset>
+    </div>
+
+    <div class="ps-alerts" id="ps-alerts"></div>
+
+    <div class="ps-savebar">
+      <input type="text" id="ps-save-name" placeholder="方案名称,如「北京 · 现 offer」" maxlength="24">
+      <button class="ps-btn ps-btn--sm ps-btn--primary" id="ps-save" type="button">保存方案</button>
+      <select id="ps-saved"><option value="">已存方案…</option></select>
+      <button class="ps-btn ps-btn--sm" id="ps-load" type="button">载入</button>
+      <button class="ps-btn ps-btn--sm ps-btn--ghost" id="ps-del" type="button">删除</button>
+      <span class="ps-note" id="ps-save-msg" style="margin:0"></span>
+    </div>
+  </div>
+</section>
+
+<section class="ps-band ps-band--soft">
+  <div class="ps-wrap">
+    <div class="ps-tabs" role="tablist" aria-label="分析视图">
+      <button class="ps-tab" id="ps-tab-monthly" role="tab" aria-selected="true" aria-controls="ps-panel-monthly" type="button">逐月到手</button>
+      <button class="ps-tab" id="ps-tab-bonus" role="tab" aria-selected="false" aria-controls="ps-panel-bonus" type="button">年终奖策略</button>
+      <button class="ps-tab" id="ps-tab-settle" role="tab" aria-selected="false" aria-controls="ps-panel-settle" type="button">汇算清缴</button>
+      <button class="ps-tab" id="ps-tab-curve" role="tab" aria-selected="false" aria-controls="ps-panel-curve" type="button">税负曲线</button>
+      <button class="ps-tab" id="ps-tab-compare" role="tab" aria-selected="false" aria-controls="ps-panel-compare" type="button">Offer 对比</button>
+    </div>
+
+    <!-- ── 逐月 ── -->
+    <div class="ps-card" id="ps-panel-monthly" role="tabpanel" aria-labelledby="ps-tab-monthly">
+      <h3 class="ps-h3">逐月预扣预缴</h3>
+      <p class="ps-sub">中国实行<strong>累计预扣预缴法</strong>:每月按「年初至今」的累计应纳税所得额查年度税率表,再减去已预扣的部分。所以收入不变时,<strong>累计额跨过税率档的那个月,到手会突然变少</strong> —— 下面表格里的档位跳变行已标黄。</p>
+      <div class="ps-chart"><canvas id="ps-cv-monthly" height="320" aria-label="逐月到手与个税柱状图"></canvas></div>
+      <div class="ps-legend">
+        <span><i class="ps-swatch" style="background:#9fe870"></i>当月到手</span>
+        <span><i class="ps-swatch" style="background:#0e0f0c"></i>当月个税</span>
+        <span><i class="ps-swatch" style="background:#c5edab"></i>年终奖(单独计税部分)</span>
+        <span><i class="ps-swatch" style="background:#c3c5c2"></i>五险一金(个人)</span>
+        <span>柱高 = 当月应发总额</span>
+      </div>
+      <div class="ps-tablewrap">
+        <table class="ps-table" id="ps-tbl-monthly">
+          <thead><tr>
+            <th>月份</th><th>应发</th><th>五险一金</th><th>累计应税所得</th><th>档位</th><th>当月个税</th><th>当月到手</th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <p class="ps-note" id="ps-monthly-note"></p>
+    </div>
+
+    <!-- ── 年终奖 ── -->
+    <div class="ps-card" id="ps-panel-bonus" role="tabpanel" aria-labelledby="ps-tab-bonus" hidden>
+      <h3 class="ps-h3">年终奖:单独计税 vs 并入综合 vs 最优拆分</h3>
+      <p class="ps-sub">全年一次性奖金可以<strong>单独计税</strong>(政策延续至 2027 年底)或<strong>并入综合所得</strong>。若把奖金包拆成「年终奖 + 平时发放的绩效」,两段分别适用不同税率,总税可能更低 —— 下面的最优拆分就是在这条线上求最小值。</p>
+      <div class="ps-opts" id="ps-bonus-opts"></div>
+      <div id="ps-bonus-advice" class="ps-alerts" style="margin-top:var(--ps-s-lg)"></div>
+
+      <h4 class="ps-h4" style="margin-top:32px">税后所得随年终奖变化 · 红色为「多发反而少拿」的盲区</h4>
+      <div class="ps-chart"><canvas id="ps-cv-bonus" height="320" aria-label="年终奖盲区曲线"></canvas></div>
+      <div class="ps-legend">
+        <span><i class="ps-swatch" style="background:#0e0f0c"></i>单独计税后到手</span>
+        <span><i class="ps-swatch" style="background:#f3b9bb"></i>盲区(多发少拿)</span>
+        <span><i class="ps-swatch" style="background:#9fe870"></i>当前年终奖</span>
+      </div>
+      <div class="ps-tablewrap">
+        <table class="ps-table" id="ps-tbl-blind">
+          <thead><tr><th>盲区区间(元)</th><th>区间宽度</th><th>税率跳变</th><th>临界点税后</th><th>区间末端税后</th><th>最大损失</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <p class="ps-note">盲区上界由 <code>净额(临界点) = 奖金 × (1 − 新税率) + 新速算扣除数</code> 解出,不是查表硬编码。落在盲区内时,把奖金降到临界点反而拿得更多。</p>
+    </div>
+
+    <!-- ── 汇算 ── -->
+    <div class="ps-card" id="ps-panel-settle" role="tabpanel" aria-labelledby="ps-tab-settle" hidden>
+      <h3 class="ps-h3">年度汇算清缴</h3>
+      <p class="ps-sub">次年 3–6 月的汇算,是把全年综合所得按<strong>年度</strong>口径重算一遍,和已预缴的税对比,多退少补。年中入职、大病医疗自付、专项附加漏报都会在这里退回来。</p>
+      <div class="ps-split" style="margin-top:var(--ps-s-lg)">
+        <div>
+          <div class="ps-card ps-card--sage">
+            <h4 class="ps-h4">全年综合所得计算</h4>
+            <div id="ps-settle-kv" style="margin-top:var(--ps-s-md)"></div>
+          </div>
+        </div>
+        <div>
+          <div class="ps-card ps-card--dark" id="ps-settle-verdict">
+            <div class="ps-opt-name">汇算结果</div>
+            <div class="ps-opt-val" id="ps-settle-diff">—</div>
+            <div class="ps-card-sub ps-opt-note" id="ps-settle-note"></div>
+          </div>
+          <div class="ps-stats" style="margin-top:var(--ps-s-lg)">
+            <div class="ps-stat"><b id="ps-settle-due">—</b><span>全年应纳税额</span></div>
+            <div class="ps-stat"><b id="ps-settle-paid">—</b><span>全年已预缴</span></div>
+          </div>
+          <div class="ps-tablewrap">
+            <table class="ps-table" id="ps-tbl-settle" style="min-width:420px">
+              <thead><tr><th>项目</th><th>金额</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── 税负曲线 ── -->
+    <div class="ps-card" id="ps-panel-curve" role="tabpanel" aria-labelledby="ps-tab-curve" hidden>
+      <h3 class="ps-h3">涨薪之后,到手涨多少</h3>
+      <p class="ps-sub">横轴是年度总包(按 12 个月均匀发放、不含年终奖),纵轴把它拆成「到手 / 个税 / 五险一金」。右轴两条线:<strong>综合税负率</strong>(含五险一金)与<strong>边际留存率</strong>(每多发 100 元,到手多少)。社保基数封顶后,边际留存率会明显回升。图左端那根冲到 100% 的红色尖峰不是画错:总包低于社保下限时仍要按下限计缴,低薪段的税负率因此被推得极高。</p>
+      <div class="ps-chart"><canvas id="ps-cv-curve" height="340" aria-label="税负曲线"></canvas></div>
+      <div class="ps-legend">
+        <span><i class="ps-swatch" style="background:#9fe870"></i>到手</span>
+        <span><i class="ps-swatch" style="background:#0e0f0c"></i>个税</span>
+        <span><i class="ps-swatch" style="background:#868685"></i>五险一金(个人)</span>
+        <span><i class="ps-swatch" style="background:#d03238"></i>综合税负率(右轴)</span>
+        <span><i class="ps-swatch" style="background:#38c8ff"></i>边际留存率(右轴)</span>
+      </div>
+      <div class="ps-tablewrap">
+        <table class="ps-table" id="ps-tbl-curve">
+          <thead><tr><th>年度总包</th><th>五险一金</th><th>个税</th><th>到手</th><th>综合税负率</th><th>边际留存率</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ── 对比 ── -->
+    <div class="ps-card" id="ps-panel-compare" role="tabpanel" aria-labelledby="ps-tab-compare" hidden>
+      <h3 class="ps-h3">两份 Offer,到手谁高</h3>
+      <p class="ps-sub">方案 A = 上面填的全部参数。方案 B 只需改动关键几项,其余沿用 A。比较口径是<strong>全年到手现金</strong> + <strong>公积金账户(个人+单位,也是你的钱)</strong>。</p>
+      <div class="ps-formgrid" style="margin-top:var(--ps-s-lg)">
+        <fieldset class="ps-fs">
+          <legend>方案 B</legend>
+          <label class="ps-field"><span>参保城市</span><select id="ps-b-city"></select></label>
+          <div class="ps-two">
+            <label class="ps-field"><span>税前月薪</span><input type="number" id="ps-b-salary" min="0" step="100" value="30000"></label>
+            <label class="ps-field"><span>年终奖</span><input type="number" id="ps-b-bonus" min="0" step="1000" value="30000"></label>
+          </div>
+          <div class="ps-two">
+            <label class="ps-field"><span>公积金比例 %</span><input type="number" id="ps-b-fund-rate" min="0" max="12" step="0.5" value="7"></label>
+            <label class="ps-field"><span>专项附加合计(元/月)</span><input type="number" id="ps-b-sd" min="0" step="500" value="3500"></label>
+          </div>
+        </fieldset>
+        <div class="ps-card ps-card--sage" style="min-width:0">
+          <h4 class="ps-h4">结论</h4>
+          <div id="ps-cmp-verdict" style="margin-top:var(--ps-s-md)"></div>
+        </div>
+      </div>
+      <div class="ps-chart"><canvas id="ps-cv-compare" height="260" aria-label="方案对比条形图"></canvas></div>
+      <div class="ps-tablewrap">
+        <table class="ps-table" id="ps-tbl-compare" style="min-width:520px">
+          <thead><tr><th>口径</th><th>方案 A</th><th>方案 B</th><th>差额(B − A)</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer class="ps-footer">
+  <div class="ps-wrap">
+    <h3>算得清,才谈得拢。</h3>
+    <p>本工具依据现行个人所得税法关于<strong>居民个人工资薪金所得</strong>的规则实现:累计预扣预缴(预扣率表一)、全年一次性奖金单独计税(财税〔2018〕164 号,延续至 2027-12-31)、基本减除费用 5000 元/月、七项专项附加扣除(2023 年提标后标准)。五险一金比例与基数上下限各地各年不同,城市预设仅为参考,请以工资条与当地社保公积金管理中心公告为准。计算结果不构成税务建议。</p>
+    <p>所有计算在浏览器本地完成,输入不会离开你的设备;方案库保存在 localStorage。 <a href="../../">← 返回每日工具集</a></p>
+  </div>
+</footer>
+
+<script>
+/*<<<ENGINE*/
+// ── 个税引擎(纯函数,可离线断言) ────────────────────────────────────────────
+// 综合所得年度税率表(也是工资薪金累计预扣的「预扣率表一」)
+const ANNUAL_TABLE = [
+  [36000, 0.03, 0], [144000, 0.10, 2520], [300000, 0.20, 16920],
+  [420000, 0.25, 31920], [660000, 0.30, 52920], [960000, 0.35, 85920],
+  [Infinity, 0.45, 181920]
+];
+// 按月换算后的综合所得税率表(全年一次性奖金单独计税用)
+const MONTHLY_TABLE = [
+  [3000, 0.03, 0], [12000, 0.10, 210], [25000, 0.20, 1410],
+  [35000, 0.25, 2660], [55000, 0.30, 4410], [80000, 0.35, 7160],
+  [Infinity, 0.45, 15160]
+];
+const BASIC_DEDUCTION_MONTH = 5000;
+
+const round2 = (x) => Math.round((x + Number.EPSILON) * 100) / 100;
+
+function bracketOf(amount, table) {
+  for (let i = 0; i < table.length; i++) if (amount <= table[i][0]) return { idx: i, cap: table[i][0], rate: table[i][1], quick: table[i][2] };
+  const last = table.length - 1;
+  return { idx: last, cap: table[last][0], rate: table[last][1], quick: table[last][2] };
+}
+function taxByTable(taxable, table) {
+  if (!(taxable > 0)) return { tax: 0, rate: 0, quick: 0, idx: -1 };
+  const b = bracketOf(taxable, table);
+  return { tax: round2(taxable * b.rate - b.quick), rate: b.rate, quick: b.quick, idx: b.idx };
+}
+const annualTax = (taxable) => taxByTable(taxable, ANNUAL_TABLE).tax;
+const annualBracket = (taxable) => taxByTable(taxable, ANNUAL_TABLE);
+
+// 全年一次性奖金单独计税:商数 = 奖金/12 定档,税 = 奖金 × 税率 − 速算扣除数
+function bonusSeparateTax(bonus) {
+  if (!(bonus > 0)) return { tax: 0, rate: 0, quick: 0, quotient: 0 };
+  const q = bonus / 12;
+  const b = bracketOf(q, MONTHLY_TABLE);
+  return { tax: round2(bonus * b.rate - b.quick), rate: b.rate, quick: b.quick, quotient: q };
+}
+
+// 盲区:临界点上方一小段区间里,税前多发反而税后更少。上界由净额相等解出。
+function blindZones() {
+  const out = [];
+  for (let i = 0; i < MONTHLY_TABLE.length - 1; i++) {
+    const T = MONTHLY_TABLE[i][0] * 12;
+    const netAtT = T - round2(T * MONTHLY_TABLE[i][1] - MONTHLY_TABLE[i][2]);
+    const r = MONTHLY_TABLE[i + 1][1], d = MONTHLY_TABLE[i + 1][2];
+    // 上界 b*:b* − (b*·r − d) = netAtT  ⇒  b* = (netAtT − d) / (1 − r)
+    const upper = (netAtT - d) / (1 - r);
+    out.push({ from: T, to: upper, netAtFrom: netAtT, rateFrom: MONTHLY_TABLE[i][1], rateTo: r, width: upper - T, maxLoss: round2(T * MONTHLY_TABLE[i][1] - MONTHLY_TABLE[i][2]) });
+  }
+  return out;
+}
+function inBlindZone(bonus) {
+  for (const z of blindZones()) if (bonus > z.from && bonus <= z.to + 1e-6) return z;
+  return null;
+}
+
+// ── 五险一金 ───────────────────────────────────────────────────────────────
+const clampBase = (x, lo, hi) => Math.min(Math.max(x, lo), hi);
+function socialInsurance(p) {
+  const wage = p.siBaseMode === 'custom' ? p.siBaseCustom : (p.monthlySalary + p.monthlyAllowance);
+  const siBase = clampBase(wage, p.siFloor, p.siCeil);
+  const fundBase = clampBase(wage, p.siFloor, p.fundCeil);
+  const personal = {
+    pension: round2(siBase * p.rp.pension),
+    medical: round2(siBase * p.rp.medical),
+    unemp: round2(siBase * p.rp.unemp),
+    fund: round2(fundBase * p.fundRate)
+  };
+  const company = {
+    pension: round2(siBase * p.rc.pension),
+    medical: round2(siBase * p.rc.medical),
+    unemp: round2(siBase * p.rc.unemp),
+    injury: round2(siBase * p.rc.injury),
+    fund: round2(fundBase * p.fundRate)
+  };
+  const sum = (o) => round2(Object.keys(o).reduce((a, k) => a + o[k], 0));
+  return {
+    wage, siBase, fundBase, personal, company,
+    personalTotal: sum(personal), companyTotal: sum(company),
+    cappedSi: wage > p.siCeil, flooredSi: wage < p.siFloor, cappedFund: wage > p.fundCeil
+  };
+}
+
+// ── 专项附加扣除(月度) ─────────────────────────────────────────────────────
+function specialDeduction(sd) {
+  const warn = [];
+  let rent = sd.rent, loan = sd.loan ? 1000 : 0;
+  if (rent > 0 && loan > 0) {
+    // 住房贷款利息与住房租金不得同时扣除,按较高者保留
+    if (rent >= loan) { loan = 0; warn.push('住房贷款利息与住房租金不可同时扣除,已按较高的住房租金计入。'); }
+    else { rent = 0; warn.push('住房贷款利息与住房租金不可同时扣除,已按较高的贷款利息计入。'); }
+  }
+  const pp = Math.min(Math.max(sd.privatePension, 0), 1000);
+  if (sd.privatePension > 1000) warn.push('个人养老金税前扣除上限为 12000 元/年(1000 元/月),已按上限计入。');
+  const elder = Math.min(Math.max(sd.elder, 0), 3000);
+  const items = [
+    ['子女教育', 2000 * Math.max(0, sd.children)],
+    ['3岁以下婴幼儿照护', 2000 * Math.max(0, sd.infants)],
+    ['住房租金', rent],
+    ['住房贷款利息', loan],
+    ['赡养老人', elder],
+    ['继续教育', Math.max(0, sd.edu)],
+    ['个人养老金', pp]
+  ];
+  const total = round2(items.reduce((a, it) => a + it[1], 0));
+  return { items, total, warn };
+}
+
+// 大病医疗:超 15000 的自付部分可扣,限额 80000,仅在汇算时扣除
+function majorMedicalDeduction(selfPaid) {
+  return Math.min(Math.max(0, (selfPaid || 0) - 15000), 80000);
+}
+
+// ── 年终奖分配 ─────────────────────────────────────────────────────────────
+// separateBonus 走单独计税,其余并入综合所得
+function splitBonus(p) {
+  const total = Math.max(0, p.bonus);
+  if (p.bonusMode === 'separate') return { separate: total, merged: 0 };
+  if (p.bonusMode === 'merge') return { separate: 0, merged: total };
+  if (p.bonusMode === 'custom') { const s = clampBase(p.bonusSplit, 0, total); return { separate: s, merged: round2(total - s) }; }
+  const best = optimizeBonusSplit(p);
+  return { separate: best.separate, merged: best.merged };
+}
+
+// 综合所得应纳税所得额里,除并入奖金之外的固定部分(可为负)
+function comprehensiveBase(p) {
+  const si = socialInsurance(p);
+  const sd = specialDeduction(p.sd);
+  const months = 13 - p.startMonth;                 // 实际任职月数
+  const income = months * (p.monthlySalary + p.monthlyAllowance);
+  // 汇算口径:基本减除费用全年 60000;社保按实缴月数;专项附加按全年 12 个月
+  const deduct = 12 * BASIC_DEDUCTION_MONTH + months * si.personalTotal + 12 * sd.total
+               + months * Math.max(0, p.otherDeduction) + majorMedicalDeduction(p.majorMedical);
+  return round2(income - deduct);
+}
+
+// 在 [0, bonus] 上求使「综合所得税 + 单独计税奖金税」最小的拆分。
+// 目标函数分段线性且在每个 12×月度档临界点处向上跳变 ⇒ 最优解必在断点上。
+function optimizeBonusSplit(p) {
+  const B = Math.max(0, p.bonus);
+  const base = comprehensiveBase(p);
+  const cands = new Set([0, B]);
+  for (const row of MONTHLY_TABLE) { const t = row[0] * 12; if (t > 0 && t < B) cands.add(t); }
+  for (const row of ANNUAL_TABLE) { const x = base + B - row[0]; if (x > 0 && x < B) cands.add(round2(x)); }
+  for (let i = 0; i <= 400; i++) cands.add(round2(B * i / 400));
+  let best = null;
+  for (const x of cands) {
+    const merged = round2(B - x);
+    const t1 = annualTax(Math.max(0, base + merged));
+    const t2 = bonusSeparateTax(x).tax;
+    const total = round2(t1 + t2);
+    if (!best || total < best.total - 1e-9) best = { separate: x, merged, comprehensiveTax: t1, bonusTax: t2, total };
+  }
+  return best;
+}
+
+// 三种口径的总税(用于对比卡)
+function bonusStrategies(p) {
+  const B = Math.max(0, p.bonus);
+  const base = comprehensiveBase(p);
+  const mk = (x, name) => {
+    const merged = round2(B - x);
+    const t1 = annualTax(Math.max(0, base + merged));
+    const t2 = bonusSeparateTax(x).tax;
+    return { name, separate: x, merged, comprehensiveTax: t1, bonusTax: t2, total: round2(t1 + t2) };
+  };
+  const sep = mk(B, '全部单独计税');
+  const mrg = mk(0, '全部并入综合');
+  const opt = optimizeBonusSplit(p);
+  const best = mk(opt.separate, '最优拆分');
+  return { separate: sep, merged: mrg, best, base };
+}
+
+// ── 逐月预扣预缴 ───────────────────────────────────────────────────────────
+function withholdingSchedule(p) {
+  const si = socialInsurance(p);
+  const sd = specialDeduction(p.sd);
+  const split = splitBonus(p);
+  const other = Math.max(0, p.otherDeduction);
+  // 发放月早于入职月是自相矛盾的输入:把年终奖顺延到首个在职月,否则这笔钱会凭空消失
+  // (预扣表拿不到它,而汇算仍会对它计税 → 凭空多出一笔补税)
+  const bonusMonth = Math.min(12, Math.max(p.bonusMonth, p.startMonth));
+  const bonusMonthShifted = bonusMonth !== p.bonusMonth;
+  const rows = [];
+  let cumIncome = 0, cumSi = 0, cumSd = 0, cumOther = 0, cumTaxPrev = 0, monthsWorked = 0;
+  let totalTax = 0, totalNet = 0, totalSi = 0, totalCompany = 0, totalGross = 0;
+  for (let m = 1; m <= 12; m++) {
+    if (m < p.startMonth) {
+      rows.push({ month: m, worked: false, gross: 0, si: 0, cumTaxable: 0, rate: 0, tax: 0, net: 0, bonusSeparate: 0, bonusTax: 0, stepUp: false });
+      continue;
+    }
+    monthsWorked++;
+    let gross = p.monthlySalary + p.monthlyAllowance;
+    let bonusSep = 0, bonusTax = 0, mergedHere = 0;
+    if (m === bonusMonth) {
+      mergedHere = split.merged;
+      bonusSep = split.separate;
+      bonusTax = bonusSeparateTax(bonusSep).tax;
+    }
+    gross = round2(gross + mergedHere);
+    cumIncome = round2(cumIncome + gross);
+    cumSi = round2(cumSi + si.personalTotal);
+    cumSd = round2(cumSd + sd.total);
+    cumOther = round2(cumOther + other);
+    const cumTaxable = round2(Math.max(0, cumIncome - BASIC_DEDUCTION_MONTH * monthsWorked - cumSi - cumSd - cumOther));
+    const br = annualBracket(cumTaxable);
+    const cumTax = br.tax;
+    const monthTax = round2(cumTax - cumTaxPrev);
+    const prevRate = rows.length ? (rows[rows.length - 1].rate || 0) : 0;
+    const net = round2(gross + bonusSep - si.personalTotal - monthTax - bonusTax);
+    rows.push({
+      month: m, worked: true, gross, si: si.personalTotal, cumTaxable,
+      rate: cumTaxable > 0 ? br.rate : 0, tax: monthTax, net,
+      bonusSeparate: bonusSep, bonusTax, mergedBonus: mergedHere,
+      stepUp: cumTaxable > 0 && br.rate > prevRate && prevRate > 0
+    });
+    cumTaxPrev = cumTax;
+    totalTax = round2(totalTax + monthTax + bonusTax);
+    totalNet = round2(totalNet + net);
+    totalSi = round2(totalSi + si.personalTotal);
+    totalCompany = round2(totalCompany + si.companyTotal);
+    totalGross = round2(totalGross + gross + bonusSep);
+  }
+  return {
+    rows, si, sd, split, monthsWorked, bonusMonth, bonusMonthShifted,
+    totalGross, totalTax, totalNet, totalSi, totalCompany,
+    withheldOnly: round2(cumTaxPrev),
+    effectiveRate: totalGross > 0 ? (totalGross - totalNet) / totalGross : 0,
+    employerCost: round2(totalGross + totalCompany)
+  };
+}
+
+// ── 汇算清缴 ───────────────────────────────────────────────────────────────
+function reconcile(p) {
+  const s = withholdingSchedule(p);
+  const sd = specialDeduction(p.sd);
+  const months = s.monthsWorked;
+  const salaryIncome = round2(months * (p.monthlySalary + p.monthlyAllowance));
+  const mergedBonus = s.split.merged;
+  const income = round2(salaryIncome + mergedBonus);
+  const basic = 12 * BASIC_DEDUCTION_MONTH;
+  const siYear = round2(months * s.si.personalTotal);
+  const sdYear = round2(12 * sd.total);
+  const otherYear = round2(months * Math.max(0, p.otherDeduction));
+  const medical = majorMedicalDeduction(p.majorMedical);
+  const taxable = round2(Math.max(0, income - basic - siYear - sdYear - otherYear - medical));
+  const br = annualBracket(taxable);
+  const comprehensiveTax = br.tax;
+  const bonusTax = bonusSeparateTax(s.split.separate).tax;
+  const due = round2(comprehensiveTax + bonusTax);
+  const paid = s.totalTax;
+  return {
+    schedule: s, salaryIncome, mergedBonus, income, basic, siYear, sdYear, otherYear, medical,
+    taxable, rate: taxable > 0 ? br.rate : 0, comprehensiveTax, bonusTax, due, paid,
+    diff: round2(due - paid), months
+  };
+}
+
+// ── 税负曲线:年度总包(均匀 12 月发放,无年终奖)→ 到手 ──────────────────────
+function packageOutcome(p, annualPackage) {
+  const q = Object.assign({}, p, {
+    monthlySalary: annualPackage / 12, monthlyAllowance: 0,
+    bonus: 0, bonusMode: 'separate', startMonth: 1, majorMedical: 0
+  });
+  const si = socialInsurance(q);
+  const sd = specialDeduction(q.sd);
+  const siYear = round2(12 * si.personalTotal);
+  const sdYear = round2(12 * sd.total);
+  const otherYear = round2(12 * Math.max(0, q.otherDeduction));
+  const taxable = round2(Math.max(0, annualPackage - 60000 - siYear - sdYear - otherYear));
+  const tax = annualTax(taxable);
+  const net = round2(annualPackage - siYear - tax);
+  return { gross: annualPackage, si: siYear, tax, net, fund: round2(12 * si.personal.fund), companyFund: round2(12 * si.company.fund), burden: annualPackage > 0 ? (siYear + tax) / annualPackage : 0 };
+}
+function taxCurve(p, maxPackage, steps) {
+  const pts = [];
+  for (let i = 0; i <= steps; i++) {
+    const g = maxPackage * i / steps;
+    const o = packageOutcome(p, g);
+    const h = Math.max(1000, maxPackage / steps);
+    const o2 = packageOutcome(p, g + h);
+    o.marginalKeep = (o2.net - o.net) / h;
+    pts.push(o);
+  }
+  return pts;
+}
+
+const PS_ENGINE = {
+  ANNUAL_TABLE, MONTHLY_TABLE, BASIC_DEDUCTION_MONTH, round2, bracketOf, taxByTable,
+  annualTax, annualBracket, bonusSeparateTax, blindZones, inBlindZone, clampBase,
+  socialInsurance, specialDeduction, majorMedicalDeduction, splitBonus, comprehensiveBase,
+  optimizeBonusSplit, bonusStrategies, withholdingSchedule, reconcile, packageOutcome, taxCurve
+};
+/*ENGINE>>>*/
+
+// ── 城市预设(参考口径,均可编辑) ───────────────────────────────────────────
+const CITIES = {
+  beijing:   { name: '北京',   siFloor: 6821, siCeil: 35283, fundCeil: 35283, fundRate: 12, rc: { pension: 16, medical: 9.8, unemp: 0.5, injury: 0.4 } },
+  shanghai:  { name: '上海',   siFloor: 7384, siCeil: 36921, fundCeil: 36921, fundRate: 7,  rc: { pension: 16, medical: 9.5, unemp: 0.5, injury: 0.16 } },
+  shenzhen:  { name: '深圳',   siFloor: 2360, siCeil: 29331, fundCeil: 44220, fundRate: 5,  rc: { pension: 15, medical: 5.2, unemp: 0.7, injury: 0.14 } },
+  guangzhou: { name: '广州',   siFloor: 4546, siCeil: 27234, fundCeil: 39876, fundRate: 5,  rc: { pension: 15, medical: 6.5, unemp: 0.8, injury: 0.2 } },
+  hangzhou:  { name: '杭州',   siFloor: 4462, siCeil: 24930, fundCeil: 37401, fundRate: 12, rc: { pension: 14, medical: 9.5, unemp: 0.5, injury: 0.2 } },
+  chengdu:   { name: '成都',   siFloor: 4511, siCeil: 22557, fundCeil: 33835, fundRate: 12, rc: { pension: 16, medical: 7.5, unemp: 0.6, injury: 0.16 } },
+  wuhan:     { name: '武汉',   siFloor: 4302, siCeil: 21510, fundCeil: 32265, fundRate: 8,  rc: { pension: 16, medical: 8.0, unemp: 0.7, injury: 0.2 } },
+  xian:      { name: '西安',   siFloor: 4416, siCeil: 22080, fundCeil: 33120, fundRate: 12, rc: { pension: 16, medical: 7.5, unemp: 0.7, injury: 0.2 } }
+};
+const STORE_KEY = 'daily-tools:payroll-studio:v1';
+const $ = (s) => document.querySelector(s);
+const E = PS_ENGINE;
+
+const fmtMoney = (x, d) => {
+  const dd = d === undefined ? 2 : d;
+  const neg = x < 0;
+  const s = Math.abs(x).toLocaleString('zh-CN', { minimumFractionDigits: dd, maximumFractionDigits: dd });
+  return (neg ? '-' : '') + '¥' + s;
+};
+const fmtK = (x) => {
+  if (Math.abs(x) >= 10000) return (x / 10000).toLocaleString('zh-CN', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + '万';
+  return Math.round(x).toLocaleString('zh-CN');
+};
+const fmtPct = (x, d) => (x * 100).toFixed(d === undefined ? 2 : d) + '%';
+
+function readParams() {
+  const num = (id, dflt) => { const v = parseFloat($(id).value); return Number.isFinite(v) ? v : dflt; };
+  return {
+    monthlySalary: Math.max(0, num('#ps-salary', 0)),
+    monthlyAllowance: Math.max(0, num('#ps-allowance', 0)),
+    bonus: Math.max(0, num('#ps-bonus', 0)),
+    bonusMonth: parseInt($('#ps-bonus-month').value, 10) || 1,
+    bonusMode: $('#ps-bonus-mode').value,
+    bonusSplit: 0,
+    startMonth: parseInt($('#ps-start-month').value, 10) || 1,
+    siBaseMode: $('#ps-si-mode').value,
+    siBaseCustom: Math.max(0, num('#ps-si-base', 0)),
+    siFloor: Math.max(0, num('#ps-si-floor', 0)),
+    siCeil: Math.max(1, num('#ps-si-ceil', 1)),
+    fundCeil: Math.max(1, num('#ps-fund-ceil', 1)),
+    fundRate: Math.min(Math.max(num('#ps-fund-rate', 0), 0), 12) / 100,
+    rp: { pension: num('#ps-r-pension', 0) / 100, medical: num('#ps-r-medical', 0) / 100, unemp: num('#ps-r-unemp', 0) / 100 },
+    rc: { pension: num('#ps-c-pension', 16) / 100, medical: num('#ps-c-medical', 9.8) / 100, unemp: num('#ps-c-unemp', 0.5) / 100, injury: num('#ps-c-injury', 0.4) / 100 },
+    otherDeduction: Math.max(0, num('#ps-other', 0)),
+    majorMedical: Math.max(0, num('#ps-medical', 0)),
+    sd: {
+      children: Math.max(0, num('#ps-sd-children', 0)),
+      infants: Math.max(0, num('#ps-sd-infants', 0)),
+      rent: parseFloat($('#ps-sd-rent').value) || 0,
+      loan: $('#ps-sd-loan').checked,
+      elder: parseFloat($('#ps-sd-elder').value) || 0,
+      edu: parseFloat($('#ps-sd-edu').value) || 0,
+      privatePension: Math.max(0, num('#ps-sd-pp', 0))
+    }
+  };
+}
+
+// 单位缴费比例存在隐藏字段里(城市预设写入),避免表单过长
+function ensureHiddenCompanyInputs() {
+  const host = document.createElement('div');
+  host.hidden = true;
+  host.innerHTML = '<input type="number" id="ps-c-pension" value="16"><input type="number" id="ps-c-medical" value="9.8">'
+    + '<input type="number" id="ps-c-unemp" value="0.5"><input type="number" id="ps-c-injury" value="0.4">';
+  document.body.appendChild(host);
+}
+
+function fillCitySelects() {
+  const opts = Object.keys(CITIES).map((k) => '<option value="' + k + '">' + CITIES[k].name + '</option>').join('') + '<option value="custom">自定义</option>';
+  $('#ps-city').innerHTML = opts;
+  $('#ps-b-city').innerHTML = opts;
+  $('#ps-city').value = 'beijing';
+  $('#ps-b-city').value = 'shanghai';
+}
+function applyCity(key) {
+  const c = CITIES[key];
+  if (!c) return;
+  $('#ps-si-floor').value = c.siFloor;
+  $('#ps-si-ceil').value = c.siCeil;
+  $('#ps-fund-ceil').value = c.fundCeil;
+  $('#ps-fund-rate').value = c.fundRate;
+  $('#ps-c-pension').value = c.rc.pension;
+  $('#ps-c-medical').value = c.rc.medical;
+  $('#ps-c-unemp').value = c.rc.unemp;
+  $('#ps-c-injury').value = c.rc.injury;
+}
+
+// ── canvas 绘图基础:所有 fillText 一律走 placer(含坐标轴刻度) ──────────────
+function setupCanvas(cv, cssHeight) {
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const w = Math.max(320, cv.parentElement.clientWidth);
+  const h = cssHeight;
+  cv.width = Math.round(w * dpr);
+  cv.height = Math.round(h * dpr);
+  cv.style.height = h + 'px';
+  const g = cv.getContext('2d');
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.clearRect(0, 0, w, h);
+  g.fillStyle = '#ffffff';
+  g.fillRect(0, 0, w, h);
+  return { g, w, h };
+}
+function makePlacer(g, W, H) {
+  const boxes = [];
+  const overlaps = (r) => boxes.some((b) => !(r.x + r.w <= b.x || b.x + b.w <= r.x || r.y + r.h <= b.y || b.y + b.h <= r.y));
+  const inside = (r) => r.x >= -1 && r.y >= -1 && r.x + r.w <= W + 1 && r.y + r.h <= H + 1;
+  return {
+    boxes, drawn: [], dropped: 0,
+    reserve(x, y, w, h) { boxes.push({ x: x, y: y, w: w, h: h }); },
+    // tries: [dx, dy, align, baseline][]  —— 逐个退让位尝试,全撞就放弃绘制
+    text(str, x, y, opt) {
+      const o = Object.assign({ align: 'left', baseline: 'alphabetic', tries: [[0, 0]], pad: 2, lineH: 12, bg: null }, opt || {});
+      const w = g.measureText(str).width, h = o.lineH;
+      for (let i = 0; i < o.tries.length; i++) {
+        const t = o.tries[i];
+        const align = t[2] || o.align, baseline = t[3] || o.baseline;
+        const px = x + t[0], py = y + t[1];
+        let bx = px;
+        if (align === 'center') bx = px - w / 2; else if (align === 'right') bx = px - w;
+        let by = py;
+        if (baseline === 'alphabetic') by = py - h + 3; else if (baseline === 'middle') by = py - h / 2; else if (baseline === 'bottom') by = py - h;
+        const r = { x: bx - o.pad, y: by - o.pad, w: w + o.pad * 2, h: h + o.pad * 2 };
+        if (!inside(r) || overlaps(r)) continue;
+        if (o.bg) { g.save(); g.fillStyle = o.bg; g.fillRect(r.x, r.y, r.w, r.h); g.restore(); }
+        g.save(); g.textAlign = align; g.textBaseline = baseline; g.fillText(str, px, py); g.restore();
+        boxes.push(r);
+        this.drawn.push({ text: str, x: r.x, y: r.y, w: r.w, h: r.h });
+        return true;
+      }
+      this.dropped++;
+      return false;
+    }
+  };
+}
+// 供测试核对:每张画布上真正落笔的文字盒 + 被避让掉的数量
+function publishPlacer(id, P) {
+  window.__psPlacer = window.__psPlacer || {};
+  window.__psPlacer[id] = { drawn: P.drawn, dropped: P.dropped };
+}
+const INK = '#0e0f0c', LIME = '#9fe870', PALE = '#e2f6d5', SAGE = '#e8ebe6', MUTE = '#868685', BODY = '#454745';
+const RED = '#d03238', CYAN = '#38c8ff', NEUTRAL = '#c5edab';
+
+function bumpDrawn() { document.body.dataset.drawn = String(Number(document.body.dataset.drawn || 0) + 1); }
+
+// ── 图 1:逐月到手 ─────────────────────────────────────────────────────────
+function drawMonthly(state) {
+  const cv = $('#ps-cv-monthly');
+  const { g, w, h } = setupCanvas(cv, 320);
+  const P = makePlacer(g, w, h);
+  g.font = '11px ' + getComputedStyle(document.body).fontFamily;
+  const padL = 62, padR = 16, padT = 22, padB = 34;
+  const plotW = w - padL - padR, plotH = h - padT - padB;
+  const rows = state.schedule.rows;
+  const maxNet = Math.max(1, ...rows.map((r) => r.net + r.tax + r.si));
+  const yScale = (v) => padT + plotH - (v / maxNet) * plotH;
+
+  // y 轴刻度(经 placer,与后面的柱顶标注同表避让)
+  g.strokeStyle = SAGE; g.lineWidth = 1; g.fillStyle = MUTE;
+  const ticks = 4;
+  for (let i = 0; i <= ticks; i++) {
+    const v = maxNet * i / ticks, y = yScale(v);
+    g.beginPath(); g.moveTo(padL, y); g.lineTo(w - padR, y); g.stroke();
+    P.text(fmtK(v), padL - 8, y, { align: 'right', baseline: 'middle', tries: [[0, 0]] });
+  }
+
+  const bw = plotW / 12, inner = Math.min(30, bw * 0.62);
+  rows.forEach((r, i) => {
+    const cx = padL + bw * (i + 0.5);
+    const x = cx - inner / 2;
+    if (!r.worked) {
+      g.fillStyle = SAGE;
+      g.fillRect(x, yScale(0) - 3, inner, 3);
+    } else {
+      const baseNet = r.net - r.bonusSeparate + r.bonusTax;   // 工资部分到手
+      const bonusNet = r.bonusSeparate - r.bonusTax;
+      let yTop = yScale(0);
+      // 工资到手
+      const hNet = (Math.max(0, baseNet) / maxNet) * plotH;
+      g.fillStyle = LIME; g.fillRect(x, yTop - hNet, inner, hNet); yTop -= hNet;
+      // 年终奖到手
+      if (bonusNet > 0) { const hb = (bonusNet / maxNet) * plotH; g.fillStyle = NEUTRAL; g.fillRect(x, yTop - hb, inner, hb); yTop -= hb; }
+      // 个税
+      const tAll = r.tax + r.bonusTax;
+      if (tAll > 0) { const ht = (tAll / maxNet) * plotH; g.fillStyle = INK; g.fillRect(x, yTop - ht, inner, ht); yTop -= ht; }
+      // 五险一金
+      const hs = (r.si / maxNet) * plotH;
+      g.fillStyle = MUTE; g.globalAlpha = 0.45; g.fillRect(x, yTop - hs, inner, hs); g.globalAlpha = 1;
+      P.reserve(x, yTop - hs, inner, hs + hNet);
+      if (r.stepUp) {
+        g.fillStyle = '#b86700';
+        P.text('↑' + Math.round(r.rate * 100) + '%', cx, yTop - hs - 6, { align: 'center', baseline: 'bottom', tries: [[0, 0], [0, -13], [12, 0, 'left']], bg: '#ffffff' });
+      }
+    }
+    g.fillStyle = MUTE;
+    P.text(String(r.month), cx, h - padB + 14, { align: 'center', baseline: 'middle', tries: [[0, 0]] });
+  });
+  g.fillStyle = BODY;
+  P.text('月', w - padR, h - padB + 14, { align: 'right', baseline: 'middle', tries: [[0, 0], [0, 14]] });
+  publishPlacer('monthly', P);
+  bumpDrawn();
+}
+
+// ── 图 2:年终奖盲区 ───────────────────────────────────────────────────────
+function drawBonus(state) {
+  const cv = $('#ps-cv-bonus');
+  const { g, w, h } = setupCanvas(cv, 320);
+  const P = makePlacer(g, w, h);
+  g.font = '11px ' + getComputedStyle(document.body).fontFamily;
+  const padL = 66, padR = 20, padT = 22, padB = 36;
+  const plotW = w - padL - padR, plotH = h - padT - padB;
+  const B = state.params.bonus;
+  const zones = E.blindZones();
+  // 轴上界取「整」:否则刻度会出现 4.1万 / 6.1万 / 10.2万 这种读不出来的数
+  const niceMax = (v) => { const p = Math.pow(10, Math.floor(Math.log10(v))), step = p / 2; return Math.ceil(v / step) * step; };
+  const xMax = niceMax(Math.max(50000, Math.min(1300000, B * 1.7 || 60000)));
+  const netAt = (b) => b - E.bonusSeparateTax(b).tax;
+  const yMax = netAt(xMax) * 1.05;
+  const X = (b) => padL + (b / xMax) * plotW;
+  const Y = (v) => padT + plotH - (v / yMax) * plotH;
+
+  // 盲区红带
+  zones.forEach((z) => {
+    if (z.from > xMax) return;
+    const x0 = X(z.from), x1 = X(Math.min(z.to, xMax));
+    g.fillStyle = '#f7dcdd';
+    g.fillRect(x0, padT, Math.max(1.5, x1 - x0), plotH);
+  });
+  // 网格 + y 轴刻度
+  g.strokeStyle = SAGE; g.lineWidth = 1; g.fillStyle = MUTE;
+  for (let i = 0; i <= 4; i++) {
+    const v = yMax * i / 4, y = Y(v);
+    g.beginPath(); g.moveTo(padL, y); g.lineTo(w - padR, y); g.stroke();
+    P.text(fmtK(v), padL - 8, y, { align: 'right', baseline: 'middle', tries: [[0, 0]] });
+  }
+  // x 轴刻度
+  for (let i = 0; i <= 5; i++) {
+    const b = xMax * i / 5;
+    P.text(fmtK(b), X(b), h - padB + 14, { align: 'center', baseline: 'middle', tries: [[0, 0], [0, 13]] });
+  }
+  // 曲线(逐点,跳变处不连线)
+  g.strokeStyle = INK; g.lineWidth = 2; g.beginPath();
+  let started = false, prevNet = null;
+  const N = 900;
+  for (let i = 0; i <= N; i++) {
+    const b = xMax * i / N, v = netAt(b);
+    if (started && prevNet !== null && v < prevNet - 1) { g.stroke(); g.beginPath(); started = false; }
+    if (!started) { g.moveTo(X(b), Y(v)); started = true; } else g.lineTo(X(b), Y(v));
+    prevNet = v;
+  }
+  g.stroke();
+  // 当前年终奖标记
+  if (B > 0 && B <= xMax) {
+    const v = netAt(B);
+    g.strokeStyle = LIME; g.lineWidth = 2;
+    g.beginPath(); g.moveTo(X(B), padT); g.lineTo(X(B), padT + plotH); g.stroke();
+    g.fillStyle = LIME; g.beginPath(); g.arc(X(B), Y(v), 5, 0, Math.PI * 2); g.fill();
+    g.strokeStyle = INK; g.lineWidth = 1.5; g.stroke();
+    P.reserve(X(B) - 7, Y(v) - 7, 14, 14);
+    P.reserve(X(B) - 2, padT, 4, plotH);          // 竖线本身也占位
+    g.fillStyle = INK;
+    // 首选左上方:曲线单调递增,点的左上是空白;若首选放到右上,带白底的标签会把曲线擦断一截
+    P.text(fmtK(B) + ' → 税后 ' + fmtK(v), X(B), Y(v),
+      { tries: [[-10, -10, 'right', 'bottom'], [-10, 28, 'right', 'top'], [10, -10, 'left', 'bottom'], [10, 28, 'left', 'top']], bg: '#ffffff' });
+  }
+  // 盲区标注(只标图内前两段,其余在下方表里)
+  g.fillStyle = '#a72027';
+  zones.forEach((z, i) => {
+    if (z.from > xMax) return;
+    P.text('盲区 ' + fmtK(z.from), X(z.from), padT + 12 + i * 15,
+      { align: 'left', baseline: 'middle', tries: [[3, 0], [-3, 0, 'right'], [3, 15], [3, 30]], bg: '#ffffff' });
+  });
+  publishPlacer('bonus', P);
+  bumpDrawn();
+}
+
+// ── 图 3:税负曲线 ─────────────────────────────────────────────────────────
+function drawCurve(state) {
+  const cv = $('#ps-cv-curve');
+  const { g, w, h } = setupCanvas(cv, 340);
+  const P = makePlacer(g, w, h);
+  g.font = '11px ' + getComputedStyle(document.body).fontFamily;
+  const padL = 66, padR = 56, padT = 22, padB = 36;
+  const plotW = w - padL - padR, plotH = h - padT - padB;
+  const pts = state.curve;
+  const gMax = pts[pts.length - 1].gross || 1;
+  const X = (v) => padL + (v / gMax) * plotW;
+  const Y = (v) => padT + plotH - (v / gMax) * plotH;
+  const YR = (r) => padT + plotH - Math.min(1, Math.max(0, r)) * plotH;
+
+  g.strokeStyle = SAGE; g.lineWidth = 1; g.fillStyle = MUTE;
+  for (let i = 0; i <= 4; i++) {
+    const v = gMax * i / 4, y = Y(v);
+    g.beginPath(); g.moveTo(padL, y); g.lineTo(w - padR, y); g.stroke();
+    P.text(fmtK(v), padL - 8, y, { align: 'right', baseline: 'middle', tries: [[0, 0]] });
+    P.text((i * 25) + '%', w - padR + 8, YR(i / 4), { align: 'left', baseline: 'middle', tries: [[0, 0]] });
+  }
+  // 最右一个刻度改右对齐:居中时它的盒子会伸到右轴 0% 底下,被避让掉后掉到下一行、与其他刻度错位
+  for (let i = 0; i <= 5; i++) {
+    P.text(fmtK(gMax * i / 5), X(gMax * i / 5), h - padB + 14,
+      { align: i === 5 ? 'right' : 'center', baseline: 'middle', tries: [[0, 0], [0, 13]] });
+  }
+
+  // 堆叠面积:到手 / 个税 / 五险一金
+  const area = (valFn, color) => {
+    g.fillStyle = color; g.beginPath(); g.moveTo(X(pts[0].gross), Y(0));
+    pts.forEach((p) => g.lineTo(X(p.gross), Y(valFn(p))));
+    g.lineTo(X(pts[pts.length - 1].gross), Y(0)); g.closePath(); g.fill();
+  };
+  area((p) => p.gross, MUTE);                      // 总包(最外层 = 五险一金层顶)
+  area((p) => p.net + p.tax, INK);                 // 到手 + 个税
+  area((p) => p.net, LIME);                        // 到手
+  P.reserve(padL, padT, plotW, plotH);
+
+  const line = (fn, color, wid) => {
+    g.strokeStyle = color; g.lineWidth = wid; g.beginPath();
+    pts.forEach((p, i) => { const x = X(p.gross), y = YR(fn(p)); if (i === 0) g.moveTo(x, y); else g.lineTo(x, y); });
+    g.stroke();
+  };
+  line((p) => p.burden, RED, 2);
+  line((p) => p.marginalKeep, CYAN, 2);
+  publishPlacer('curve', P);
+  bumpDrawn();
+}
+
+// ── 图 4:方案对比 ─────────────────────────────────────────────────────────
+function drawCompare(state) {
+  const cv = $('#ps-cv-compare');
+  const { g, w, h } = setupCanvas(cv, 260);
+  const P = makePlacer(g, w, h);
+  g.font = '12px ' + getComputedStyle(document.body).fontFamily;
+  const rows = state.compare.bars;
+  const padL = 108, padR = 96, padT = 24, padB = 18;
+  const plotW = w - padL - padR;
+  const maxV = Math.max(1, ...rows.map((r) => Math.max(r.a, r.b)));
+  const bandH = (h - padT - padB) / rows.length;
+  rows.forEach((r, i) => {
+    const y0 = padT + bandH * i;
+    g.fillStyle = BODY;
+    P.text(r.label, padL - 10, y0 + bandH / 2, { align: 'right', baseline: 'middle', tries: [[0, 0]] });
+    const bh = Math.min(15, bandH / 3.2);
+    const wa = (r.a / maxV) * plotW, wb = (r.b / maxV) * plotW;
+    const ya = y0 + bandH / 2 - bh - 3, yb = y0 + bandH / 2 + 3;
+    g.fillStyle = INK; g.fillRect(padL, ya, wa, bh);
+    g.fillStyle = LIME; g.fillRect(padL, yb, wb, bh);
+    // 逐条预留(不是取并集):否则较短那条的读数会落进较长那条的预留矩形里被整条丢弃
+    P.reserve(padL, ya, wa, bh);
+    P.reserve(padL, yb, wb, bh);
+    g.fillStyle = INK;
+    P.text('A ' + fmtK(r.a), padL + wa + 7, ya + bh / 2, { align: 'left', baseline: 'middle', tries: [[0, 0], [0, -2], [0, 2]], bg: '#ffffff' });
+    P.text('B ' + fmtK(r.b), padL + wb + 7, yb + bh / 2, { align: 'left', baseline: 'middle', tries: [[0, 0], [0, 2], [0, -2]], bg: '#ffffff' });
+  });
+  publishPlacer('compare', P);
+  bumpDrawn();
+}
+
+// ── 渲染 ───────────────────────────────────────────────────────────────────
+let STATE = null;
+
+function renderAlerts(p, s) {
+  const box = $('#ps-alerts');
+  const msgs = [];
+  const sd = E.specialDeduction(p.sd);
+  sd.warn.forEach((wmsg) => msgs.push(['warn', wmsg]));
+  if (s.si.flooredSi) msgs.push(['warn', '月工资 ' + fmtMoney(s.si.wage, 0) + ' 低于社保基数下限,已按下限 ' + fmtMoney(p.siFloor, 0) + ' 计缴。']);
+  if (s.si.cappedSi) msgs.push(['info', '月工资高于社保基数上限,社保按上限 ' + fmtMoney(p.siCeil, 0) + ' 封顶 —— 这也是高薪段边际留存率回升的原因。']);
+  if (s.si.cappedFund) msgs.push(['info', '公积金基数已按上限 ' + fmtMoney(p.fundCeil, 0) + ' 封顶。']);
+  if (p.startMonth > 1) msgs.push(['info', '本年 ' + p.startMonth + ' 月起任职:预扣时基本减除费用只按 ' + (13 - p.startMonth) + ' 个月计,汇算时可扣满 60000 元 → 大概率退税,见「汇算清缴」。']);
+  if (s.bonusMonthShifted) msgs.push(['warn', '年终奖发放月早于首次任职月,已顺延到 ' + s.bonusMonth + ' 月计算。']);
+  const z = E.inBlindZone(p.bonus);
+  if (z) msgs.push(['bad', '年终奖 ' + fmtMoney(p.bonus, 0) + ' 落在盲区 (' + fmtMoney(z.from, 0) + ', ' + fmtMoney(z.to, 2) + '] 内:降到 ' + fmtMoney(z.from, 0) + ' 反而多拿 ' + fmtMoney((z.from - E.bonusSeparateTax(z.from).tax) - (p.bonus - E.bonusSeparateTax(p.bonus).tax), 2) + '。']);
+  if (!msgs.length) msgs.push(['info', '参数校验通过:基数未触及上下限,专项附加扣除无冲突。']);
+  box.innerHTML = msgs.map((m) => '<div class="ps-alert' + (m[0] === 'warn' ? ' ps-alert--warn' : m[0] === 'bad' ? ' ps-alert--bad' : '') + '">' + m[1] + '</div>').join('');
+}
+
+function renderMonthly(s) {
+  const tb = $('#ps-tbl-monthly tbody');
+  tb.innerHTML = s.rows.map((r) => {
+    if (!r.worked) return '<tr class="ps-row-idle"><td>' + r.month + ' 月</td><td colspan="6" style="text-align:left;color:var(--ps-mute)">未任职</td></tr>';
+    const rate = r.rate > 0 ? Math.round(r.rate * 100) + '%' : '—';
+    const badge = r.stepUp ? '<span class="ps-badge ps-badge--up">' + rate + ' ↑</span>' : '<span class="ps-badge">' + rate + '</span>';
+    const bonusCell = r.bonusSeparate > 0 ? '<br><span style="color:var(--ps-mute);font-size:12px">含年终奖 ' + fmtMoney(r.bonusSeparate, 0) + '</span>' : '';
+    return '<tr' + (r.stepUp ? ' class="ps-rowmark"' : '') + '>'
+      + '<td>' + r.month + ' 月</td>'
+      + '<td class="ps-c-gross">' + fmtMoney(r.gross, 2) + bonusCell + '</td>'
+      + '<td>' + fmtMoney(r.si, 2) + '</td>'
+      + '<td>' + fmtMoney(r.cumTaxable, 2) + '</td>'
+      + '<td>' + badge + '</td>'
+      + '<td class="ps-c-tax">' + fmtMoney(r.tax + r.bonusTax, 2) + '</td>'
+      + '<td class="ps-c-net"><b>' + fmtMoney(r.net, 2) + '</b></td>'
+      + '</tr>';
+  }).join('');
+  const worked = s.rows.filter((r) => r.worked);
+  const nets = worked.filter((r) => r.bonusSeparate === 0).map((r) => r.net);
+  const drop = nets.length > 1 ? Math.max.apply(null, nets) - Math.min.apply(null, nets) : 0;
+  const steps = s.rows.filter((r) => r.stepUp).map((r) => r.month + ' 月');
+  $('#ps-monthly-note').textContent = '全年个税合计 ' + fmtMoney(s.totalTax, 2) + ',到手合计 ' + fmtMoney(s.totalNet, 2) + '。'
+    + (steps.length ? '税率档在 ' + steps.join('、') + ' 跳升,' : '全年未跨档,')
+    + '不含年终奖的月份里,到手最高与最低相差 ' + fmtMoney(drop, 2) + '。';
+}
+
+function renderBonus(p, s) {
+  const st = E.bonusStrategies(p);
+  const list = [st.separate, st.merged, st.best];
+  const min = Math.min.apply(null, list.map((x) => x.total));
+  const activeName = p.bonusMode === 'merge' ? '全部并入综合' : p.bonusMode === 'auto' ? '最优拆分' : '全部单独计税';
+  $('#ps-bonus-opts').innerHTML = list.map((x) => {
+    const isBest = Math.abs(x.total - min) < 1e-6;
+    const isActive = x.name === activeName;
+    const detail = x.separate > 0 && x.merged > 0
+      ? '年终奖 ' + fmtMoney(x.separate, 0) + ' 单独 + ' + fmtMoney(x.merged, 0) + ' 并入'
+      : (x.separate > 0 ? '全部 ' + fmtMoney(x.separate, 0) + ' 单独计税' : '全部并入综合所得');
+    return '<div class="ps-opt' + (isBest ? ' ps-opt--best' : '') + '" data-strategy="' + x.name + '">'
+      + (isBest ? '<span class="ps-crown">最省</span>' : '')
+      + '<div class="ps-opt-name">' + x.name + (isActive ? ' · <span class="ps-opt-active">当前采用</span>' : '') + '</div>'
+      + '<div class="ps-opt-val">' + fmtMoney(x.total, 2) + '</div>'
+      + '<div class="ps-opt-note">' + detail + '<br>综合所得税 ' + fmtMoney(x.comprehensiveTax, 2) + ' + 奖金税 ' + fmtMoney(x.bonusTax, 2) + '</div>'
+      + '</div>';
+  }).join('');
+
+  const worst = Math.max(st.separate.total, st.merged.total);
+  const naive = Math.min(st.separate.total, st.merged.total);
+  const save = E.round2(naive - st.best.total);
+  const adv = [];
+  if (p.bonus <= 0) adv.push(['info', '未填年终奖。填入金额后这里会给出三种计税口径的税额对比与最优拆分建议。']);
+  else {
+    adv.push(['info', '在「全部单独」与「全部并入」里选对一边,已经比选错省下 ' + fmtMoney(worst - naive, 2) + '。']);
+    if (save > 0.5) adv.push(['warn', '进一步把奖金包拆成「年终奖 ' + fmtMoney(st.best.separate, 0) + ' + 平时发放 ' + fmtMoney(st.best.merged, 0) + '」,还能再省 ' + fmtMoney(save, 2) + '(需与公司薪酬发放方式配合)。']);
+    else adv.push(['info', '当前收入结构下,最优拆分与更优的单一口径税额相同,无需额外拆分。']);
+  }
+  $('#ps-bonus-advice').innerHTML = adv.map((m) => '<div class="ps-alert' + (m[0] === 'warn' ? ' ps-alert--warn' : '') + '">' + m[1] + '</div>').join('');
+
+  const zones = E.blindZones();
+  $('#ps-tbl-blind tbody').innerHTML = zones.map((z) => {
+    const netEnd = z.to - E.bonusSeparateTax(z.to).tax;
+    const hit = p.bonus > z.from && p.bonus <= z.to + 1e-6;
+    return '<tr' + (hit ? ' class="ps-rowmark"' : '') + '>'
+      + '<td>' + fmtMoney(z.from, 0) + ' ~ ' + fmtMoney(z.to, 2) + '</td>'
+      + '<td>' + fmtMoney(z.width, 2) + '</td>'
+      + '<td>' + Math.round(z.rateFrom * 100) + '% → ' + Math.round(z.rateTo * 100) + '%</td>'
+      + '<td>' + fmtMoney(z.netAtFrom, 2) + '</td>'
+      + '<td>' + fmtMoney(netEnd, 2) + '</td>'
+      + '<td>' + fmtMoney(z.netAtFrom - (z.from + 1 - E.bonusSeparateTax(z.from + 1).tax), 2) + '</td>'
+      + '</tr>';
+  }).join('');
+  return st;
+}
+
+function renderSettle(p) {
+  const r = E.reconcile(p);
+  const kv = [
+    ['工资薪金收入(' + r.months + ' 个月)', r.salaryIncome],
+    ['并入综合的年终奖', r.mergedBonus],
+    ['减:基本减除费用(全年)', -r.basic],
+    ['减:专项扣除(五险一金个人)', -r.siYear],
+    ['减:专项附加扣除(12 个月)', -r.sdYear],
+    ['减:其他扣除', -r.otherYear],
+    ['减:大病医疗', -r.medical]
+  ];
+  $('#ps-settle-kv').innerHTML = kv.map((x) => '<div class="ps-kv"><span>' + x[0] + '</span><b>' + fmtMoney(x[1], 2) + '</b></div>').join('')
+    + '<div class="ps-kv ps-kv--total"><span>应纳税所得额(适用 ' + Math.round(r.rate * 100) + '%)</span><b id="ps-settle-taxable">' + fmtMoney(r.taxable, 2) + '</b></div>';
+
+  $('#ps-tbl-settle tbody').innerHTML = [
+    ['综合所得应纳税额', r.comprehensiveTax],
+    ['年终奖单独计税税额', r.bonusTax],
+    ['全年应纳税额合计', r.due],
+    ['全年已预扣预缴', r.paid]
+  ].map((x) => '<tr><td>' + x[0] + '</td><td>' + fmtMoney(x[1], 2) + '</td></tr>').join('');
+
+  $('#ps-settle-due').textContent = fmtMoney(r.due, 2);
+  $('#ps-settle-paid').textContent = fmtMoney(r.paid, 2);
+  const d = r.diff;
+  const el = $('#ps-settle-diff');
+  if (Math.abs(d) < 0.01) {
+    el.textContent = '不退不补';
+    $('#ps-settle-note').textContent = '预扣与年度应纳完全一致 —— 这正是累计预扣预缴法在「全年在职、收入均匀、无专项变动」时的设计目标。';
+  } else if (d < 0) {
+    el.textContent = '退税 ' + fmtMoney(-d, 2);
+    $('#ps-settle-note').textContent = '已预缴超出全年应纳税额,次年 3–6 月汇算时可申请退还。';
+  } else {
+    el.textContent = '补税 ' + fmtMoney(d, 2);
+    $('#ps-settle-note').textContent = '预缴不足,汇算时需补缴(全年综合所得 ≤ 12 万元或补税额 ≤ 400 元的可免于办理)。';
+  }
+  return r;
+}
+
+function renderCurve(p) {
+  const maxPkg = Math.max(600000, Math.ceil((p.monthlySalary * 12 + p.bonus) * 1.6 / 100000) * 100000);
+  const pts = E.taxCurve(p, maxPkg, 60);
+  const marks = [];
+  for (let i = 1; i <= 6; i++) marks.push(maxPkg * i / 6);
+  $('#ps-tbl-curve tbody').innerHTML = marks.map((gp) => {
+    const o = E.packageOutcome(p, gp);
+    const o2 = E.packageOutcome(p, gp + 1000);
+    const mk = (o2.net - o.net) / 1000;
+    return '<tr><td>' + fmtMoney(gp, 0) + '</td><td>' + fmtMoney(o.si, 2) + '</td><td>' + fmtMoney(o.tax, 2)
+      + '</td><td><b>' + fmtMoney(o.net, 2) + '</b></td><td>' + fmtPct(o.burden) + '</td><td>' + fmtPct(mk) + '</td></tr>';
+  }).join('');
+  return pts;
+}
+
+function renderCompare(p, s) {
+  const bCity = CITIES[$('#ps-b-city').value] || CITIES.beijing;
+  const num = (id, d) => { const v = parseFloat($(id).value); return Number.isFinite(v) ? v : d; };
+  const sdB = Math.max(0, num('#ps-b-sd', 0));
+  const pb = Object.assign({}, p, {
+    monthlySalary: Math.max(0, num('#ps-b-salary', 0)),
+    bonus: Math.max(0, num('#ps-b-bonus', 0)),
+    siFloor: bCity.siFloor, siCeil: bCity.siCeil, fundCeil: bCity.fundCeil,
+    fundRate: Math.min(Math.max(num('#ps-b-fund-rate', 0), 0), 12) / 100,
+    rc: { pension: bCity.rc.pension / 100, medical: bCity.rc.medical / 100, unemp: bCity.rc.unemp / 100, injury: bCity.rc.injury / 100 },
+    sd: { children: 0, infants: 0, rent: 0, loan: false, elder: 0, edu: 0, privatePension: 0, custom: sdB }
+  });
+  // 方案 B 的专项附加直接用合计值:借道「其他扣除」实现等价扣除
+  pb.otherDeduction = p.otherDeduction + sdB;
+  const sb = E.withholdingSchedule(pb);
+  const fundA = E.round2(12 * (s.si.personal.fund + s.si.company.fund));
+  const fundB = E.round2(12 * (sb.si.personal.fund + sb.si.company.fund));
+  // dir: +1 = 越高越好(到手/公积金) · -1 = 越低越好(个税/税负率) · 0 = 中性(不是你的钱)
+  const bars = [
+    { label: '全年到手现金', a: s.totalNet, b: sb.totalNet, dir: 1 },
+    { label: '公积金账户', a: fundA, b: fundB, dir: 1 },
+    { label: '全年个税', a: s.totalTax, b: sb.totalTax, dir: -1 },
+    { label: '企业总成本', a: s.employerCost, b: sb.employerCost, dir: 0 }
+  ];
+  const totalA = E.round2(s.totalNet + fundA), totalB = E.round2(sb.totalNet + fundB);
+  $('#ps-tbl-compare tbody').innerHTML = bars.concat([
+    { label: '到手 + 公积金合计', a: totalA, b: totalB, dir: 1 },
+    { label: '综合税负率', a: s.effectiveRate, b: sb.effectiveRate, pct: true, dir: -1 }
+  ]).map((r) => {
+    const f = r.pct ? (x) => fmtPct(x) : (x) => fmtMoney(x, 2);
+    const diff = r.b - r.a;
+    const good = r.dir === 0 || Math.abs(diff) < 1e-9 ? 0 : (diff > 0 ? r.dir : -r.dir);
+    const cls = good > 0 ? 'ps-badge' : good < 0 ? 'ps-badge ps-badge--bad' : 'ps-badge ps-badge--flat';
+    return '<tr><td>' + r.label + '</td><td>' + f(r.a) + '</td><td>' + f(r.b) + '</td><td><span class="' + cls + '">'
+      + (diff >= 0 ? '+' : '') + f(diff) + '</span></td></tr>';
+  }).join('');
+  const gap = E.round2(totalB - totalA);
+  $('#ps-cmp-verdict').innerHTML = '<div class="ps-opt-val" id="ps-cmp-gap">' + (gap >= 0 ? '方案 B 多 ' : '方案 A 多 ') + fmtMoney(Math.abs(gap), 2) + '</div>'
+    + '<p class="ps-opt-note">口径 = 全年到手现金 + 全年公积金账户入账(个人 + 单位)。'
+    + '方案 A 到手 ' + fmtMoney(s.totalNet, 2) + ' + 公积金 ' + fmtMoney(fundA, 2) + ';'
+    + '方案 B 到手 ' + fmtMoney(sb.totalNet, 2) + ' + 公积金 ' + fmtMoney(fundB, 2) + '。</p>';
+  return { bars: bars, totalA, totalB, gap };
+}
+
+function recompute() {
+  const p = readParams();
+  $('#ps-si-base-wrap').hidden = p.siBaseMode !== 'custom';
+  const s = E.withholdingSchedule(p);
+
+  $('#ps-gross').textContent = fmtMoney(s.totalGross, 0);
+  $('#ps-fee-si').textContent = '-' + fmtMoney(s.totalSi, 2);
+  $('#ps-fee-tax').textContent = '-' + fmtMoney(s.totalTax, 2);
+  $('#ps-net').textContent = fmtMoney(s.totalNet, 0);
+  $('#ps-eff').textContent = fmtPct(s.effectiveRate);
+  $('#ps-permonth').textContent = fmtMoney(s.totalNet / 12, 0);
+  $('#ps-cost').textContent = fmtMoney(s.employerCost, 0);
+
+  renderAlerts(p, s);
+  renderMonthly(s);
+  const strategies = renderBonus(p, s);
+  const settle = renderSettle(p);
+  const curve = renderCurve(p);
+  const compare = renderCompare(p, s);
+
+  STATE = { params: p, schedule: s, strategies, settle, curve, compare };
+  redraw();
+  persist();
+  document.body.dataset.runs = String(Number(document.body.dataset.runs || 0) + 1);
+}
+
+function redraw() {
+  if (!STATE) return;
+  if (!$('#ps-panel-monthly').hidden) drawMonthly(STATE);
+  if (!$('#ps-panel-bonus').hidden) drawBonus(STATE);
+  if (!$('#ps-panel-curve').hidden) drawCurve(STATE);
+  if (!$('#ps-panel-compare').hidden) drawCompare(STATE);
+}
+
+// ── tabs ──────────────────────────────────────────────────────────────────
+const TABS = ['monthly', 'bonus', 'settle', 'curve', 'compare'];
+function selectTab(key) {
+  TABS.forEach((k) => {
+    const t = $('#ps-tab-' + k), pane = $('#ps-panel-' + k);
+    const on = k === key;
+    t.setAttribute('aria-selected', on ? 'true' : 'false');
+    pane.hidden = !on;
+  });
+  redraw();
+}
+
+// ── 存储 ──────────────────────────────────────────────────────────────────
+const FORM_IDS = ['#ps-salary', '#ps-allowance', '#ps-bonus', '#ps-bonus-month', '#ps-bonus-mode', '#ps-start-month', '#ps-city',
+  '#ps-si-mode', '#ps-si-base', '#ps-si-floor', '#ps-si-ceil', '#ps-fund-ceil', '#ps-fund-rate',
+  '#ps-r-pension', '#ps-r-medical', '#ps-r-unemp', '#ps-c-pension', '#ps-c-medical', '#ps-c-unemp', '#ps-c-injury',
+  '#ps-sd-children', '#ps-sd-infants', '#ps-sd-rent', '#ps-sd-elder', '#ps-sd-edu', '#ps-sd-pp',
+  '#ps-other', '#ps-medical', '#ps-b-city', '#ps-b-salary', '#ps-b-bonus', '#ps-b-fund-rate', '#ps-b-sd'];
+function snapshot() {
+  const o = {};
+  FORM_IDS.forEach((id) => { const el = $(id); if (el) o[id] = el.value; });
+  o['#ps-sd-loan'] = $('#ps-sd-loan').checked;
+  return o;
+}
+function restore(o) {
+  if (!o) return;
+  FORM_IDS.forEach((id) => { const el = $(id); if (el && o[id] !== undefined) el.value = o[id]; });
+  if (o['#ps-sd-loan'] !== undefined) $('#ps-sd-loan').checked = !!o['#ps-sd-loan'];
+}
+function readStore() {
+  try { return JSON.parse(localStorage.getItem(STORE_KEY) || '{}') || {}; } catch (e) { return {}; }
+}
+function writeStore(o) {
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(o)); } catch (e) { /* 隐私模式/超限:忽略 */ }
+}
+function persist() {
+  const st = readStore();
+  st.current = snapshot();
+  writeStore(st);
+}
+function refreshSavedList() {
+  const st = readStore();
+  const list = st.saved || [];
+  $('#ps-saved').innerHTML = '<option value="">已存方案…</option>' + list.map((x, i) => '<option value="' + i + '">' + x.name + '</option>').join('');
+}
+function flash(msg) {
+  $('#ps-save-msg').textContent = msg;
+}
+
+function exportCSV() {
+  if (!STATE) return;
+  const head = ['月份', '应发(含并入奖金)', '年终奖(单独计税)', '五险一金个人', '累计应纳税所得额', '适用税率', '当月个税', '当月到手'];
+  const lines = [head.join(',')];
+  STATE.schedule.rows.forEach((r) => {
+    lines.push([r.month, r.gross.toFixed(2), r.bonusSeparate.toFixed(2), r.si.toFixed(2), r.cumTaxable.toFixed(2),
+      (r.rate * 100).toFixed(0) + '%', (r.tax + r.bonusTax).toFixed(2), r.net.toFixed(2)].join(','));
+  });
+  const s = STATE.schedule;
+  lines.push(['合计', s.totalGross.toFixed(2), '', s.totalSi.toFixed(2), '', '', s.totalTax.toFixed(2), s.totalNet.toFixed(2)].join(','));
+  const blob = new Blob(['﻿' + lines.join('\n')], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'payroll-' + new Date().getFullYear() + '.csv';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  flash('已导出 CSV。');
+}
+
+// ── 初始化 ────────────────────────────────────────────────────────────────
+function init() {
+  ensureHiddenCompanyInputs();
+  fillCitySelects();
+  applyCity('beijing');
+
+  const st = readStore();
+  if (st.current) restore(st.current);
+  refreshSavedList();
+
+  document.addEventListener('input', (e) => {
+    if (e.target.closest('.ps-fs') || e.target.id === 'ps-si-mode') recompute();
+  });
+  document.addEventListener('change', (e) => {
+    if (e.target.id === 'ps-city') { applyCity($('#ps-city').value); recompute(); }
+    else if (e.target.closest('.ps-fs')) recompute();
+  });
+  TABS.forEach((k) => $('#ps-tab-' + k).addEventListener('click', () => selectTab(k)));
+  $('#ps-export').addEventListener('click', exportCSV);
+  $('#ps-reset').addEventListener('click', () => {
+    const keep = readStore().saved || [];
+    writeStore({ saved: keep });
+    location.reload();
+  });
+  $('#ps-save').addEventListener('click', () => {
+    const name = ($('#ps-save-name').value || '').trim() || ('方案 ' + ((readStore().saved || []).length + 1));
+    const store = readStore();
+    store.saved = store.saved || [];
+    store.saved = store.saved.filter((x) => x.name !== name);
+    store.saved.push({ name, data: snapshot() });
+    if (store.saved.length > 20) store.saved = store.saved.slice(-20);
+    writeStore(store);
+    refreshSavedList();
+    $('#ps-saved').value = String(store.saved.length - 1);
+    flash('已保存「' + name + '」。');
+  });
+  $('#ps-load').addEventListener('click', () => {
+    const i = parseInt($('#ps-saved').value, 10);
+    const store = readStore();
+    if (!Number.isFinite(i) || !store.saved || !store.saved[i]) { flash('请先选择一个已存方案。'); return; }
+    restore(store.saved[i].data);
+    flash('已载入「' + store.saved[i].name + '」。');
+    recompute();
+  });
+  $('#ps-del').addEventListener('click', () => {
+    const i = parseInt($('#ps-saved').value, 10);
+    const store = readStore();
+    if (!Number.isFinite(i) || !store.saved || !store.saved[i]) { flash('请先选择一个已存方案。'); return; }
+    const name = store.saved[i].name;
+    store.saved.splice(i, 1);
+    writeStore(store);
+    refreshSavedList();
+    flash('已删除「' + name + '」。');
+  });
+
+  let rt = null;
+  window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(redraw, 120); });
+
+  selectTab('monthly');
+  recompute();
+}
+document.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>
