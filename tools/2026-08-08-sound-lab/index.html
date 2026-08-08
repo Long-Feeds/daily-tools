@@ -1,0 +1,2135 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>声音实验室 · Sound Lab</title>
+<meta name="description" content="浏览器内的实时音频分析台:麦克风或内置信号发生器 → 手写 FFT 频谱、MPM 音高检测调音器、声谱图瀑布、RBJ 双二阶滤波器设计。音频不离开本机。">
+<style>
+/* [hidden] 守卫必须排在最前:本页裸写数百行 CSS,任何 .foo{display:flex} 与 UA 的
+   [hidden]{display:none} 同特异性且靠后即胜出,会让 el.hidden=true 彻底失效(2026-07-20 实撞) */
+[hidden]{display:none!important}
+
+/* ══════ 设计语言:ElevenLabs ══════
+   off-white 画布 + 暖近黑墨水 + 编辑部气质的 300 字重衬线 display + Inter 正文
+   唯一的「颜色」是漂浮的柔和粉彩渐变球(薄荷/蜜桃/薰衣草/天空/玫瑰),CTA 只有墨水药丸 */
+:root{
+  --sl-ink:#0c0a09; --sl-primary:#292524; --sl-primary-active:#0c0a09;
+  --sl-body:#4e4e4e; --sl-muted:#777169; --sl-muted-soft:#a8a29e;
+  --sl-hair:#e7e5e4; --sl-hair-soft:#f0efed; --sl-hair-strong:#d6d3d1;
+  --sl-canvas:#f5f5f5; --sl-canvas-soft:#fafafa; --sl-surface:#ffffff; --sl-strong:#f0efed;
+  --sl-dark:#0c0a09; --sl-dark-el:#1c1917; --sl-on-dark:#ffffff; --sl-on-dark-soft:#a8a29e;
+  --sl-mint:#a7e5d3; --sl-peach:#f4c5a8; --sl-lav:#c8b8e0; --sl-sky:#a8c8e8; --sl-rose:#e8b8c4;
+  --sl-ok:#16a34a; --sl-bad:#dc2626;
+  --sl-serif:'Waldenburg','EB Garamond','Iowan Old Style','Palatino Linotype',Palatino,Georgia,'Songti SC','Times New Roman',serif;
+  --sl-sans:'Inter','SF Pro Text',-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Hiragino Sans GB','Microsoft YaHei',sans-serif;
+  --sl-mono:'SF Mono','JetBrains Mono',ui-monospace,Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:var(--sl-canvas); color:var(--sl-body);
+  font-family:var(--sl-sans); font-size:16px; line-height:1.5; letter-spacing:.16px;
+  -webkit-font-smoothing:antialiased; overflow-x:hidden;
+}
+/* 大气渐变球:品牌唯一的颜色时刻,纯装饰 */
+.sl-orbs{position:fixed;inset:0;pointer-events:none;z-index:0;overflow:hidden}
+.sl-orb{position:absolute;border-radius:9999px;filter:blur(70px);opacity:.55}
+.sl-orb1{width:520px;height:520px;top:-190px;left:-90px;background:radial-gradient(circle,var(--sl-mint) 0%,rgba(167,229,211,0) 70%)}
+.sl-orb2{width:460px;height:460px;top:-140px;right:-60px;background:radial-gradient(circle,var(--sl-peach) 0%,rgba(244,197,168,0) 70%)}
+.sl-orb3{width:600px;height:600px;top:520px;left:35%;background:radial-gradient(circle,var(--sl-lav) 0%,rgba(200,184,224,0) 70%);opacity:.4}
+.sl-orb4{width:420px;height:420px;bottom:80px;right:-120px;background:radial-gradient(circle,var(--sl-sky) 0%,rgba(168,200,232,0) 70%);opacity:.42}
+.sl-wrap{position:relative;z-index:1;max-width:1200px;margin:0 auto;padding:0 24px 80px}
+
+/* ── 顶部导航 ── */
+.sl-nav{height:64px;display:flex;align-items:center;justify-content:space-between;gap:16px}
+.sl-back{
+  color:var(--sl-ink);text-decoration:none;font-size:15px;font-weight:500;line-height:1.4;
+  padding:8px 14px;border-radius:9999px;transition:background .15s ease;
+}
+.sl-back:hover{background:var(--sl-strong)}
+.sl-back:focus-visible,.sl-btn:focus-visible,.sl-tab:focus-visible,input:focus-visible,select:focus-visible{
+  outline:2px solid var(--sl-ink);outline-offset:2px
+}
+.sl-wordmark{font-family:var(--sl-serif);font-weight:300;font-size:18px;color:var(--sl-ink);letter-spacing:.2px}
+
+/* ── Hero ── */
+.sl-hero{padding:40px 0 36px;max-width:820px}
+.sl-eyebrow{
+  display:inline-block;background:var(--sl-strong);color:var(--sl-ink);
+  font-size:12px;font-weight:600;line-height:1.4;letter-spacing:.96px;text-transform:uppercase;
+  border-radius:9999px;padding:4px 10px;margin-bottom:20px;
+}
+.sl-hero h1{
+  font-family:var(--sl-serif);font-weight:300;font-size:60px;line-height:1.05;letter-spacing:-1.8px;
+  color:var(--sl-ink);margin:0 0 16px;
+}
+.sl-lede{font-size:16px;line-height:1.5;letter-spacing:.16px;color:var(--sl-body);margin:0}
+
+/* ── 卡片 ── */
+.sl-card{
+  background:var(--sl-surface);border:1px solid var(--sl-hair);border-radius:16px;padding:24px;
+  margin-bottom:24px;
+}
+.sl-card--soft{background:var(--sl-canvas-soft);border-radius:24px;padding:32px}
+.sl-label{
+  font-size:12px;font-weight:600;letter-spacing:.96px;text-transform:uppercase;color:var(--sl-muted);
+  display:block;margin-bottom:8px;
+}
+.sl-h2{font-family:var(--sl-serif);font-weight:300;font-size:32px;line-height:1.13;letter-spacing:-.32px;color:var(--sl-ink);margin:0 0 6px}
+.sl-h3{font-family:var(--sl-sans);font-weight:500;font-size:20px;line-height:1.35;color:var(--sl-ink);margin:0 0 12px}
+.sl-note{font-size:14px;line-height:1.5;color:var(--sl-muted);margin:10px 0 0}
+
+/* ── 控件 ── */
+.sl-btn{
+  font-family:var(--sl-sans);font-size:15px;font-weight:500;line-height:1;
+  border-radius:9999px;padding:12px 20px;min-height:40px;cursor:pointer;
+  border:1px solid transparent;background:var(--sl-primary);color:#fff;transition:background .15s ease;
+}
+.sl-btn:hover{background:var(--sl-primary-active)}
+.sl-btn--ghost{background:transparent;color:var(--sl-ink);border-color:var(--sl-hair-strong)}
+.sl-btn--ghost:hover{background:var(--sl-strong)}
+.sl-btn--sm{padding:9px 16px;min-height:36px;font-size:14px}
+.sl-btn[disabled]{opacity:.4;cursor:not-allowed}
+input[type=text],input[type=number],select{
+  font-family:var(--sl-sans);font-size:15px;color:var(--sl-ink);background:var(--sl-surface);
+  border:1px solid var(--sl-hair-strong);border-radius:8px;padding:10px 12px;height:44px;width:100%;
+}
+input[type=text]:focus,input[type=number]:focus,select:focus{border:2px solid var(--sl-ink);padding:9px 11px;outline:none}
+input[type=range]{width:100%;min-width:120px;height:22px;accent-color:var(--sl-primary)}
+input[type=checkbox]{width:18px;height:18px;min-width:18px;accent-color:var(--sl-primary);margin:0}
+.sl-field{display:flex;flex-direction:column;gap:6px;min-width:0}
+.sl-flabel{font-size:13px;font-weight:500;color:var(--sl-muted);letter-spacing:.1px}
+.sl-check{display:flex;align-items:center;gap:10px;font-size:14px;color:var(--sl-ink);cursor:pointer}
+
+/* 分段控件(信号源切换) */
+.sl-seg{display:inline-flex;background:var(--sl-strong);border-radius:9999px;padding:4px;gap:4px}
+.sl-seg button{
+  font-family:var(--sl-sans);font-size:14px;font-weight:500;line-height:1;border:0;cursor:pointer;
+  background:transparent;color:var(--sl-body);border-radius:9999px;padding:9px 18px;min-height:34px;
+  transition:background .15s ease,color .15s ease;
+}
+.sl-seg button.sl-seg--on{background:var(--sl-ink);color:#fff}
+
+/* Tab 导航 */
+.sl-tabs{
+  position:sticky;top:0;z-index:5;display:flex;flex-wrap:wrap;gap:8px;
+  padding:12px 0;margin-bottom:20px;background:var(--sl-canvas);
+  border-bottom:1px solid var(--sl-hair);
+}
+.sl-tab{
+  font-family:var(--sl-sans);font-size:15px;font-weight:500;line-height:1;cursor:pointer;
+  background:transparent;color:var(--sl-body);border:1px solid var(--sl-hair-strong);
+  border-radius:9999px;padding:11px 20px;min-height:40px;transition:background .15s ease,color .15s ease;
+}
+.sl-tab:hover{background:var(--sl-strong)}
+.sl-tab--on,.sl-tab--on:hover{background:var(--sl-ink);color:#fff;border-color:var(--sl-ink)}
+.sl-panel{scroll-margin-top:80px}
+
+/* ── 信号源卡 ── */
+.sl-srcbar{display:flex;flex-wrap:wrap;align-items:center;gap:16px;justify-content:space-between;margin-bottom:20px}
+.sl-srcbar .sl-label{margin-bottom:0}
+.sl-grid{display:grid;gap:16px}
+.sl-grid--4{grid-template-columns:repeat(4,minmax(0,1fr))}
+.sl-grid--3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.sl-grid--2{grid-template-columns:repeat(2,minmax(0,1fr))}
+.sl-scope{display:grid;grid-template-columns:minmax(0,1fr) 260px;gap:20px;align-items:stretch;margin-top:20px}
+canvas{display:block;width:100%;background:var(--sl-canvas-soft);border:1px solid var(--sl-hair);border-radius:12px}
+#sl-cv-wave{height:120px}
+#sl-cv-gauge{height:190px}
+#sl-cv-hist{height:150px}
+#sl-cv-spectrum{height:360px}
+#sl-cv-spectro{height:340px;background:var(--sl-dark)}
+#sl-cv-filter{height:340px}
+.sl-readouts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 14px;align-content:start}
+.sl-ro{border-top:1px solid var(--sl-hair);padding-top:8px;min-width:0}
+.sl-ro dt{font-size:11px;font-weight:600;letter-spacing:.9px;color:var(--sl-muted);margin:0}   /* 同上:不可 uppercase,读数标题含 f₀ / THD / RMS */
+.sl-ro dd{margin:2px 0 0;font-family:var(--sl-mono);font-size:16px;color:var(--sl-ink);font-variant-numeric:tabular-nums}
+
+/* ── 调音器 ── */
+.sl-tunegrid{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);gap:24px;align-items:start}
+.sl-notecard{
+  position:relative;overflow:hidden;text-align:center;
+  background:var(--sl-canvas-soft);border:1px solid var(--sl-hair);border-radius:24px;padding:28px 24px;
+}
+.sl-notecard::before{
+  content:'';position:absolute;left:50%;top:50%;width:420px;height:420px;transform:translate(-50%,-50%);
+  background:radial-gradient(circle,var(--sl-mint) 0%,rgba(167,229,211,0) 68%);filter:blur(30px);opacity:.5;
+  pointer-events:none;transition:background .3s ease;
+}
+.sl-notecard.sl-tuned::before{background:radial-gradient(circle,var(--sl-mint) 0%,rgba(167,229,211,0) 62%);opacity:.85}
+.sl-notecard.sl-off::before{background:radial-gradient(circle,var(--sl-peach) 0%,rgba(244,197,168,0) 68%)}
+.sl-notecard.sl-idle::before{background:radial-gradient(circle,var(--sl-lav) 0%,rgba(200,184,224,0) 68%);opacity:.35}
+.sl-notecard>*{position:relative}
+.sl-bignote{
+  font-family:var(--sl-serif);font-weight:300;font-size:88px;line-height:1;letter-spacing:-2px;
+  color:var(--sl-ink);margin:4px 0 2px;font-variant-numeric:tabular-nums;
+}
+.sl-bignote sub{font-size:34px;letter-spacing:0;vertical-align:baseline;color:var(--sl-muted)}
+.sl-cents{font-family:var(--sl-mono);font-size:26px;color:var(--sl-ink);font-variant-numeric:tabular-nums}
+.sl-verdict{
+  display:inline-flex;align-items:center;gap:8px;margin-top:12px;
+  background:var(--sl-strong);color:var(--sl-ink);border-radius:9999px;padding:5px 14px;
+  font-size:12px;font-weight:600;letter-spacing:.96px;text-transform:uppercase;
+}
+.sl-dot{width:8px;height:8px;border-radius:9999px;background:var(--sl-muted-soft);display:inline-block}
+.sl-verdict.sl-tuned .sl-dot{background:var(--sl-ok)}
+.sl-verdict.sl-off .sl-dot{background:var(--sl-primary)}
+
+/* ── 表格 ── */
+.sl-tablewrap{overflow-x:auto;margin-top:16px;-webkit-overflow-scrolling:touch}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{text-align:right;padding:9px 10px;border-bottom:1px solid var(--sl-hair);white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+/* 注意:这里**不能**加 text-transform:uppercase —— 表头含 Hz / dBFS / b₀ / f₀ 等单位与符号,
+   大写化会把它们改写成 HZ / DBFS(中文不受影响,故断言与肉眼都容易漏,2026-08-06 已撞过一次) */
+thead th{
+  font-size:11px;font-weight:600;letter-spacing:.9px;color:var(--sl-muted);
+  border-bottom:1px solid var(--sl-hair-strong);
+}
+tbody td{font-family:var(--sl-mono);color:var(--sl-ink);font-variant-numeric:tabular-nums}
+tbody td:first-child{font-family:var(--sl-sans);color:var(--sl-body)}
+thead th sub,.sl-ro dt sub{font-size:.82em;line-height:0}
+tr.sl-rowon td{background:var(--sl-strong)}
+.sl-chip{
+  display:inline-block;border-radius:9999px;padding:2px 9px;font-family:var(--sl-sans);
+  font-size:11px;font-weight:600;letter-spacing:.6px;background:var(--sl-strong);color:var(--sl-ink);
+}
+.sl-chip.sl-chipok{background:#dcfce7;color:#14532d}
+.sl-chip.sl-chiplow{background:#e0eaf6;color:#1e3a5f}
+.sl-chip.sl-chiphigh{background:#fbe4d5;color:#6b3410}
+
+/* ── 滤波器行 ── */
+.sl-secrow{
+  display:grid;grid-template-columns:34px minmax(120px,1.3fr) minmax(110px,1fr) minmax(90px,.8fr) minmax(100px,.9fr);
+  gap:12px;align-items:end;padding:12px 0;border-bottom:1px solid var(--sl-hair-soft);
+}
+.sl-secrow .sl-check{padding-bottom:12px}
+.sl-errbar{
+  background:#fef2f2;border:1px solid #fecaca;color:#7f1d1d;border-radius:8px;padding:10px 14px;
+  font-size:14px;margin-top:12px;
+}
+.sl-okbar{
+  background:#f0fdf4;border:1px solid #bbf7d0;color:#14532d;border-radius:8px;padding:10px 14px;
+  font-size:14px;margin-top:12px;
+}
+.sl-legend{display:flex;flex-wrap:wrap;gap:16px;margin-top:12px;font-size:13px;color:var(--sl-muted)}
+.sl-swatch{display:inline-block;width:20px;height:3px;border-radius:2px;vertical-align:middle;margin-right:6px}
+
+.sl-inline{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+.sl-foot{
+  border-top:1px solid var(--sl-hair);margin-top:40px;padding-top:32px;
+  font-size:15px;line-height:1.47;color:var(--sl-body);
+}
+.sl-foot a{color:var(--sl-ink)}
+.sl-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+@media (max-width:1024px){
+  .sl-hero h1{font-size:48px;letter-spacing:-.96px}
+  .sl-grid--4{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .sl-tunegrid{grid-template-columns:minmax(0,1fr)}
+  .sl-scope{grid-template-columns:minmax(0,1fr)}
+}
+@media (max-width:720px){
+  .sl-wrap{padding:0 16px 60px}
+  .sl-hero h1{font-size:34px;letter-spacing:-.4px}
+  .sl-hero{padding:24px 0}
+  .sl-card{padding:18px}
+  .sl-card--soft{padding:20px}
+  .sl-grid--3,.sl-grid--2{grid-template-columns:minmax(0,1fr)}
+  .sl-secrow{grid-template-columns:34px minmax(0,1fr) minmax(0,1fr);row-gap:10px}
+  .sl-bignote{font-size:64px}
+  .sl-readouts{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+</style>
+</head>
+<body>
+<div class="sl-orbs" aria-hidden="true">
+  <span class="sl-orb sl-orb1"></span><span class="sl-orb sl-orb2"></span>
+  <span class="sl-orb sl-orb3"></span><span class="sl-orb sl-orb4"></span>
+</div>
+
+<div class="sl-wrap">
+  <nav class="sl-nav">
+    <a class="sl-back" href="../../">← 返回工具集</a>
+    <span class="sl-wordmark">Sound Lab</span>
+  </nav>
+
+  <header class="sl-hero">
+    <span class="sl-eyebrow">音频 · 实时 DSP</span>
+    <h1>声音实验室</h1>
+    <p class="sl-lede">麦克风或内置信号发生器,喂给一条全手写的信号链:基-2 FFT 频谱、MPM 自相关音高检测、对数瀑布声谱图、RBJ 双二阶滤波器设计。调音、看谐波、量 THD、设计 EQ —— 全部在这一页里算完,音频从不离开这台设备。</p>
+  </header>
+
+  <!-- ══════ 信号源 ══════ -->
+  <section class="sl-card">
+    <div class="sl-srcbar">
+      <div class="sl-inline">
+        <span class="sl-label">信号源</span>
+        <div class="sl-seg" role="group" aria-label="信号源切换">
+          <button type="button" id="sl-src-gen" class="sl-seg--on">信号发生器</button>
+          <button type="button" id="sl-src-mic">麦克风</button>
+        </div>
+      </div>
+      <div class="sl-inline">
+        <label class="sl-check"><input type="checkbox" id="sl-filter-on"> 接入滤波器链</label>
+        <button type="button" class="sl-btn sl-btn--ghost sl-btn--sm" id="sl-freeze">冻结</button>
+        <button type="button" class="sl-btn sl-btn--sm" id="sl-play">试听</button>
+      </div>
+    </div>
+
+    <div id="sl-gen-box" class="sl-grid sl-grid--4">
+      <div class="sl-field">
+        <label class="sl-flabel" for="sl-wave">波形</label>
+        <select id="sl-wave">
+          <option value="sine">正弦</option><option value="square">方波(带限)</option>
+          <option value="saw">锯齿(带限)</option><option value="tri">三角(带限)</option>
+          <option value="twotone">双音</option><option value="chord">和弦</option>
+          <option value="white">白噪声</option><option value="pink">粉噪声</option>
+          <option value="sweep">指数扫频</option>
+        </select>
+      </div>
+      <div class="sl-field">
+        <label class="sl-flabel" for="sl-freq">频率 <span id="sl-freq-note">A4</span></label>
+        <input type="number" id="sl-freq" value="440" min="20" max="20000" step="0.01">
+      </div>
+      <div class="sl-field" id="sl-freq2-box">
+        <label class="sl-flabel" for="sl-freq2">第二频率 Hz</label>
+        <input type="number" id="sl-freq2" value="660" min="20" max="20000" step="0.01">
+      </div>
+      <div class="sl-field" id="sl-chord-box" hidden>
+        <label class="sl-flabel" for="sl-chord">和弦类型</label>
+        <select id="sl-chord">
+          <option value="major">大三和弦</option><option value="minor">小三和弦</option>
+          <option value="dom7">属七和弦</option><option value="fifth">纯五度</option>
+        </select>
+      </div>
+      <div class="sl-field">
+        <label class="sl-flabel" for="sl-amp">幅度 <span id="sl-amp-out">0.50</span></label>
+        <input type="range" id="sl-amp" min="0" max="1" step="0.01" value="0.5">
+      </div>
+      <div class="sl-field">
+        <label class="sl-flabel" for="sl-noise">叠加噪声 <span id="sl-noise-out">0%</span></label>
+        <input type="range" id="sl-noise" min="0" max="0.5" step="0.005" value="0">
+      </div>
+    </div>
+
+    <div id="sl-mic-box" hidden>
+      <div class="sl-inline">
+        <button type="button" class="sl-btn" id="sl-mic-start">允许并启动麦克风</button>
+        <span id="sl-mic-state" class="sl-note" style="margin:0">浏览器会弹出授权提示。音频只在本页处理,不上传、不录制。</span>
+      </div>
+    </div>
+
+    <div class="sl-scope">
+      <div>
+        <span class="sl-label">波形(最近一帧)</span>
+        <canvas id="sl-cv-wave" aria-label="输入波形示波器"></canvas>
+      </div>
+      <dl class="sl-readouts" style="margin:0">
+        <div class="sl-ro"><dt>RMS</dt><dd id="sl-ro-rms">—</dd></div>
+        <div class="sl-ro"><dt>峰值</dt><dd id="sl-ro-peak">—</dd></div>
+        <div class="sl-ro"><dt>波峰因数</dt><dd id="sl-ro-crest">—</dd></div>
+        <div class="sl-ro"><dt>采样率</dt><dd id="sl-ro-fs">—</dd></div>
+        <div class="sl-ro"><dt>帧长</dt><dd id="sl-ro-frame">—</dd></div>
+        <div class="sl-ro"><dt>状态</dt><dd id="sl-ro-state">运行中</dd></div>
+      </dl>
+    </div>
+  </section>
+
+  <!-- ══════ Tabs ══════ -->
+  <nav class="sl-tabs" role="tablist" aria-label="分析面板">
+    <button type="button" class="sl-tab sl-tab--on" id="sl-tab-tuner" role="tab" aria-selected="true" aria-controls="sl-panel-tuner">调音器</button>
+    <button type="button" class="sl-tab" id="sl-tab-spectrum" role="tab" aria-selected="false" aria-controls="sl-panel-spectrum">频谱与谐波</button>
+    <button type="button" class="sl-tab" id="sl-tab-spectro" role="tab" aria-selected="false" aria-controls="sl-panel-spectro">声谱图</button>
+    <button type="button" class="sl-tab" id="sl-tab-filter" role="tab" aria-selected="false" aria-controls="sl-panel-filter">滤波器设计</button>
+  </nav>
+
+  <!-- ══════ 调音器 ══════ -->
+  <section class="sl-panel" id="sl-panel-tuner" role="tabpanel" aria-labelledby="sl-tab-tuner">
+    <div class="sl-tunegrid">
+      <div class="sl-card sl-notecard" id="sl-notecard">
+        <span class="sl-label" style="margin-bottom:4px">检测到的音高</span>
+        <div class="sl-bignote" id="sl-note">—</div>
+        <div class="sl-cents" id="sl-cents">—</div>
+        <div class="sl-note" id="sl-hz" style="margin-top:6px">等待信号…</div>
+        <div class="sl-verdict" id="sl-verdict"><span class="sl-dot"></span><span id="sl-verdict-text">无信号</span></div>
+        <canvas id="sl-cv-gauge" style="margin-top:18px" aria-label="音分偏差指针表"></canvas>
+      </div>
+
+      <div class="sl-card">
+        <h2 class="sl-h3">基准与律制</h2>
+        <div class="sl-grid sl-grid--2">
+          <div class="sl-field">
+            <label class="sl-flabel" for="sl-a4">A4 基准 <span id="sl-a4-out">440.0 Hz</span></label>
+            <input type="range" id="sl-a4" min="415" max="466" step="0.5" value="440">
+          </div>
+          <div class="sl-field">
+            <label class="sl-flabel" for="sl-temp">律制</label>
+            <select id="sl-temp">
+              <option value="equal">十二平均律</option>
+              <option value="just">纯律(5 极限)</option>
+              <option value="pyth">毕达哥拉斯律</option>
+              <option value="mean">四分之一音差中庸全音律</option>
+            </select>
+          </div>
+          <div class="sl-field">
+            <label class="sl-flabel" for="sl-tonic">主音(非平均律时生效)</label>
+            <select id="sl-tonic"></select>
+          </div>
+          <div class="sl-field">
+            <label class="sl-flabel" for="sl-inst">乐器空弦</label>
+            <select id="sl-inst"></select>
+          </div>
+        </div>
+        <div class="sl-tablewrap">
+          <table id="sl-tbl-strings">
+            <thead><tr><th>空弦</th><th>目标 Hz</th><th>偏差 音分</th><th>判定</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <p class="sl-note" id="sl-temp-note"></p>
+        <span class="sl-label" style="margin-top:16px">音分偏差走势(最近约 5 秒)</span>
+        <canvas id="sl-cv-hist" aria-label="音分偏差历史曲线"></canvas>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════ 频谱 ══════ -->
+  <section class="sl-panel" id="sl-panel-spectrum" role="tabpanel" aria-labelledby="sl-tab-spectrum" hidden>
+    <div class="sl-card">
+      <h2 class="sl-h3">频谱与谐波</h2>
+      <div class="sl-grid sl-grid--4">
+        <div class="sl-field">
+          <label class="sl-flabel" for="sl-fft">FFT 长度</label>
+          <select id="sl-fft"><option>2048</option><option>4096</option><option selected>8192</option></select>
+        </div>
+        <div class="sl-field">
+          <label class="sl-flabel" for="sl-win">窗函数</label>
+          <select id="sl-win">
+            <option value="hann">Hann</option><option value="hamming">Hamming</option>
+            <option value="blackman">Blackman–Harris</option><option value="rect">矩形(无窗)</option>
+          </select>
+        </div>
+        <div class="sl-field">
+          <label class="sl-flabel" for="sl-axis">频率轴</label>
+          <select id="sl-axis"><option value="log">对数</option><option value="lin">线性</option></select>
+        </div>
+        <div class="sl-field" style="justify-content:flex-end">
+          <label class="sl-check"><input type="checkbox" id="sl-hold"> 峰值保持</label>
+          <label class="sl-check"><input type="checkbox" id="sl-harm" checked> 谐波标尺</label>
+        </div>
+      </div>
+      <canvas id="sl-cv-spectrum" style="margin-top:18px" aria-label="频谱图"></canvas>
+      <div class="sl-legend">
+        <span><i class="sl-swatch" style="background:#292524"></i>瞬时谱</span>
+        <span><i class="sl-swatch" style="background:#a8c8e8"></i>峰值保持</span>
+        <span><i class="sl-swatch" style="background:#c8b8e0"></i>谐波标尺(基频整数倍)</span>
+      </div>
+      <div class="sl-grid sl-grid--4" style="margin-top:18px">
+        <div class="sl-ro"><dt>基频 f<sub>0</sub></dt><dd id="sl-ro-f0">—</dd></div>
+        <div class="sl-ro"><dt>总谐波失真 THD</dt><dd id="sl-ro-thd">—</dd></div>
+        <div class="sl-ro"><dt>频率分辨率</dt><dd id="sl-ro-bin">—</dd></div>
+        <div class="sl-ro"><dt>等效噪声带宽</dt><dd id="sl-ro-enbw">—</dd></div>
+      </div>
+      <p class="sl-note">峰值经抛物线插值细化到亚 bin 精度;密集谱线在图上难免互相遮挡,下表给出精确读数。</p>
+      <div class="sl-tablewrap">
+        <table id="sl-tbl-peaks">
+          <thead><tr><th>#</th><th>频率 Hz</th><th>电平 dBFS</th><th>音名</th><th>音分</th><th>相对 f<sub>0</sub></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════ 声谱图 ══════ -->
+  <section class="sl-panel" id="sl-panel-spectro" role="tabpanel" aria-labelledby="sl-tab-spectro" hidden>
+    <div class="sl-card">
+      <h2 class="sl-h3">声谱图瀑布</h2>
+      <div class="sl-grid sl-grid--3">
+        <div class="sl-field">
+          <label class="sl-flabel" for="sl-sgrange">动态范围 <span id="sl-sgrange-out">70 dB</span></label>
+          <input type="range" id="sl-sgrange" min="30" max="110" step="5" value="70">
+        </div>
+        <div class="sl-field">
+          <label class="sl-flabel" for="sl-sgaxis">频率轴</label>
+          <select id="sl-sgaxis"><option value="log">对数</option><option value="lin">线性</option></select>
+        </div>
+        <div class="sl-field">
+          <label class="sl-flabel" for="sl-sgtop">上限频率</label>
+          <select id="sl-sgtop"><option value="5000">5 kHz</option><option value="10000" selected>10 kHz</option><option value="20000">20 kHz</option></select>
+        </div>
+      </div>
+      <canvas id="sl-cv-spectro" style="margin-top:18px" aria-label="声谱图瀑布"></canvas>
+      <div class="sl-legend">
+        <span>色阶(弱 → 强):</span>
+        <span><i class="sl-swatch" style="width:120px;height:10px;border-radius:3px;background:linear-gradient(90deg,#0c0a09,#3b3a55,#a8c8e8,#a7e5d3,#f4c5a8,#ffffff)"></i></span>
+        <span>时间向左流动,最右为当前帧</span>
+      </div>
+      <div class="sl-grid sl-grid--3" style="margin-top:18px">
+        <div class="sl-ro"><dt>当前帧最强频段</dt><dd id="sl-ro-sgpeak">—</dd></div>
+        <div class="sl-ro"><dt>该频段电平</dt><dd id="sl-ro-sglevel">—</dd></div>
+        <div class="sl-ro"><dt>频率行数 × 时间列数</dt><dd id="sl-ro-sgdim">—</dd></div>
+      </div>
+      <p class="sl-note">试试把信号源切到「指数扫频」,或对着麦克风说话 —— 语音的共振峰会在瀑布上显出横向条带。</p>
+    </div>
+  </section>
+
+  <!-- ══════ 滤波器 ══════ -->
+  <section class="sl-panel" id="sl-panel-filter" role="tabpanel" aria-labelledby="sl-tab-filter" hidden>
+    <div class="sl-card">
+      <h2 class="sl-h3">双二阶级联(RBJ Cookbook)</h2>
+      <div class="sl-inline" style="margin-bottom:6px">
+        <div class="sl-field" style="min-width:220px">
+          <label class="sl-flabel" for="sl-fpreset">预设</label>
+          <select id="sl-fpreset">
+            <option value="">自定义…</option>
+            <option value="voice">人声低切 + 齿音削减</option>
+            <option value="rumble">隆隆声抑制(80 Hz 高通)</option>
+            <option value="harsh">刺耳感修正(3 kHz 陷波)</option>
+            <option value="phone">电话音(300–3400 带通)</option>
+            <option value="loud">响度补偿(低/高搁架)</option>
+          </select>
+        </div>
+        <button type="button" class="sl-btn sl-btn--ghost sl-btn--sm" id="sl-freset" style="margin-top:20px">全部旁路</button>
+      </div>
+      <div id="sl-sections"></div>
+      <div id="sl-fwarn" class="sl-errbar" hidden></div>
+      <canvas id="sl-cv-filter" style="margin-top:18px" aria-label="滤波器频响曲线"></canvas>
+      <div class="sl-legend">
+        <span><i class="sl-swatch" style="background:#292524"></i>幅频响应 dB</span>
+        <span><i class="sl-swatch" style="background:#c8b8e0"></i>相频响应 度</span>
+        <span><i class="sl-swatch" style="background:#a7e5d3"></i>各段中心/转折频率</span>
+      </div>
+      <div class="sl-grid sl-grid--4" style="margin-top:18px">
+        <div class="sl-ro"><dt>生效段数</dt><dd id="sl-ro-nsec">—</dd></div>
+        <div class="sl-ro"><dt>峰值增益</dt><dd id="sl-ro-fmax">—</dd></div>
+        <div class="sl-ro"><dt>最深衰减</dt><dd id="sl-ro-fmin">—</dd></div>
+        <div class="sl-ro"><dt>−3 dB 点</dt><dd id="sl-ro-f3db">—</dd></div>
+      </div>
+      <p class="sl-note">系数已按 a₀ 归一化,可直接填进 Web Audio <code>IIRFilterNode</code>、C/DSP 的转置直接 II 型实现。</p>
+      <div class="sl-tablewrap">
+        <table id="sl-tbl-coef">
+          <thead><tr><th>段</th><th>类型</th><th>b<sub>0</sub></th><th>b<sub>1</sub></th><th>b<sub>2</sub></th><th>a<sub>1</sub></th><th>a<sub>2</sub></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════ 配方库 ══════ -->
+  <section class="sl-card">
+    <h2 class="sl-h3">配方库</h2>
+    <p class="sl-note" style="margin:0 0 14px">把当前的信号源、律制与滤波器链整套存进浏览器本地,下次打开自动恢复上次状态。</p>
+    <div class="sl-grid sl-grid--4">
+      <div class="sl-field">
+        <label class="sl-flabel" for="sl-save-name">配方名</label>
+        <input type="text" id="sl-save-name" placeholder="例如:吉他调音">
+      </div>
+      <div class="sl-field">
+        <label class="sl-flabel" for="sl-saved">已存配方</label>
+        <select id="sl-saved"></select>
+      </div>
+      <div class="sl-field" style="justify-content:flex-end">
+        <div class="sl-inline">
+          <button type="button" class="sl-btn sl-btn--sm" id="sl-save">保存</button>
+          <button type="button" class="sl-btn sl-btn--ghost sl-btn--sm" id="sl-load">载入</button>
+          <button type="button" class="sl-btn sl-btn--ghost sl-btn--sm" id="sl-del">删除</button>
+        </div>
+      </div>
+      <div class="sl-field" style="justify-content:flex-end">
+        <button type="button" class="sl-btn sl-btn--ghost sl-btn--sm" id="sl-export">导出频谱 CSV</button>
+      </div>
+    </div>
+    <div id="sl-save-msg" class="sl-okbar" hidden></div>
+  </section>
+
+  <footer class="sl-foot">
+    <p><strong>算法</strong>:频谱走自写迭代基-2 Cooley–Tukey FFT(预计算旋转因子)+ 周期化窗函数与相干增益校正,峰值用对数幅度抛物线插值细化;音高走 MPM/NSDF(FFT 自相关 + 平方前缀和归一化 + 键极大值 + 黄金分割 DFT 精修),对缺失基频的信号同样成立;滤波器为 RBJ Cookbook 双二阶设计,频响由系数直接解析求 H(e<sup>jω</sup>),实时处理用转置直接 II 型。</p>
+    <p>音频全程在本页处理,不上传、不录制、不落盘。麦克风需要 HTTPS 环境与你的明确授权。</p>
+    <p><a href="../../">← 返回每日工具集</a></p>
+  </footer>
+</div>
+
+<script>
+/*<<<ENGINE*/
+/* 声音实验室 DSP 引擎 —— 纯函数,可离线单测(test.mjs 直接抽取本块求值) */
+const SL_ENGINE = (function () {
+  'use strict';
+  const TAU = Math.PI * 2;
+  const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+  const dbfs = (a) => 20 * Math.log10(Math.max(a, 1e-12));
+
+  /* ── 伪随机:xorshift32(2026-08-04 教训:LCG 乘法越过 2^53 会让低位塌成常数)── */
+  function rng(seed) {
+    let s = (seed >>> 0) || 0x9e3779b9;
+    return function () {
+      s ^= s << 13; s >>>= 0;
+      s ^= s >>> 17;
+      s ^= s << 5; s >>>= 0;
+      return (s / 4294967296) * 2 - 1;
+    };
+  }
+
+  /* ── FFT:迭代基-2 Cooley–Tukey,原地,旋转因子按长度缓存 ── */
+  const twCache = new Map();
+  function twiddles(n) {
+    let t = twCache.get(n);
+    if (!t) {
+      const half = n >> 1;
+      const cos = new Float64Array(half), sin = new Float64Array(half);
+      for (let k = 0; k < half; k++) { const a = -TAU * k / n; cos[k] = Math.cos(a); sin[k] = Math.sin(a); }
+      t = { cos, sin }; twCache.set(n, t);
+    }
+    return t;
+  }
+  function fft(re, im, inverse) {
+    const n = re.length;
+    if (n < 2 || (n & (n - 1)) !== 0) throw new Error('FFT 长度必须是 ≥2 的 2 的幂');
+    for (let i = 1, j = 0; i < n; i++) {
+      let bit = n >> 1;
+      for (; j & bit; bit >>= 1) j ^= bit;
+      j ^= bit;
+      if (i < j) { let t = re[i]; re[i] = re[j]; re[j] = t; t = im[i]; im[i] = im[j]; im[j] = t; }
+    }
+    const tw = twiddles(n);
+    for (let len = 2; len <= n; len <<= 1) {
+      const half = len >> 1, step = n / len;
+      for (let i = 0; i < n; i += len) {
+        for (let k = 0, t = 0; k < half; k++, t += step) {
+          const cr = tw.cos[t], ci = inverse ? -tw.sin[t] : tw.sin[t];
+          const xr = re[i + k + half], xi = im[i + k + half];
+          const br = xr * cr - xi * ci, bi = xr * ci + xi * cr;
+          const ar = re[i + k], ai = im[i + k];
+          re[i + k] = ar + br; im[i + k] = ai + bi;
+          re[i + k + half] = ar - br; im[i + k + half] = ai - bi;
+        }
+      }
+    }
+    if (inverse) for (let i = 0; i < n; i++) { re[i] /= n; im[i] /= n; }
+    return { re, im };
+  }
+
+  /* ── 窗函数(周期化定义,便于谱分析)── */
+  const WINDOW_NAMES = { rect: '矩形', hann: 'Hann', hamming: 'Hamming', blackman: 'Blackman–Harris' };
+  const winCache = new Map();
+  function windowFn(type, N) {
+    const key = type + ':' + N;
+    let w = winCache.get(key);
+    if (w) return w;
+    w = new Float64Array(N);
+    for (let i = 0; i < N; i++) {
+      const x = TAU * i / N;
+      if (type === 'rect') w[i] = 1;
+      else if (type === 'hann') w[i] = 0.5 - 0.5 * Math.cos(x);
+      else if (type === 'hamming') w[i] = 0.54 - 0.46 * Math.cos(x);
+      else w[i] = 0.35875 - 0.48829 * Math.cos(x) + 0.14128 * Math.cos(2 * x) - 0.01168 * Math.cos(3 * x);
+    }
+    winCache.set(key, w);
+    return w;
+  }
+  function windowStats(w) {
+    let s = 0, s2 = 0;
+    for (let i = 0; i < w.length; i++) { s += w[i]; s2 += w[i] * w[i]; }
+    const N = w.length;
+    return { coherentGain: s / N, enbw: N * s2 / (s * s) };   // ENBW 单位 = bin
+  }
+
+  /* ── 幅度谱(振幅校正到「正弦峰值」口径)── */
+  function spectrum(samples, fs, opts) {
+    opts = opts || {};
+    const N = opts.size || samples.length;
+    const w = windowFn(opts.window || 'hann', N);
+    const st = windowStats(w);
+    const re = new Float64Array(N), im = new Float64Array(N);
+    const off = Math.max(0, samples.length - N);
+    for (let i = 0; i < N; i++) re[i] = (samples[off + i] || 0) * w[i];
+    fft(re, im, false);
+    const half = N >> 1;
+    const mag = new Float64Array(half), db = new Float64Array(half), freqs = new Float64Array(half);
+    for (let k = 0; k < half; k++) {
+      const a = Math.sqrt(re[k] * re[k] + im[k] * im[k]);
+      const amp = (k === 0 ? a / N : 2 * a / N) / st.coherentGain;
+      mag[k] = amp; db[k] = dbfs(amp); freqs[k] = k * fs / N;
+    }
+    return {
+      freqs, mag, db, N, fs, binHz: fs / N, window: opts.window || 'hann',
+      coherentGain: st.coherentGain, enbw: st.enbw
+    };
+  }
+
+  /* 任意(非 bin 中心)频率处的精确振幅。
+     抛物线插值只是拟合,半 bin 偏移时对幅度**系统性高估 2–3%**(实测 0.8 → 0.8196),
+     所以凡要报数值的地方一律回到时域 DFT 直接量。 */
+  function peakAmp(x, fs, f, N, winType) {
+    const n = Math.min(N || x.length, x.length);
+    const w = windowFn(winType || 'hann', n);
+    const st = windowStats(w);
+    const off = x.length - n;
+    return 2 * dftMag(x, off, n, w, fs, f) / (n * st.coherentGain);
+  }
+
+  /* ── 抛物线插值细化峰值(对数幅度域)── */
+  function refinePeak(db, k, fs, N) {
+    if (k <= 0 || k >= db.length - 1) return { freq: k * fs / N, db: db[k], delta: 0 };
+    const y1 = db[k - 1], y2 = db[k], y3 = db[k + 1];
+    const den = y1 - 2 * y2 + y3;
+    const d = den === 0 ? 0 : clamp(0.5 * (y1 - y3) / den, -0.5, 0.5);
+    return { freq: (k + d) * fs / N, db: y2 - 0.25 * (y1 - y3) * d, delta: d };
+  }
+
+  /* ── 任意频率的窗内 DFT 幅度(相位递推,循环里零三角函数调用)── */
+  function dftMag(x, off, N, w, fs, f) {
+    const k = TAU * f / fs;
+    const c = Math.cos(k), s = -Math.sin(k);
+    let pr = 1, pi = 0, sr = 0, si = 0;
+    for (let i = 0; i < N; i++) {
+      const v = x[off + i] * w[i];
+      sr += v * pr; si += v * pi;
+      const nr = pr * c - pi * s; pi = pr * s + pi * c; pr = nr;
+    }
+    return Math.sqrt(sr * sr + si * si);
+  }
+  /* 黄金分割搜索:在 fGuess 附近最大化 |DFT(f)|,把频率精度推到远优于 1 bin */
+  function refineFreq(x, fs, fGuess, opts) {
+    opts = opts || {};
+    const N = Math.min(opts.size || 4096, x.length);
+    const off = x.length - N;
+    const w = windowFn('hann', N);
+    const span = opts.span == null ? 0.02 : opts.span;
+    let lo = fGuess * (1 - span), hi = fGuess * (1 + span);
+    if (lo < 1) lo = 1;
+    if (hi > fs / 2 - 1) hi = fs / 2 - 1;
+    const g = (Math.sqrt(5) - 1) / 2;
+    let a = hi - g * (hi - lo), b = lo + g * (hi - lo);
+    let fa = dftMag(x, off, N, w, fs, a), fb = dftMag(x, off, N, w, fs, b);
+    for (let i = 0; i < (opts.iters || 32); i++) {
+      if (fa < fb) { lo = a; a = b; fa = fb; b = lo + g * (hi - lo); fb = dftMag(x, off, N, w, fs, b); }
+      else { hi = b; b = a; fb = fa; a = hi - g * (hi - lo); fa = dftMag(x, off, N, w, fs, a); }
+      if (hi - lo < 1e-6) break;
+    }
+    return (lo + hi) / 2;
+  }
+
+  /* ── 峰值拾取 ── */
+  function findPeaks(sp, opts) {
+    opts = opts || {};
+    const minDb = opts.minDb == null ? -110 : opts.minDb;
+    const minFreq = opts.minFreq == null ? 20 : opts.minFreq;
+    const maxFreq = opts.maxFreq == null ? sp.fs / 2 : opts.maxFreq;
+    const all = [];
+    for (let k = 1; k < sp.db.length - 1; k++) {
+      const f = sp.freqs[k];
+      if (f < minFreq || f > maxFreq) continue;
+      if (sp.db[k] > sp.db[k - 1] && sp.db[k] >= sp.db[k + 1] && sp.db[k] >= minDb) {
+        all.push(refinePeak(sp.db, k, sp.fs, sp.N));
+      }
+    }
+    all.sort((p, q) => q.db - p.db);
+    const kept = [];
+    const sep = (opts.sepBins == null ? 2 : opts.sepBins) * sp.binHz;
+    for (const p of all) {
+      let ok = true;
+      for (const q of kept) if (Math.abs(q.freq - p.freq) < sep) { ok = false; break; }
+      if (ok) kept.push(p);
+      if (kept.length >= (opts.count || 8)) break;
+    }
+    if (opts.samples) {
+      for (const p of kept) { p.amp = peakAmp(opts.samples, sp.fs, p.freq, sp.N, sp.window); p.db = dbfs(p.amp); }
+      kept.sort((p, q) => q.db - p.db);
+    }
+    return kept;
+  }
+
+  /* ── 总谐波失真:THD = √(Σ_{n≥2} A_n²) / A_1 ── */
+  function thd(sp, f0, opts) {
+    opts = opts || {};
+    const nyq = sp.fs / 2;
+    const nmax = Math.min(opts.maxH || 60, Math.floor(nyq / f0));
+    const harmonics = [];
+    let p1 = 0, ps = 0;
+    for (let n = 1; n <= nmax; n++) {
+      const f = n * f0;
+      if (f >= nyq - sp.binHz) break;
+      let k = Math.round(f / sp.binHz), best = k;
+      const lo = Math.max(1, k - 2), hi = Math.min(sp.db.length - 2, k + 2);
+      for (let j = lo; j <= hi; j++) if (sp.db[j] > sp.db[best]) best = j;
+      const r = refinePeak(sp.db, best, sp.fs, sp.N);
+      const amp = opts.samples ? peakAmp(opts.samples, sp.fs, r.freq, sp.N, sp.window) : Math.pow(10, r.db / 20);
+      harmonics.push({ n: n, freq: r.freq, amp: amp, db: dbfs(amp) });
+      if (n === 1) p1 = amp * amp; else ps += amp * amp;
+    }
+    const val = p1 > 0 ? Math.sqrt(ps / p1) : 0;
+    return { thd: val, pct: val * 100, db: 20 * Math.log10(Math.max(val, 1e-12)), harmonics: harmonics };
+  }
+
+  /* ── 音高检测:MPM / NSDF ──
+     NSDF(τ) = 2·r(τ) / m(τ),r 由 FFT 自相关求,m 由平方前缀和 O(1) 求;
+     取「首个 ≥ k·最大键极大值」的键极大值,抛物线插值后再用 DFT 精修。 */
+  function nsdfCurve(x, fs, opts) {
+    opts = opts || {};
+    const W = x.length;
+    const fmin = opts.min || 40;
+    const tmax = Math.min(W - 2, Math.ceil(fs / fmin));
+    let mean = 0;
+    for (let i = 0; i < W; i++) mean += x[i];
+    mean /= W;
+    let n = 1; while (n < 2 * W) n <<= 1;
+    const re = new Float64Array(n), im = new Float64Array(n);
+    for (let i = 0; i < W; i++) re[i] = x[i] - mean;
+    fft(re, im, false);
+    for (let i = 0; i < n; i++) { const a = re[i], b = im[i]; re[i] = a * a + b * b; im[i] = 0; }
+    fft(re, im, true);
+    const pre = new Float64Array(W + 1);
+    for (let i = 0; i < W; i++) { const v = x[i] - mean; pre[i + 1] = pre[i] + v * v; }
+    const P = pre[W];
+    const nsdf = new Float64Array(tmax + 1);
+    for (let t = 1; t <= tmax; t++) {
+      const m = pre[W - t] + P - pre[t];
+      nsdf[t] = m > 1e-30 ? 2 * re[t] / m : 0;
+    }
+    nsdf[0] = 1;
+    return nsdf;
+  }
+  /* 朴素 NSDF —— 仅作为对照 oracle 使用(O(W·τmax),别放进实时链) */
+  function nsdfNaive(x, fs, opts) {
+    opts = opts || {};
+    const W = x.length, fmin = opts.min || 40;
+    const tmax = Math.min(W - 2, Math.ceil(fs / fmin));
+    let mean = 0;
+    for (let i = 0; i < W; i++) mean += x[i];
+    mean /= W;
+    const out = new Float64Array(tmax + 1);
+    out[0] = 1;
+    for (let t = 1; t <= tmax; t++) {
+      let r = 0, m = 0;
+      for (let j = 0; j + t < W; j++) {
+        const a = x[j] - mean, b = x[j + t] - mean;
+        r += a * b; m += a * a + b * b;
+      }
+      out[t] = m > 1e-30 ? 2 * r / m : 0;
+    }
+    return out;
+  }
+  function detectPitch(x, fs, opts) {
+    opts = opts || {};
+    const fmin = opts.min || 40, fmax = opts.max || 2400;
+    const gate = opts.gate == null ? 0.0015 : opts.gate;
+    let p = 0;
+    for (let i = 0; i < x.length; i++) p += x[i] * x[i];
+    const rms = Math.sqrt(p / x.length);
+    if (rms < gate) return { freq: 0, clarity: 0, rms: rms, reason: 'quiet' };
+    const nsdf = opts.nsdf || nsdfCurve(x, fs, { min: fmin });
+    const tmax = nsdf.length - 1;
+    const keys = [];
+    let t = 1;
+    while (t <= tmax && nsdf[t] > 0) t++;            // 跳过 τ→0 的初始正瓣
+    while (t <= tmax) {
+      while (t <= tmax && nsdf[t] <= 0) t++;
+      let best = -1, v = -2;
+      while (t <= tmax && nsdf[t] > 0) { if (nsdf[t] > v) { v = nsdf[t]; best = t; } t++; }
+      if (best > 0) keys.push({ t: best, v: v });
+    }
+    const usable = keys.filter((k) => { const f = fs / k.t; return f >= fmin && f <= fmax; });
+    if (!usable.length) return { freq: 0, clarity: 0, rms: rms, reason: 'nopeak' };
+    let maxV = 0;
+    for (const k of usable) if (k.v > maxV) maxV = k.v;
+    const thr = (opts.k == null ? 0.9 : opts.k) * maxV;
+    let chosen = usable[0];
+    for (const k of usable) if (k.v >= thr) { chosen = k; break; }
+    if (chosen.v < (opts.minClarity == null ? 0.5 : opts.minClarity)) {
+      return { freq: 0, clarity: chosen.v, rms: rms, reason: 'unclear' };
+    }
+    const b = chosen.t;
+    let tau = b;
+    if (b > 1 && b < tmax) {
+      const y1 = nsdf[b - 1], y2 = nsdf[b], y3 = nsdf[b + 1];
+      const den = y1 - 2 * y2 + y3;
+      if (den !== 0) tau = b + clamp(0.5 * (y1 - y3) / den, -1, 1);
+    }
+    let freq = fs / tau;
+    if (opts.refine !== false) {
+      // 用最强谐波做精修:先找谱峰,再折回基频(缺失基频时同样成立)
+      const sp = opts.spectrum || spectrum(x, fs, { size: Math.min(8192, 1 << Math.floor(Math.log2(x.length))), window: 'hann' });
+      const peaks = findPeaks(sp, { count: 6, minFreq: Math.min(fmin, freq * 0.8), maxFreq: Math.min(fs / 2, freq * 12) });
+      if (peaks.length) {
+        const top = peaks[0];
+        const h = Math.max(1, Math.round(top.freq / freq));
+        const cand = top.freq / h;
+        if (Math.abs(cand - freq) / freq < 0.04) {
+          const refined = refineFreq(x, fs, top.freq, { span: 0.6 / h / 12 + 0.004 });
+          freq = refined / h;
+        }
+      }
+    }
+    return { freq: freq, clarity: chosen.v, rms: rms, tau: tau, reason: 'ok' };
+  }
+
+  /* ── 音名与律制 ── */
+  const NOTE_NAMES = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'];
+  const TEMPERAMENTS = {
+    equal: { name: '十二平均律', cents: [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100],
+      note: '每个半音恰好 100 音分,任何调都一样准、也一样「不纯」。' },
+    just: { name: '纯律(5 极限)', cents: [0, 111.7312852698, 203.9100017308, 315.6412870006, 386.3137138648, 498.0449991346, 590.2237155956, 701.9550008654, 813.6862861352, 884.3587129994, 996.0899982692, 1088.2687147302],
+      note: '大三度取 5/4(386.31 音分),比平均律低 13.69 音分;纯五度 3/2 高 1.96 音分。' },
+    pyth: { name: '毕达哥拉斯律', cents: [0, 90.2249956731, 203.9100017308, 294.1349974038, 407.8200034615, 498.0449991346, 611.7300051923, 701.9550008654, 792.1799965385, 905.8650025962, 996.0899982692, 1109.7750043269],
+      note: '全部由纯五度 3/2 叠出,五度极纯,大三度 81/64 偏高 7.82 音分(第三音差)。' },
+    mean: { name: '四分之一音差中庸全音律', cents: [0, 76.0489992635, 193.1568569324, 310.2647146014, 386.3137138648, 503.4215715338, 579.4705707973, 696.5784284662, 772.6274277297, 889.7352853986, 1006.8431430676, 1082.8921423310],
+      note: '五度收窄到 696.58 音分,换来纯净的 5/4 大三度 —— 文艺复兴键盘乐的标准。' }
+  };
+  function noteName(n) {                       // n = 相对 A4 的半音数
+    const pc = ((9 + n) % 12 + 12) % 12;
+    const oct = 4 + Math.floor((9 + n) / 12);
+    return { name: NOTE_NAMES[pc], octave: oct, pc: pc, label: NOTE_NAMES[pc] + oct };
+  }
+  function parseNote(str) {                    // 'A4' / 'C#5' / 'F♯3' → 相对 A4 的半音数
+    const m = String(str).trim().match(/^([A-Ga-g])([#♯b♭]?)(-?\d+)$/);
+    if (!m) return null;
+    const base = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 }[m[1].toUpperCase()];
+    const acc = m[2] === '#' || m[2] === '♯' ? 1 : (m[2] === 'b' || m[2] === '♭' ? -1 : 0);
+    const pc = base + acc, oct = parseInt(m[3], 10);
+    return (oct - 4) * 12 + pc - 9;
+  }
+  function noteFreq(n, a4, temp, tonicPc) {
+    const cents = (TEMPERAMENTS[temp] || TEMPERAMENTS.equal).cents;
+    const pc = ((9 + n) % 12 + 12) % 12;
+    const degree = ((pc - (tonicPc || 0)) % 12 + 12) % 12;
+    const tonicN = n - degree;                       // 该音下方最近的主音(按平均律定位)
+    return (a4 || 440) * Math.pow(2, tonicN / 12) * Math.pow(2, cents[degree] / 1200);
+  }
+  function freqToNote(f, a4, temp, tonicPc) {
+    if (!(f > 0)) return null;
+    let best = null;
+    for (let n = -57; n <= 51; n++) {                 // A♭-1 … C8 附近
+      const target = noteFreq(n, a4, temp, tonicPc);
+      const cents = 1200 * Math.log2(f / target);
+      if (!best || Math.abs(cents) < Math.abs(best.cents)) best = { n: n, target: target, cents: cents };
+    }
+    const nm = noteName(best.n);
+    return { n: best.n, name: nm.name, octave: nm.octave, label: nm.label, target: best.target, cents: best.cents, freq: f };
+  }
+
+  const INSTRUMENTS = {
+    guitar: { name: '吉他 · 标准 EADGBE', strings: [-29, -24, -19, -14, -10, -5] },
+    guitarD: { name: '吉他 · Drop D', strings: [-31, -24, -19, -14, -10, -5] },
+    bass: { name: '贝斯 · EADG', strings: [-41, -36, -31, -26] },
+    ukulele: { name: '尤克里里 · GCEA', strings: [-2, -9, -5, 0] },
+    violin: { name: '小提琴 · GDAE', strings: [-14, -7, 0, 7] },
+    cello: { name: '大提琴 · CGDA', strings: [-33, -26, -19, -12] },
+    none: { name: '不限(自由音高)', strings: [] }
+  };
+
+  /* ── RBJ Cookbook 双二阶 ── */
+  const FILTER_TYPES = {
+    lowpass: '低通', highpass: '高通', bandpass: '带通', notch: '陷波',
+    peaking: '峰值 EQ', lowshelf: '低搁架', highshelf: '高搁架', allpass: '全通'
+  };
+  function designBiquad(type, f0, Q, gainDb, fs) {
+    f0 = clamp(f0, 1, fs / 2 - 1); Q = Math.max(0.05, Q || 0.707); gainDb = gainDb || 0;
+    const w0 = TAU * f0 / fs, c = Math.cos(w0), s = Math.sin(w0);
+    const A = Math.pow(10, gainDb / 40), al = s / (2 * Q);
+    let b0, b1, b2, a0, a1, a2;
+    switch (type) {
+      case 'lowpass': b0 = (1 - c) / 2; b1 = 1 - c; b2 = (1 - c) / 2; a0 = 1 + al; a1 = -2 * c; a2 = 1 - al; break;
+      case 'highpass': b0 = (1 + c) / 2; b1 = -(1 + c); b2 = (1 + c) / 2; a0 = 1 + al; a1 = -2 * c; a2 = 1 - al; break;
+      case 'bandpass': b0 = al; b1 = 0; b2 = -al; a0 = 1 + al; a1 = -2 * c; a2 = 1 - al; break;
+      case 'notch': b0 = 1; b1 = -2 * c; b2 = 1; a0 = 1 + al; a1 = -2 * c; a2 = 1 - al; break;
+      case 'allpass': b0 = 1 - al; b1 = -2 * c; b2 = 1 + al; a0 = 1 + al; a1 = -2 * c; a2 = 1 - al; break;
+      case 'peaking': b0 = 1 + al * A; b1 = -2 * c; b2 = 1 - al * A; a0 = 1 + al / A; a1 = -2 * c; a2 = 1 - al / A; break;
+      case 'lowshelf': {
+        const t = 2 * Math.sqrt(A) * al;
+        b0 = A * ((A + 1) - (A - 1) * c + t); b1 = 2 * A * ((A - 1) - (A + 1) * c); b2 = A * ((A + 1) - (A - 1) * c - t);
+        a0 = (A + 1) + (A - 1) * c + t; a1 = -2 * ((A - 1) + (A + 1) * c); a2 = (A + 1) + (A - 1) * c - t; break;
+      }
+      case 'highshelf': {
+        const t = 2 * Math.sqrt(A) * al;
+        b0 = A * ((A + 1) + (A - 1) * c + t); b1 = -2 * A * ((A - 1) + (A + 1) * c); b2 = A * ((A + 1) + (A - 1) * c - t);
+        a0 = (A + 1) - (A - 1) * c + t; a1 = 2 * ((A - 1) - (A + 1) * c); a2 = (A + 1) - (A - 1) * c - t; break;
+      }
+      default: b0 = 1; b1 = 0; b2 = 0; a0 = 1; a1 = 0; a2 = 0;
+    }
+    return { type: type, f0: f0, Q: Q, gainDb: gainDb, fs: fs, b0: b0 / a0, b1: b1 / a0, b2: b2 / a0, a1: a1 / a0, a2: a2 / a0 };
+  }
+  function sectionResponse(sec, f, fs) {
+    const w = TAU * f / fs;
+    const c1 = Math.cos(w), s1 = Math.sin(w), c2 = Math.cos(2 * w), s2 = Math.sin(2 * w);
+    const nr = sec.b0 + sec.b1 * c1 + sec.b2 * c2, ni = -(sec.b1 * s1 + sec.b2 * s2);
+    const dr = 1 + sec.a1 * c1 + sec.a2 * c2, di = -(sec.a1 * s1 + sec.a2 * s2);
+    const dd = dr * dr + di * di || 1e-30;
+    return { re: (nr * dr + ni * di) / dd, im: (ni * dr - nr * di) / dd };
+  }
+  function chainResponse(sections, f, fs) {
+    let mr = 1, mi = 0;
+    for (const sec of sections) {
+      const r = sectionResponse(sec, f, fs);
+      const a = mr * r.re - mi * r.im;
+      mi = mr * r.im + mi * r.re; mr = a;
+    }
+    const mag = Math.sqrt(mr * mr + mi * mi);
+    return { mag: mag, db: 20 * Math.log10(Math.max(mag, 1e-9)), phase: Math.atan2(mi, mr) * 180 / Math.PI };
+  }
+  function isStable(sec) {                    // 极点在单位圆内 ⇔ |a2|<1 且 |a1|<1+a2
+    return Math.abs(sec.a2) < 1 && Math.abs(sec.a1) < 1 + sec.a2;
+  }
+  /* 频响极值:先在对数网格上扫,再三分搜索精修 —— 只扫网格会把 1 kHz 的 EQ 峰报成 995.7 Hz */
+  function chainExtrema(sections, fs, opts) {
+    opts = opts || {};
+    const NP = opts.points || 600, fmin = opts.fmin || 20, fmax = opts.fmax || fs / 2;
+    const fAt = (i) => fmin * Math.pow(fmax / fmin, i / (NP - 1));
+    const dbAt = (f) => (sections.length ? chainResponse(sections, f, fs).db : 0);
+    let hi = 0, lo = 0, vhi = -Infinity, vlo = Infinity;
+    for (let i = 0; i < NP; i++) {
+      const d = dbAt(fAt(i));
+      if (d > vhi) { vhi = d; hi = i; }
+      if (d < vlo) { vlo = d; lo = i; }
+    }
+    const refine = (idx, wantMax) => {
+      let a = fAt(Math.max(0, idx - 1)), b = fAt(Math.min(NP - 1, idx + 1));
+      for (let it = 0; it < 40; it++) {
+        const m1 = a + (b - a) / 3, m2 = b - (b - a) / 3;
+        if (wantMax ? dbAt(m1) < dbAt(m2) : dbAt(m1) > dbAt(m2)) a = m1; else b = m2;
+      }
+      const f = (a + b) / 2;
+      return { f: f, db: dbAt(f) };
+    };
+    const mx = refine(hi, true), mn = refine(lo, false);
+    return { maxDb: mx.db, maxF: mx.f, minDb: mn.db, minF: mn.f };
+  }
+  /* 相对参考电平下降 targetDb 的最低穿越频率(对数轴上二分)*/
+  function chainCrossing(sections, fs, refDb, targetDb, opts) {
+    opts = opts || {};
+    const NP = opts.points || 600, fmin = opts.fmin || 20, fmax = opts.fmax || fs / 2;
+    const fAt = (i) => fmin * Math.pow(fmax / fmin, i / (NP - 1));
+    const g = (f) => (sections.length ? chainResponse(sections, f, fs).db : 0) - refDb - targetDb;
+    let pf = null, pv = null;
+    for (let i = 0; i < NP; i++) {
+      const f = fAt(i), v = g(f);
+      if (pv !== null && (pv < 0) !== (v < 0)) {
+        let a = pf, b = f;
+        for (let it = 0; it < 50; it++) {
+          const m = Math.sqrt(a * b);
+          if ((g(a) < 0) === (g(m) < 0)) a = m; else b = m;
+        }
+        return Math.sqrt(a * b);
+      }
+      pf = f; pv = v;
+    }
+    return null;
+  }
+  /* 转置直接 II 型;传 state 数组即可跨帧连续处理 */
+  function applyChain(x, sections, state) {
+    const y = new Float64Array(x.length);
+    for (let i = 0; i < x.length; i++) y[i] = x[i];
+    for (let si = 0; si < sections.length; si++) {
+      const s = sections[si];
+      const st = state ? (state[si] || (state[si] = { z1: 0, z2: 0 })) : { z1: 0, z2: 0 };
+      let z1 = st.z1, z2 = st.z2;
+      for (let i = 0; i < y.length; i++) {
+        const xn = y[i];
+        const yn = s.b0 * xn + z1;
+        z1 = s.b1 * xn - s.a1 * yn + z2;
+        z2 = s.b2 * xn - s.a2 * yn;
+        y[i] = yn;
+      }
+      st.z1 = z1; st.z2 = z2;
+    }
+    return y;
+  }
+
+  /* ── 信号发生器(带限合成,避免混叠污染 THD 读数)── */
+  function harmonicSeries(type, nmax) {
+    const out = [];
+    if (type === 'sine') { out.push({ n: 1, a: 1 }); return out; }
+    for (let n = 1; n <= nmax; n++) {
+      if (type === 'square') { if (n % 2 === 1) out.push({ n: n, a: 4 / (Math.PI * n) }); }
+      else if (type === 'saw') { out.push({ n: n, a: (2 / (Math.PI * n)) * (n % 2 === 1 ? 1 : -1) }); }
+      else if (type === 'tri') { if (n % 2 === 1) out.push({ n: n, a: (8 / (Math.PI * Math.PI * n * n)) * ((n - 1) / 2 % 2 === 0 ? 1 : -1) }); }
+    }
+    return out;
+  }
+  const CHORDS = { major: [0, 4, 7], minor: [0, 3, 7], dom7: [0, 4, 7, 10], fifth: [0, 7] };
+  function generate(cfg) {
+    cfg = cfg || {};
+    const fs = cfg.fs || 48000, n = cfg.n || 8192;
+    const freq = cfg.freq || 440, amp = cfg.amp == null ? 0.5 : cfg.amp;
+    const type = cfg.type || 'sine', t0 = cfg.t0 || 0, nyq = fs / 2;
+    const out = new Float64Array(n);
+    if (type === 'white' || type === 'pink') {
+      const r = cfg.rand || rng(0x5eed1234);
+      const st = cfg.pinkState || { b0: 0, b1: 0, b2: 0 };
+      for (let i = 0; i < n; i++) {
+        const wn = r();
+        if (type === 'white') out[i] = amp * wn * 0.6;
+        else {
+          st.b0 = 0.99765 * st.b0 + wn * 0.0990460;
+          st.b1 = 0.96300 * st.b1 + wn * 0.2965164;
+          st.b2 = 0.57000 * st.b2 + wn * 1.0526913;
+          out[i] = amp * (st.b0 + st.b1 + st.b2 + wn * 0.1848) * 0.19;
+        }
+      }
+      return out;
+    }
+    if (type === 'sweep') {
+      const f1 = cfg.sweepFrom || 40, f2 = Math.min(cfg.sweepTo || 16000, nyq * 0.95);
+      const T = cfg.sweepSec || 6, K = Math.log(f2 / f1);
+      for (let i = 0; i < n; i++) {
+        const t = ((t0 + i) / fs) % T;
+        const ph = TAU * f1 * T / K * (Math.exp(K * t / T) - 1);
+        out[i] = amp * Math.sin(ph);
+      }
+      return out;
+    }
+    let parts;
+    if (type === 'twotone') parts = [{ f: freq, a: 1 }, { f: cfg.freq2 || freq * 1.5, a: 1 }];
+    else if (type === 'chord') parts = (CHORDS[cfg.chord] || CHORDS.major).map((st) => ({ f: freq * Math.pow(2, st / 12), a: 1 }));
+    else parts = harmonicSeries(type, Math.max(1, Math.floor(nyq / freq))).map((h) => ({ f: h.n * freq, a: h.a }));
+    let norm = 0;
+    for (const p of parts) if (p.f < nyq) norm += Math.abs(p.a);
+    if (!(norm > 0)) norm = 1;
+    for (let i = 0; i < n; i++) {
+      const t = (t0 + i) / fs;
+      let v = 0;
+      for (const p of parts) if (p.f < nyq) v += p.a * Math.sin(TAU * p.f * t);
+      out[i] = amp * v / norm;
+    }
+    return out;
+  }
+
+  function meters(x) {
+    let p = 0, pk = 0;
+    for (let i = 0; i < x.length; i++) { const v = x[i]; p += v * v; const a = v < 0 ? -v : v; if (a > pk) pk = a; }
+    const rms = Math.sqrt(p / x.length);
+    return { rms: rms, peak: pk, rmsDb: dbfs(rms), peakDb: dbfs(pk), crest: rms > 0 ? pk / rms : 0 };
+  }
+
+  return {
+    TAU: TAU, clamp: clamp, dbfs: dbfs, rng: rng,
+    fft: fft, windowFn: windowFn, windowStats: windowStats, WINDOW_NAMES: WINDOW_NAMES,
+    spectrum: spectrum, refinePeak: refinePeak, refineFreq: refineFreq, dftMag: dftMag,
+    peakAmp: peakAmp, findPeaks: findPeaks, thd: thd,
+    nsdfCurve: nsdfCurve, nsdfNaive: nsdfNaive, detectPitch: detectPitch,
+    NOTE_NAMES: NOTE_NAMES, TEMPERAMENTS: TEMPERAMENTS, INSTRUMENTS: INSTRUMENTS,
+    noteName: noteName, parseNote: parseNote, noteFreq: noteFreq, freqToNote: freqToNote,
+    FILTER_TYPES: FILTER_TYPES, designBiquad: designBiquad, sectionResponse: sectionResponse,
+    chainResponse: chainResponse, chainExtrema: chainExtrema, chainCrossing: chainCrossing,
+    isStable: isStable, applyChain: applyChain,
+    harmonicSeries: harmonicSeries, CHORDS: CHORDS, generate: generate, meters: meters
+  };
+})();
+/*ENGINE>>>*/
+
+/* ══════════════════════ UI ══════════════════════ */
+(function () {
+  'use strict';
+  const E = SL_ENGINE;
+  const $ = (s) => document.querySelector(s);
+  const FRAME = 8192;
+  const LS_KEY = 'sound-lab.v1';
+
+  const COL = {
+    ink: '#0c0a09', primary: '#292524', body: '#4e4e4e', muted: '#777169', mutedSoft: '#a8a29e',
+    hair: '#e7e5e4', hairStrong: '#d6d3d1', canvasSoft: '#fafafa', strong: '#f0efed',
+    mint: '#a7e5d3', peach: '#f4c5a8', lav: '#c8b8e0', sky: '#a8c8e8', rose: '#e8b8c4',
+    ok: '#16a34a'
+  };
+
+  const S = {
+    source: 'gen', running: true, fs: 48000, t0: 0,
+    wave: 'sine', freq: 440, freq2: 660, chord: 'major', amp: 0.5, noise: 0,
+    filterOn: false, fftSize: 8192, win: 'hann', axis: 'log', hold: false, harm: true,
+    a4: 440, temp: 'equal', tonic: 0, inst: 'guitar',
+    sgRange: 70, sgAxis: 'log', sgTop: 10000,
+    sections: [
+      { on: true, type: 'highpass', f0: 80, Q: 0.707, gain: 0 },
+      { on: false, type: 'peaking', f0: 1000, Q: 1.0, gain: -6 },
+      { on: false, type: 'peaking', f0: 3000, Q: 2.0, gain: 0 },
+      { on: false, type: 'highshelf', f0: 6000, Q: 0.707, gain: 0 },
+      { on: false, type: 'lowpass', f0: 16000, Q: 0.707, gain: 0 }
+    ]
+  };
+
+  let tab = 'tuner';
+  let frames = 0, draws = 0;
+  let buf = new Float64Array(FRAME);
+  let analysed = null;
+  let holdDb = null;
+  let filtState = [];
+  let noiseRand = E.rng(0x13572468);
+  let pinkState = { b0: 0, b1: 0, b2: 0 };
+  let genRand = E.rng(0xa5a5f0f0);
+  const centsHist = [];
+  let micStream = null, micAnalyser = null, micBuf = null;
+  let audioCtx = null, playNode = null, playGain = null;
+
+  /* ══════ 画布文字避让器 ══════
+     2026-07-28/29/30/08-05/08-07 五次同族事故的产物:这张画布上的**每一段**文字
+     (含坐标轴刻度)都必须走它;标注给多个退让位,第一顺位落在数据的空侧;
+     压住曲线时先垫白底;越出画布边界的直接不画。 */
+  function makePlacer(g, W, H) {
+    const boxes = [], drawn = [];
+    let dropped = 0;
+    const hits = (a) => {
+      for (const b of boxes) {
+        if (!(a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h <= b.y || b.y + b.h <= a.y)) return true;
+      }
+      return false;
+    };
+    function reserve(x, y, w, h, label) { boxes.push({ x: x, y: y, w: w, h: h, text: label || '·' }); }
+    function box(str, x, y, align, baseline, fontPx) {
+      const tw = g.measureText(str).width, th = fontPx * 1.2;
+      let bx = align === 'center' ? x - tw / 2 : align === 'right' ? x - tw : x;
+      let by = baseline === 'top' ? y : baseline === 'middle' ? y - th / 2 : y - th;
+      return { x: bx - 2, y: by - 1, w: tw + 4, h: th + 2, text: str };
+    }
+    /* opt: {align,baseline,font,color,tries:[[dx,dy],…],backing,bg} */
+    function text(str, x, y, opt) {
+      opt = opt || {};
+      const font = opt.font || '11px "Inter",-apple-system,sans-serif';
+      g.font = font;
+      const fontPx = parseFloat(font) || 11;
+      const align = opt.align || 'left', baseline = opt.baseline || 'bottom';
+      const tries = opt.tries || [[0, 0]];
+      for (const [dx, dy] of tries) {
+        const b = box(str, x + dx, y + dy, align, baseline, fontPx);
+        if (b.x < 0 || b.y < 0 || b.x + b.w > W || b.y + b.h > H) continue;
+        if (hits(b)) continue;
+        if (opt.backing) {
+          g.fillStyle = opt.bg || 'rgba(255,255,255,0.92)';
+          g.fillRect(b.x, b.y, b.w, b.h);
+        }
+        g.fillStyle = opt.color || COL.muted;
+        g.textAlign = align; g.textBaseline = baseline === 'bottom' ? 'alphabetic' : baseline;
+        g.fillText(str, x + dx, baseline === 'bottom' ? y + dy : y + dy);
+        boxes.push(b); drawn.push(b);
+        g.textAlign = 'left'; g.textBaseline = 'alphabetic';
+        return true;
+      }
+      dropped++;
+      return false;
+    }
+    return { text: text, reserve: reserve, boxes: boxes, drawn: drawn, stats: () => ({ drawn: drawn, dropped: dropped }) };
+  }
+
+  function fitCanvas(c) {
+    const r = c.getBoundingClientRect();
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const w = Math.max(1, Math.round(r.width)), h = Math.max(1, Math.round(r.height));
+    if (c.width !== Math.round(w * dpr) || c.height !== Math.round(h * dpr)) {
+      c.width = Math.round(w * dpr); c.height = Math.round(h * dpr);
+    }
+    const g = c.getContext('2d');
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.clearRect(0, 0, w, h);
+    return { g: g, w: w, h: h };
+  }
+
+  const fmtHz = (f) => (f >= 10000 ? (f / 1000).toFixed(1) + ' kHz' : f >= 1000 ? (f / 1000).toFixed(2) + ' kHz' : f.toFixed(f < 100 ? 2 : 1) + ' Hz');
+  const fmtDb = (d) => (d <= -119 ? '−∞' : (d >= 0 ? '' : '−') + Math.abs(d).toFixed(1)) + ' dB';
+  const sgn = (v, dp) => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(dp == null ? 1 : dp);
+
+  /* ══════ 信号获取 ══════ */
+  function activeSections() {
+    return S.sections.filter((s) => s.on).map((s) => E.designBiquad(s.type, s.f0, s.Q, s.gain, S.fs));
+  }
+  function pullFrame() {
+    if (S.source === 'mic' && micAnalyser) {
+      micAnalyser.getFloatTimeDomainData(micBuf);
+      for (let i = 0; i < FRAME; i++) buf[i] = micBuf[i] || 0;
+    } else {
+      const x = E.generate({
+        fs: S.fs, n: FRAME, freq: S.freq, freq2: S.freq2, chord: S.chord,
+        amp: S.amp, type: S.wave, t0: S.t0, rand: genRand, pinkState: pinkState
+      });
+      for (let i = 0; i < FRAME; i++) buf[i] = x[i];
+      if (S.noise > 0) for (let i = 0; i < FRAME; i++) buf[i] += S.noise * 0.5 * noiseRand();
+      S.t0 += FRAME;
+    }
+    if (S.filterOn) {
+      const secs = activeSections();
+      if (secs.length) {
+        const y = E.applyChain(buf, secs, filtState);
+        for (let i = 0; i < FRAME; i++) buf[i] = y[i];
+      }
+    }
+    return buf;
+  }
+
+  function analyse() {
+    const x = pullFrame();
+    const m = E.meters(x);
+    const sp = E.spectrum(x, S.fs, { size: S.fftSize, window: S.win });
+    const pitch = E.detectPitch(x, S.fs, { min: 40, max: 2400, spectrum: sp });
+    const peaks = E.findPeaks(sp, { count: 8, minFreq: 20, maxFreq: S.fs / 2 - 100, minDb: m.rmsDb - 90, samples: x });
+    const t = pitch.freq > 0 ? E.thd(sp, pitch.freq, { samples: x, maxH: 40 }) : null;
+    if (S.hold) {
+      if (!holdDb || holdDb.length !== sp.db.length) holdDb = Float64Array.from(sp.db);
+      else for (let i = 0; i < sp.db.length; i++) if (sp.db[i] > holdDb[i]) holdDb[i] = sp.db[i];
+    }
+    analysed = { x: x, m: m, sp: sp, pitch: pitch, peaks: peaks, thd: t };
+    pushSpectroColumn(sp);
+    const note = pitch.freq > 0 ? E.freqToNote(pitch.freq, S.a4, S.temp, S.tonic) : null;
+    centsHist.push(note ? note.cents : null);
+    while (centsHist.length > 300) centsHist.shift();
+    analysed.note = note;
+    frames++;
+    document.body.dataset.frames = String(frames);
+    return analysed;
+  }
+
+  /* ══════ 声谱图环形缓冲 ══════ */
+  const SG_COLS = 600, SG_ROWS = 256;
+  let sgCanvas = null, sgCtx = null, sgHead = 0, sgFilled = 0;
+  let sgLast = new Float64Array(SG_ROWS);
+  function sgRowFreq(i) {
+    const top = S.sgTop, bot = 20;
+    const t = i / (SG_ROWS - 1);
+    return S.sgAxis === 'log' ? bot * Math.pow(top / bot, t) : bot + (top - bot) * t;
+  }
+  function ensureSpectroBuf() {
+    if (!sgCanvas) {
+      sgCanvas = document.createElement('canvas');
+      sgCanvas.width = SG_COLS; sgCanvas.height = SG_ROWS;
+      sgCtx = sgCanvas.getContext('2d');
+      sgCtx.fillStyle = '#0c0a09'; sgCtx.fillRect(0, 0, SG_COLS, SG_ROWS);
+    }
+  }
+  /* 色阶:深墨 → 靛 → 天空 → 薄荷 → 蜜桃 → 白(全部取自 ElevenLabs 粉彩令牌) */
+  const SG_STOPS = [[12, 10, 9], [59, 58, 85], [110, 130, 175], [168, 200, 232], [167, 229, 211], [244, 197, 168], [255, 255, 255]];
+  function sgColor(t) {
+    t = t < 0 ? 0 : t > 1 ? 1 : t;
+    const p = t * (SG_STOPS.length - 1), i = Math.min(SG_STOPS.length - 2, Math.floor(p)), f = p - i;
+    const a = SG_STOPS[i], b = SG_STOPS[i + 1];
+    return [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f];
+  }
+  function pushSpectroColumn(sp) {
+    ensureSpectroBuf();
+    const img = sgCtx.createImageData(1, SG_ROWS);
+    const range = S.sgRange;
+    for (let r = 0; r < SG_ROWS; r++) {
+      const f = sgRowFreq(SG_ROWS - 1 - r);
+      const k = Math.round(f / sp.binHz);
+      let d = -140;
+      if (k >= 1 && k < sp.db.length) {
+        // 对数轴低频行密、高频行疏:取该行覆盖的 bin 区间的最大值,避免抽样漏峰
+        const f2 = sgRowFreq(Math.min(SG_ROWS - 1, SG_ROWS - r));
+        const k2 = Math.max(k, Math.round(f2 / sp.binHz));
+        for (let j = k; j <= Math.min(k2, sp.db.length - 1); j++) if (sp.db[j] > d) d = sp.db[j];
+      }
+      sgLast[SG_ROWS - 1 - r] = d;
+      const t = (d + range) / range;
+      const c = sgColor(t);
+      img.data[r * 4] = c[0]; img.data[r * 4 + 1] = c[1]; img.data[r * 4 + 2] = c[2]; img.data[r * 4 + 3] = 255;
+    }
+    sgCtx.putImageData(img, sgHead, 0);
+    sgHead = (sgHead + 1) % SG_COLS;
+    if (sgFilled < SG_COLS) sgFilled++;
+  }
+
+  /* ══════ 绘制 ══════ */
+  window.__slPlacer = {};
+  function record(key, p) { window.__slPlacer[key] = p.stats(); }
+
+  function drawWave() {
+    const c = $('#sl-cv-wave'); if (!c || !analysed) return;
+    const { g, w, h } = fitCanvas(c);
+    const p = makePlacer(g, w, h);
+    g.fillStyle = COL.canvasSoft; g.fillRect(0, 0, w, h);
+    g.strokeStyle = COL.hair; g.lineWidth = 1;
+    g.beginPath(); g.moveTo(0, h / 2); g.lineTo(w, h / 2); g.stroke();
+    const x = analysed.x;
+    // 只画最近 ~20 ms,并对准一次上升过零,波形才不会每帧乱跳。
+    // 过零搜索必须**从缓冲区末端往回留出余量**,否则 start+show 会越过末尾,
+    // 尾部读到 undefined→0,画出一截假的水平线(2026-08-08 看图发现)。
+    const show = Math.min(x.length, Math.round(S.fs * 0.02));
+    const slack = Math.min(x.length - show, Math.floor(show / 2));
+    let start = Math.max(0, x.length - show - slack);
+    for (let i = start; i < start + slack; i++) {
+      if (x[i] <= 0 && x[i + 1] > 0) { start = i; break; }
+    }
+    if (start + show > x.length) start = Math.max(0, x.length - show);
+    g.strokeStyle = COL.ink; g.lineWidth = 1.5; g.beginPath();
+    for (let i = 0; i < show; i++) {
+      const v = x[start + i] || 0;
+      const px = (i / (show - 1)) * w, py = h / 2 - v * (h / 2 - 6);
+      i === 0 ? g.moveTo(px, py) : g.lineTo(px, py);
+    }
+    g.stroke();
+    p.reserve(0, h / 2 - 8, w, 16, 'axis');
+    p.text('20 ms', w - 6, h - 6, { align: 'right', tries: [[0, 0], [0, -12]] });
+    p.text('±1.0', 6, 14, { baseline: 'top', tries: [[0, 0]] });
+    record('wave', p);
+  }
+
+  function drawGauge() {
+    const c = $('#sl-cv-gauge'); if (!c) return;
+    const { g, w, h } = fitCanvas(c);
+    const p = makePlacer(g, w, h);
+    const cx = w / 2, cy = h - 22, R = Math.min(w / 2 - 30, h - 46);
+    const A0 = Math.PI * 1.15, A1 = Math.PI * 1.85;        // −50 … +50 音分
+    const ang = (cents) => A0 + (cents + 50) / 100 * (A1 - A0);
+    // 底弧
+    g.strokeStyle = COL.hair; g.lineWidth = 10; g.lineCap = 'round';
+    g.beginPath(); g.arc(cx, cy, R, A0, A1); g.stroke();
+    // 准音带 ±5 音分
+    g.strokeStyle = COL.mint; g.lineWidth = 10;
+    g.beginPath(); g.arc(cx, cy, R, ang(-5), ang(5)); g.stroke();
+    g.lineCap = 'butt';
+    for (const t of [-50, -25, -10, 0, 10, 25, 50]) {
+      const a = ang(t), inner = t === 0 ? R - 16 : R - 10;
+      g.strokeStyle = t === 0 ? COL.ink : COL.hairStrong; g.lineWidth = t === 0 ? 2 : 1;
+      g.beginPath();
+      g.moveTo(cx + Math.cos(a) * inner, cy + Math.sin(a) * inner);
+      g.lineTo(cx + Math.cos(a) * (R + 6), cy + Math.sin(a) * (R + 6));
+      g.stroke();
+      if (t === -50 || t === 0 || t === 50 || t === -25 || t === 25) {
+        const lx = cx + Math.cos(a) * (R + 18), ly = cy + Math.sin(a) * (R + 18);
+        p.text(t === 0 ? '0' : sgn(t, 0), lx, ly, {
+          align: 'center', baseline: 'middle', color: t === 0 ? COL.ink : COL.mutedSoft,
+          tries: [[0, 0], [0, 10], [0, -10]]
+        });
+      }
+    }
+    const note = analysed && analysed.note;
+    const cents = note ? E.clamp(note.cents, -52, 52) : null;
+    if (cents !== null) {
+      const a = ang(E.clamp(cents, -50, 50));
+      g.strokeStyle = Math.abs(note.cents) <= 5 ? COL.ok : COL.primary;
+      g.lineWidth = 3; g.lineCap = 'round';
+      g.beginPath(); g.moveTo(cx, cy); g.lineTo(cx + Math.cos(a) * (R - 4), cy + Math.sin(a) * (R - 4)); g.stroke();
+      g.lineCap = 'butt';
+    }
+    g.fillStyle = COL.ink; g.beginPath(); g.arc(cx, cy, 5, 0, Math.PI * 2); g.fill();
+    p.reserve(cx - 30, cy - 6, 60, 24, 'hub');
+    p.text('音分偏差', cx, cy + 16, { align: 'center', baseline: 'top', color: COL.mutedSoft, tries: [[0, 0]] });
+    record('gauge', p);
+  }
+
+  function drawHist() {
+    const c = $('#sl-cv-hist'); if (!c) return;
+    const { g, w, h } = fitCanvas(c);
+    const p = makePlacer(g, w, h);
+    const L = 44, R = 10, T = 12, B = 20;
+    const pw = w - L - R, ph = h - T - B;
+    g.fillStyle = COL.canvasSoft; g.fillRect(0, 0, w, h);
+    const yOf = (cents) => T + (50 - E.clamp(cents, -50, 50)) / 100 * ph;
+    g.fillStyle = 'rgba(167,229,211,0.5)';
+    g.fillRect(L, yOf(5), pw, yOf(-5) - yOf(5));
+    for (const v of [50, 25, 0, -25, -50]) {
+      const y = yOf(v);
+      g.strokeStyle = v === 0 ? COL.hairStrong : COL.hair; g.lineWidth = 1;
+      g.beginPath(); g.moveTo(L, y); g.lineTo(w - R, y); g.stroke();
+      p.text(v === 0 ? '0' : sgn(v, 0), L - 6, y, { align: 'right', baseline: 'middle', tries: [[0, 0], [0, 8]] });
+    }
+    g.strokeStyle = COL.ink; g.lineWidth = 1.6;
+    let started = false;
+    g.beginPath();
+    const n = centsHist.length;
+    for (let i = 0; i < n; i++) {
+      const v = centsHist[i];
+      if (v === null || !isFinite(v)) { started = false; continue; }
+      const px = L + (n <= 1 ? pw : (i / (n - 1)) * pw), py = yOf(v);
+      if (!started) { g.moveTo(px, py); started = true; } else g.lineTo(px, py);
+    }
+    g.stroke();
+    p.text('音分', L - 6, T + 2, { align: 'right', baseline: 'top', tries: [[0, 0], [6, -2]] });
+    p.text('← 更早', L + 2, h - 6, { tries: [[0, 0]] });
+    p.text('现在', w - R - 2, h - 6, { align: 'right', tries: [[0, 0]] });
+    record('hist', p);
+  }
+
+  function axisFreqs(top) {
+    const base = [20, 30, 50, 100, 200, 300, 500, 1000, 2000, 3000, 5000, 10000, 20000];
+    return base.filter((f) => f <= top);
+  }
+  function drawSpectrum() {
+    const c = $('#sl-cv-spectrum'); if (!c || !analysed) return;
+    const { g, w, h } = fitCanvas(c);
+    const p = makePlacer(g, w, h);
+    const L = 52, R = 14, T = 16, B = 30;
+    const pw = w - L - R, ph = h - T - B;
+    const sp = analysed.sp;
+    const fmin = 20, fmax = S.fs / 2;
+    const xOf = (f) => S.axis === 'log'
+      ? L + Math.log(Math.max(f, fmin) / fmin) / Math.log(fmax / fmin) * pw
+      : L + (f / fmax) * pw;
+    const dbMin = -100, dbMax = 0;
+    const yOf = (d) => T + (dbMax - E.clamp(d, dbMin, dbMax)) / (dbMax - dbMin) * ph;
+    g.fillStyle = COL.canvasSoft; g.fillRect(0, 0, w, h);
+    g.strokeStyle = COL.hair; g.lineWidth = 1;
+    for (let d = dbMin; d <= dbMax; d += 20) {
+      const y = yOf(d);
+      g.beginPath(); g.moveTo(L, y); g.lineTo(w - R, y); g.stroke();
+      p.text(d === 0 ? '0 dBFS' : String(d), L - 6, y, { align: 'right', baseline: 'middle', tries: [[0, 0], [0, 9]] });
+    }
+    for (const f of axisFreqs(fmax)) {
+      const x = xOf(f);
+      if (x < L - 1 || x > w - R + 1) continue;
+      g.strokeStyle = COL.hair;
+      g.beginPath(); g.moveTo(x, T); g.lineTo(x, T + ph); g.stroke();
+      p.text(f >= 1000 ? (f / 1000) + 'k' : String(f), x, h - 8, { align: 'center', tries: [[0, 0], [0, 10]] });
+    }
+    // 谐波标尺(只画线;**绝不 reserve 整条竖线** —— 那会把每个峰值标注的所有候选位
+    // 全部堵死,导致 5 个标注一个都画不出来,而 dropped 断言在纯正弦下恰好放行)
+    const f0 = analysed.pitch.freq;
+    const harmXs = [];
+    if (S.harm && f0 > 0) {
+      g.save(); g.setLineDash([3, 4]); g.strokeStyle = COL.lav; g.lineWidth = 1.4;
+      for (let n = 1; n <= 8 && n * f0 < fmax; n++) {
+        const x = xOf(n * f0);
+        if (x < L || x > w - R) continue;
+        g.beginPath(); g.moveTo(x, T); g.lineTo(x, T + ph); g.stroke();
+        if (n > 1) harmXs.push([n, x]);
+      }
+      g.restore();
+    }
+    // 峰值保持
+    if (S.hold && holdDb) {
+      g.strokeStyle = COL.sky; g.lineWidth = 1.4; g.beginPath();
+      for (let k = 1; k < holdDb.length; k++) {
+        const x = xOf(sp.freqs[k]);
+        if (x < L) continue;
+        const y = yOf(holdDb[k]);
+        k === 1 ? g.moveTo(x, y) : g.lineTo(x, y);
+      }
+      g.stroke();
+    }
+    // 瞬时谱 + 渐变填充
+    const grad = g.createLinearGradient(0, T, 0, T + ph);
+    grad.addColorStop(0, 'rgba(200,184,224,0.45)');
+    grad.addColorStop(1, 'rgba(167,229,211,0.05)');
+    g.beginPath();
+    let first = true;
+    for (let k = 1; k < sp.db.length; k++) {
+      const x = xOf(sp.freqs[k]);
+      if (x < L) continue;
+      const y = yOf(sp.db[k]);
+      if (first) { g.moveTo(x, y); first = false; } else g.lineTo(x, y);
+    }
+    g.strokeStyle = COL.ink; g.lineWidth = 1.2; g.stroke();
+    g.lineTo(w - R, T + ph); g.lineTo(L, T + ph); g.closePath();
+    g.fillStyle = grad; g.fill();
+    // 峰值标注:曲线在峰上方是空的,所以第一顺位就放正上方
+    const top = analysed.peaks.slice(0, 5);
+    for (const pk of top) {
+      const x = xOf(pk.freq), y = yOf(pk.db);
+      if (x < L || x > w - R) continue;
+      g.fillStyle = COL.ink;
+      g.beginPath(); g.arc(x, y, 2.5, 0, Math.PI * 2); g.fill();
+      p.reserve(x - 4, y - 4, 8, 8, 'pk');
+      const nn = E.freqToNote(pk.freq, S.a4, S.temp, S.tonic);
+      // 退让位往**上**走:峰的正上方是空的,而对数轴上相邻谐波挨得很近,
+      // 只给左右退让位的话第 3 个以后的标注会全部被挤掉(2026-08-08 实测 5 个只画出 3 个)
+      p.text(fmtHz(pk.freq) + ' · ' + nn.label, x, y - 8, {
+        align: 'center', color: COL.ink, backing: true, font: '11px "Inter",-apple-system,sans-serif',
+        tries: [[0, 0], [0, -15], [0, -30], [0, -45], [0, -60], [16, 6], [-16, 6]]
+      });
+    }
+    // 谐波序号:优先级低于峰值标注,所以最后放,挤不下就让它掉
+    for (const [n, x] of harmXs) {
+      p.text('×' + n, x, T + 12, {
+        align: 'center', baseline: 'top', color: COL.lav, backing: true,
+        tries: [[0, 0], [0, 14], [0, 28]]
+      });
+    }
+    p.text('电平 dBFS', L - 6, T - 4, { align: 'right', tries: [[0, 0], [46, 0]] });
+    record('spectrum', p);
+  }
+
+  function drawSpectro() {
+    const c = $('#sl-cv-spectro'); if (!c) return;
+    const { g, w, h } = fitCanvas(c);
+    ensureSpectroBuf();
+    const p = makePlacer(g, w, h);
+    const L = 52, R = 8, T = 8, B = 22;
+    const pw = w - L - R, ph = h - T - B;
+    g.fillStyle = '#0c0a09'; g.fillRect(0, 0, w, h);
+    g.imageSmoothingEnabled = false;
+    const tail = SG_COLS - sgHead;
+    g.drawImage(sgCanvas, sgHead, 0, tail, SG_ROWS, L, T, pw * tail / SG_COLS, ph);
+    if (sgHead > 0) g.drawImage(sgCanvas, 0, 0, sgHead, SG_ROWS, L + pw * tail / SG_COLS, T, pw * sgHead / SG_COLS, ph);
+    g.strokeStyle = 'rgba(255,255,255,0.15)'; g.lineWidth = 1;
+    g.strokeRect(L + .5, T + .5, pw - 1, ph - 1);
+    const yOf = (f) => {
+      const top = S.sgTop, bot = 20;
+      const t = S.sgAxis === 'log'
+        ? Math.log(E.clamp(f, bot, top) / bot) / Math.log(top / bot)
+        : (E.clamp(f, bot, top) - bot) / (top - bot);
+      return T + ph - t * ph;
+    };
+    for (const f of axisFreqs(S.sgTop)) {
+      const y = yOf(f);
+      if (y < T || y > T + ph) continue;
+      g.strokeStyle = 'rgba(255,255,255,0.13)';
+      g.beginPath(); g.moveTo(L, y); g.lineTo(w - R, y); g.stroke();
+      p.text(f >= 1000 ? (f / 1000) + ' kHz' : f + ' Hz', L - 6, y, {
+        align: 'right', baseline: 'middle', color: COL.mutedSoft, tries: [[0, 0], [0, 9], [0, -9]]
+      });
+    }
+    p.text('← 更早', L + 4, h - 6, { color: COL.mutedSoft, tries: [[0, 0]] });
+    p.text('现在', w - R - 2, h - 6, { align: 'right', color: COL.mutedSoft, tries: [[0, 0]] });
+    record('spectro', p);
+  }
+
+  function drawFilter() {
+    const c = $('#sl-cv-filter'); if (!c) return;
+    const { g, w, h } = fitCanvas(c);
+    const p = makePlacer(g, w, h);
+    const L = 52, R = 52, T = 16, B = 30;
+    const pw = w - L - R, ph = h - T - B;
+    const fmin = 20, fmax = S.fs / 2;
+    const xOf = (f) => L + Math.log(Math.max(f, fmin) / fmin) / Math.log(fmax / fmin) * pw;
+    const dbSpan = 30;
+    const yDb = (d) => T + (dbSpan - E.clamp(d, -dbSpan, dbSpan)) / (2 * dbSpan) * ph;
+    const yPh = (deg) => T + (180 - E.clamp(deg, -180, 180)) / 360 * ph;
+    g.fillStyle = COL.canvasSoft; g.fillRect(0, 0, w, h);
+    for (let d = -dbSpan; d <= dbSpan; d += 10) {
+      const y = yDb(d);
+      g.strokeStyle = d === 0 ? COL.hairStrong : COL.hair; g.lineWidth = 1;
+      g.beginPath(); g.moveTo(L, y); g.lineTo(w - R, y); g.stroke();
+      p.text(d === 0 ? '0 dB' : sgn(d, 0), L - 6, y, { align: 'right', baseline: 'middle', tries: [[0, 0], [0, 9]] });
+    }
+    for (const deg of [180, 90, 0, -90, -180]) {
+      p.text(deg + '°', w - R + 6, yPh(deg), { baseline: 'middle', color: COL.lav, tries: [[0, 0], [0, 9]] });
+    }
+    for (const f of axisFreqs(fmax)) {
+      const x = xOf(f);
+      if (x < L - 1 || x > w - R + 1) continue;
+      g.strokeStyle = COL.hair;
+      g.beginPath(); g.moveTo(x, T); g.lineTo(x, T + ph); g.stroke();
+      p.text(f >= 1000 ? (f / 1000) + 'k' : String(f), x, h - 8, { align: 'center', tries: [[0, 0], [0, 10]] });
+    }
+    const secs = activeSections();
+    // 各段转折频率
+    for (const s of secs) {
+      const x = xOf(s.f0);
+      if (x < L || x > w - R) continue;
+      g.save(); g.setLineDash([2, 4]); g.strokeStyle = COL.mint; g.lineWidth = 1.6;
+      g.beginPath(); g.moveTo(x, T); g.lineTo(x, T + ph); g.stroke(); g.restore();
+      p.reserve(x - 1, T, 2, ph, 'sec');
+    }
+    const NP = 480;
+    const fAt = (i) => fmin * Math.pow(fmax / fmin, i / (NP - 1));
+    // 相频(先画,压在下面)
+    g.strokeStyle = COL.lav; g.lineWidth = 1.4;
+    g.save(); g.setLineDash([4, 3]); g.beginPath();
+    let prev = null;
+    for (let i = 0; i < NP; i++) {
+      const f = fAt(i), r = secs.length ? E.chainResponse(secs, f, S.fs) : { phase: 0 };
+      const x = xOf(f), y = yPh(r.phase);
+      if (prev !== null && Math.abs(r.phase - prev) > 180) g.moveTo(x, y); else (i === 0 ? g.moveTo(x, y) : g.lineTo(x, y));
+      prev = r.phase;
+    }
+    g.stroke(); g.restore();
+    // 幅频
+    g.strokeStyle = COL.ink; g.lineWidth = 2; g.beginPath();
+    for (let i = 0; i < NP; i++) {
+      const f = fAt(i), d = secs.length ? E.chainResponse(secs, f, S.fs).db : 0;
+      const x = xOf(f), y = yDb(d);
+      i === 0 ? g.moveTo(x, y) : g.lineTo(x, y);
+    }
+    g.stroke();
+    // 极值标注:峰的上方是空的、谷的下方是空的(2026-08-07 教训:退让位第一顺位落数据的空侧)
+    if (secs.length) {
+      const ext = E.chainExtrema(secs, S.fs);
+      if (ext.maxDb > 0.3) {
+        const x = xOf(ext.maxF), y = yDb(ext.maxDb);
+        p.reserve(x - 3, y - 3, 6, 6, 'max');
+        p.text('峰 ' + sgn(ext.maxDb, 1) + ' dB @ ' + fmtHz(ext.maxF), x, y - 8, {
+          align: 'center', color: COL.ink, backing: true, tries: [[0, 0], [0, -14], [18, 2], [-18, 2]]
+        });
+      }
+      if (ext.minDb < -0.3) {
+        const x = xOf(ext.minF), y = yDb(Math.max(ext.minDb, -dbSpan));
+        p.reserve(x - 3, y - 3, 6, 6, 'min');
+        const label = ext.minDb < -120 ? '谷 < −120 dB @ ' + fmtHz(ext.minF) : '谷 ' + sgn(ext.minDb, 1) + ' dB @ ' + fmtHz(ext.minF);
+        p.text(label, x, y + 20, {
+          align: 'center', color: COL.ink, backing: true, tries: [[0, 0], [0, 30], [22, 12], [-22, 12], [0, -10]]
+        });
+      }
+    }
+    p.text('幅度 dB', L - 6, T - 4, { align: 'right', tries: [[0, 0], [42, 0]] });
+    p.text('相位', w - R + 6, T - 4, { color: COL.lav, tries: [[0, 0], [-8, 0]] });
+    record('filter', p);
+  }
+
+  /* ══════ 读数与表格 ══════ */
+  function renderReadouts() {
+    if (!analysed) return;
+    const m = analysed.m;
+    $('#sl-ro-rms').textContent = fmtDb(m.rmsDb) + 'FS';
+    $('#sl-ro-peak').textContent = fmtDb(m.peakDb) + 'FS';
+    $('#sl-ro-crest').textContent = m.crest > 0 ? m.crest.toFixed(2) + '×' : '—';
+    $('#sl-ro-fs').textContent = (S.fs / 1000).toFixed(3) + ' kHz';
+    $('#sl-ro-frame').textContent = FRAME + ' 样本';
+    $('#sl-ro-state').textContent = S.running ? (S.source === 'mic' ? '麦克风' : '发生器') : '已冻结';
+  }
+
+  function renderTuner() {
+    const note = analysed && analysed.note;
+    const card = $('#sl-notecard'), verdict = $('#sl-verdict');
+    card.classList.remove('sl-tuned', 'sl-off', 'sl-idle');
+    verdict.classList.remove('sl-tuned', 'sl-off');
+    if (!note) {
+      $('#sl-note').textContent = '—';
+      $('#sl-cents').textContent = '—';
+      $('#sl-hz').textContent = analysed && analysed.pitch.reason === 'quiet' ? '信号太弱 —— 提高幅度或靠近麦克风' : '未检测到稳定音高';
+      $('#sl-verdict-text').textContent = '无信号';
+      card.classList.add('sl-idle');
+    } else {
+      $('#sl-note').innerHTML = note.name + '<sub>' + note.octave + '</sub>';
+      $('#sl-cents').textContent = sgn(note.cents, 1) + ' 音分';
+      $('#sl-hz').textContent = note.freq.toFixed(2) + ' Hz  ·  目标 ' + note.target.toFixed(2) + ' Hz  ·  清晰度 ' + (analysed.pitch.clarity * 100).toFixed(0) + '%';
+      const a = Math.abs(note.cents);
+      if (a <= 5) { $('#sl-verdict-text').textContent = '准了'; card.classList.add('sl-tuned'); verdict.classList.add('sl-tuned'); }
+      else { $('#sl-verdict-text').textContent = note.cents > 0 ? '偏高 · 调松' : '偏低 · 调紧'; card.classList.add('sl-off'); verdict.classList.add('sl-off'); }
+    }
+    // 空弦表
+    const inst = E.INSTRUMENTS[S.inst];
+    const tb = $('#sl-tbl-strings tbody');
+    let best = -1, bestAbs = 1e9;
+    const rows = inst.strings.map((n, i) => {
+      const target = E.noteFreq(n, S.a4, S.temp, S.tonic);
+      const cents = note ? 1200 * Math.log2(note.freq / target) : null;
+      if (cents !== null && Math.abs(cents) < bestAbs) { bestAbs = Math.abs(cents); best = i; }
+      return { n: n, label: E.noteName(n).label, target: target, cents: cents };
+    });
+    const nStr = rows.length;
+    tb.innerHTML = rows.map((r, i) => {
+      // 弦序号按惯例从最高音那根算起:数组是低→高,所以第 i 项是第 (n−i) 弦
+      const no = nStr - i;
+      const near = i === best && bestAbs <= 150;
+      let chip = '<span class="sl-chip">—</span>', dev = '—';
+      if (near) {
+        dev = sgn(r.cents, 1);
+        chip = Math.abs(r.cents) <= 5 ? '<span class="sl-chip sl-chipok">准</span>'
+          : r.cents > 0 ? '<span class="sl-chip sl-chiphigh">偏高</span>'
+            : '<span class="sl-chip sl-chiplow">偏低</span>';
+      }
+      return '<tr class="' + (near ? 'sl-rowon' : '') + '"><td>' + no + ' 弦 · ' + r.label + '</td><td>' +
+        r.target.toFixed(2) + '</td><td>' + dev + '</td><td>' + chip + '</td></tr>';
+    }).join('') || '<tr><td colspan="4">（自由音高:不比对空弦）</td></tr>';
+    $('#sl-temp-note').textContent = E.TEMPERAMENTS[S.temp].note +
+      (S.temp === 'equal' ? '' : ' 当前主音:' + E.NOTE_NAMES[S.tonic] + '。');
+  }
+
+  function renderSpectrumPanel() {
+    if (!analysed) return;
+    const sp = analysed.sp, f0 = analysed.pitch.freq;
+    $('#sl-ro-f0').textContent = f0 > 0 ? f0.toFixed(2) + ' Hz' : '—';
+    $('#sl-ro-thd').textContent = analysed.thd && analysed.thd.harmonics.length > 1 ? analysed.thd.pct.toFixed(2) + ' %' : '—';
+    $('#sl-ro-bin').textContent = sp.binHz.toFixed(2) + ' Hz/bin';
+    $('#sl-ro-enbw').textContent = sp.enbw.toFixed(3) + ' bin';
+    const tb = $('#sl-tbl-peaks tbody');
+    tb.innerHTML = analysed.peaks.slice(0, 8).map((pk, i) => {
+      const nn = E.freqToNote(pk.freq, S.a4, S.temp, S.tonic);
+      const rel = f0 > 0 ? (pk.freq / f0) : 0;
+      const relTxt = f0 > 0 ? (Math.abs(rel - Math.round(rel)) < 0.03 && Math.round(rel) >= 1 ? '×' + Math.round(rel) : rel.toFixed(2) + '×') : '—';
+      return '<tr><td>' + (i + 1) + '</td><td>' + pk.freq.toFixed(2) + '</td><td>' + pk.db.toFixed(1) +
+        '</td><td>' + nn.label + '</td><td>' + sgn(nn.cents, 1) + '</td><td>' + relTxt + '</td></tr>';
+    }).join('') || '<tr><td colspan="6">未检出峰值</td></tr>';
+  }
+
+  function renderSpectroPanel() {
+    let bi = 0;
+    for (let i = 1; i < SG_ROWS; i++) if (sgLast[i] > sgLast[bi]) bi = i;
+    $('#sl-ro-sgpeak').textContent = sgLast[bi] > -139 ? fmtHz(sgRowFreq(bi)) : '—';
+    $('#sl-ro-sglevel').textContent = sgLast[bi] > -139 ? sgLast[bi].toFixed(1) + ' dBFS' : '—';
+    $('#sl-ro-sgdim').textContent = SG_ROWS + ' × ' + SG_COLS;
+  }
+
+  function renderFilterPanel() {
+    const secs = activeSections();
+    const bad = secs.filter((s) => !E.isStable(s));
+    const warn = $('#sl-fwarn');
+    if (bad.length) {
+      warn.textContent = '有 ' + bad.length + ' 段的极点落在单位圆外,该段不稳定,已跳过实时处理。请降低 Q 或调整频率。';
+      warn.hidden = false;
+    } else warn.hidden = true;
+    const ext = E.chainExtrema(secs, S.fs);
+    $('#sl-ro-nsec').textContent = secs.length + ' / ' + S.sections.length;
+    $('#sl-ro-fmax').textContent = secs.length ? sgn(ext.maxDb, 2) + ' dB @ ' + fmtHz(ext.maxF) : '0.00 dB';
+    $('#sl-ro-fmin').textContent = !secs.length ? '0.00 dB'
+      : (ext.minDb < -120 ? '< −120 dB @ ' + fmtHz(ext.minF) : sgn(ext.minDb, 2) + ' dB @ ' + fmtHz(ext.minF));
+    // 相对通带峰值下降 3 dB 的最低穿越频率
+    const f3 = secs.length ? E.chainCrossing(secs, S.fs, Math.max(ext.maxDb, 0), -3) : null;
+    $('#sl-ro-f3db').textContent = f3 ? fmtHz(f3) : '—';
+    const tb = $('#sl-tbl-coef tbody');
+    tb.innerHTML = S.sections.map((s, i) => {
+      if (!s.on) return '<tr><td>' + (i + 1) + '</td><td>旁路</td><td>1.000000</td><td>0.000000</td><td>0.000000</td><td>0.000000</td><td>0.000000</td></tr>';
+      const q = E.designBiquad(s.type, s.f0, s.Q, s.gain, S.fs);
+      return '<tr><td>' + (i + 1) + '</td><td>' + E.FILTER_TYPES[s.type] + ' ' + Math.round(s.f0) + ' Hz</td><td>' +
+        q.b0.toFixed(6) + '</td><td>' + q.b1.toFixed(6) + '</td><td>' + q.b2.toFixed(6) + '</td><td>' +
+        q.a1.toFixed(6) + '</td><td>' + q.a2.toFixed(6) + '</td></tr>';
+    }).join('');
+  }
+
+  function render() {
+    renderReadouts();
+    drawWave();
+    if (tab === 'tuner') { renderTuner(); drawGauge(); drawHist(); }
+    else if (tab === 'spectrum') { renderSpectrumPanel(); drawSpectrum(); }
+    else if (tab === 'spectro') { renderSpectroPanel(); drawSpectro(); }
+    else if (tab === 'filter') { renderFilterPanel(); drawFilter(); }
+    draws++;
+    document.body.dataset.draws = String(draws);
+  }
+
+  /* ══════ 主循环 ══════ */
+  function tick() {
+    try {
+      if (S.running) { analyse(); render(); }
+    } catch (err) {
+      // 单帧异常不应打死整个循环
+      console.error('分析帧出错', err);
+      S.running = false;
+      $('#sl-ro-state').textContent = '出错已停';
+    }
+    requestAnimationFrame(tick);
+  }
+
+  /* ══════ 麦克风 ══════ */
+  async function startMic() {
+    const st = $('#sl-mic-state');
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      st.textContent = '这个浏览器不支持 getUserMedia,请改用信号发生器。';
+      return;
+    }
+    try {
+      st.textContent = '正在请求授权…';
+      micStream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
+      });
+      const ctx = ensureAudioCtx();
+      const src = ctx.createMediaStreamSource(micStream);
+      micAnalyser = ctx.createAnalyser();
+      micAnalyser.fftSize = FRAME;
+      micAnalyser.smoothingTimeConstant = 0;
+      micBuf = new Float32Array(FRAME);
+      src.connect(micAnalyser);
+      S.fs = ctx.sampleRate;
+      st.textContent = '麦克风已就绪 · 采样率 ' + ctx.sampleRate + ' Hz(音频不会离开本机)';
+    } catch (err) {
+      st.textContent = '麦克风不可用:' + (err && err.name ? err.name : err) + ' —— 已留在信号发生器。';
+      setSource('gen');
+    }
+  }
+  function ensureAudioCtx() {
+    if (!audioCtx) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      audioCtx = new AC();
+    }
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    return audioCtx;
+  }
+  function togglePlay() {
+    const btn = $('#sl-play');
+    if (playNode) { stopPlay(); return; }
+    try {
+      const ctx = ensureAudioCtx();
+      const n = ctx.createScriptProcessor ? null : null;
+      playGain = ctx.createGain();
+      playGain.gain.value = 0.35;
+      const osc = ctx.createBufferSource();
+      const len = Math.round(ctx.sampleRate * 1.0);
+      const b = ctx.createBuffer(1, len, ctx.sampleRate);
+      const ch = b.getChannelData(0);
+      const src = E.generate({
+        fs: ctx.sampleRate, n: len, freq: S.freq, freq2: S.freq2, chord: S.chord,
+        amp: S.amp, type: S.wave, t0: 0, rand: E.rng(0x2468ace0), pinkState: { b0: 0, b1: 0, b2: 0 }
+      });
+      for (let i = 0; i < len; i++) ch[i] = src[i];
+      osc.buffer = b; osc.loop = true;
+      osc.connect(playGain); playGain.connect(ctx.destination);
+      osc.start();
+      playNode = osc;
+      btn.textContent = '停止';
+      btn.classList.add('sl-btn--ghost');
+    } catch (err) {
+      $('#sl-mic-state').textContent = '音频输出不可用:' + err;
+    }
+  }
+  function stopPlay() {
+    if (playNode) { try { playNode.stop(); } catch (e) { /* 已停 */ } playNode = null; }
+    const btn = $('#sl-play');
+    btn.textContent = '试听';
+    btn.classList.remove('sl-btn--ghost');
+  }
+
+  /* ══════ 状态同步 ══════ */
+  function setSource(src) {
+    S.source = src;
+    $('#sl-src-gen').classList.toggle('sl-seg--on', src === 'gen');
+    $('#sl-src-mic').classList.toggle('sl-seg--on', src === 'mic');
+    $('#sl-gen-box').hidden = src !== 'gen';
+    $('#sl-mic-box').hidden = src !== 'mic';
+    if (src === 'gen') { S.fs = 48000; }
+    filtState = [];
+    holdDb = null;
+    save();
+  }
+  function setTab(name) {
+    tab = name;
+    for (const k of ['tuner', 'spectrum', 'spectro', 'filter']) {
+      const on = k === name;
+      $('#sl-tab-' + k).classList.toggle('sl-tab--on', on);
+      $('#sl-tab-' + k).setAttribute('aria-selected', on ? 'true' : 'false');
+      $('#sl-panel-' + k).hidden = !on;
+    }
+    if (analysed) render();
+  }
+  function syncGenUI() {
+    $('#sl-freq2-box').hidden = S.wave !== 'twotone';
+    $('#sl-chord-box').hidden = S.wave !== 'chord';
+    const tonal = ['sine', 'square', 'saw', 'tri', 'twotone', 'chord'].indexOf(S.wave) >= 0;
+    $('#sl-freq').disabled = !tonal && S.wave !== 'sweep';
+    const nn = E.freqToNote(S.freq, S.a4, S.temp, S.tonic);
+    $('#sl-freq-note').textContent = tonal ? '· ' + nn.label + ' ' + sgn(nn.cents, 0) + '¢' : '';
+    $('#sl-amp-out').textContent = S.amp.toFixed(2);
+    $('#sl-noise-out').textContent = Math.round(S.noise * 200) + '%';
+    $('#sl-a4-out').textContent = S.a4.toFixed(1) + ' Hz';
+    $('#sl-sgrange-out').textContent = S.sgRange + ' dB';
+  }
+
+  function buildSections() {
+    const host = $('#sl-sections');
+    host.innerHTML = S.sections.map((s, i) => (
+      '<div class="sl-secrow" data-i="' + i + '">' +
+      '<label class="sl-check"><input type="checkbox" class="sl-sec-on" id="sl-sec-on-' + i + '"' + (s.on ? ' checked' : '') + ' aria-label="启用第 ' + (i + 1) + ' 段"></label>' +
+      '<div class="sl-field"><label class="sl-flabel" for="sl-sec-type-' + i + '">第 ' + (i + 1) + ' 段类型</label>' +
+      '<select class="sl-sec-type" id="sl-sec-type-' + i + '">' +
+      Object.keys(E.FILTER_TYPES).map((k) => '<option value="' + k + '"' + (k === s.type ? ' selected' : '') + '>' + E.FILTER_TYPES[k] + '</option>').join('') +
+      '</select></div>' +
+      '<div class="sl-field"><label class="sl-flabel" for="sl-sec-f0-' + i + '">频率 Hz</label>' +
+      '<input type="number" class="sl-sec-f0" id="sl-sec-f0-' + i + '" value="' + s.f0 + '" min="10" max="23000" step="1"></div>' +
+      '<div class="sl-field"><label class="sl-flabel" for="sl-sec-q-' + i + '">Q</label>' +
+      '<input type="number" class="sl-sec-q" id="sl-sec-q-' + i + '" value="' + s.Q + '" min="0.1" max="20" step="0.05"></div>' +
+      '<div class="sl-field"><label class="sl-flabel" for="sl-sec-g-' + i + '">增益 dB</label>' +
+      '<input type="number" class="sl-sec-g" id="sl-sec-g-' + i + '" value="' + s.gain + '" min="-24" max="24" step="0.5"></div>' +
+      '</div>'
+    )).join('');
+    host.querySelectorAll('.sl-secrow').forEach((row) => {
+      const i = +row.dataset.i;
+      row.querySelector('.sl-sec-on').addEventListener('change', (e) => { S.sections[i].on = e.target.checked; onFilterChange(); });
+      row.querySelector('.sl-sec-type').addEventListener('change', (e) => { S.sections[i].type = e.target.value; onFilterChange(); });
+      row.querySelector('.sl-sec-f0').addEventListener('input', (e) => { S.sections[i].f0 = E.clamp(parseFloat(e.target.value) || 1000, 10, 23000); onFilterChange(); });
+      row.querySelector('.sl-sec-q').addEventListener('input', (e) => { S.sections[i].Q = E.clamp(parseFloat(e.target.value) || 0.707, 0.1, 20); onFilterChange(); });
+      row.querySelector('.sl-sec-g').addEventListener('input', (e) => { S.sections[i].gain = E.clamp(parseFloat(e.target.value) || 0, -24, 24); onFilterChange(); });
+    });
+  }
+  function onFilterChange() {
+    filtState = []; holdDb = null;
+    $('#sl-fpreset').value = '';
+    if (analysed) render();
+    save();
+  }
+  const PRESETS = {
+    voice: [
+      { on: true, type: 'highpass', f0: 100, Q: 0.707, gain: 0 },
+      { on: true, type: 'peaking', f0: 300, Q: 1.2, gain: -3 },
+      { on: true, type: 'peaking', f0: 7000, Q: 3.5, gain: -6 },
+      { on: false, type: 'highshelf', f0: 6000, Q: 0.707, gain: 0 },
+      { on: false, type: 'lowpass', f0: 16000, Q: 0.707, gain: 0 }
+    ],
+    rumble: [
+      { on: true, type: 'highpass', f0: 80, Q: 0.707, gain: 0 },
+      { on: true, type: 'highpass', f0: 80, Q: 0.707, gain: 0 },
+      { on: false, type: 'peaking', f0: 3000, Q: 2, gain: 0 },
+      { on: false, type: 'highshelf', f0: 6000, Q: 0.707, gain: 0 },
+      { on: false, type: 'lowpass', f0: 16000, Q: 0.707, gain: 0 }
+    ],
+    harsh: [
+      { on: true, type: 'notch', f0: 3000, Q: 4, gain: 0 },
+      { on: true, type: 'peaking', f0: 2400, Q: 1.4, gain: -4 },
+      { on: false, type: 'peaking', f0: 3000, Q: 2, gain: 0 },
+      { on: false, type: 'highshelf', f0: 6000, Q: 0.707, gain: 0 },
+      { on: false, type: 'lowpass', f0: 16000, Q: 0.707, gain: 0 }
+    ],
+    phone: [
+      { on: true, type: 'highpass', f0: 300, Q: 0.9, gain: 0 },
+      { on: true, type: 'highpass', f0: 300, Q: 0.9, gain: 0 },
+      { on: true, type: 'lowpass', f0: 3400, Q: 0.9, gain: 0 },
+      { on: true, type: 'lowpass', f0: 3400, Q: 0.9, gain: 0 },
+      { on: false, type: 'peaking', f0: 1000, Q: 1, gain: 0 }
+    ],
+    loud: [
+      { on: true, type: 'lowshelf', f0: 120, Q: 0.707, gain: 6 },
+      { on: true, type: 'highshelf', f0: 8000, Q: 0.707, gain: 4 },
+      { on: false, type: 'peaking', f0: 3000, Q: 2, gain: 0 },
+      { on: false, type: 'highshelf', f0: 6000, Q: 0.707, gain: 0 },
+      { on: false, type: 'lowpass', f0: 16000, Q: 0.707, gain: 0 }
+    ]
+  };
+
+  /* ══════ 持久化 ══════ */
+  function snapshot() {
+    return {
+      source: S.source, wave: S.wave, freq: S.freq, freq2: S.freq2, chord: S.chord, amp: S.amp, noise: S.noise,
+      filterOn: S.filterOn, fftSize: S.fftSize, win: S.win, axis: S.axis, hold: S.hold, harm: S.harm,
+      a4: S.a4, temp: S.temp, tonic: S.tonic, inst: S.inst,
+      sgRange: S.sgRange, sgAxis: S.sgAxis, sgTop: S.sgTop,
+      sections: S.sections.map((s) => ({ on: s.on, type: s.type, f0: s.f0, Q: s.Q, gain: s.gain }))
+    };
+  }
+  function readStore() {
+    try { return JSON.parse(localStorage.getItem(LS_KEY) || '{}') || {}; } catch (e) { return {}; }
+  }
+  function writeStore(o) {
+    try { localStorage.setItem(LS_KEY, JSON.stringify(o)); } catch (e) { /* 隐私模式忽略 */ }
+  }
+  function save() {
+    const st = readStore();
+    st.current = snapshot();
+    writeStore(st);
+  }
+  function applySnapshot(o) {
+    if (!o) return;
+    for (const k of ['wave', 'chord', 'win', 'axis', 'temp', 'inst', 'sgAxis']) if (o[k] != null) S[k] = o[k];
+    for (const k of ['freq', 'freq2', 'amp', 'noise', 'fftSize', 'a4', 'tonic', 'sgRange', 'sgTop']) if (o[k] != null) S[k] = +o[k];
+    for (const k of ['filterOn', 'hold', 'harm']) if (o[k] != null) S[k] = !!o[k];
+    if (Array.isArray(o.sections) && o.sections.length === S.sections.length) {
+      S.sections = o.sections.map((s) => ({ on: !!s.on, type: s.type, f0: +s.f0, Q: +s.Q, gain: +s.gain }));
+    }
+    // 回填控件
+    $('#sl-wave').value = S.wave; $('#sl-freq').value = S.freq; $('#sl-freq2').value = S.freq2;
+    $('#sl-chord').value = S.chord; $('#sl-amp').value = S.amp; $('#sl-noise').value = S.noise;
+    $('#sl-filter-on').checked = S.filterOn; $('#sl-fft').value = String(S.fftSize); $('#sl-win').value = S.win;
+    $('#sl-axis').value = S.axis; $('#sl-hold').checked = S.hold; $('#sl-harm').checked = S.harm;
+    $('#sl-a4').value = S.a4; $('#sl-temp').value = S.temp; $('#sl-tonic').value = String(S.tonic);
+    $('#sl-inst').value = S.inst; $('#sl-sgrange').value = S.sgRange; $('#sl-sgaxis').value = S.sgAxis;
+    $('#sl-sgtop').value = String(S.sgTop);
+    buildSections(); syncGenUI(); filtState = []; holdDb = null;
+  }
+  function refreshSavedList() {
+    const st = readStore();
+    const names = Object.keys(st.presets || {}).sort();
+    $('#sl-saved').innerHTML = names.length
+      ? names.map((n) => '<option value="' + n.replace(/"/g, '&quot;') + '">' + n.replace(/</g, '&lt;') + '</option>').join('')
+      : '<option value="">（还没有配方）</option>';
+  }
+  function flash(msg) {
+    const el = $('#sl-save-msg');
+    el.textContent = msg; el.hidden = false;
+  }
+
+  /* ══════ 事件绑定 ══════ */
+  function bind() {
+    $('#sl-src-gen').addEventListener('click', () => setSource('gen'));
+    $('#sl-src-mic').addEventListener('click', () => setSource('mic'));
+    $('#sl-mic-start').addEventListener('click', startMic);
+    $('#sl-play').addEventListener('click', togglePlay);
+    $('#sl-freeze').addEventListener('click', () => {
+      S.running = !S.running;
+      $('#sl-freeze').textContent = S.running ? '冻结' : '继续';
+      renderReadouts();
+    });
+    $('#sl-filter-on').addEventListener('change', (e) => { S.filterOn = e.target.checked; filtState = []; holdDb = null; save(); });
+    $('#sl-wave').addEventListener('change', (e) => { S.wave = e.target.value; S.t0 = 0; holdDb = null; syncGenUI(); save(); });
+    $('#sl-freq').addEventListener('input', (e) => {
+      const v = parseFloat(e.target.value);
+      if (isFinite(v) && v >= 20 && v <= 20000) { S.freq = v; holdDb = null; syncGenUI(); save(); }
+    });
+    $('#sl-freq2').addEventListener('input', (e) => {
+      const v = parseFloat(e.target.value);
+      if (isFinite(v) && v >= 20 && v <= 20000) { S.freq2 = v; holdDb = null; save(); }
+    });
+    $('#sl-chord').addEventListener('change', (e) => { S.chord = e.target.value; holdDb = null; save(); });
+    $('#sl-amp').addEventListener('input', (e) => { S.amp = +e.target.value; syncGenUI(); save(); });
+    $('#sl-noise').addEventListener('input', (e) => { S.noise = +e.target.value; syncGenUI(); save(); });
+    $('#sl-fft').addEventListener('change', (e) => { S.fftSize = +e.target.value; holdDb = null; save(); });
+    $('#sl-win').addEventListener('change', (e) => { S.win = e.target.value; holdDb = null; save(); });
+    $('#sl-axis').addEventListener('change', (e) => { S.axis = e.target.value; save(); });
+    $('#sl-hold').addEventListener('change', (e) => { S.hold = e.target.checked; holdDb = null; save(); });
+    $('#sl-harm').addEventListener('change', (e) => { S.harm = e.target.checked; save(); });
+    $('#sl-a4').addEventListener('input', (e) => { S.a4 = +e.target.value; syncGenUI(); if (analysed) render(); save(); });
+    $('#sl-temp').addEventListener('change', (e) => { S.temp = e.target.value; syncGenUI(); if (analysed) render(); save(); });
+    $('#sl-tonic').addEventListener('change', (e) => { S.tonic = +e.target.value; if (analysed) render(); save(); });
+    $('#sl-inst').addEventListener('change', (e) => { S.inst = e.target.value; if (analysed) render(); save(); });
+    $('#sl-sgrange').addEventListener('input', (e) => { S.sgRange = +e.target.value; syncGenUI(); save(); });
+    $('#sl-sgaxis').addEventListener('change', (e) => { S.sgAxis = e.target.value; save(); });
+    $('#sl-sgtop').addEventListener('change', (e) => { S.sgTop = +e.target.value; save(); });
+    for (const k of ['tuner', 'spectrum', 'spectro', 'filter']) {
+      $('#sl-tab-' + k).addEventListener('click', () => setTab(k));
+    }
+    $('#sl-fpreset').addEventListener('change', (e) => {
+      const p = PRESETS[e.target.value];
+      if (!p) return;
+      S.sections = p.map((s) => ({ on: s.on, type: s.type, f0: s.f0, Q: s.Q, gain: s.gain }));
+      buildSections(); filtState = []; holdDb = null;
+      if (analysed) render();
+      save();
+    });
+    $('#sl-freset').addEventListener('click', () => {
+      S.sections.forEach((s) => { s.on = false; });
+      buildSections(); filtState = []; $('#sl-fpreset').value = '';
+      if (analysed) render();
+      save();
+    });
+    $('#sl-save').addEventListener('click', () => {
+      const name = ($('#sl-save-name').value || '').trim();
+      if (!name) { flash('请先给配方起个名字。'); return; }
+      const st = readStore();
+      st.presets = st.presets || {};
+      st.presets[name] = snapshot();
+      writeStore(st); refreshSavedList();
+      $('#sl-saved').value = name;
+      flash('已保存配方「' + name + '」。');
+    });
+    $('#sl-load').addEventListener('click', () => {
+      const name = $('#sl-saved').value;
+      const st = readStore();
+      if (!name || !st.presets || !st.presets[name]) { flash('没有可载入的配方。'); return; }
+      applySnapshot(st.presets[name]);
+      if (analysed) render();
+      save();
+      flash('已载入配方「' + name + '」。');
+    });
+    $('#sl-del').addEventListener('click', () => {
+      const name = $('#sl-saved').value;
+      const st = readStore();
+      if (!name || !st.presets || !st.presets[name]) { flash('没有可删除的配方。'); return; }
+      delete st.presets[name];
+      writeStore(st); refreshSavedList();
+      flash('已删除配方「' + name + '」。');
+    });
+    $('#sl-export').addEventListener('click', () => {
+      if (!analysed) return;
+      const sp = analysed.sp;
+      const lines = ['频率Hz,幅度dBFS,线性幅度'];
+      for (let k = 1; k < sp.db.length; k++) {
+        lines.push(sp.freqs[k].toFixed(3) + ',' + sp.db[k].toFixed(3) + ',' + sp.mag[k].toExponential(5));
+      }
+      const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'spectrum-' + Math.round(S.fs) + 'Hz-' + sp.N + '.csv';
+      a.click();
+      flash('已导出 ' + (sp.db.length - 1) + ' 行频谱数据。');
+    });
+    window.addEventListener('resize', () => { if (analysed) render(); });
+  }
+
+  /* ══════ 启动 ══════ */
+  function init() {
+    $('#sl-tonic').innerHTML = E.NOTE_NAMES.map((n, i) => '<option value="' + i + '">' + n + '</option>').join('');
+    $('#sl-inst').innerHTML = Object.keys(E.INSTRUMENTS).map((k) => '<option value="' + k + '">' + E.INSTRUMENTS[k].name + '</option>').join('');
+    buildSections();
+    bind();
+    refreshSavedList();
+    const st = readStore();
+    if (st.current) applySnapshot(st.current);
+    else { syncGenUI(); }
+    setSource(S.source === 'mic' ? 'gen' : 'gen');   // 刷新后不自动索要麦克风权限
+    setTab('tuner');
+    window.__sl = {
+      S: S, engine: E, get analysed() { return analysed; },
+      sgRowFreq: sgRowFreq, get sgLast() { return sgLast; },
+      activeSections: activeSections, snapshot: snapshot
+    };
+    requestAnimationFrame(tick);
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
+})();
+</script>
+</body>
+</html>
