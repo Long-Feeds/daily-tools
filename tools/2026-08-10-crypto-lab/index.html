@@ -1,0 +1,2398 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>密码学实验室 · Crypto Lab</title>
+<meta name="description" content="浏览器内的密码学工作台：手写 MD5 / SHA-1 / SHA-256 / SHA-512 / HMAC / PBKDF2 / AES，逐轮剖开算法内部，口令加密与古典密码自动破译，全部本地计算不上传。">
+<style>
+/* ── 全局守卫：作者 CSS 与 UA 的 [hidden] 同特异性，必须显式提权 ── */
+[hidden]{display:none!important}
+
+:root{
+  --cl-canvas:#fdfcfc;
+  --cl-ink:#201d1d;
+  --cl-ink-deep:#0f0000;
+  --cl-charcoal:#302c2c;
+  --cl-body:#424245;
+  --cl-mute:#646262;
+  --cl-stone:#6e6e73;
+  --cl-ash:#9a9898;
+  --cl-soft:#f8f7f7;
+  --cl-card:#f1eeee;
+  --cl-dark:#201d1d;
+  --cl-dark-2:#302c2c;
+  --cl-hair:rgba(15,0,0,0.12);
+  --cl-hair-strong:#646262;
+  --cl-accent:#007aff;
+  --cl-danger:#ff3b30;
+  --cl-warning:#ff9f0a;
+  --cl-success:#1f9d3c;
+  --cl-mono:"JetBrains Mono","IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New","PingFang SC","Microsoft YaHei",monospace;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0;
+  background:var(--cl-canvas);
+  color:var(--cl-ink);
+  font-family:var(--cl-mono);
+  font-size:15px;
+  line-height:1.5;
+  font-weight:400;
+}
+/* 整站单一等宽面：没有无衬线，没有斜体，没有装饰字 */
+h1,h2,h3,h4,p,li,td,th,button,input,select,textarea,label{font-family:var(--cl-mono)}
+a{color:var(--cl-ink);text-decoration:underline;text-underline-offset:3px}
+a:hover{color:var(--cl-accent)}
+:focus-visible{outline:2px solid var(--cl-ink);outline-offset:2px}
+
+.cl-wrap{max-width:1100px;margin:0 auto;padding:0 20px 72px}
+.cl-col{max-width:960px}
+
+/* ── 顶栏 ── */
+.cl-nav{
+  height:56px;display:flex;align-items:center;justify-content:space-between;gap:16px;
+  border-bottom:1px solid var(--cl-hair);position:sticky;top:0;background:var(--cl-canvas);z-index:20;
+}
+.cl-nav-mark{font-weight:700;letter-spacing:0}
+.cl-nav-meta{color:var(--cl-mute);font-size:13px}
+.cl-back{font-weight:500}
+
+/* ── 终端英雄卡：全系统唯一的深色面 ── */
+.cl-hero{background:var(--cl-dark);color:var(--cl-canvas);padding:28px 24px;margin-top:24px}
+.cl-mark{display:block;color:var(--cl-canvas);margin:0 0 18px;max-width:100%;height:auto}
+.cl-hero-title{font-size:15px;font-weight:700;margin:0 0 6px}
+.cl-hero-sub{color:var(--cl-ash);font-size:13px;margin:0;max-width:78ch}
+.cl-prompt{
+  background:var(--cl-dark-2);border-radius:4px;padding:8px 12px;margin-top:18px;
+  font-size:13px;overflow-x:auto;white-space:pre;
+}
+.cl-prompt .cl-p-dim{color:var(--cl-ash)}
+.cl-prompt .cl-p-out{color:#7fd0ff}
+.cl-keys{margin-top:12px;color:var(--cl-ash);font-size:12px}
+
+/* ── 分节 ── */
+.cl-sec{margin-top:44px}
+.cl-sec-label{font-size:15px;font-weight:700;margin:0 0 8px}
+.cl-rule{border:0;border-top:1px solid var(--cl-hair);margin:0 0 16px}
+.cl-note{color:var(--cl-body);font-size:13px;margin:8px 0 0;max-width:80ch}
+.cl-dim{color:var(--cl-mute)}
+.cl-tiny{font-size:12px}
+
+/* ── 标签条 ── */
+.cl-tabs{display:flex;flex-wrap:wrap;gap:0;border-bottom:1px solid var(--cl-hair-strong);margin-top:28px;position:relative;z-index:1}
+.cl-tab{
+  appearance:none;background:transparent;border:0;border-bottom:2px solid transparent;
+  color:var(--cl-mute);font-size:15px;font-weight:500;line-height:2;padding:8px 16px;cursor:pointer;
+  margin-bottom:-1px;border-radius:0;
+}
+.cl-tab:hover{color:var(--cl-charcoal)}
+.cl-tab.cl-on{color:var(--cl-ink);border-bottom-color:var(--cl-ash)}
+
+/* ── 控件 ── */
+label{display:block;font-size:12px;color:var(--cl-mute);margin-bottom:4px}
+input[type=text],input[type=number],input[type=password],select,textarea{
+  width:100%;background:var(--cl-soft);color:var(--cl-ink);border:1px solid var(--cl-hair);
+  border-radius:4px;padding:8px 12px;font-size:14px;line-height:1.5;
+}
+input[type=text],input[type=number],input[type=password],select{height:40px}
+input:focus,select:focus,textarea:focus{background:var(--cl-canvas);border-color:var(--cl-ink);outline:none}
+textarea{resize:vertical;min-height:88px}
+select{cursor:pointer}
+input[type=range]{width:100%;height:24px;accent-color:var(--cl-ink)}
+.cl-btn{
+  appearance:none;border:1px solid var(--cl-ink);background:var(--cl-ink);color:var(--cl-canvas);
+  border-radius:4px;padding:4px 20px;min-height:36px;min-width:64px;font-size:14px;font-weight:500;
+  line-height:2;cursor:pointer;
+}
+.cl-btn:hover{background:var(--cl-ink-deep);border-color:var(--cl-ink-deep)}
+.cl-btn.cl-ghost{background:var(--cl-canvas);color:var(--cl-ink);border-color:var(--cl-hair-strong)}
+.cl-btn.cl-ghost:hover{background:var(--cl-soft)}
+.cl-btn:disabled{background:var(--cl-card);color:var(--cl-ash);border-color:var(--cl-hair);cursor:not-allowed}
+.cl-row{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end}
+.cl-row>*{min-width:0}
+.cl-grid{display:grid;gap:12px}
+.cl-f1{flex:1 1 220px}
+.cl-f2{flex:2 1 320px}
+.cl-fix{flex:0 0 auto}
+fieldset{border:1px solid var(--cl-hair);border-radius:0;padding:16px;margin:0}
+legend{font-size:12px;color:var(--cl-mute);padding:0 6px}
+
+/* ── 数据面 ── */
+.cl-block{border:1px solid var(--cl-hair);padding:16px;margin-top:16px}
+.cl-kv{display:grid;grid-template-columns:auto 1fr;gap:4px 16px;font-size:13px}
+.cl-kv dt{color:var(--cl-mute)}
+.cl-kv dd{margin:0;word-break:break-all}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--cl-hair);vertical-align:top}
+th{color:var(--cl-mute);font-weight:500;white-space:nowrap}
+td.cl-num,th.cl-num{text-align:right;font-variant-numeric:tabular-nums}
+.cl-scroll{overflow-x:auto}
+.cl-mono-out{
+  background:var(--cl-card);border-radius:4px;padding:12px 16px;font-size:13px;
+  word-break:break-all;white-space:pre-wrap;min-height:20px;
+}
+.cl-tag{
+  display:inline-block;background:var(--cl-dark);color:var(--cl-canvas);border-radius:4px;
+  padding:2px 8px;font-size:12px;line-height:2;
+}
+.cl-tag.cl-tag-ok{background:var(--cl-success)}
+.cl-tag.cl-tag-bad{background:var(--cl-danger)}
+.cl-tag.cl-tag-warn{background:var(--cl-warning);color:var(--cl-ink)}
+.cl-tag.cl-tag-quiet{background:var(--cl-card);color:var(--cl-mute)}
+.cl-bullet{list-style:none;padding:0;margin:8px 0 0}
+.cl-bullet li{padding:4px 0;color:var(--cl-body);font-size:13px}
+.cl-bullet li::before{content:"[+] ";color:var(--cl-ink)}
+.cl-bullet li.cl-minus::before{content:"[-] "}
+.cl-drop{
+  border:1px dashed var(--cl-hair-strong);border-radius:4px;padding:16px;text-align:center;
+  color:var(--cl-mute);font-size:13px;cursor:pointer;background:var(--cl-soft);
+}
+.cl-drop.cl-over{border-color:var(--cl-ink);color:var(--cl-ink);background:var(--cl-canvas)}
+canvas{display:block;width:100%;background:var(--cl-canvas);border:1px solid var(--cl-hair)}
+
+/* 摘要行 */
+.cl-hashrow td:first-child{white-space:nowrap;color:var(--cl-mute)}
+.cl-digest{word-break:break-all}
+.cl-copy{
+  appearance:none;border:1px solid var(--cl-hair-strong);background:var(--cl-canvas);color:var(--cl-ink);
+  border-radius:4px;padding:2px 10px;font-size:12px;line-height:1.8;cursor:pointer;min-width:56px;min-height:26px;
+}
+.cl-copy:hover{background:var(--cl-soft)}
+
+/* 字节视图 */
+.cl-dump{font-size:12.5px;line-height:1.65;white-space:pre;overflow-x:auto}
+.cl-b-msg{color:var(--cl-ink)}
+.cl-b-one{background:var(--cl-ink);color:var(--cl-canvas)}
+.cl-b-pad{color:var(--cl-ash)}
+.cl-b-len{background:var(--cl-card);color:var(--cl-accent)}
+
+/* 词表 / 网格 */
+.cl-wgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:2px;font-size:12px}
+.cl-wcell{border:1px solid var(--cl-hair);padding:3px 6px;display:flex;justify-content:space-between;gap:6px}
+.cl-wcell.cl-seed{background:var(--cl-card)}
+.cl-wcell b{font-weight:500;color:var(--cl-mute)}
+.cl-sbox{display:grid;grid-template-columns:repeat(17,minmax(0,1fr));gap:1px;font-size:10.5px;min-width:560px}
+.cl-sbox span{padding:2px 0;text-align:center;border:1px solid transparent}
+.cl-sbox .cl-hdr{color:var(--cl-ash)}
+.cl-sbox .cl-cell{cursor:pointer;background:var(--cl-soft)}
+.cl-sbox .cl-cell:hover{background:var(--cl-card)}
+.cl-sbox .cl-cell.cl-pick{background:var(--cl-ink);color:var(--cl-canvas)}
+.cl-state{display:grid;grid-template-columns:repeat(4,1fr);gap:2px;font-size:12px;max-width:200px}
+.cl-state span{background:var(--cl-soft);border:1px solid var(--cl-hair);padding:5px 0;text-align:center}
+.cl-state span.cl-hot{background:var(--cl-ink);color:var(--cl-canvas)}
+.cl-states{display:flex;flex-wrap:wrap;gap:20px}
+.cl-states figure{margin:0}
+.cl-states figcaption{font-size:12px;color:var(--cl-mute);margin-bottom:6px}
+
+/* 片段库 */
+.cl-clips{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.cl-clip{
+  display:flex;align-items:center;gap:8px;border:1px solid var(--cl-hair);border-radius:4px;
+  padding:4px 8px;font-size:12px;background:var(--cl-soft);
+}
+.cl-clip button{appearance:none;border:1px solid var(--cl-hair);background:var(--cl-canvas);cursor:pointer;font-size:12px;color:var(--cl-mute);padding:2px 8px;min-height:24px;min-width:52px;border-radius:4px}
+.cl-clip button:hover{color:var(--cl-ink)}
+.cl-clip .cl-clip-load{color:var(--cl-ink);text-decoration:underline;text-underline-offset:3px}
+
+footer{margin-top:64px;border-top:1px solid var(--cl-hair);padding-top:24px;color:var(--cl-mute);font-size:13px}
+footer p{margin:6px 0}
+
+@media (max-width:720px){
+  .cl-hero{padding:20px 16px}
+  .cl-mark{width:200px}
+  .cl-wrap{padding:0 14px 56px}
+  .cl-tab{padding:8px 10px;font-size:14px}
+  .cl-sbox{font-size:9px;min-width:420px}
+}
+</style>
+</head>
+<body>
+<div class="cl-wrap">
+
+  <nav class="cl-nav">
+    <a class="cl-back" href="../../">← 返回工具集</a>
+    <span class="cl-nav-meta">全部计算在本机完成 · 不上传任何字节</span>
+  </nav>
+
+  <header class="cl-hero">
+    <svg class="cl-mark" viewBox="0 0 35 5" width="280" height="40" role="img" aria-label="crypto" shape-rendering="crispEdges" fill="currentColor"><rect x="0" y="0" width="1" height="1"/><rect x="1" y="0" width="1" height="1"/><rect x="2" y="0" width="1" height="1"/><rect x="3" y="0" width="1" height="1"/><rect x="4" y="0" width="1" height="1"/><rect x="0" y="1" width="1" height="1"/><rect x="0" y="2" width="1" height="1"/><rect x="0" y="3" width="1" height="1"/><rect x="0" y="4" width="1" height="1"/><rect x="1" y="4" width="1" height="1"/><rect x="2" y="4" width="1" height="1"/><rect x="3" y="4" width="1" height="1"/><rect x="4" y="4" width="1" height="1"/><rect x="6" y="0" width="1" height="1"/><rect x="7" y="0" width="1" height="1"/><rect x="8" y="0" width="1" height="1"/><rect x="9" y="0" width="1" height="1"/><rect x="6" y="1" width="1" height="1"/><rect x="9" y="1" width="1" height="1"/><rect x="6" y="2" width="1" height="1"/><rect x="7" y="2" width="1" height="1"/><rect x="8" y="2" width="1" height="1"/><rect x="9" y="2" width="1" height="1"/><rect x="6" y="3" width="1" height="1"/><rect x="8" y="3" width="1" height="1"/><rect x="6" y="4" width="1" height="1"/><rect x="9" y="4" width="1" height="1"/><rect x="12" y="0" width="1" height="1"/><rect x="16" y="0" width="1" height="1"/><rect x="12" y="1" width="1" height="1"/><rect x="16" y="1" width="1" height="1"/><rect x="13" y="2" width="1" height="1"/><rect x="14" y="2" width="1" height="1"/><rect x="15" y="2" width="1" height="1"/><rect x="14" y="3" width="1" height="1"/><rect x="14" y="4" width="1" height="1"/><rect x="18" y="0" width="1" height="1"/><rect x="19" y="0" width="1" height="1"/><rect x="20" y="0" width="1" height="1"/><rect x="21" y="0" width="1" height="1"/><rect x="18" y="1" width="1" height="1"/><rect x="21" y="1" width="1" height="1"/><rect x="18" y="2" width="1" height="1"/><rect x="19" y="2" width="1" height="1"/><rect x="20" y="2" width="1" height="1"/><rect x="21" y="2" width="1" height="1"/><rect x="18" y="3" width="1" height="1"/><rect x="18" y="4" width="1" height="1"/><rect x="24" y="0" width="1" height="1"/><rect x="25" y="0" width="1" height="1"/><rect x="26" y="0" width="1" height="1"/><rect x="27" y="0" width="1" height="1"/><rect x="28" y="0" width="1" height="1"/><rect x="26" y="1" width="1" height="1"/><rect x="26" y="2" width="1" height="1"/><rect x="26" y="3" width="1" height="1"/><rect x="26" y="4" width="1" height="1"/><rect x="31" y="0" width="1" height="1"/><rect x="32" y="0" width="1" height="1"/><rect x="33" y="0" width="1" height="1"/><rect x="30" y="1" width="1" height="1"/><rect x="34" y="1" width="1" height="1"/><rect x="30" y="2" width="1" height="1"/><rect x="34" y="2" width="1" height="1"/><rect x="30" y="3" width="1" height="1"/><rect x="34" y="3" width="1" height="1"/><rect x="31" y="4" width="1" height="1"/><rect x="32" y="4" width="1" height="1"/><rect x="33" y="4" width="1" height="1"/></svg>
+    <h1 class="cl-hero-title">密码学实验室 · crypto lab</h1>
+    <p class="cl-hero-sub">摘要、消息认证、密钥派生、分组加密、古典密码破译，全部由本页手写实现——不是调用浏览器的现成接口，而是把 S 盒、轮函数、密钥扩展一步步算出来给你看。</p>
+    <div class="cl-prompt"><span class="cl-p-dim">$</span> echo -n "abc" | sha256sum
+<span class="cl-p-out" id="cl-hero-digest">ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad</span>  <span class="cl-p-dim">-</span></div>
+    <div class="cl-keys">[+] 五个面板：摘要校验 · 消息认证 · SHA-256 剖面 · AES 与口令加密 · 古典密码</div>
+  </header>
+
+  <div class="cl-tabs" role="tablist" id="cl-tabs">
+    <button class="cl-tab cl-on" role="tab" id="cl-tab-digest" data-panel="digest" aria-selected="true">摘要与校验</button>
+    <button class="cl-tab" role="tab" id="cl-tab-mac" data-panel="mac" aria-selected="false">HMAC · 派生 · JWT</button>
+    <button class="cl-tab" role="tab" id="cl-tab-sha" data-panel="sha" aria-selected="false">SHA-256 剖面</button>
+    <button class="cl-tab" role="tab" id="cl-tab-aes" data-panel="aes" aria-selected="false">AES 与口令加密</button>
+    <button class="cl-tab" role="tab" id="cl-tab-classic" data-panel="classic" aria-selected="false">古典密码与破译</button>
+  </div>
+
+  <!-- ══════════ 面板 1：摘要与校验 ══════════ -->
+  <section class="cl-col" id="cl-panel-digest" role="tabpanel" aria-labelledby="cl-tab-digest">
+    <div class="cl-sec">
+      <h2 class="cl-sec-label">输入</h2>
+      <hr class="cl-rule">
+      <div class="cl-row">
+        <div class="cl-f1" style="max-width:220px">
+          <label for="cl-dg-kind">输入解释为</label>
+          <select id="cl-dg-kind">
+            <option value="text">文本（UTF-8）</option>
+            <option value="hex">十六进制</option>
+            <option value="base64">Base64</option>
+          </select>
+        </div>
+        <div class="cl-f1" style="max-width:220px">
+          <label for="cl-dg-fmt">摘要显示为</label>
+          <select id="cl-dg-fmt">
+            <option value="hex">小写十六进制</option>
+            <option value="HEX">大写十六进制</option>
+            <option value="b64">Base64</option>
+          </select>
+        </div>
+        <div class="cl-fix"><button class="cl-btn cl-ghost" id="cl-dg-clip">存为片段</button></div>
+      </div>
+      <div style="margin-top:12px">
+        <label for="cl-dg-input">待摘要内容</label>
+        <textarea id="cl-dg-input" rows="4" spellcheck="false">abc</textarea>
+      </div>
+      <div style="margin-top:12px">
+        <div class="cl-drop" id="cl-dg-drop" tabindex="0" role="button">[+] 把文件拖到这里，或点击选择——文件不会离开这台设备</div>
+        <input type="file" id="cl-dg-file" hidden>
+      </div>
+      <p class="cl-note" id="cl-dg-src">当前输入：3 字节文本</p>
+    </div>
+
+    <div class="cl-sec">
+      <h2 class="cl-sec-label">摘要</h2>
+      <hr class="cl-rule">
+      <div class="cl-scroll">
+        <table id="cl-dg-table">
+          <thead><tr><th>算法</th><th>输出</th><th class="cl-num">位数</th><th></th></tr></thead>
+          <tbody id="cl-dg-body"></tbody>
+        </table>
+      </div>
+      <p class="cl-note"><span class="cl-tag cl-tag-quiet" id="cl-dg-selfcheck">自检待运行</span> 本页实现与浏览器原生 WebCrypto 的逐字节比对结果。</p>
+    </div>
+
+    <div class="cl-sec">
+      <h2 class="cl-sec-label">校验和比对</h2>
+      <hr class="cl-rule">
+      <div class="cl-row">
+        <div class="cl-f2">
+          <label for="cl-dg-expect">粘贴对方给的校验和（自动按长度识别算法）</label>
+          <input type="text" id="cl-dg-expect" spellcheck="false" placeholder="例如 ba7816bf8f01cfea…">
+        </div>
+        <div class="cl-fix"><span class="cl-tag cl-tag-quiet" id="cl-dg-verdict">等待输入</span></div>
+      </div>
+      <p class="cl-note cl-dim">比对是常量时间的按位比较，大小写与空格自动忽略。</p>
+    </div>
+
+    <div class="cl-sec">
+      <h2 class="cl-sec-label">字节视图</h2>
+      <hr class="cl-rule">
+      <div class="cl-block cl-dump" id="cl-dg-dump"></div>
+      <p class="cl-note cl-dim" id="cl-dg-dumpnote"></p>
+    </div>
+  </section>
+
+  <!-- ══════════ 面板 2：HMAC / KDF / JWT ══════════ -->
+  <section class="cl-col" id="cl-panel-mac" role="tabpanel" aria-labelledby="cl-tab-mac" hidden>
+    <div class="cl-sec">
+      <h2 class="cl-sec-label">HMAC 消息认证码</h2>
+      <hr class="cl-rule">
+      <p class="cl-note">HMAC(K, m) = H((K⊕opad) ‖ H((K⊕ipad) ‖ m))。密钥超过分组长度先被摘要一次，不足则右侧补零——下面的中间量是真算出来的。</p>
+      <div class="cl-row" style="margin-top:12px">
+        <div class="cl-f1" style="max-width:190px">
+          <label for="cl-mac-alg">摘要函数</label>
+          <select id="cl-mac-alg">
+            <option value="sha256">SHA-256</option>
+            <option value="sha1">SHA-1</option>
+            <option value="sha512">SHA-512</option>
+            <option value="md5">MD5</option>
+          </select>
+        </div>
+        <div class="cl-f1" style="max-width:190px">
+          <label for="cl-mac-keykind">密钥解释为</label>
+          <select id="cl-mac-keykind">
+            <option value="text">文本（UTF-8）</option>
+            <option value="hex">十六进制</option>
+            <option value="base64">Base64</option>
+          </select>
+        </div>
+        <div class="cl-f2">
+          <label for="cl-mac-key">密钥</label>
+          <input type="text" id="cl-mac-key" spellcheck="false" value="secret-key">
+        </div>
+      </div>
+      <div style="margin-top:12px">
+        <label for="cl-mac-msg">消息</label>
+        <textarea id="cl-mac-msg" rows="3" spellcheck="false">POST /v1/orders {"id":42}</textarea>
+      </div>
+      <div class="cl-block">
+        <dl class="cl-kv">
+          <dt>HMAC</dt><dd id="cl-mac-out"></dd>
+          <dt>Base64</dt><dd id="cl-mac-b64"></dd>
+          <dt>密钥处理</dt><dd id="cl-mac-keynote"></dd>
+        </dl>
+      </div>
+    </div>
+
+    <div class="cl-sec">
+      <h2 class="cl-sec-label">PBKDF2 密钥派生</h2>
+      <hr class="cl-rule">
+      <p class="cl-note">把口令拉伸成密钥：迭代 c 次 HMAC 并逐次异或。迭代次数是唯一的成本旋钮——下面的耗时是本机实测。</p>
+      <div class="cl-row" style="margin-top:12px">
+        <div class="cl-f1"><label for="cl-kdf-pw">口令</label><input type="text" id="cl-kdf-pw" spellcheck="false" value="correct horse battery"></div>
+        <div class="cl-f1"><label for="cl-kdf-salt">盐（文本）</label><input type="text" id="cl-kdf-salt" spellcheck="false" value="salt"></div>
+      </div>
+      <div class="cl-row" style="margin-top:12px">
+        <div class="cl-f1" style="max-width:190px"><label for="cl-kdf-alg">底层 HMAC</label>
+          <select id="cl-kdf-alg"><option value="sha256">SHA-256</option><option value="sha1">SHA-1</option><option value="sha512">SHA-512</option></select>
+        </div>
+        <div class="cl-f1" style="max-width:190px"><label for="cl-kdf-iter">迭代次数</label><input type="number" id="cl-kdf-iter" min="1" max="1000000" step="1000" value="10000"></div>
+        <div class="cl-f1" style="max-width:190px"><label for="cl-kdf-len">派生长度（字节）</label><input type="number" id="cl-kdf-len" min="1" max="128" value="32"></div>
+        <div class="cl-fix"><button class="cl-btn" id="cl-kdf-run">派生</button></div>
+      </div>
+      <div class="cl-block">
+        <dl class="cl-kv">
+          <dt>派生密钥</dt><dd id="cl-kdf-out">—</dd>
+          <dt>耗时</dt><dd id="cl-kdf-time">—</dd>
+          <dt>口令攻击成本</dt><dd id="cl-kdf-cost">—</dd>
+        </dl>
+      </div>
+    </div>
+
+    <div class="cl-sec">
+      <h2 class="cl-sec-label">JWT 拆解与验签</h2>
+      <hr class="cl-rule">
+      <div>
+        <label for="cl-jwt-token">令牌</label>
+        <textarea id="cl-jwt-token" rows="3" spellcheck="false">eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMDA3IiwibmFtZSI6ImRhaWx5LXRvb2xzIiwiaWF0IjoxNzUwMDAwMDAwLCJleHAiOjE5MDAwMDAwMDB9.15C3z3-Ew7bIBRAFhGM4XWGCMDiqBDk_o3ToxCCVVP4</textarea>
+      </div>
+      <div class="cl-row" style="margin-top:12px">
+        <div class="cl-f2"><label for="cl-jwt-key">验签密钥（HS256 / HS512，文本）</label><input type="text" id="cl-jwt-key" spellcheck="false" value="daily-tools-secret"></div>
+        <div class="cl-fix"><span class="cl-tag cl-tag-quiet" id="cl-jwt-verdict">等待</span></div>
+      </div>
+      <div class="cl-block">
+        <dl class="cl-kv">
+          <dt>header</dt><dd id="cl-jwt-header">—</dd>
+          <dt>payload</dt><dd id="cl-jwt-payload">—</dd>
+          <dt>期望签名</dt><dd id="cl-jwt-expect">—</dd>
+        </dl>
+        <div class="cl-scroll" style="margin-top:12px">
+          <table><thead><tr><th>声明</th><th>原值</th><th>含义</th></tr></thead><tbody id="cl-jwt-claims"></tbody></table>
+        </div>
+      </div>
+      <p class="cl-note cl-dim">令牌只在本页解析；请不要把生产环境的密钥贴进任何在线工具（包括这个）。</p>
+    </div>
+  </section>
+
+  <!-- ══════════ 面板 3：SHA-256 剖面 ══════════ -->
+  <section class="cl-col" id="cl-panel-sha" role="tabpanel" aria-labelledby="cl-tab-sha" hidden>
+    <div class="cl-sec">
+      <h2 class="cl-sec-label">消息填充</h2>
+      <hr class="cl-rule">
+      <div class="cl-row">
+        <div class="cl-f2"><label for="cl-sha-input">输入（建议 55 字节以内以便单分组观察）</label><input type="text" id="cl-sha-input" spellcheck="false" value="abc"></div>
+      </div>
+      <div class="cl-block cl-dump" id="cl-sha-pad"></div>
+      <p class="cl-note">
+        图例：<span class="cl-b-msg">ff 消息</span> ·
+        <span class="cl-b-one">ff</span> 分隔位 0x80 ·
+        <span class="cl-b-pad">ff 零填充</span> ·
+        <span class="cl-b-len">ff</span> 64 位长度
+        <span id="cl-sha-padnote"></span>
+      </p>
+    </div>
+
+    <div class="cl-sec">
+      <h2 class="cl-sec-label">消息扩展 W[0…63]</h2>
+      <hr class="cl-rule">
+      <p class="cl-note">前 16 个字直接来自消息分组（灰底），其余 48 个由 W[i-16] + σ₀(W[i-15]) + W[i-7] + σ₁(W[i-2]) 递推出来。</p>
+      <div class="cl-wgrid" id="cl-sha-w" style="margin-top:12px"></div>
+    </div>
+
+    <div class="cl-sec">
+      <h2 class="cl-sec-label">压缩函数逐轮</h2>
+      <hr class="cl-rule">
+      <div class="cl-row">
+        <div class="cl-f2">
+          <label for="cl-sha-round">第 <span id="cl-sha-rlabel">0</span> 轮 / 共 64 轮</label>
+          <input type="range" id="cl-sha-round" min="0" max="63" value="0">
+        </div>
+        <div class="cl-fix"><button class="cl-btn cl-ghost" id="cl-sha-play">播放</button></div>
+      </div>
+      <div class="cl-block">
+        <dl class="cl-kv" id="cl-sha-detail"></dl>
+      </div>
+      <div class="cl-scroll cl-block" style="max-height:280px;overflow-y:auto;padding:0">
+        <table id="cl-sha-rounds"><thead><tr><th class="cl-num">t</th><th>a</th><th>b</th><th>c</th><th>d</th><th>e</th><th>f</th><th>g</th><th>h</th></tr></thead><tbody id="cl-sha-rbody"></tbody></table>
+      </div>
+    </div>
+
+    <div class="cl-sec">
+      <h2 class="cl-sec-label">雪崩效应</h2>
+      <hr class="cl-rule">
+      <p class="cl-note">改动输入里的任意一个二进制位，输出的 256 位里约有一半会翻转——这正是「摘要不可预测」的直观形态。下面左图每格是输出的一个位，黑色表示该位被翻转了。</p>
+      <div class="cl-row" style="margin-top:12px">
+        <div class="cl-f1" style="max-width:190px">
+          <label for="cl-av-alg">算法</label>
+          <select id="cl-av-alg"><option value="sha256">SHA-256</option><option value="sha1">SHA-1</option><option value="md5">MD5</option></select>
+        </div>
+        <div class="cl-f2">
+          <label for="cl-av-bit">翻转第 <span id="cl-av-bitlabel">0</span> 位</label>
+          <input type="range" id="cl-av-bit" min="0" max="23" value="0">
+        </div>
+      </div>
+      <div class="cl-grid" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr));margin-top:16px">
+        <figure style="margin:0">
+          <figcaption class="cl-tiny cl-dim" style="margin-bottom:6px">输出位差异图</figcaption>
+          <canvas id="cl-av-grid" width="620" height="330"></canvas>
+        </figure>
+        <figure style="margin:0">
+          <figcaption class="cl-tiny cl-dim" style="margin-bottom:6px">逐位翻转的汉明距离分布</figcaption>
+          <canvas id="cl-av-hist" width="620" height="330"></canvas>
+        </figure>
+      </div>
+      <div class="cl-block">
+        <dl class="cl-kv">
+          <dt>原摘要</dt><dd id="cl-av-h1">—</dd>
+          <dt>改 1 位后</dt><dd id="cl-av-h2">—</dd>
+          <dt>汉明距离</dt><dd id="cl-av-dist">—</dd>
+          <dt>全量统计</dt><dd id="cl-av-stat">—</dd>
+        </dl>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════ 面板 4：AES ══════════ -->
+  <section class="cl-col" id="cl-panel-aes" role="tabpanel" aria-labelledby="cl-tab-aes" hidden>
+    <div class="cl-sec">
+      <h2 class="cl-sec-label">S 盒不是查表抄来的</h2>
+      <hr class="cl-rule">
+      <p class="cl-note">本页的 AES S 盒在加载时现场推导：先在有限域 GF(2⁸)（模 x⁸+x⁴+x³+x+1）里求每个字节的乘法逆元，再做仿射变换 b ⊕ (b⋘1) ⊕ (b⋘2) ⊕ (b⋘3) ⊕ (b⋘4) ⊕ 0x63。点任意一格看它是怎么算出来的。</p>
+      <div class="cl-scroll" style="margin-top:12px"><div class="cl-sbox" id="cl-aes-sbox"></div></div>
+      <div class="cl-block">
+        <dl class="cl-kv" id="cl-aes-derive"></dl>
+      </div>
+    </div>
+
+    <div class="cl-sec">
+      <h2 class="cl-sec-label">分组加密逐步骤</h2>
+      <hr class="cl-rule">
+      <div class="cl-row">
+        <div class="cl-f1" style="max-width:190px">
+          <label for="cl-aes-size">密钥长度</label>
+          <select id="cl-aes-size"><option value="16">AES-128</option><option value="24">AES-192</option><option value="32">AES-256</option></select>
+        </div>
+        <div class="cl-f2"><label for="cl-aes-key">密钥（十六进制）</label><input type="text" id="cl-aes-key" spellcheck="false" value="000102030405060708090a0b0c0d0e0f"></div>
+        <div class="cl-fix"><button class="cl-btn cl-ghost" id="cl-aes-randkey">随机</button></div>
+      </div>
+      <div class="cl-row" style="margin-top:12px">
+        <div class="cl-f2"><label for="cl-aes-pt">明文分组（16 字节十六进制）</label><input type="text" id="cl-aes-pt" spellcheck="false" value="00112233445566778899aabbccddeeff"></div>
+        <div class="cl-fix"><button class="cl-btn cl-ghost" id="cl-aes-randpt">随机</button></div>
+      </div>
+      <div class="cl-block">
+        <dl class="cl-kv">
+          <dt>密文分组</dt><dd id="cl-aes-ct">—</dd>
+          <dt>解密回明文</dt><dd id="cl-aes-back">—</dd>
+          <dt>轮数</dt><dd id="cl-aes-nr">—</dd>
+        </dl>
+      </div>
+      <div class="cl-row" style="margin-top:16px">
+        <div class="cl-f2">
+          <label for="cl-aes-round">观察第 <span id="cl-aes-rlabel">1</span> 轮</label>
+          <input type="range" id="cl-aes-round" min="0" max="10" value="1">
+        </div>
+      </div>
+      <div class="cl-states" id="cl-aes-states" style="margin-top:12px"></div>
+      <p class="cl-note cl-dim">状态按列填充：字节 0…15 依次落在第 1 列自上而下、第 2 列……ShiftRows 把第 r 行左移 r 格，MixColumns 在 GF(2⁸) 里把每一列乘上固定矩阵。</p>
+    </div>
+
+    <div class="cl-sec">
+      <h2 class="cl-sec-label">密钥扩展</h2>
+      <hr class="cl-rule">
+      <div class="cl-wgrid" id="cl-aes-ks"></div>
+      <p class="cl-note cl-dim" id="cl-aes-ksnote"></p>
+    </div>
+
+    <div class="cl-sec">
+      <h2 class="cl-sec-label">口令加密一段文字</h2>
+      <hr class="cl-rule">
+      <p class="cl-note">PBKDF2-SHA256 把口令拉伸成 256 位密钥，再用 AES-256-CBC 加密，输出自带盐、初始向量与迭代次数。把结果贴给对方，对方用同一个口令就能解开。</p>
+      <div class="cl-row" style="margin-top:12px">
+        <div class="cl-f2"><label for="cl-seal-pw">口令</label><input type="text" id="cl-seal-pw" spellcheck="false" value="a strong shared passphrase"></div>
+        <div class="cl-f1" style="max-width:190px"><label for="cl-seal-iter">迭代次数</label><input type="number" id="cl-seal-iter" min="1000" max="1000000" step="1000" value="100000"></div>
+      </div>
+      <div style="margin-top:12px">
+        <label for="cl-seal-plain">明文</label>
+        <textarea id="cl-seal-plain" rows="3" spellcheck="false">会议纪要：周四 15:00，密码是 hunter2，别发群里。</textarea>
+      </div>
+      <div class="cl-row" style="margin-top:12px">
+        <div class="cl-fix"><button class="cl-btn" id="cl-seal-run">加密</button></div>
+        <div class="cl-fix"><button class="cl-btn cl-ghost" id="cl-open-run">解密下方密文</button></div>
+        <div class="cl-fix"><span class="cl-tag cl-tag-quiet" id="cl-seal-verdict">等待</span></div>
+      </div>
+      <div style="margin-top:12px">
+        <label for="cl-seal-blob">密文信封（Base64）</label>
+        <textarea id="cl-seal-blob" rows="3" spellcheck="false"></textarea>
+      </div>
+      <div class="cl-block">
+        <dl class="cl-kv">
+          <dt>解密结果</dt><dd id="cl-open-out">—</dd>
+          <dt>信封结构</dt><dd id="cl-seal-struct">魔数 CL1 ‖ 版本 ‖ 迭代次数(4B) ‖ 盐(16B) ‖ IV(16B) ‖ 密文</dd>
+        </dl>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════ 面板 5：古典密码 ══════════ -->
+  <section class="cl-col" id="cl-panel-classic" role="tabpanel" aria-labelledby="cl-tab-classic" hidden>
+    <div class="cl-sec">
+      <h2 class="cl-sec-label">加解密</h2>
+      <hr class="cl-rule">
+      <div class="cl-row">
+        <div class="cl-f1" style="max-width:220px">
+          <label for="cl-cc-mode">密码</label>
+          <select id="cl-cc-mode">
+            <option value="caesar">凯撒移位</option>
+            <option value="vigenere">维吉尼亚</option>
+            <option value="xor">重复密钥 XOR</option>
+          </select>
+        </div>
+        <div class="cl-f1" id="cl-cc-shiftwrap" style="max-width:220px">
+          <label for="cl-cc-shift">位移 <span id="cl-cc-shiftlabel">3</span></label>
+          <input type="range" id="cl-cc-shift" min="0" max="25" value="3">
+        </div>
+        <div class="cl-f2" id="cl-cc-keywrap" hidden>
+          <label for="cl-cc-key">密钥</label>
+          <input type="text" id="cl-cc-key" spellcheck="false" value="lemon">
+        </div>
+      </div>
+      <div style="margin-top:12px">
+        <label for="cl-cc-input">输入</label>
+        <textarea id="cl-cc-input" rows="4" spellcheck="false">the quick brown fox jumps over the lazy dog</textarea>
+      </div>
+      <div class="cl-row" style="margin-top:12px">
+        <div class="cl-fix"><button class="cl-btn" id="cl-cc-enc">加密</button></div>
+        <div class="cl-fix"><button class="cl-btn cl-ghost" id="cl-cc-dec">解密</button></div>
+        <div class="cl-fix"><button class="cl-btn cl-ghost" id="cl-cc-swap">结果送回输入</button></div>
+      </div>
+      <div style="margin-top:12px">
+        <label for="cl-cc-output">输出</label>
+        <div class="cl-mono-out" id="cl-cc-output"></div>
+      </div>
+    </div>
+
+    <div class="cl-sec">
+      <h2 class="cl-sec-label">自动破译</h2>
+      <hr class="cl-rule">
+      <p class="cl-note" id="cl-cc-cracknote">凯撒：对 26 种位移各算一次卡方统计量，与英文字母频率最贴合的那个就是答案。</p>
+      <div class="cl-row" style="margin-top:12px">
+        <div class="cl-fix"><button class="cl-btn" id="cl-cc-crack">破译上方输入</button></div>
+        <div class="cl-fix"><span class="cl-tag cl-tag-quiet" id="cl-cc-crackbadge">等待</span></div>
+      </div>
+      <div class="cl-block">
+        <dl class="cl-kv">
+          <dt>还原密钥</dt><dd id="cl-cc-key-out">—</dd>
+          <dt>还原明文</dt><dd id="cl-cc-plain">—</dd>
+        </dl>
+      </div>
+      <div class="cl-scroll cl-block" id="cl-cc-tablewrap" style="max-height:240px;overflow-y:auto;padding:0">
+        <table><thead id="cl-cc-thead"></thead><tbody id="cl-cc-tbody"></tbody></table>
+      </div>
+    </div>
+
+    <div class="cl-sec">
+      <h2 class="cl-sec-label">频率分析</h2>
+      <hr class="cl-rule">
+      <canvas id="cl-cc-freq" width="1000" height="330"></canvas>
+      <div class="cl-block">
+        <dl class="cl-kv">
+          <dt>重合指数 IC</dt><dd id="cl-cc-ic">—</dd>
+          <dt>读法</dt><dd class="cl-dim">英文明文约 0.067，随机文本约 0.038。IC 明显偏低说明用了多表代换（如维吉尼亚），此时逐位移破译无效。</dd>
+        </dl>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════ 片段库 ══════════ -->
+  <section class="cl-col cl-sec">
+    <h2 class="cl-sec-label">片段库</h2>
+    <hr class="cl-rule">
+    <p class="cl-note cl-dim">存在本机 localStorage，刷新后还在；从不外发。</p>
+    <div class="cl-clips" id="cl-clips"></div>
+  </section>
+
+  <footer class="cl-col">
+    <p>[+] 所有算法在本页用 JavaScript 手写实现：MD5 / SHA-1 / SHA-256 / SHA-512 / CRC32 / HMAC / PBKDF2 / AES-128·192·256 / CBC / CTR。</p>
+    <p>[+] 唯一用到浏览器原生接口的地方是取随机数（crypto.getRandomValues）与「自检」时的对照计算。</p>
+    <p>[-] 教学与自查用途。真要保护重要数据，请用经过审计的成熟实现，不要用任何单页小工具。</p>
+    <p class="cl-tiny cl-dim">密码学实验室 · 每日工具集</p>
+  </footer>
+</div>
+
+<script>
+/*__ENGINE_START__*/
+/* ============================================================
+   CRYPTO LAB ENGINE — 纯函数实现，无 DOM 依赖。
+   全部算法手写：MD5 / SHA-1 / SHA-256 / SHA-512 / CRC32 /
+   HMAC / PBKDF2 / AES(S 盒由 GF(2^8) 现场推导) / CBC / CTR /
+   古典密码与自动破译。
+   ============================================================ */
+const ENGINE = (function () {
+  'use strict';
+
+  const TE = new TextEncoder();
+  const TD = new TextDecoder();
+
+  /* ---------------- 字节与编码 ---------------- */
+  function utf8(s) { return TE.encode(s); }
+  function fromUtf8(b) { return TD.decode(b instanceof Uint8Array ? b : new Uint8Array(b)); }
+
+  const HEXD = '0123456789abcdef';
+  function toHex(b) {
+    let s = '';
+    for (let i = 0; i < b.length; i++) s += HEXD[b[i] >> 4] + HEXD[b[i] & 15];
+    return s;
+  }
+  function fromHex(h) {
+    const clean = String(h).replace(/[\s:_-]/g, '');
+    if (clean.length % 2) throw new Error('十六进制长度必须为偶数');
+    if (!/^[0-9a-fA-F]*$/.test(clean)) throw new Error('含非十六进制字符');
+    const out = new Uint8Array(clean.length / 2);
+    for (let i = 0; i < out.length; i++) out[i] = parseInt(clean.substr(i * 2, 2), 16);
+    return out;
+  }
+  const B64A = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+  function toB64(b, url) {
+    const A = url ? B64A.slice(0, 62) + '-_' : B64A;
+    let s = '';
+    for (let i = 0; i < b.length; i += 3) {
+      const n = (b[i] << 16) | ((i + 1 < b.length ? b[i + 1] : 0) << 8) | (i + 2 < b.length ? b[i + 2] : 0);
+      s += A[(n >> 18) & 63] + A[(n >> 12) & 63];
+      s += i + 1 < b.length ? A[(n >> 6) & 63] : (url ? '' : '=');
+      s += i + 2 < b.length ? A[n & 63] : (url ? '' : '=');
+    }
+    return s;
+  }
+  function fromB64(s) {
+    const clean = String(s).replace(/[\s]/g, '').replace(/-/g, '+').replace(/_/g, '/').replace(/=+$/, '');
+    if (!/^[A-Za-z0-9+/]*$/.test(clean)) throw new Error('含非 Base64 字符');
+    if (clean.length % 4 === 1) throw new Error('Base64 长度非法');
+    const out = new Uint8Array(Math.floor((clean.length * 3) / 4));
+    let p = 0, acc = 0, bits = 0;
+    for (const ch of clean) {
+      acc = (acc << 6) | B64A.indexOf(ch);
+      bits += 6;
+      if (bits >= 8) { bits -= 8; out[p++] = (acc >> bits) & 0xff; }
+    }
+    return out.subarray(0, p);
+  }
+  function concat(list) {
+    let n = 0;
+    for (const a of list) n += a.length;
+    const out = new Uint8Array(n);
+    let p = 0;
+    for (const a of list) { out.set(a, p); p += a.length; }
+    return out;
+  }
+  function eqBytes(a, b) {
+    if (a.length !== b.length) return false;
+    let d = 0;
+    for (let i = 0; i < a.length; i++) d |= a[i] ^ b[i];
+    return d === 0;
+  }
+  /** 按 kind 把输入串解析成字节 */
+  function parseInput(text, kind) {
+    if (kind === 'hex') return fromHex(text);
+    if (kind === 'base64') return fromB64(text);
+    return utf8(text);
+  }
+  function hexdump(bytes, perRow) {
+    const w = perRow || 16, rows = [];
+    for (let i = 0; i < bytes.length; i += w) {
+      const chunk = bytes.subarray(i, Math.min(i + w, bytes.length));
+      let ascii = '';
+      for (const c of chunk) ascii += c >= 0x20 && c < 0x7f ? String.fromCharCode(c) : '.';
+      rows.push({ off: i, bytes: Array.from(chunk), ascii });
+    }
+    return rows;
+  }
+
+  /* ---------------- CRC32 ---------------- */
+  const CRC_TABLE = (function () {
+    const t = new Uint32Array(256);
+    for (let n = 0; n < 256; n++) {
+      let c = n;
+      for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+      t[n] = c >>> 0;
+    }
+    return t;
+  })();
+  function crc32(bytes) {
+    let c = 0xffffffff;
+    for (let i = 0; i < bytes.length; i++) c = CRC_TABLE[(c ^ bytes[i]) & 0xff] ^ (c >>> 8);
+    return (c ^ 0xffffffff) >>> 0;
+  }
+
+  /* ---------------- MD5 ---------------- */
+  const MD5_K = (function () {
+    const k = new Int32Array(64);
+    for (let i = 0; i < 64; i++) k[i] = (Math.floor(Math.abs(Math.sin(i + 1)) * 4294967296)) | 0;
+    return k;
+  })();
+  const MD5_S = [
+    7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22,
+    5, 9, 14, 20, 5, 9, 14, 20, 5, 9, 14, 20, 5, 9, 14, 20,
+    4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23,
+    6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21];
+  function rotl32(x, n) { return ((x << n) | (x >>> (32 - n))) >>> 0; }
+  function padLE(bytes) {
+    const bitLen = bytes.length * 8;
+    const padded = new Uint8Array((((bytes.length + 8) >> 6) + 1) << 6);
+    padded.set(bytes);
+    padded[bytes.length] = 0x80;
+    const dv = new DataView(padded.buffer);
+    dv.setUint32(padded.length - 8, bitLen >>> 0, true);
+    dv.setUint32(padded.length - 4, Math.floor(bitLen / 4294967296) >>> 0, true);
+    return padded;
+  }
+  function md5(bytes) {
+    const m = padLE(bytes);
+    let a0 = 0x67452301, b0 = 0xefcdab89, c0 = 0x98badcfe, d0 = 0x10325476;
+    const dv = new DataView(m.buffer);
+    const M = new Uint32Array(16);
+    for (let off = 0; off < m.length; off += 64) {
+      for (let i = 0; i < 16; i++) M[i] = dv.getUint32(off + i * 4, true);
+      let A = a0, B = b0, C = c0, D = d0;
+      for (let i = 0; i < 64; i++) {
+        let F, g;
+        if (i < 16) { F = (B & C) | (~B & D); g = i; }
+        else if (i < 32) { F = (D & B) | (~D & C); g = (5 * i + 1) & 15; }
+        else if (i < 48) { F = B ^ C ^ D; g = (3 * i + 5) & 15; }
+        else { F = C ^ (B | ~D); g = (7 * i) & 15; }
+        F = (F + A + MD5_K[i] + M[g]) >>> 0;
+        A = D; D = C; C = B;
+        B = (B + rotl32(F, MD5_S[i])) >>> 0;
+      }
+      a0 = (a0 + A) >>> 0; b0 = (b0 + B) >>> 0; c0 = (c0 + C) >>> 0; d0 = (d0 + D) >>> 0;
+    }
+    const out = new Uint8Array(16);
+    const ov = new DataView(out.buffer);
+    ov.setUint32(0, a0, true); ov.setUint32(4, b0, true);
+    ov.setUint32(8, c0, true); ov.setUint32(12, d0, true);
+    return out;
+  }
+
+  /* ---------------- SHA-1 ---------------- */
+  function padBE(bytes, blockBytes, lenBytes) {
+    const bs = blockBytes, lb = lenBytes;
+    const total = Math.ceil((bytes.length + 1 + lb) / bs) * bs;
+    const p = new Uint8Array(total);
+    p.set(bytes);
+    p[bytes.length] = 0x80;
+    const bitLen = bytes.length * 8;
+    const dv = new DataView(p.buffer);
+    dv.setUint32(total - 4, bitLen >>> 0);
+    dv.setUint32(total - 8, Math.floor(bitLen / 4294967296) >>> 0);
+    return p;
+  }
+  function sha1(bytes) {
+    const m = padBE(bytes, 64, 8);
+    const dv = new DataView(m.buffer);
+    let h0 = 0x67452301, h1 = 0xefcdab89, h2 = 0x98badcfe, h3 = 0x10325476, h4 = 0xc3d2e1f0;
+    const w = new Uint32Array(80);
+    for (let off = 0; off < m.length; off += 64) {
+      for (let i = 0; i < 16; i++) w[i] = dv.getUint32(off + i * 4);
+      for (let i = 16; i < 80; i++) w[i] = rotl32(w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16], 1);
+      let a = h0, b = h1, c = h2, d = h3, e = h4;
+      for (let i = 0; i < 80; i++) {
+        let f, k;
+        if (i < 20) { f = (b & c) | (~b & d); k = 0x5a827999; }
+        else if (i < 40) { f = b ^ c ^ d; k = 0x6ed9eba1; }
+        else if (i < 60) { f = (b & c) | (b & d) | (c & d); k = 0x8f1bbcdc; }
+        else { f = b ^ c ^ d; k = 0xca62c1d6; }
+        const t = (rotl32(a, 5) + f + e + k + w[i]) >>> 0;
+        e = d; d = c; c = rotl32(b, 30); b = a; a = t;
+      }
+      h0 = (h0 + a) >>> 0; h1 = (h1 + b) >>> 0; h2 = (h2 + c) >>> 0;
+      h3 = (h3 + d) >>> 0; h4 = (h4 + e) >>> 0;
+    }
+    const out = new Uint8Array(20);
+    new DataView(out.buffer).setUint32(0, h0);
+    new DataView(out.buffer).setUint32(4, h1);
+    new DataView(out.buffer).setUint32(8, h2);
+    new DataView(out.buffer).setUint32(12, h3);
+    new DataView(out.buffer).setUint32(16, h4);
+    return out;
+  }
+
+  /* ---------------- SHA-256 ---------------- */
+  const K256 = new Uint32Array([
+    0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+    0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+    0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+    0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+    0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+    0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+    0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+    0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2]);
+  const IV256 = new Uint32Array([0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19]);
+  function rotr32(x, n) { return ((x >>> n) | (x << (32 - n))) >>> 0; }
+  /**
+   * SHA-256。trace 为真时同时返回内部状态（消息扩展 W 与 64 轮 a..h），
+   * 供「剖面」面板逐轮展示；只记录前 traceBlocks 个分组以免占内存。
+   */
+  function sha256(bytes, trace, traceBlocks) {
+    const m = padBE(bytes, 64, 8);
+    const dv = new DataView(m.buffer);
+    const H = Uint32Array.from(IV256);
+    const w = new Uint32Array(64);
+    const blocks = [];
+    const maxTrace = traceBlocks == null ? 2 : traceBlocks;
+    for (let off = 0, bi = 0; off < m.length; off += 64, bi++) {
+      for (let i = 0; i < 16; i++) w[i] = dv.getUint32(off + i * 4);
+      for (let i = 16; i < 64; i++) {
+        const s0 = rotr32(w[i - 15], 7) ^ rotr32(w[i - 15], 18) ^ (w[i - 15] >>> 3);
+        const s1 = rotr32(w[i - 2], 17) ^ rotr32(w[i - 2], 19) ^ (w[i - 2] >>> 10);
+        w[i] = (w[i - 16] + s0 + w[i - 7] + s1) >>> 0;
+      }
+      let a = H[0], b = H[1], c = H[2], d = H[3], e = H[4], f = H[5], g = H[6], h = H[7];
+      const rounds = trace && bi < maxTrace ? [] : null;
+      for (let i = 0; i < 64; i++) {
+        const S1 = rotr32(e, 6) ^ rotr32(e, 11) ^ rotr32(e, 25);
+        const ch = (e & f) ^ (~e & g);
+        const t1 = (h + S1 + ch + K256[i] + w[i]) >>> 0;
+        const S0 = rotr32(a, 2) ^ rotr32(a, 13) ^ rotr32(a, 22);
+        const maj = (a & b) ^ (a & c) ^ (b & c);
+        const t2 = (S0 + maj) >>> 0;
+        h = g; g = f; f = e; e = (d + t1) >>> 0;
+        d = c; c = b; b = a; a = (t1 + t2) >>> 0;
+        if (rounds) rounds.push({ t: i, a, b, c, d, e, f, g, h, T1: t1, T2: t2, S0, S1, ch, maj, k: K256[i], w: w[i] });
+      }
+      if (trace && bi < maxTrace) blocks.push({ index: bi, w: Array.from(w), rounds });
+      H[0] = (H[0] + a) >>> 0; H[1] = (H[1] + b) >>> 0; H[2] = (H[2] + c) >>> 0; H[3] = (H[3] + d) >>> 0;
+      H[4] = (H[4] + e) >>> 0; H[5] = (H[5] + f) >>> 0; H[6] = (H[6] + g) >>> 0; H[7] = (H[7] + h) >>> 0;
+    }
+    const out = new Uint8Array(32);
+    const ov = new DataView(out.buffer);
+    for (let i = 0; i < 8; i++) ov.setUint32(i * 4, H[i]);
+    if (trace) return { digest: out, padded: m, blocks: blocks, msgLen: bytes.length };
+    return out;
+  }
+
+  /* ---------------- SHA-512（32 位高低半字实现） ---------------- */
+  const K512_HEX = [
+    '428a2f98d728ae22', '7137449123ef65cd', 'b5c0fbcfec4d3b2f', 'e9b5dba58189dbbc',
+    '3956c25bf348b538', '59f111f1b605d019', '923f82a4af194f9b', 'ab1c5ed5da6d8118',
+    'd807aa98a3030242', '12835b0145706fbe', '243185be4ee4b28c', '550c7dc3d5ffb4e2',
+    '72be5d74f27b896f', '80deb1fe3b1696b1', '9bdc06a725c71235', 'c19bf174cf692694',
+    'e49b69c19ef14ad2', 'efbe4786384f25e3', '0fc19dc68b8cd5b5', '240ca1cc77ac9c65',
+    '2de92c6f592b0275', '4a7484aa6ea6e483', '5cb0a9dcbd41fbd4', '76f988da831153b5',
+    '983e5152ee66dfab', 'a831c66d2db43210', 'b00327c898fb213f', 'bf597fc7beef0ee4',
+    'c6e00bf33da88fc2', 'd5a79147930aa725', '06ca6351e003826f', '142929670a0e6e70',
+    '27b70a8546d22ffc', '2e1b21385c26c926', '4d2c6dfc5ac42aed', '53380d139d95b3df',
+    '650a73548baf63de', '766a0abb3c77b2a8', '81c2c92e47edaee6', '92722c851482353b',
+    'a2bfe8a14cf10364', 'a81a664bbc423001', 'c24b8b70d0f89791', 'c76c51a30654be30',
+    'd192e819d6ef5218', 'd69906245565a910', 'f40e35855771202a', '106aa07032bbd1b8',
+    '19a4c116b8d2d0c8', '1e376c085141ab53', '2748774cdf8eeb99', '34b0bcb5e19b48a8',
+    '391c0cb3c5c95a63', '4ed8aa4ae3418acb', '5b9cca4f7763e373', '682e6ff3d6b2b8a3',
+    '748f82ee5defb2fc', '78a5636f43172f60', '84c87814a1f0ab72', '8cc702081a6439ec',
+    '90befffa23631e28', 'a4506cebde82bde9', 'bef9a3f7b2c67915', 'c67178f2e372532b',
+    'ca273eceea26619c', 'd186b8c721c0c207', 'eada7dd6cde0eb1e', 'f57d4f7fee6ed178',
+    '06f067aa72176fba', '0a637dc5a2c898a6', '113f9804bef90dae', '1b710b35131c471b',
+    '28db77f523047d84', '32caab7b40c72493', '3c9ebe0a15c9bebc', '431d67c49c100d4c',
+    '4cc5d4becb3e42b6', '597f299cfc657e2a', '5fcb6fab3ad6faec', '6c44198c4a475817'];
+  const K512H = new Uint32Array(80), K512L = new Uint32Array(80);
+  K512_HEX.forEach(function (hx, i) {
+    K512H[i] = parseInt(hx.slice(0, 8), 16) >>> 0;
+    K512L[i] = parseInt(hx.slice(8), 16) >>> 0;
+  });
+  const IV512_HEX = ['6a09e667f3bcc908', 'bb67ae8584caa73b', '3c6ef372fe94f82b', 'a54ff53a5f1d36f1',
+    '510e527fade682d1', '9b05688c2b3e6c1f', '1f83d9abfb41bd6b', '5be0cd19137e2179'];
+  function sha512(bytes) {
+    const m = padBE(bytes, 128, 16);
+    const dv = new DataView(m.buffer);
+    const hh = new Uint32Array(8), hl = new Uint32Array(8);
+    IV512_HEX.forEach(function (hx, i) { hh[i] = parseInt(hx.slice(0, 8), 16) >>> 0; hl[i] = parseInt(hx.slice(8), 16) >>> 0; });
+    const wh = new Uint32Array(80), wl = new Uint32Array(80);
+    // 64 位辅助：全部以 (hi, lo) 两个 uint32 表示
+    let rh = 0, rl = 0;
+    function rotr(h, l, n) {
+      if (n === 32) { rh = l; rl = h; return; }
+      if (n < 32) { rh = ((h >>> n) | (l << (32 - n))) >>> 0; rl = ((l >>> n) | (h << (32 - n))) >>> 0; }
+      else { const k = n - 32; rh = ((l >>> k) | (h << (32 - k))) >>> 0; rl = ((h >>> k) | (l << (32 - k))) >>> 0; }
+    }
+    function shr(h, l, n) { rh = h >>> n; rl = ((l >>> n) | (h << (32 - n))) >>> 0; }
+    for (let off = 0; off < m.length; off += 128) {
+      for (let i = 0; i < 16; i++) { wh[i] = dv.getUint32(off + i * 8); wl[i] = dv.getUint32(off + i * 8 + 4); }
+      for (let i = 16; i < 80; i++) {
+        rotr(wh[i - 15], wl[i - 15], 1); const a1h = rh, a1l = rl;
+        rotr(wh[i - 15], wl[i - 15], 8); const a2h = rh, a2l = rl;
+        shr(wh[i - 15], wl[i - 15], 7); const a3h = rh, a3l = rl;
+        const s0h = (a1h ^ a2h ^ a3h) >>> 0, s0l = (a1l ^ a2l ^ a3l) >>> 0;
+        rotr(wh[i - 2], wl[i - 2], 19); const b1h = rh, b1l = rl;
+        rotr(wh[i - 2], wl[i - 2], 61); const b2h = rh, b2l = rl;
+        shr(wh[i - 2], wl[i - 2], 6); const b3h = rh, b3l = rl;
+        const s1h = (b1h ^ b2h ^ b3h) >>> 0, s1l = (b1l ^ b2l ^ b3l) >>> 0;
+        let lo = (wl[i - 16] + s0l) >>> 0, carry = (wl[i - 16] + s0l) > 0xffffffff ? 1 : 0;
+        let hi = (wh[i - 16] + s0h + carry) >>> 0;
+        const lo2 = (lo + wl[i - 7]) >>> 0; carry = (lo + wl[i - 7]) > 0xffffffff ? 1 : 0;
+        hi = (hi + wh[i - 7] + carry) >>> 0;
+        const lo3 = (lo2 + s1l) >>> 0; carry = (lo2 + s1l) > 0xffffffff ? 1 : 0;
+        hi = (hi + s1h + carry) >>> 0;
+        wh[i] = hi; wl[i] = lo3;
+      }
+      let ah = hh[0], al = hl[0], bh = hh[1], bl = hl[1], ch = hh[2], cl = hl[2], dh = hh[3], dl = hl[3];
+      let eh = hh[4], el = hl[4], fh = hh[5], fl = hl[5], gh = hh[6], gl = hl[6], hhx = hh[7], hlx = hl[7];
+      for (let i = 0; i < 80; i++) {
+        rotr(eh, el, 14); const e1h = rh, e1l = rl;
+        rotr(eh, el, 18); const e2h = rh, e2l = rl;
+        rotr(eh, el, 41); const e3h = rh, e3l = rl;
+        const S1h = (e1h ^ e2h ^ e3h) >>> 0, S1l = (e1l ^ e2l ^ e3l) >>> 0;
+        const chh = ((eh & fh) ^ (~eh & gh)) >>> 0, chl = ((el & fl) ^ (~el & gl)) >>> 0;
+        rotr(ah, al, 28); const a1h = rh, a1l = rl;
+        rotr(ah, al, 34); const a2h = rh, a2l = rl;
+        rotr(ah, al, 39); const a3h = rh, a3l = rl;
+        const S0h = (a1h ^ a2h ^ a3h) >>> 0, S0l = (a1l ^ a2l ^ a3l) >>> 0;
+        const mjh = ((ah & bh) ^ (ah & ch) ^ (bh & ch)) >>> 0, mjl = ((al & bl) ^ (al & cl) ^ (bl & cl)) >>> 0;
+        // T1 = h + S1 + ch + K + W
+        let lo = (hlx + S1l) >>> 0, c1 = (hlx + S1l) > 0xffffffff ? 1 : 0;
+        let hi = (hhx + S1h + c1) >>> 0;
+        let lo2 = (lo + chl) >>> 0; c1 = (lo + chl) > 0xffffffff ? 1 : 0; hi = (hi + chh + c1) >>> 0;
+        let lo3 = (lo2 + K512L[i]) >>> 0; c1 = (lo2 + K512L[i]) > 0xffffffff ? 1 : 0; hi = (hi + K512H[i] + c1) >>> 0;
+        let lo4 = (lo3 + wl[i]) >>> 0; c1 = (lo3 + wl[i]) > 0xffffffff ? 1 : 0; hi = (hi + wh[i] + c1) >>> 0;
+        const t1h = hi, t1l = lo4;
+        // T2 = S0 + maj
+        let lo5 = (S0l + mjl) >>> 0; c1 = (S0l + mjl) > 0xffffffff ? 1 : 0;
+        const t2h = (S0h + mjh + c1) >>> 0, t2l = lo5;
+        hhx = gh; hlx = gl; gh = fh; gl = fl; fh = eh; fl = el;
+        let lo6 = (dl + t1l) >>> 0; c1 = (dl + t1l) > 0xffffffff ? 1 : 0;
+        eh = (dh + t1h + c1) >>> 0; el = lo6;
+        dh = ch; dl = cl; ch = bh; cl = bl; bh = ah; bl = al;
+        let lo7 = (t1l + t2l) >>> 0; c1 = (t1l + t2l) > 0xffffffff ? 1 : 0;
+        ah = (t1h + t2h + c1) >>> 0; al = lo7;
+      }
+      const av = [[ah, al], [bh, bl], [ch, cl], [dh, dl], [eh, el], [fh, fl], [gh, gl], [hhx, hlx]];
+      for (let i = 0; i < 8; i++) {
+        const lo = (hl[i] + av[i][1]) >>> 0;
+        const c1 = (hl[i] + av[i][1]) > 0xffffffff ? 1 : 0;
+        hh[i] = (hh[i] + av[i][0] + c1) >>> 0;
+        hl[i] = lo;
+      }
+    }
+    const out = new Uint8Array(64);
+    const ov = new DataView(out.buffer);
+    for (let i = 0; i < 8; i++) { ov.setUint32(i * 8, hh[i]); ov.setUint32(i * 8 + 4, hl[i]); }
+    return out;
+  }
+
+  /* ---------------- 统一哈希入口 ---------------- */
+  const HASHES = {
+    md5: { fn: md5, block: 64, out: 16, label: 'MD5' },
+    sha1: { fn: sha1, block: 64, out: 20, label: 'SHA-1' },
+    sha256: { fn: function (b) { return sha256(b); }, block: 64, out: 32, label: 'SHA-256' },
+    sha512: { fn: sha512, block: 128, out: 64, label: 'SHA-512' }
+  };
+  function hash(alg, bytes) {
+    const h = HASHES[alg];
+    if (!h) throw new Error('未知摘要算法: ' + alg);
+    return h.fn(bytes);
+  }
+
+  /* ---------------- HMAC (RFC 2104) ---------------- */
+  function hmac(alg, keyBytes, msgBytes) {
+    const spec = HASHES[alg];
+    if (!spec) throw new Error('未知摘要算法: ' + alg);
+    const B = spec.block;
+    let key = keyBytes;
+    if (key.length > B) key = spec.fn(key);
+    const k0 = new Uint8Array(B);
+    k0.set(key);
+    const ipad = new Uint8Array(B), opad = new Uint8Array(B);
+    for (let i = 0; i < B; i++) { ipad[i] = k0[i] ^ 0x36; opad[i] = k0[i] ^ 0x5c; }
+    const inner = spec.fn(concat([ipad, msgBytes]));
+    return spec.fn(concat([opad, inner]));
+  }
+
+  /* ---------------- PBKDF2 (RFC 2898) ---------------- */
+  function pbkdf2(alg, password, salt, iterations, dkLen) {
+    if (!(iterations >= 1)) throw new Error('迭代次数必须 ≥ 1');
+    if (!(dkLen >= 1)) throw new Error('派生长度必须 ≥ 1');
+    const hLen = HASHES[alg].out;
+    const blocks = Math.ceil(dkLen / hLen);
+    const out = new Uint8Array(blocks * hLen);
+    const idx = new Uint8Array(4);
+    for (let i = 1; i <= blocks; i++) {
+      idx[0] = (i >>> 24) & 0xff; idx[1] = (i >>> 16) & 0xff; idx[2] = (i >>> 8) & 0xff; idx[3] = i & 0xff;
+      let u = hmac(alg, password, concat([salt, idx]));
+      const t = Uint8Array.from(u);
+      for (let j = 1; j < iterations; j++) {
+        u = hmac(alg, password, u);
+        for (let k = 0; k < t.length; k++) t[k] ^= u[k];
+      }
+      out.set(t, (i - 1) * hLen);
+    }
+    return out.subarray(0, dkLen);
+  }
+
+  /* ---------------- JWT ---------------- */
+  function jwtInspect(token) {
+    const parts = String(token).trim().split('.');
+    if (parts.length !== 3) throw new Error('JWT 应为 header.payload.signature 三段');
+    let header, payload;
+    try { header = JSON.parse(fromUtf8(fromB64(parts[0]))); } catch (e) { throw new Error('header 不是合法 JSON'); }
+    try { payload = JSON.parse(fromUtf8(fromB64(parts[1]))); } catch (e) { throw new Error('payload 不是合法 JSON'); }
+    return { header: header, payload: payload, signature: parts[2], signingInput: parts[0] + '.' + parts[1] };
+  }
+  const JWT_ALG = { HS256: 'sha256', HS512: 'sha512', HS1: 'sha1' };
+  function jwtVerify(token, keyBytes) {
+    const info = jwtInspect(token);
+    const alg = JWT_ALG[info.header.alg];
+    if (!alg) return { ok: false, reason: '本工具只能校验 HS256 / HS512，当前 alg = ' + (info.header.alg || '(缺失)'), info: info };
+    const mac = hmac(alg, keyBytes, utf8(info.signingInput));
+    const expect = toB64(mac, true);
+    return { ok: expect === info.signature.replace(/=+$/, ''), expect: expect, got: info.signature, info: info };
+  }
+
+  /* ---------------- AES：S 盒由 GF(2^8) 现场推导 ---------------- */
+  function xtime(a) { return ((a << 1) ^ (a & 0x80 ? 0x1b : 0)) & 0xff; }
+  function gmul(a, b) {
+    let r = 0;
+    while (b) { if (b & 1) r ^= a; a = xtime(a); b >>= 1; }
+    return r & 0xff;
+  }
+  const GF_INV = (function () {
+    const inv = new Uint8Array(256);
+    for (let a = 1; a < 256; a++) {
+      for (let b = 1; b < 256; b++) if (gmul(a, b) === 1) { inv[a] = b; break; }
+    }
+    return inv;
+  })();
+  function rotl8(x, n) { return ((x << n) | (x >>> (8 - n))) & 0xff; }
+  const SBOX = (function () {
+    const s = new Uint8Array(256);
+    for (let a = 0; a < 256; a++) {
+      const b = GF_INV[a];
+      s[a] = (b ^ rotl8(b, 1) ^ rotl8(b, 2) ^ rotl8(b, 3) ^ rotl8(b, 4) ^ 0x63) & 0xff;
+    }
+    return s;
+  })();
+  const INV_SBOX = (function () {
+    const s = new Uint8Array(256);
+    for (let a = 0; a < 256; a++) s[SBOX[a]] = a;
+    return s;
+  })();
+  /** 单字节 S 盒推导过程，供 UI 展示 */
+  function sboxDerive(a) {
+    const inv = GF_INV[a];
+    return { input: a, inverse: inv, affine: SBOX[a], terms: [inv, rotl8(inv, 1), rotl8(inv, 2), rotl8(inv, 3), rotl8(inv, 4), 0x63] };
+  }
+  const RCON = [0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36, 0x6c, 0xd8, 0xab, 0x4d];
+  function aesExpandKey(key) {
+    const Nk = key.length / 4;
+    if (![4, 6, 8].includes(Nk)) throw new Error('AES 密钥必须为 16 / 24 / 32 字节，当前 ' + key.length);
+    const Nr = Nk + 6;
+    const total = 4 * (Nr + 1);
+    const w = [];
+    for (let i = 0; i < Nk; i++) w.push([key[4 * i], key[4 * i + 1], key[4 * i + 2], key[4 * i + 3]]);
+    for (let i = Nk; i < total; i++) {
+      let t = w[i - 1].slice();
+      if (i % Nk === 0) {
+        t = [t[1], t[2], t[3], t[0]];
+        t = t.map(function (b) { return SBOX[b]; });
+        t[0] ^= RCON[i / Nk - 1];
+      } else if (Nk > 6 && i % Nk === 4) {
+        t = t.map(function (b) { return SBOX[b]; });
+      }
+      w.push(w[i - Nk].map(function (b, j) { return b ^ t[j]; }));
+    }
+    return { w: w, Nr: Nr, Nk: Nk };
+  }
+  function addRoundKey(state, w, round) {
+    for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++) state[r][c] ^= w[round * 4 + c][r];
+  }
+  function subBytes(state, box) { for (let r = 0; r < 4; r++) for (let c = 0; c < 4; c++) state[r][c] = box[state[r][c]]; }
+  function shiftRows(state) {
+    for (let r = 1; r < 4; r++) {
+      const row = state[r].slice();
+      for (let c = 0; c < 4; c++) state[r][c] = row[(c + r) % 4];
+    }
+  }
+  function invShiftRows(state) {
+    for (let r = 1; r < 4; r++) {
+      const row = state[r].slice();
+      for (let c = 0; c < 4; c++) state[r][(c + r) % 4] = row[c];
+    }
+  }
+  function mixColumns(state) {
+    for (let c = 0; c < 4; c++) {
+      const a = [state[0][c], state[1][c], state[2][c], state[3][c]];
+      state[0][c] = gmul(a[0], 2) ^ gmul(a[1], 3) ^ a[2] ^ a[3];
+      state[1][c] = a[0] ^ gmul(a[1], 2) ^ gmul(a[2], 3) ^ a[3];
+      state[2][c] = a[0] ^ a[1] ^ gmul(a[2], 2) ^ gmul(a[3], 3);
+      state[3][c] = gmul(a[0], 3) ^ a[1] ^ a[2] ^ gmul(a[3], 2);
+    }
+  }
+  function invMixColumns(state) {
+    for (let c = 0; c < 4; c++) {
+      const a = [state[0][c], state[1][c], state[2][c], state[3][c]];
+      state[0][c] = gmul(a[0], 14) ^ gmul(a[1], 11) ^ gmul(a[2], 13) ^ gmul(a[3], 9);
+      state[1][c] = gmul(a[0], 9) ^ gmul(a[1], 14) ^ gmul(a[2], 11) ^ gmul(a[3], 13);
+      state[2][c] = gmul(a[0], 13) ^ gmul(a[1], 9) ^ gmul(a[2], 14) ^ gmul(a[3], 11);
+      state[3][c] = gmul(a[0], 11) ^ gmul(a[1], 13) ^ gmul(a[2], 9) ^ gmul(a[3], 14);
+    }
+  }
+  function bytesToState(b, off) {
+    const s = [[], [], [], []];
+    for (let i = 0; i < 16; i++) s[i % 4][(i / 4) | 0] = b[(off || 0) + i];
+    return s;
+  }
+  function stateToBytes(s) {
+    const b = new Uint8Array(16);
+    for (let i = 0; i < 16; i++) b[i] = s[i % 4][(i / 4) | 0];
+    return b;
+  }
+  function copyState(s) { return s.map(function (r) { return r.slice(); }); }
+  /** 加密一个分组；trace 为真时返回逐步骤 state 快照 */
+  function aesEncryptBlock(block, ks, trace) {
+    const s = bytesToState(block, 0);
+    const steps = trace ? [{ round: 0, name: '输入分组', state: copyState(s) }] : null;
+    addRoundKey(s, ks.w, 0);
+    if (steps) steps.push({ round: 0, name: 'AddRoundKey', state: copyState(s) });
+    for (let round = 1; round <= ks.Nr; round++) {
+      subBytes(s, SBOX);
+      if (steps) steps.push({ round: round, name: 'SubBytes', state: copyState(s) });
+      shiftRows(s);
+      if (steps) steps.push({ round: round, name: 'ShiftRows', state: copyState(s) });
+      if (round !== ks.Nr) {
+        mixColumns(s);
+        if (steps) steps.push({ round: round, name: 'MixColumns', state: copyState(s) });
+      }
+      addRoundKey(s, ks.w, round);
+      if (steps) steps.push({ round: round, name: 'AddRoundKey', state: copyState(s) });
+    }
+    const out = stateToBytes(s);
+    return trace ? { out: out, steps: steps } : out;
+  }
+  function aesDecryptBlock(block, ks) {
+    const s = bytesToState(block, 0);
+    addRoundKey(s, ks.w, ks.Nr);
+    for (let round = ks.Nr - 1; round >= 0; round--) {
+      invShiftRows(s);
+      subBytes(s, INV_SBOX);
+      addRoundKey(s, ks.w, round);
+      if (round > 0) invMixColumns(s);
+    }
+    return stateToBytes(s);
+  }
+
+  /* ---------------- 分组模式 ---------------- */
+  function pkcs7Pad(bytes) {
+    const pad = 16 - (bytes.length % 16);
+    const out = new Uint8Array(bytes.length + pad);
+    out.set(bytes);
+    out.fill(pad, bytes.length);
+    return out;
+  }
+  function pkcs7Unpad(bytes) {
+    if (bytes.length === 0 || bytes.length % 16) throw new Error('密文长度不是 16 的整数倍');
+    const pad = bytes[bytes.length - 1];
+    if (pad < 1 || pad > 16 || pad > bytes.length) throw new Error('填充非法（口令或密文不对）');
+    for (let i = bytes.length - pad; i < bytes.length; i++) if (bytes[i] !== pad) throw new Error('填充非法（口令或密文不对）');
+    return bytes.subarray(0, bytes.length - pad);
+  }
+  function cbcEncrypt(plain, key, iv) {
+    if (iv.length !== 16) throw new Error('IV 必须为 16 字节');
+    const ks = aesExpandKey(key);
+    const data = pkcs7Pad(plain);
+    const out = new Uint8Array(data.length);
+    let prev = iv;
+    for (let off = 0; off < data.length; off += 16) {
+      const blk = new Uint8Array(16);
+      for (let i = 0; i < 16; i++) blk[i] = data[off + i] ^ prev[i];
+      const enc = aesEncryptBlock(blk, ks);
+      out.set(enc, off);
+      prev = enc;
+    }
+    return out;
+  }
+  function cbcDecrypt(cipher, key, iv) {
+    if (iv.length !== 16) throw new Error('IV 必须为 16 字节');
+    if (cipher.length === 0 || cipher.length % 16) throw new Error('密文长度不是 16 的整数倍');
+    const ks = aesExpandKey(key);
+    const out = new Uint8Array(cipher.length);
+    let prev = iv;
+    for (let off = 0; off < cipher.length; off += 16) {
+      const blk = cipher.subarray(off, off + 16);
+      const dec = aesDecryptBlock(blk, ks);
+      for (let i = 0; i < 16; i++) out[off + i] = dec[i] ^ prev[i];
+      prev = blk;
+    }
+    return pkcs7Unpad(out);
+  }
+  function ctrCrypt(data, key, nonce) {
+    if (nonce.length !== 16) throw new Error('计数器初值必须为 16 字节');
+    const ks = aesExpandKey(key);
+    const out = new Uint8Array(data.length);
+    const ctr = Uint8Array.from(nonce);
+    for (let off = 0; off < data.length; off += 16) {
+      const stream = aesEncryptBlock(ctr, ks);
+      const n = Math.min(16, data.length - off);
+      for (let i = 0; i < n; i++) out[off + i] = data[off + i] ^ stream[i];
+      for (let i = 15; i >= 0; i--) { ctr[i] = (ctr[i] + 1) & 0xff; if (ctr[i]) break; }
+    }
+    return out;
+  }
+
+  /* ---------------- 口令加密信封（CL1） ---------------- */
+  const MAGIC = [0x43, 0x4c, 0x31, 0x01]; // "CL1" + 版本 1
+  function sealText(text, password, iterations, randomBytes) {
+    const iter = iterations || 200000;
+    const salt = randomBytes(16), iv = randomBytes(16);
+    const key = pbkdf2('sha256', utf8(password), salt, iter, 32);
+    const ct = cbcEncrypt(utf8(text), key, iv);
+    const head = new Uint8Array(8);
+    head.set(MAGIC);
+    head[4] = (iter >>> 24) & 0xff; head[5] = (iter >>> 16) & 0xff;
+    head[6] = (iter >>> 8) & 0xff; head[7] = iter & 0xff;
+    return { blob: toB64(concat([head, salt, iv, ct])), salt: salt, iv: iv, key: key, iterations: iter, cipher: ct };
+  }
+  function openText(blob, password) {
+    const raw = fromB64(blob.replace(/\s+/g, ''));
+    if (raw.length < 40) throw new Error('密文太短，不是本工具生成的信封');
+    for (let i = 0; i < 3; i++) if (raw[i] !== MAGIC[i]) throw new Error('信封标识不匹配（应以 CL1 开头）');
+    const iter = ((raw[4] << 24) | (raw[5] << 16) | (raw[6] << 8) | raw[7]) >>> 0;
+    const salt = raw.subarray(8, 24), iv = raw.subarray(24, 40), ct = raw.subarray(40);
+    const key = pbkdf2('sha256', utf8(password), salt, iter, 32);
+    return { text: fromUtf8(cbcDecrypt(ct, key, iv)), iterations: iter, salt: salt, iv: iv };
+  }
+
+  /* ---------------- 古典密码 ---------------- */
+  const ENG_FREQ = [8.167, 1.492, 2.782, 4.253, 12.702, 2.228, 2.015, 6.094, 6.966, 0.153, 0.772,
+    4.025, 2.406, 6.749, 7.507, 1.929, 0.095, 5.987, 6.327, 9.056, 2.758, 0.978, 2.360, 0.150, 1.974, 0.074];
+  function isAlpha(c) { return (c >= 65 && c <= 90) || (c >= 97 && c <= 122); }
+  function caesar(text, shift) {
+    let out = '';
+    const s = ((shift % 26) + 26) % 26;
+    for (const ch of text) {
+      const c = ch.charCodeAt(0);
+      if (c >= 65 && c <= 90) out += String.fromCharCode(((c - 65 + s) % 26) + 65);
+      else if (c >= 97 && c <= 122) out += String.fromCharCode(((c - 97 + s) % 26) + 97);
+      else out += ch;
+    }
+    return out;
+  }
+  function letterCounts(text) {
+    const c = new Array(26).fill(0);
+    let total = 0;
+    for (const ch of text) {
+      const x = ch.charCodeAt(0);
+      if (x >= 65 && x <= 90) { c[x - 65]++; total++; }
+      else if (x >= 97 && x <= 122) { c[x - 97]++; total++; }
+    }
+    return { counts: c, total: total };
+  }
+  function chiSquared(counts, total) {
+    if (!total) return Infinity;
+    let x = 0;
+    for (let i = 0; i < 26; i++) {
+      const e = (total * ENG_FREQ[i]) / 100;
+      x += ((counts[i] - e) * (counts[i] - e)) / (e || 1e-9);
+    }
+    return x;
+  }
+  function caesarCrack(cipher) {
+    const cands = [];
+    for (let s = 0; s < 26; s++) {
+      const plain = caesar(cipher, -s);
+      const lc = letterCounts(plain);
+      cands.push({ shift: s, score: chiSquared(lc.counts, lc.total), plain: plain });
+    }
+    cands.sort(function (a, b) { return a.score - b.score; });
+    return cands;
+  }
+  function vigenere(text, key, decrypt) {
+    const k = String(key).replace(/[^A-Za-z]/g, '').toLowerCase();
+    if (!k) throw new Error('密钥至少要有一个字母');
+    let out = '', j = 0;
+    for (const ch of text) {
+      const c = ch.charCodeAt(0);
+      if (isAlpha(c)) {
+        const shift = k.charCodeAt(j % k.length) - 97;
+        out += caesar(ch, decrypt ? -shift : shift);
+        j++;
+      } else out += ch;
+    }
+    return out;
+  }
+  /**
+   * 取最小重复周期。IC 与汉明距离在密钥长度的整数倍上同样出峰，
+   * 不做这一步时 "cipher" 会被还原成 "ciphercipher"（解密结果相同但密钥报长了）。
+   */
+  function reducePeriod(seq) {
+    const n = seq.length;
+    for (let p = 1; p < n; p++) {
+      if (n % p) continue;
+      let same = true;
+      for (let i = p; i < n && same; i++) if (seq[i] !== seq[i - p]) same = false;
+      if (same) return seq.slice(0, p);
+    }
+    return seq;
+  }
+  function indexOfCoincidence(counts, total) {
+    if (total < 2) return 0;
+    let s = 0;
+    for (let i = 0; i < 26; i++) s += counts[i] * (counts[i] - 1);
+    return s / (total * (total - 1));
+  }
+  function vigenereCrack(cipher, maxLen) {
+    const letters = cipher.replace(/[^A-Za-z]/g, '').toLowerCase();
+    const top = Math.min(maxLen || 12, Math.max(1, Math.floor(letters.length / 4)));
+    const ics = [];
+    for (let L = 1; L <= top; L++) {
+      let sum = 0;
+      for (let i = 0; i < L; i++) {
+        let col = '';
+        for (let j = i; j < letters.length; j += L) col += letters[j];
+        const lc = letterCounts(col);
+        sum += indexOfCoincidence(lc.counts, lc.total);
+      }
+      ics.push({ len: L, ic: sum / L });
+    }
+    // 取 IC 最接近英文 0.0667 的长度；同分时偏好更短的
+    let best = ics[0];
+    for (const e of ics) if (e.ic > best.ic + 0.0005) best = e;
+    const L = best.len;
+    let key = '';
+    for (let i = 0; i < L; i++) {
+      let col = '';
+      for (let j = i; j < letters.length; j += L) col += letters[j];
+      let bs = 0, bx = Infinity;
+      for (let s = 0; s < 26; s++) {
+        const lc = letterCounts(caesar(col, -s));
+        const x = chiSquared(lc.counts, lc.total);
+        if (x < bx) { bx = x; bs = s; }
+      }
+      key += String.fromCharCode(97 + bs);
+    }
+    key = reducePeriod(key);
+    return { key: key, keyLen: key.length, probedLen: L, ics: ics, plain: vigenere(cipher, key, true) };
+  }
+  function xorBytes(data, key) {
+    if (!key.length) throw new Error('密钥不能为空');
+    const out = new Uint8Array(data.length);
+    for (let i = 0; i < data.length; i++) out[i] = data[i] ^ key[i % key.length];
+    return out;
+  }
+  function englishScore(bytes) {
+    let s = 0;
+    for (const b of bytes) {
+      if (b === 32) s += 7;
+      else if (b >= 97 && b <= 122) s += ENG_FREQ[b - 97];
+      else if (b >= 65 && b <= 90) s += ENG_FREQ[b - 65] * 0.7;
+      else if (b === 10 || b === 13 || (b >= 33 && b <= 64)) s += 0.4;
+      else s -= 6;
+    }
+    return s / (bytes.length || 1);
+  }
+  function hammingBits(a, b) {
+    let d = 0;
+    const n = Math.min(a.length, b.length);
+    for (let i = 0; i < n; i++) {
+      let v = a[i] ^ b[i];
+      while (v) { d += v & 1; v >>= 1; }
+    }
+    return d;
+  }
+  function xorCrack(data, maxKeyLen) {
+    const top = Math.min(maxKeyLen || 16, Math.max(2, Math.floor(data.length / 4)));
+    const sizes = [];
+    for (let L = 1; L <= top; L++) {
+      let sum = 0, n = 0;
+      for (let i = 0; i + 2 * L <= data.length && n < 12; i += L, n++) {
+        sum += hammingBits(data.subarray(i, i + L), data.subarray(i + L, i + 2 * L)) / L;
+      }
+      if (n) sizes.push({ len: L, dist: sum / n });
+    }
+    sizes.sort(function (a, b) { return a.dist - b.dist; });
+    const tries = sizes.slice(0, 4);
+    let best = null;
+    for (const cand of tries) {
+      const key = new Uint8Array(cand.len);
+      for (let i = 0; i < cand.len; i++) {
+        const col = [];
+        for (let j = i; j < data.length; j += cand.len) col.push(data[j]);
+        const colArr = Uint8Array.from(col);
+        let bk = 0, bs = -Infinity;
+        for (let k = 0; k < 256; k++) {
+          const dec = new Uint8Array(colArr.length);
+          for (let x = 0; x < colArr.length; x++) dec[x] = colArr[x] ^ k;
+          const sc = englishScore(dec);
+          if (sc > bs) { bs = sc; bk = k; }
+        }
+        key[i] = bk;
+      }
+      const reduced = Uint8Array.from(reducePeriod(Array.from(key)));
+      const plain = xorBytes(data, reduced);
+      const score = englishScore(plain);
+      if (!best || score > best.score) best = { key: reduced, score: score, plain: plain, keyLen: reduced.length, probedLen: cand.len, sizes: sizes };
+    }
+    best.sizes = sizes;
+    return best;
+  }
+
+  /* ---------------- 雪崩效应 ---------------- */
+  function flipBit(bytes, bitIndex) {
+    const out = Uint8Array.from(bytes);
+    const i = (bitIndex / 8) | 0, b = 7 - (bitIndex % 8);
+    if (i >= out.length) throw new Error('位序号超出输入范围');
+    out[i] ^= 1 << b;
+    return out;
+  }
+  function bitDiff(a, b) {
+    const n = Math.min(a.length, b.length);
+    const bits = [];
+    let d = 0;
+    for (let i = 0; i < n; i++) {
+      const x = a[i] ^ b[i];
+      for (let k = 7; k >= 0; k--) {
+        const on = (x >> k) & 1;
+        bits.push(on);
+        d += on;
+      }
+    }
+    return { bits: bits, distance: d, total: n * 8 };
+  }
+  function avalancheStudy(alg, baseBytes, samples) {
+    const n = Math.max(1, samples || 128);
+    const total = HASHES[alg].out * 8;
+    const dists = [];
+    const bitCount = baseBytes.length * 8;
+    for (let i = 0; i < n; i++) {
+      const bit = (i * 7 + 3) % bitCount;       // 确定性扫描，避免随机导致结果不可复现
+      const h1 = hash(alg, baseBytes);
+      const h2 = hash(alg, flipBit(baseBytes, bit));
+      dists.push(bitDiff(h1, h2).distance);
+    }
+    const mean = dists.reduce(function (a, b) { return a + b; }, 0) / dists.length;
+    let vr = 0;
+    for (const d of dists) vr += (d - mean) * (d - mean);
+    return { dists: dists, mean: mean, sd: Math.sqrt(vr / dists.length), total: total, expect: total / 2 };
+  }
+
+  return {
+    utf8: utf8, fromUtf8: fromUtf8, toHex: toHex, fromHex: fromHex, toB64: toB64, fromB64: fromB64,
+    concat: concat, eqBytes: eqBytes, parseInput: parseInput, hexdump: hexdump,
+    crc32: crc32, md5: md5, sha1: sha1, sha256: sha256, sha512: sha512, hash: hash, HASHES: HASHES,
+    hmac: hmac, pbkdf2: pbkdf2, jwtInspect: jwtInspect, jwtVerify: jwtVerify,
+    gmul: gmul, SBOX: SBOX, INV_SBOX: INV_SBOX, GF_INV: GF_INV, sboxDerive: sboxDerive,
+    aesExpandKey: aesExpandKey, aesEncryptBlock: aesEncryptBlock, aesDecryptBlock: aesDecryptBlock,
+    bytesToState: bytesToState, stateToBytes: stateToBytes,
+    pkcs7Pad: pkcs7Pad, pkcs7Unpad: pkcs7Unpad, cbcEncrypt: cbcEncrypt, cbcDecrypt: cbcDecrypt, ctrCrypt: ctrCrypt,
+    sealText: sealText, openText: openText,
+    caesar: caesar, caesarCrack: caesarCrack, vigenere: vigenere, vigenereCrack: vigenereCrack,
+    letterCounts: letterCounts, chiSquared: chiSquared, indexOfCoincidence: indexOfCoincidence, ENG_FREQ: ENG_FREQ,
+    xorBytes: xorBytes, xorCrack: xorCrack, reducePeriod: reducePeriod, hammingBits: hammingBits, englishScore: englishScore,
+    flipBit: flipBit, bitDiff: bitDiff, avalancheStudy: avalancheStudy, K256: K256
+  };
+})();
+/*__ENGINE_END__*/
+
+(function () {
+  'use strict';
+  var E = ENGINE;
+  var $ = function (id) { return document.getElementById(id); };
+  var STORE = 'daily-tools.crypto-lab.v1';
+
+  /* ── canvas 文字避让：本页每一处 fillText 都必须走它 ── */
+  function makePlacer(ctx, W, Hh) {
+    var boxes = [];
+    function overlap(a, b) { return !(a.x2 <= b.x1 || b.x2 <= a.x1 || a.y2 <= b.y1 || b.y2 <= a.y1); }
+    return {
+      dropped: 0, drawn: [],
+      reserve: function (x1, y1, x2, y2) { boxes.push({ x1: x1, y1: y1, x2: x2, y2: y2 }); },
+      /** offsets: 退让位列表，按顺序试；全撞或越界则放弃绘制 */
+      text: function (str, x, y, opts) {
+        opts = opts || {};
+        var align = opts.align || 'left', pad = 2;
+        var w = ctx.measureText(str).width, h = opts.h || 11;
+        var offs = opts.offsets || [[0, 0]];
+        for (var i = 0; i < offs.length; i++) {
+          var ox = x + offs[i][0], oy = y + offs[i][1];
+          var x1 = align === 'center' ? ox - w / 2 : align === 'right' ? ox - w : ox;
+          var box = { x1: x1 - pad, y1: oy - h, x2: x1 + w + pad, y2: oy + 3 };
+          if (box.x1 < 0 || box.x2 > W || box.y1 < 0 || box.y2 > Hh) continue;
+          var hit = false;
+          for (var j = 0; j < boxes.length; j++) if (overlap(box, boxes[j])) { hit = true; break; }
+          if (hit) continue;
+          if (opts.bg) {
+            ctx.save();
+            ctx.fillStyle = opts.bg;
+            ctx.fillRect(box.x1, box.y1, box.x2 - box.x1, box.y2 - box.y1);
+            ctx.restore();
+          }
+          ctx.save();
+          ctx.textAlign = align;
+          if (opts.color) ctx.fillStyle = opts.color;
+          ctx.fillText(str, ox, oy);
+          ctx.restore();
+          boxes.push(box);
+          this.drawn.push({ text: str, x: x1, y: oy });
+          return true;
+        }
+        this.dropped++;
+        return false;
+      }
+    };
+  }
+  function fitCanvas(cv) {
+    var dpr = window.devicePixelRatio || 1;
+    var rect = cv.getBoundingClientRect();
+    var w = Math.max(240, Math.round(rect.width || cv.width));
+    // 设 cv.height 会改写 height 属性，必须把原始 CSS 高度记在 dataset 里，
+    // 否则每次重绘都会把上一次乘过 dpr 的像素高再当成 CSS 高，画布逐次膨胀。
+    if (!cv.dataset.baseh) cv.dataset.baseh = String(parseInt(cv.getAttribute('height'), 10) || 300);
+    var h = parseInt(cv.dataset.baseh, 10);
+    cv.width = Math.round(w * dpr);
+    cv.height = Math.round(h * dpr);
+    cv.style.height = h + 'px';
+    var ctx = cv.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+    return { ctx: ctx, w: w, h: h };
+  }
+  var MONO = '11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
+  var C = { ink: '#201d1d', mute: '#646262', ash: '#9a9898', hair: 'rgba(15,0,0,0.18)', canvas: '#fdfcfc', card: '#f1eeee', accent: '#007aff' };
+
+  function esc(s) {
+    return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; });
+  }
+  function hex32(n) { return ('00000000' + (n >>> 0).toString(16)).slice(-8); }
+  function hex2(n) { return ('0' + (n & 0xff).toString(16)).slice(-2); }
+  function randomBytes(n) {
+    var a = new Uint8Array(n);
+    if (window.crypto && window.crypto.getRandomValues) window.crypto.getRandomValues(a);
+    else for (var i = 0; i < n; i++) a[i] = Math.floor(Math.random() * 256);
+    return a;
+  }
+  function badge(el, kind, text) {
+    el.className = 'cl-tag ' + (kind ? 'cl-tag-' + kind : 'cl-tag-quiet');
+    el.textContent = text;
+  }
+  function copyBtn(text) {
+    return function () {
+      if (navigator.clipboard) navigator.clipboard.writeText(text).catch(function () {});
+    };
+  }
+
+  /* ══════════ 标签切换 ══════════ */
+  var PANELS = ['digest', 'mac', 'sha', 'aes', 'classic'];
+  var current = 'digest';
+  function showPanel(name) {
+    current = name;
+    PANELS.forEach(function (p) {
+      $('cl-panel-' + p).hidden = p !== name;
+      var t = $('cl-tab-' + p);
+      t.classList.toggle('cl-on', p === name);
+      t.setAttribute('aria-selected', p === name ? 'true' : 'false');
+    });
+    if (name === 'sha') { renderAvalanche(); }
+    if (name === 'classic') { renderFreq(); }
+    save();
+  }
+  $('cl-tabs').addEventListener('click', function (e) {
+    var b = e.target.closest('.cl-tab');
+    if (b) showPanel(b.dataset.panel);
+  });
+  $('cl-tabs').addEventListener('keydown', function (e) {
+    if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+    var i = PANELS.indexOf(current);
+    var n = (i + (e.key === 'ArrowRight' ? 1 : PANELS.length - 1)) % PANELS.length;
+    showPanel(PANELS[n]);
+    $('cl-tab-' + PANELS[n]).focus();
+    e.preventDefault();
+  });
+
+  /* ══════════ 面板 1：摘要 ══════════ */
+  var fileBytes = null, fileName = '';
+  var ALGS = [
+    { key: 'crc32', label: 'CRC32', bits: 32 },
+    { key: 'md5', label: 'MD5', bits: 128 },
+    { key: 'sha1', label: 'SHA-1', bits: 160 },
+    { key: 'sha256', label: 'SHA-256', bits: 256 },
+    { key: 'sha512', label: 'SHA-512', bits: 512 }
+  ];
+  var lastDigests = {};
+
+  function currentBytes() {
+    if (fileBytes) return { bytes: fileBytes, note: '文件 ' + fileName + '（' + fileBytes.length.toLocaleString('en-US') + ' 字节）' };
+    var kind = $('cl-dg-kind').value;
+    var raw = $('cl-dg-input').value;
+    try {
+      var b = E.parseInput(raw, kind);
+      var kindLabel = kind === 'hex' ? '十六进制' : kind === 'base64' ? 'Base64' : '文本';
+      return { bytes: b, note: '当前输入：' + b.length + ' 字节' + kindLabel };
+    } catch (err) {
+      return { bytes: null, note: '输入无法解析：' + err.message };
+    }
+  }
+  function fmtDigest(bytes, alg) {
+    var f = $('cl-dg-fmt').value;
+    if (f === 'b64') return E.toB64(bytes);
+    var h = E.toHex(bytes);
+    return f === 'HEX' ? h.toUpperCase() : h;
+  }
+  function renderDigest() {
+    var src = currentBytes();
+    $('cl-dg-src').textContent = src.note;
+    var body = $('cl-dg-body');
+    body.innerHTML = '';
+    lastDigests = {};
+    if (!src.bytes) {
+      badge($('cl-dg-verdict'), 'bad', '输入非法');
+      $('cl-dg-dump').textContent = '';
+      $('cl-dg-dumpnote').textContent = '';
+      return;
+    }
+    var big = src.bytes.length > 2000000;
+    ALGS.forEach(function (a) {
+      var out, hexOut;
+      if (a.key === 'crc32') {
+        var n = E.crc32(src.bytes);
+        hexOut = hex32(n);
+        out = $('cl-dg-fmt').value === 'HEX' ? hexOut.toUpperCase() : hexOut;
+        lastDigests[a.key] = hexOut;
+      } else {
+        var d = E.hash(a.key, src.bytes);
+        hexOut = E.toHex(d);
+        out = fmtDigest(d, a.key);
+        lastDigests[a.key] = hexOut;
+      }
+      var tr = document.createElement('tr');
+      tr.className = 'cl-hashrow';
+      tr.innerHTML = '<td>' + a.label + '</td><td class="cl-digest" data-alg="' + a.key + '">' + esc(out) +
+        '</td><td class="cl-num">' + a.bits + '</td><td></td>';
+      var btn = document.createElement('button');
+      btn.className = 'cl-copy';
+      btn.type = 'button';
+      btn.textContent = '复制';
+      btn.addEventListener('click', copyBtn(out));
+      tr.lastElementChild.appendChild(btn);
+      body.appendChild(tr);
+    });
+    if (big) $('cl-dg-src').textContent = src.note + ' · 大文件全算了一遍，用时略久属正常';
+    renderDump(src.bytes);
+    verifyChecksum();
+    selfCheck(src.bytes);
+  }
+  function renderDump(bytes) {
+    var limit = 256;
+    var rows = E.hexdump(bytes.subarray(0, limit));
+    var out = rows.map(function (r) {
+      var h = r.bytes.map(function (b) { return hex2(b); });
+      while (h.length < 16) h.push('  ');
+      return '<span class="cl-b-pad">' + hex32(r.off) + '</span>  ' + h.join(' ') + '  <span class="cl-b-msg">' + esc(r.ascii) + '</span>';
+    }).join('\n');
+    $('cl-dg-dump').innerHTML = out || '<span class="cl-b-pad">（空输入）</span>';
+    $('cl-dg-dumpnote').textContent = bytes.length > limit
+      ? '只显示前 ' + limit + ' 字节，共 ' + bytes.length.toLocaleString('en-US') + ' 字节。'
+      : '共 ' + bytes.length + ' 字节。';
+  }
+  function verifyChecksum() {
+    var el = $('cl-dg-verdict');
+    var want = $('cl-dg-expect').value.trim().toLowerCase().replace(/[\s:]/g, '');
+    if (!want) { badge(el, '', '等待输入'); return; }
+    if (!/^[0-9a-f]+$/.test(want)) { badge(el, 'warn', '不是十六进制'); return; }
+    var sameLen = Object.keys(lastDigests).filter(function (k) { return lastDigests[k].length === want.length; });
+    if (!sameLen.length) { badge(el, 'warn', '长度不匹配任何算法'); return; }
+    var matched = sameLen.filter(function (k) { return lastDigests[k] === want; });
+    if (matched.length) {
+      var label = ALGS.filter(function (a) { return a.key === matched[0]; })[0].label;
+      badge(el, 'ok', label + ' 匹配');
+    } else {
+      var label2 = ALGS.filter(function (a) { return a.key === sameLen[0]; })[0].label;
+      badge(el, 'bad', label2 + ' 不匹配');
+    }
+  }
+  function selfCheck(bytes) {
+    var el = $('cl-dg-selfcheck');
+    if (!(window.crypto && window.crypto.subtle)) { badge(el, 'warn', '本环境无 WebCrypto，跳过自检'); return; }
+    var sample = bytes.length > 200000 ? bytes.subarray(0, 200000) : bytes;
+    var names = [['SHA-1', 'sha1'], ['SHA-256', 'sha256'], ['SHA-512', 'sha512']];
+    Promise.all(names.map(function (p) {
+      return window.crypto.subtle.digest(p[0], sample).then(function (buf) {
+        return E.toHex(new Uint8Array(buf)) === E.toHex(E.hash(p[1], sample));
+      });
+    })).then(function (res) {
+      var okAll = res.every(Boolean);
+      badge(el, okAll ? 'ok' : 'bad', okAll ? '自检通过：3 个算法与 WebCrypto 逐字节一致' : '自检失败');
+      document.body.dataset.selfcheck = okAll ? 'ok' : 'fail';
+    }).catch(function () { badge(el, 'warn', '自检未能运行'); });
+  }
+  ['cl-dg-input', 'cl-dg-kind', 'cl-dg-fmt'].forEach(function (id) {
+    $(id).addEventListener('input', function () { fileBytes = null; renderDigest(); save(); });
+    $(id).addEventListener('change', function () { fileBytes = null; renderDigest(); save(); });
+  });
+  $('cl-dg-expect').addEventListener('input', verifyChecksum);
+  function loadFile(f) {
+    if (!f) return;
+    var reader = new FileReader();
+    reader.onload = function () {
+      fileBytes = new Uint8Array(reader.result);
+      fileName = f.name;
+      renderDigest();
+    };
+    reader.readAsArrayBuffer(f);
+  }
+  $('cl-dg-file').addEventListener('change', function (e) { loadFile(e.target.files[0]); });
+  $('cl-dg-drop').addEventListener('click', function () { $('cl-dg-file').click(); });
+  $('cl-dg-drop').addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { $('cl-dg-file').click(); e.preventDefault(); } });
+  $('cl-dg-drop').addEventListener('dragover', function (e) { e.preventDefault(); this.classList.add('cl-over'); });
+  $('cl-dg-drop').addEventListener('dragleave', function () { this.classList.remove('cl-over'); });
+  $('cl-dg-drop').addEventListener('drop', function (e) {
+    e.preventDefault();
+    this.classList.remove('cl-over');
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) loadFile(e.dataTransfer.files[0]);
+  });
+
+  /* ══════════ 面板 2：HMAC / PBKDF2 / JWT ══════════ */
+  function renderHmac() {
+    var alg = $('cl-mac-alg').value;
+    var out = $('cl-mac-out'), b64 = $('cl-mac-b64'), note = $('cl-mac-keynote');
+    var key;
+    try { key = E.parseInput($('cl-mac-key').value, $('cl-mac-keykind').value); }
+    catch (err) { out.textContent = '密钥无法解析：' + err.message; b64.textContent = '—'; note.textContent = '—'; return; }
+    var msg = E.utf8($('cl-mac-msg').value);
+    var mac = E.hmac(alg, key, msg);
+    out.textContent = E.toHex(mac);
+    b64.textContent = E.toB64(mac);
+    var block = E.HASHES[alg].block;
+    note.textContent = key.length + ' 字节密钥，分组长度 ' + block + ' 字节 → ' +
+      (key.length > block ? '先摘要成 ' + E.HASHES[alg].out + ' 字节再右补零' : '右补零到 ' + block + ' 字节');
+  }
+  ['cl-mac-alg', 'cl-mac-key', 'cl-mac-keykind', 'cl-mac-msg'].forEach(function (id) {
+    $(id).addEventListener('input', function () { renderHmac(); save(); });
+    $(id).addEventListener('change', function () { renderHmac(); save(); });
+  });
+
+  function runKdf() {
+    var iter = Math.max(1, Math.min(1000000, parseInt($('cl-kdf-iter').value, 10) || 1));
+    var len = Math.max(1, Math.min(128, parseInt($('cl-kdf-len').value, 10) || 32));
+    var alg = $('cl-kdf-alg').value;
+    var t0 = performance.now();
+    var dk = E.pbkdf2(alg, E.utf8($('cl-kdf-pw').value), E.utf8($('cl-kdf-salt').value), iter, len);
+    var ms = performance.now() - t0;
+    $('cl-kdf-out').textContent = E.toHex(dk);
+    $('cl-kdf-time').textContent = ms.toFixed(1) + ' ms（' + iter.toLocaleString('en-US') + ' 次迭代）';
+    var perSec = ms > 0 ? 1000 / ms : 0;
+    $('cl-kdf-cost').textContent = '按本机速度，穷举一个 8 位小写字母口令（约 2.1×10¹¹ 种）需要 ' +
+      fmtDuration(2.1e11 / Math.max(perSec, 1e-9)) + '；迭代次数翻倍，这个时间也翻倍。';
+    save();
+  }
+  function fmtDuration(sec) {
+    if (sec < 60) return sec.toFixed(1) + ' 秒';
+    if (sec < 3600) return (sec / 60).toFixed(1) + ' 分钟';
+    if (sec < 86400) return (sec / 3600).toFixed(1) + ' 小时';
+    if (sec < 86400 * 365) return (sec / 86400).toFixed(1) + ' 天';
+    var y = sec / (86400 * 365);
+    return y > 1e6 ? y.toExponential(2) + ' 年' : y.toFixed(1) + ' 年';
+  }
+  $('cl-kdf-run').addEventListener('click', runKdf);
+
+  function renderJwt() {
+    var el = $('cl-jwt-verdict');
+    var tbody = $('cl-jwt-claims');
+    tbody.innerHTML = '';
+    var info;
+    try { info = E.jwtInspect($('cl-jwt-token').value); }
+    catch (err) {
+      badge(el, 'bad', '解析失败');
+      $('cl-jwt-header').textContent = err.message;
+      $('cl-jwt-payload').textContent = '—';
+      $('cl-jwt-expect').textContent = '—';
+      return;
+    }
+    $('cl-jwt-header').textContent = JSON.stringify(info.header);
+    $('cl-jwt-payload').textContent = JSON.stringify(info.payload);
+    var v = E.jwtVerify($('cl-jwt-token').value, E.utf8($('cl-jwt-key').value));
+    $('cl-jwt-expect').textContent = v.expect || '（无法计算：' + (v.reason || '') + '）';
+    if (v.reason) badge(el, 'warn', '算法不支持');
+    else badge(el, v.ok ? 'ok' : 'bad', v.ok ? '签名有效' : '签名不匹配');
+    var CLAIM = { iss: '签发者', sub: '主体', aud: '受众', exp: '过期时间', nbf: '生效时间', iat: '签发时间', jti: '令牌 id' };
+    var now = Date.now() / 1000;
+    Object.keys(info.payload).forEach(function (k) {
+      var raw = info.payload[k], mean = CLAIM[k] || '';
+      if ((k === 'exp' || k === 'iat' || k === 'nbf') && typeof raw === 'number') {
+        var d = new Date(raw * 1000);
+        mean = CLAIM[k] + ' · ' + d.toISOString().replace('T', ' ').slice(0, 19) + ' UTC';
+        if (k === 'exp') mean += raw < now ? ' · 已过期' : ' · 未过期';
+      }
+      var tr = document.createElement('tr');
+      tr.innerHTML = '<td>' + esc(k) + '</td><td>' + esc(typeof raw === 'object' ? JSON.stringify(raw) : String(raw)) + '</td><td class="cl-dim">' + esc(mean) + '</td>';
+      tbody.appendChild(tr);
+    });
+  }
+  ['cl-jwt-token', 'cl-jwt-key'].forEach(function (id) {
+    $(id).addEventListener('input', function () { renderJwt(); save(); });
+  });
+
+  /* ══════════ 面板 3：SHA-256 剖面 ══════════ */
+  var shaTrace = null, playTimer = null;
+  function renderSha() {
+    var bytes = E.utf8($('cl-sha-input').value);
+    shaTrace = E.sha256(bytes, true, 1);
+    // 填充视图
+    var pad = shaTrace.padded;
+    var msgLen = bytes.length;
+    var lenStart = Math.min(pad.length, (Math.ceil((msgLen + 1 + 8) / 64) * 64) - 8);
+    var html = '';
+    for (var i = 0; i < Math.min(pad.length, 128); i++) {
+      var cls = i < msgLen ? 'cl-b-msg' : i === msgLen ? 'cl-b-one' : i >= lenStart ? 'cl-b-len' : 'cl-b-pad';
+      html += '<span class="' + cls + '">' + hex2(pad[i]) + '</span>' + ((i + 1) % 16 === 0 ? '\n' : ' ');
+    }
+    $('cl-sha-pad').innerHTML = html;
+    $('cl-sha-padnote').textContent = ' — ' + msgLen + ' 字节消息补到 ' + pad.length + ' 字节（' + (pad.length / 64) + ' 个分组），末 8 字节写入比特长度 ' + (msgLen * 8) + '。';
+    // W
+    var w = shaTrace.blocks[0].w;
+    var wh = '';
+    for (var j = 0; j < 64; j++) {
+      wh += '<div class="cl-wcell' + (j < 16 ? ' cl-seed' : '') + '"><b>W' + j + '</b><span>' + hex32(w[j]) + '</span></div>';
+    }
+    $('cl-sha-w').innerHTML = wh;
+    // 轮表
+    var rounds = shaTrace.blocks[0].rounds;
+    var rb = '';
+    for (var t = 0; t < 64; t++) {
+      var r = rounds[t];
+      rb += '<tr data-t="' + t + '"><td class="cl-num">' + t + '</td><td>' + hex32(r.a) + '</td><td>' + hex32(r.b) + '</td><td>' + hex32(r.c) +
+        '</td><td>' + hex32(r.d) + '</td><td>' + hex32(r.e) + '</td><td>' + hex32(r.f) + '</td><td>' + hex32(r.g) + '</td><td>' + hex32(r.h) + '</td></tr>';
+    }
+    $('cl-sha-rbody').innerHTML = rb;
+    renderShaRound();
+    // 摘要写进英雄区，让首屏那行 sha256sum 永远是真的
+    $('cl-hero-digest').textContent = E.toHex(shaTrace.digest);
+  }
+  function renderShaRound() {
+    if (!shaTrace) return;
+    var t = parseInt($('cl-sha-round').value, 10);
+    $('cl-sha-rlabel').textContent = t;
+    var r = shaTrace.blocks[0].rounds[t];
+    $('cl-sha-detail').innerHTML =
+      '<dt>Σ₁(e)</dt><dd>' + hex32(r.S1) + '</dd>' +
+      '<dt>Ch(e,f,g)</dt><dd>' + hex32(r.ch) + '</dd>' +
+      '<dt>K[' + t + ']</dt><dd>' + hex32(r.k) + '</dd>' +
+      '<dt>W[' + t + ']</dt><dd>' + hex32(r.w) + '</dd>' +
+      '<dt>T1 = h+Σ₁+Ch+K+W</dt><dd>' + hex32(r.T1) + '</dd>' +
+      '<dt>Σ₀(a)</dt><dd>' + hex32(r.S0) + '</dd>' +
+      '<dt>Maj(a,b,c)</dt><dd>' + hex32(r.maj) + '</dd>' +
+      '<dt>T2 = Σ₀+Maj</dt><dd>' + hex32(r.T2) + '</dd>' +
+      '<dt>新 a = T1+T2</dt><dd>' + hex32(r.a) + '</dd>' +
+      '<dt>新 e = d+T1</dt><dd>' + hex32(r.e) + '</dd>';
+    var rows = $('cl-sha-rbody').children;
+    for (var i = 0; i < rows.length; i++) {
+      rows[i].style.background = i === t ? 'var(--cl-card)' : '';
+    }
+    var wrap = $('cl-sha-rounds').parentElement;
+    if (rows[t] && wrap && wrap.scrollHeight > wrap.clientHeight) {
+      var rowH = rows[t].getBoundingClientRect().height || 28;
+      wrap.scrollTop = Math.max(0, t * rowH - wrap.clientHeight / 2 + rowH);
+    }
+  }
+  $('cl-sha-input').addEventListener('input', function () { renderSha(); renderAvalanche(); save(); });
+  $('cl-sha-round').addEventListener('input', renderShaRound);
+  $('cl-sha-play').addEventListener('click', function () {
+    var btn = this;
+    if (playTimer) { clearInterval(playTimer); playTimer = null; btn.textContent = '播放'; return; }
+    btn.textContent = '暂停';
+    playTimer = setInterval(function () {
+      var t = (parseInt($('cl-sha-round').value, 10) + 1) % 64;
+      $('cl-sha-round').value = t;
+      renderShaRound();
+    }, 160);
+  });
+
+  function renderAvalanche() {
+    var alg = $('cl-av-alg').value;
+    var base = E.utf8($('cl-sha-input').value);
+    if (!base.length) base = E.utf8(' ');
+    var maxBit = base.length * 8 - 1;
+    var slider = $('cl-av-bit');
+    slider.max = String(maxBit);
+    if (parseInt(slider.value, 10) > maxBit) slider.value = String(maxBit);
+    var bit = parseInt(slider.value, 10);
+    $('cl-av-bitlabel').textContent = bit;
+    var h1 = E.hash(alg, base), h2 = E.hash(alg, E.flipBit(base, bit));
+    var diff = E.bitDiff(h1, h2);
+    $('cl-av-h1').textContent = E.toHex(h1);
+    $('cl-av-h2').textContent = E.toHex(h2);
+    $('cl-av-dist').textContent = diff.distance + ' / ' + diff.total + ' 位翻转（' + (100 * diff.distance / diff.total).toFixed(1) + '%）';
+    var st = E.avalancheStudy(alg, base, Math.min(128, base.length * 8));
+    $('cl-av-stat').textContent = '扫过 ' + st.dists.length + ' 个输入位：平均 ' + st.mean.toFixed(1) +
+      ' 位翻转，标准差 ' + st.sd.toFixed(1) + '，理想值 ' + st.expect + '。';
+    drawBitGrid(diff);
+    drawHist(st);
+  }
+  function drawBitGrid(diff) {
+    var cv = $('cl-av-grid');
+    var f = fitCanvas(cv), ctx = f.ctx;
+    ctx.font = MONO;
+    var p = makePlacer(ctx, f.w, f.h);
+    var cols = 16, rows = Math.ceil(diff.total / cols);
+    var padL = 34, padT = 18, padR = 10, padB = 22;
+    var cw = Math.floor((f.w - padL - padR) / cols), ch = Math.floor((f.h - padT - padB) / rows);
+    var cell = Math.max(6, Math.min(cw, ch));
+    var gw = cell * cols, gh = cell * rows;
+    // 画布比网格宽时把网格居中，避免整块图偏在左边、右侧留一大片空白
+    var x0 = padL + Math.max(0, Math.floor((f.w - padL - padR - gw) / 2)), y0 = padT;
+    p.reserve(0, 0, f.w, padT - 2);
+    for (var i = 0; i < diff.total; i++) {
+      var r = Math.floor(i / cols), c = i % cols;
+      ctx.fillStyle = diff.bits[i] ? C.ink : C.card;
+      ctx.fillRect(x0 + c * cell, y0 + r * cell, cell - 1, cell - 1);
+    }
+    ctx.strokeStyle = C.hair;
+    ctx.strokeRect(x0 - 0.5, y0 - 0.5, gw, gh);
+    ctx.fillStyle = C.mute;
+    var rowLabels = 0;
+    for (var rr = 0; rr < rows; rr += 2) {
+      if (p.text(String(rr * cols), x0 - 6, y0 + rr * cell + cell - 2, { align: 'right', color: C.ash })) rowLabels++;
+    }
+    var legend = p.text('黑 = 该位被翻转 · 共 ' + diff.total + ' 位，翻转 ' + diff.distance + ' 位', x0, y0 + gh + 15, { color: C.mute });
+    cv.dataset.drawn = String(p.drawn.length);
+    cv.dataset.dropped = String(p.dropped);
+    cv.dataset.flipped = String(diff.distance);
+    cv.dataset.rowlabels = String(rowLabels);
+    cv.dataset.legend = legend ? '1' : '0';
+  }
+  function drawHist(st) {
+    var cv = $('cl-av-hist');
+    var f = fitCanvas(cv), ctx = f.ctx;
+    ctx.font = MONO;
+    var p = makePlacer(ctx, f.w, f.h);
+    // padT 要留出标注行的高度：柱子若能长到标注行，白底会把柱顶擦成一截浮空黑条
+    var padL = 40, padR = 14, padT = 34, padB = 34;
+    var W = f.w - padL - padR, H = f.h - padT - padB;
+    var lo = 0, hi = st.total;
+    var nb = 32, bins = new Array(nb).fill(0);
+    st.dists.forEach(function (d) {
+      var k = Math.min(nb - 1, Math.floor(((d - lo) / (hi - lo)) * nb));
+      bins[k]++;
+    });
+    var maxB = Math.max.apply(null, bins) || 1;
+    ctx.strokeStyle = C.hair;
+    ctx.beginPath();
+    ctx.moveTo(padL, padT); ctx.lineTo(padL, padT + H); ctx.lineTo(padL + W, padT + H);
+    ctx.stroke();
+    // 先画理想值竖线（细线只画不 reserve，让标注仍能落上去）
+    var xExp = padL + ((st.expect - lo) / (hi - lo)) * W;
+    ctx.strokeStyle = C.accent;
+    ctx.setLineDash([4, 3]);
+    ctx.beginPath(); ctx.moveTo(xExp, padT); ctx.lineTo(xExp, padT + H); ctx.stroke();
+    ctx.setLineDash([]);
+    for (var i = 0; i < nb; i++) {
+      if (!bins[i]) continue;
+      var bw = W / nb;
+      var bh = (bins[i] / maxB) * H;
+      ctx.fillStyle = C.ink;
+      ctx.fillRect(padL + i * bw + 0.5, padT + H - bh, Math.max(1, bw - 1.5), bh);
+    }
+    ctx.fillStyle = C.mute;
+    var ticks = 0;
+    for (var t = 0; t <= 4; t++) {
+      var v = lo + ((hi - lo) * t) / 4;
+      var x = padL + (W * t) / 4;
+      if (p.text(String(Math.round(v)), x, padT + H + 14, { align: 'center', color: C.ash })) ticks++;
+    }
+    p.text('翻转位数 →', padL + W, padT + H + 28, { align: 'right', color: C.ash });
+    var notes = 0;
+    if (p.text('理想 ' + st.expect, xExp, padT - 8, { align: 'center', color: C.accent, offsets: [[0, 0], [-34, 0], [34, 0], [0, -14]] })) notes++;
+    if (p.text('实测均值 ' + st.mean.toFixed(1), padL + 2, padT - 8, { color: C.ink, offsets: [[0, 0], [0, -14]] })) notes++;
+    p.text(String(maxB), padL - 6, padT + 10, { align: 'right', color: C.ash });
+    cv.dataset.drawn = String(p.drawn.length);
+    cv.dataset.dropped = String(p.dropped);
+    cv.dataset.ticks = String(ticks);
+    cv.dataset.notes = String(notes);
+  }
+  $('cl-av-alg').addEventListener('change', function () { renderAvalanche(); save(); });
+  $('cl-av-bit').addEventListener('input', renderAvalanche);
+
+  /* ══════════ 面板 4：AES ══════════ */
+  var sboxPick = 0x53;
+  function renderSbox() {
+    var h = '<span class="cl-hdr"></span>';
+    for (var c = 0; c < 16; c++) h += '<span class="cl-hdr">' + c.toString(16) + '</span>';
+    for (var r = 0; r < 16; r++) {
+      h += '<span class="cl-hdr">' + r.toString(16) + '</span>';
+      for (var c2 = 0; c2 < 16; c2++) {
+        var a = r * 16 + c2;
+        h += '<span class="cl-cell' + (a === sboxPick ? ' cl-pick' : '') + '" data-a="' + a + '">' + hex2(E.SBOX[a]) + '</span>';
+      }
+    }
+    $('cl-aes-sbox').innerHTML = h;
+    var d = E.sboxDerive(sboxPick);
+    $('cl-aes-derive').innerHTML =
+      '<dt>输入字节 a</dt><dd>0x' + hex2(d.input) + '</dd>' +
+      '<dt>GF(2⁸) 乘法逆元 a⁻¹</dt><dd>0x' + hex2(d.inverse) + '（校验：0x' + hex2(d.input) + ' · 0x' + hex2(d.inverse) + ' = 0x' + hex2(E.gmul(d.input, d.inverse)) + '）</dd>' +
+      '<dt>仿射变换</dt><dd>' + d.terms.map(function (t) { return '0x' + hex2(t); }).join(' ⊕ ') + '</dd>' +
+      '<dt>S(a)</dt><dd>0x' + hex2(d.affine) + '</dd>';
+  }
+  $('cl-aes-sbox').addEventListener('click', function (e) {
+    var c = e.target.closest('.cl-cell');
+    if (!c) return;
+    sboxPick = parseInt(c.dataset.a, 10);
+    renderSbox();
+  });
+
+  var aesTrace = null;
+  function renderAes() {
+    var keyHex = $('cl-aes-key').value.trim();
+    var ptHex = $('cl-aes-pt').value.trim();
+    var ctEl = $('cl-aes-ct'), backEl = $('cl-aes-back');
+    var key, pt;
+    try { key = E.fromHex(keyHex); } catch (err) { ctEl.textContent = '密钥无法解析：' + err.message; return; }
+    try { pt = E.fromHex(ptHex); } catch (err) { ctEl.textContent = '明文无法解析：' + err.message; return; }
+    if (pt.length !== 16) { ctEl.textContent = '明文分组必须恰好 16 字节，当前 ' + pt.length; backEl.textContent = '—'; return; }
+    var ks;
+    try { ks = E.aesExpandKey(key); } catch (err) { ctEl.textContent = err.message; backEl.textContent = '—'; return; }
+    aesTrace = E.aesEncryptBlock(pt, ks, true);
+    ctEl.textContent = E.toHex(aesTrace.out);
+    backEl.textContent = E.toHex(E.aesDecryptBlock(aesTrace.out, ks));
+    $('cl-aes-nr').textContent = ks.Nr + ' 轮（' + key.length * 8 + ' 位密钥）';
+    var slider = $('cl-aes-round');
+    slider.max = String(ks.Nr);
+    if (parseInt(slider.value, 10) > ks.Nr) slider.value = String(ks.Nr);
+    // 密钥扩展
+    var kh = '';
+    ks.w.forEach(function (word, i) {
+      kh += '<div class="cl-wcell' + (i < ks.Nk ? ' cl-seed' : '') + '"><b>w' + i + '</b><span>' + word.map(hex2).join('') + '</span></div>';
+    });
+    $('cl-aes-ks').innerHTML = kh;
+    $('cl-aes-ksnote').textContent = '灰底的 w0…w' + (ks.Nk - 1) + ' 直接来自密钥本身，其余每个字由前一个字（每 ' + ks.Nk +
+      ' 个字做一次字节循环 + S 盒代换 + 轮常量异或）与 ' + ks.Nk + ' 个位置之前的字异或得到，共 ' + ks.w.length + ' 个字。';
+    renderAesRound();
+  }
+  function renderAesRound() {
+    if (!aesTrace) return;
+    var round = parseInt($('cl-aes-round').value, 10);
+    $('cl-aes-rlabel').textContent = round;
+    var steps = aesTrace.steps.filter(function (s) { return s.round === round; });
+    var html = '';
+    steps.forEach(function (s) {
+      html += '<figure><figcaption>' + esc(s.name) + '</figcaption><div class="cl-state">';
+      for (var r = 0; r < 4; r++) for (var c = 0; c < 4; c++) html += '<span>' + hex2(s.state[r][c]) + '</span>';
+      html += '</div></figure>';
+    });
+    $('cl-aes-states').innerHTML = html;
+  }
+  ['cl-aes-key', 'cl-aes-pt'].forEach(function (id) {
+    $(id).addEventListener('input', function () { renderAes(); save(); });
+  });
+  $('cl-aes-round').addEventListener('input', renderAesRound);
+  $('cl-aes-size').addEventListener('change', function () {
+    $('cl-aes-key').value = E.toHex(randomBytes(parseInt(this.value, 10)));
+    renderAes();
+    save();
+  });
+  $('cl-aes-randkey').addEventListener('click', function () {
+    $('cl-aes-key').value = E.toHex(randomBytes(parseInt($('cl-aes-size').value, 10)));
+    renderAes();
+    save();
+  });
+  $('cl-aes-randpt').addEventListener('click', function () {
+    $('cl-aes-pt').value = E.toHex(randomBytes(16));
+    renderAes();
+    save();
+  });
+
+  $('cl-seal-run').addEventListener('click', function () {
+    var el = $('cl-seal-verdict');
+    var pw = $('cl-seal-pw').value;
+    if (!pw) { badge(el, 'bad', '口令不能为空'); return; }
+    var iter = Math.max(1000, Math.min(1000000, parseInt($('cl-seal-iter').value, 10) || 100000));
+    try {
+      var res = E.sealText($('cl-seal-plain').value, pw, iter, randomBytes);
+      $('cl-seal-blob').value = res.blob;
+      badge(el, 'ok', '已加密 ' + res.cipher.length + ' 字节密文');
+      $('cl-open-out').textContent = '—';
+      save();
+    } catch (err) { badge(el, 'bad', err.message); }
+  });
+  $('cl-open-run').addEventListener('click', function () {
+    var el = $('cl-seal-verdict');
+    try {
+      var res = E.openText($('cl-seal-blob').value, $('cl-seal-pw').value);
+      $('cl-open-out').textContent = res.text;
+      badge(el, 'ok', '解密成功（' + res.iterations.toLocaleString('en-US') + ' 次迭代）');
+    } catch (err) {
+      $('cl-open-out').textContent = '—';
+      badge(el, 'bad', err.message);
+    }
+  });
+
+  /* ══════════ 面板 5：古典密码 ══════════ */
+  function ccMode() { return $('cl-cc-mode').value; }
+  function syncCcControls() {
+    var m = ccMode();
+    $('cl-cc-shiftwrap').hidden = m !== 'caesar';
+    $('cl-cc-keywrap').hidden = m === 'caesar';
+    $('cl-cc-cracknote').textContent = m === 'caesar'
+      ? '凯撒：对 26 种位移各算一次卡方统计量，与英文字母频率最贴合的那个就是答案。'
+      : m === 'vigenere'
+        ? '维吉尼亚：先用重合指数猜密钥长度（并约掉整数倍），再把密文按列拆开、每列当作一个凯撒密码用卡方破。'
+        : '重复密钥 XOR：用归一化汉明距离猜密钥长度，再逐列穷举 256 个字节、按英文字符频率打分选最优。';
+    if (m === 'xor') $('cl-cc-key').value = /^[\x20-\x7e]+$/.test($('cl-cc-key').value) ? $('cl-cc-key').value : 'ICE';
+  }
+  function ccEncrypt(decrypt) {
+    var m = ccMode(), input = $('cl-cc-input').value, out = '';
+    try {
+      if (m === 'caesar') {
+        var s = parseInt($('cl-cc-shift').value, 10);
+        out = E.caesar(input, decrypt ? -s : s);
+      } else if (m === 'vigenere') {
+        out = E.vigenere(input, $('cl-cc-key').value, decrypt);
+      } else {
+        var key = E.utf8($('cl-cc-key').value);
+        if (decrypt) {
+          var data = E.fromHex(input.trim());
+          out = E.fromUtf8(E.xorBytes(data, key));
+        } else {
+          out = E.toHex(E.xorBytes(E.utf8(input), key));
+        }
+      }
+    } catch (err) { out = '出错：' + err.message; }
+    $('cl-cc-output').textContent = out;
+    renderFreq();
+    save();
+  }
+  $('cl-cc-enc').addEventListener('click', function () { ccEncrypt(false); });
+  $('cl-cc-dec').addEventListener('click', function () { ccEncrypt(true); });
+  $('cl-cc-swap').addEventListener('click', function () {
+    $('cl-cc-input').value = $('cl-cc-output').textContent;
+    renderFreq();
+    save();
+  });
+  $('cl-cc-mode').addEventListener('change', function () { syncCcControls(); renderFreq(); save(); });
+  $('cl-cc-shift').addEventListener('input', function () { $('cl-cc-shiftlabel').textContent = this.value; });
+  $('cl-cc-input').addEventListener('input', function () { renderFreq(); save(); });
+  $('cl-cc-key').addEventListener('input', save);
+
+  $('cl-cc-crack').addEventListener('click', function () {
+    var m = ccMode(), input = $('cl-cc-input').value;
+    var badgeEl = $('cl-cc-crackbadge');
+    var thead = $('cl-cc-thead'), tbody = $('cl-cc-tbody');
+    thead.innerHTML = ''; tbody.innerHTML = '';
+    try {
+      if (m === 'caesar') {
+        var cands = E.caesarCrack(input);
+        $('cl-cc-key-out').textContent = '位移 ' + cands[0].shift;
+        $('cl-cc-plain').textContent = cands[0].plain;
+        thead.innerHTML = '<tr><th class="cl-num">位移</th><th class="cl-num">卡方</th><th>还原结果</th></tr>';
+        cands.slice(0, 10).forEach(function (c, i) {
+          var tr = document.createElement('tr');
+          if (i === 0) tr.style.background = 'var(--cl-card)';
+          tr.innerHTML = '<td class="cl-num">' + c.shift + '</td><td class="cl-num">' + c.score.toFixed(1) + '</td><td>' + esc(c.plain.slice(0, 72)) + '</td>';
+          tbody.appendChild(tr);
+        });
+        badge(badgeEl, 'ok', '最优位移 ' + cands[0].shift);
+      } else if (m === 'vigenere') {
+        var r = E.vigenereCrack(input, 12);
+        $('cl-cc-key-out').textContent = r.key + '（长度 ' + r.keyLen + '）';
+        $('cl-cc-plain').textContent = r.plain;
+        thead.innerHTML = '<tr><th class="cl-num">假设密钥长度</th><th class="cl-num">平均重合指数</th><th>判断</th></tr>';
+        r.ics.forEach(function (e) {
+          var tr = document.createElement('tr');
+          var isMul = r.keyLen && e.len % r.keyLen === 0;
+          if (isMul) tr.style.background = 'var(--cl-card)';
+          tr.innerHTML = '<td class="cl-num">' + e.len + '</td><td class="cl-num">' + e.ic.toFixed(4) + '</td><td class="cl-dim">' +
+            (e.len === r.keyLen ? '最小周期' : isMul ? '整数倍，同样出峰' : e.ic > 0.06 ? '接近英文' : '接近随机') + '</td>';
+          tbody.appendChild(tr);
+        });
+        badge(badgeEl, 'ok', '密钥 ' + r.key);
+        drawIc(r);
+      } else {
+        var data = E.fromHex(input.trim());
+        var x = E.xorCrack(data, 16);
+        $('cl-cc-key-out').textContent = E.fromUtf8(x.key) + '（十六进制 ' + E.toHex(x.key) + '）';
+        $('cl-cc-plain').textContent = E.fromUtf8(x.plain);
+        thead.innerHTML = '<tr><th class="cl-num">假设密钥长度</th><th class="cl-num">归一化汉明距离</th></tr>';
+        x.sizes.slice(0, 12).forEach(function (s) {
+          var tr = document.createElement('tr');
+          if (s.len === x.keyLen) tr.style.background = 'var(--cl-card)';
+          tr.innerHTML = '<td class="cl-num">' + s.len + '</td><td class="cl-num">' + s.dist.toFixed(3) + '</td>';
+          tbody.appendChild(tr);
+        });
+        badge(badgeEl, 'ok', '密钥 ' + E.fromUtf8(x.key));
+      }
+    } catch (err) {
+      badge(badgeEl, 'bad', err.message);
+      $('cl-cc-key-out').textContent = '—';
+      $('cl-cc-plain').textContent = '—';
+    }
+    renderFreq();
+  });
+
+  function renderFreq() {
+    var text = $('cl-cc-input').value;
+    var lc = E.letterCounts(text);
+    var ic = E.indexOfCoincidence(lc.counts, lc.total);
+    $('cl-cc-ic').textContent = lc.total ? ic.toFixed(4) + '（' + lc.total + ' 个字母）' : '—（没有拉丁字母）';
+    var cv = $('cl-cc-freq');
+    var f = fitCanvas(cv), ctx = f.ctx;
+    ctx.font = MONO;
+    var p = makePlacer(ctx, f.w, f.h);
+    var padL = 42, padR = 14, padT = 22, padB = 40;
+    var W = f.w - padL - padR, H = f.h - padT - padB;
+    var pct = lc.counts.map(function (c) { return lc.total ? (100 * c) / lc.total : 0; });
+    var maxV = Math.max(14, Math.max.apply(null, pct.concat(E.ENG_FREQ)));
+    ctx.strokeStyle = C.hair;
+    ctx.beginPath();
+    ctx.moveTo(padL, padT); ctx.lineTo(padL, padT + H); ctx.lineTo(padL + W, padT + H);
+    ctx.stroke();
+    var bw = W / 26, alpha = 0;
+    for (var i = 0; i < 26; i++) {
+      var x = padL + i * bw;
+      var hRef = (E.ENG_FREQ[i] / maxV) * H;
+      var hCur = (pct[i] / maxV) * H;
+      ctx.fillStyle = C.card;
+      ctx.fillRect(x + 2, padT + H - hRef, bw - 4, hRef);
+      ctx.fillStyle = C.ink;
+      ctx.fillRect(x + bw * 0.28, padT + H - hCur, bw * 0.44, hCur);
+      if (p.text(String.fromCharCode(97 + i), x + bw / 2, padT + H + 14, { align: 'center', color: C.mute })) alpha++;
+    }
+    ctx.fillStyle = C.ash;
+    var yticks = 0;
+    for (var t = 0; t <= 3; t++) {
+      var v = (maxV * t) / 3;
+      var y = padT + H - (v / maxV) * H;
+      if (p.text(v.toFixed(0) + '%', padL - 6, y + 4, { align: 'right', color: C.ash })) yticks++;
+    }
+    p.text('黑柱 = 当前文本 · 灰柱 = 英文基准频率', padL + 2, padT - 8, { color: C.mute });
+    p.text('重合指数 IC = ' + (lc.total ? ic.toFixed(4) : '—'), padL + W, padT - 8, { align: 'right', color: C.ink });
+    p.text('字母 →', padL + W, padT + H + 30, { align: 'right', color: C.ash });
+    cv.dataset.drawn = String(p.drawn.length);
+    cv.dataset.dropped = String(p.dropped);
+    cv.dataset.letters = String(lc.total);
+    cv.dataset.alpha = String(alpha);
+    cv.dataset.yticks = String(yticks);
+  }
+  function drawIc(r) {
+    // 复用频率画布下方的表格即可，这里只把最优长度写进 dataset 便于测试断言
+    $('cl-cc-freq').dataset.keylen = String(r.keyLen);
+  }
+
+  /* ══════════ 片段库 ══════════ */
+  function readState() {
+    try { return JSON.parse(localStorage.getItem(STORE) || '{}'); } catch (e) { return {}; }
+  }
+  var saveTimer = null;
+  function save() {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(function () {
+      var st = readState();
+      st.panel = current;
+      st.inputs = {};
+      ['cl-dg-input', 'cl-dg-kind', 'cl-dg-fmt', 'cl-mac-alg', 'cl-mac-key', 'cl-mac-keykind', 'cl-mac-msg',
+        'cl-kdf-pw', 'cl-kdf-salt', 'cl-kdf-alg', 'cl-kdf-iter', 'cl-kdf-len', 'cl-jwt-token', 'cl-jwt-key',
+        'cl-sha-input', 'cl-av-alg', 'cl-aes-key', 'cl-aes-pt', 'cl-aes-size', 'cl-seal-pw', 'cl-seal-iter',
+        'cl-seal-plain', 'cl-seal-blob', 'cl-cc-mode', 'cl-cc-key', 'cl-cc-shift', 'cl-cc-input'].forEach(function (id) {
+          var el = $(id);
+          if (el) st.inputs[id] = el.value;
+        });
+      try { localStorage.setItem(STORE, JSON.stringify(st)); } catch (e) {}
+    }, 120);
+  }
+  function restore() {
+    var st = readState();
+    if (st.inputs) {
+      Object.keys(st.inputs).forEach(function (id) {
+        var el = $(id);
+        if (el && typeof st.inputs[id] === 'string') el.value = st.inputs[id];
+      });
+    }
+    return st;
+  }
+  function renderClips() {
+    var st = readState();
+    var clips = st.clips || [];
+    var box = $('cl-clips');
+    box.innerHTML = '';
+    if (!clips.length) {
+      box.innerHTML = '<span class="cl-dim cl-tiny">还没有片段。在「摘要与校验」里点「存为片段」，把常用的输入存下来。</span>';
+      return;
+    }
+    clips.forEach(function (c, i) {
+      var d = document.createElement('div');
+      d.className = 'cl-clip';
+      d.innerHTML = '<span>' + esc(c.name) + '</span>';
+      var load = document.createElement('button');
+      load.type = 'button';
+      load.className = 'cl-clip-load';
+      load.textContent = '载入';
+      load.addEventListener('click', function () {
+        $('cl-dg-input').value = c.text;
+        $('cl-dg-kind').value = c.kind || 'text';
+        fileBytes = null;
+        showPanel('digest');
+        renderDigest();
+        save();
+      });
+      var del = document.createElement('button');
+      del.type = 'button';
+      del.textContent = '[x]';
+      del.setAttribute('aria-label', '删除片段 ' + c.name);
+      del.addEventListener('click', function () {
+        var s2 = readState();
+        s2.clips.splice(i, 1);
+        localStorage.setItem(STORE, JSON.stringify(s2));
+        renderClips();
+      });
+      d.appendChild(load);
+      d.appendChild(del);
+      box.appendChild(d);
+    });
+  }
+  $('cl-dg-clip').addEventListener('click', function () {
+    var st = readState();
+    st.clips = st.clips || [];
+    var text = $('cl-dg-input').value;
+    var name = (text.trim().slice(0, 18) || '空片段') + ' · ' + (st.clips.length + 1);
+    st.clips.push({ name: name, text: text, kind: $('cl-dg-kind').value });
+    try { localStorage.setItem(STORE, JSON.stringify(st)); } catch (e) {}
+    renderClips();
+  });
+
+  /* ══════════ 启动 ══════════ */
+  var st0 = restore();
+  syncCcControls();
+  $('cl-cc-shiftlabel').textContent = $('cl-cc-shift').value;
+  renderSbox();
+  renderDigest();
+  renderHmac();
+  renderJwt();
+  renderSha();
+  renderAes();
+  renderAvalanche();
+  ccEncrypt(false);
+  renderClips();
+  if (st0.panel && PANELS.indexOf(st0.panel) >= 0) showPanel(st0.panel);
+  document.body.dataset.ready = '1';
+  var resizeTimer = null;
+  window.addEventListener('resize', function () {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(function () {
+      if (current === 'sha') renderAvalanche();
+      if (current === 'classic') renderFreq();
+    }, 150);
+  });
+})();
+</script>
+</body>
+</html>
