@@ -1,0 +1,3274 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>二进制解剖台 · Binary Scope</title>
+<meta name="description" content="浏览器内的文件格式解剖台：按魔数识别 30+ 种格式，逐段拆出 PNG/JPEG/GIF/ZIP/GZIP/MP4/字体/PDF/可执行文件的内部结构，字节级十六进制对照、熵图谱与字符串提取，并体检出 GPS 坐标、路径穿越、尾部藏包等隐私与风险信号。全部本地解析，零上传。">
+<style>
+/* ── 全局守卫：作者 CSS 与 UA 的 [hidden] 同特异性，必须显式提权 ── */
+[hidden]{display:none!important}
+
+/* ══════════════════════════════════════════════════════════════
+   设计语言：Raycast —— 单一深色画布 + 四级表面阶梯 + 1px 发丝边框，
+   零投影、白色主行动药丸、Inter(ss03)，命令面板即品牌。
+   类名一律 bs- 前缀（避免与 UA / 通用状态词撞车）。
+   ══════════════════════════════════════════════════════════════ */
+:root{
+  --bs-canvas:#07080a;
+  --bs-surface:#0d0d0d;
+  --bs-elev:#101111;
+  --bs-card:#121212;
+  --bs-deep:#18191a;
+  --bs-hair:#242728;
+  --bs-hair-soft:rgba(255,255,255,0.08);
+  --bs-hair-strong:rgba(255,255,255,0.16);
+  --bs-ink:#f4f4f6;
+  --bs-body:#cdcdcd;
+  --bs-charcoal:#d3d3d4;
+  --bs-mute:#9c9c9d;
+  --bs-ash:#6a6b6c;
+  --bs-stone:#434345;
+  --bs-white:#ffffff;
+  --bs-onwhite:#000000;
+  --bs-blue:#57c1ff;
+  --bs-blue-soft:rgba(87,193,255,0.15);
+  --bs-red:#ff6161;
+  --bs-red-soft:rgba(255,97,97,0.15);
+  --bs-green:#59d499;
+  --bs-green-soft:rgba(89,212,153,0.15);
+  --bs-yellow:#ffc533;
+  --bs-yellow-soft:rgba(255,197,51,0.15);
+  --bs-stripe-a:#ff5757;
+  --bs-stripe-b:#a1131a;
+  --bs-sans:"Inter","Inter Fallback",-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,sans-serif;
+  --bs-mono:ui-monospace,SFMono-Regular,"JetBrains Mono","SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0;background:var(--bs-canvas);color:var(--bs-body);
+  font-family:var(--bs-sans);font-size:16px;line-height:1.6;font-weight:400;
+  font-feature-settings:"calt","kern","liga","ss03";
+  -webkit-font-smoothing:antialiased;
+}
+h1,h2,h3,h4{color:var(--bs-ink);font-weight:500;margin:0}
+p{margin:0}
+a{color:var(--bs-body);text-decoration:none;border-bottom:1px solid var(--bs-stone)}
+a:hover{color:var(--bs-white);border-bottom-color:var(--bs-hair-strong)}
+:focus-visible{outline:2px solid var(--bs-blue);outline-offset:2px;border-radius:4px}
+::selection{background:rgba(255,255,255,0.18)}
+
+/* ── 顶栏 ── */
+.bs-nav{
+  height:56px;display:flex;align-items:center;justify-content:space-between;gap:16px;
+  padding:0 24px;border-bottom:1px solid var(--bs-hair);background:var(--bs-canvas);
+  position:sticky;top:0;z-index:40;
+}
+.bs-nav-l,.bs-nav-r{display:flex;align-items:center;gap:12px;min-width:0}
+.bs-mark{color:var(--bs-ink);font-size:14px;font-weight:500;letter-spacing:.2px;white-space:nowrap}
+.bs-back{font-size:14px;font-weight:500;letter-spacing:.2px;border-bottom:none;color:var(--bs-body);white-space:nowrap;flex:none}
+.bs-back:hover{color:var(--bs-white)}
+.bs-dot{width:3px;height:3px;border-radius:50%;background:var(--bs-stone);flex:none}
+.bs-shield{
+  display:inline-flex;align-items:center;gap:6px;font-size:12px;letter-spacing:.4px;
+  color:var(--bs-green);background:var(--bs-green-soft);border-radius:4px;padding:2px 8px;white-space:nowrap;
+}
+.bs-shield i{width:6px;height:6px;border-radius:50%;background:var(--bs-green);display:block}
+
+/* ── 英雄区（红色斜条带：全站仅此一次） ── */
+.bs-hero{position:relative;overflow:hidden;border-bottom:1px solid var(--bs-hair);padding:56px 24px 40px}
+.bs-stripes{position:absolute;inset:-150px -6% auto -6%;height:460px;pointer-events:none}
+.bs-stripes span{
+  position:absolute;left:-8%;width:124%;height:58px;transform:rotate(-7deg);
+  background:linear-gradient(90deg,var(--bs-stripe-a),var(--bs-stripe-b) 78%,rgba(161,19,26,0));filter:blur(26px);
+}
+.bs-stripes span:nth-child(1){top:150px;opacity:.62}
+.bs-stripes span:nth-child(2){top:224px;opacity:.36}
+.bs-stripes span:nth-child(3){top:298px;opacity:.16}
+.bs-hero-in{position:relative;max-width:1240px;margin:0 auto}
+.bs-h1{font-size:52px;line-height:1.1;letter-spacing:0;font-weight:600}
+.bs-h1 em{font-style:normal;color:var(--bs-mute)}
+.bs-sub{margin-top:14px;max-width:760px;font-size:18px;line-height:1.6;color:var(--bs-body)}
+
+/* ── 命令面板（品牌承重视觉） ── */
+.bs-palette{
+  margin-top:28px;max-width:1080px;background:var(--bs-surface);
+  border:1px solid var(--bs-hair);border-radius:16px;overflow:hidden;
+}
+.bs-pal-bar{display:flex;align-items:center;gap:10px;padding:0 16px;height:52px;border-bottom:1px solid var(--bs-hair)}
+.bs-pal-bar svg{flex:none;color:var(--bs-ash)}
+#bs-pal-search{
+  flex:1;min-width:120px;height:36px;background:transparent;border:none;outline:none;
+  color:var(--bs-ink);font-family:var(--bs-sans);font-size:16px;
+}
+#bs-pal-search::placeholder{color:var(--bs-ash)}
+.bs-pal-list{max-height:268px;overflow:auto;padding:8px}
+.bs-pal-sec{font-size:12px;letter-spacing:.4px;color:var(--bs-ash);padding:8px 10px 4px}
+.bs-pal-row{
+  width:100%;display:flex;align-items:center;gap:12px;padding:6px 10px;border-radius:6px;
+  background:transparent;border:1px solid transparent;color:var(--bs-body);cursor:pointer;text-align:left;
+  font-family:var(--bs-sans);font-size:16px;
+}
+.bs-pal-row:hover,.bs-pal-row[data-cur="1"]{background:var(--bs-card);color:var(--bs-ink)}
+.bs-pal-row[data-cur="1"]{border-color:var(--bs-hair)}
+.bs-tile{
+  width:32px;height:32px;flex:none;border-radius:8px;background:var(--bs-card);
+  border:1px solid var(--bs-hair);display:flex;align-items:center;justify-content:center;
+  font-family:var(--bs-mono);font-size:11px;font-weight:600;letter-spacing:0;
+}
+.bs-pal-name{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bs-pal-meta{color:var(--bs-ash);font-size:13px;white-space:nowrap}
+.bs-pal-foot{
+  display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+  padding:10px 16px;border-top:1px solid var(--bs-hair);background:var(--bs-elev);
+}
+.bs-hint{color:var(--bs-mute);font-size:13px}
+kbd{
+  display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:1px 6px;
+  background:linear-gradient(180deg,var(--bs-card),var(--bs-surface));border:1px solid var(--bs-hair);
+  border-radius:4px;color:var(--bs-body);font-family:var(--bs-mono);font-size:12px;line-height:1;
+}
+
+/* ── 按钮 ── */
+button{font-family:var(--bs-sans)}
+.bs-btn{
+  min-width:52px;height:36px;padding:8px 16px;border-radius:8px;cursor:pointer;
+  font-size:14px;font-weight:500;letter-spacing:.2px;line-height:1.6;
+  background:var(--bs-elev);color:var(--bs-white);border:1px solid var(--bs-hair);
+  display:inline-flex;align-items:center;justify-content:center;gap:8px;
+}
+.bs-btn:hover{background:var(--bs-card);border-color:var(--bs-hair-strong)}
+.bs-btn-primary{background:var(--bs-white);color:var(--bs-onwhite);border-color:var(--bs-white)}
+.bs-btn-primary:hover{background:#e8e8e8;border-color:#e8e8e8}
+.bs-btn-sm{height:30px;padding:4px 12px;font-size:13px}
+.bs-btn:disabled{background:var(--bs-elev);color:var(--bs-ash);cursor:not-allowed;border-color:var(--bs-hair)}
+
+/* ── 主体 ── */
+.bs-wrap{max-width:1240px;margin:0 auto;padding:32px 24px 96px}
+.bs-filebar{
+  display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+  background:var(--bs-surface);border:1px solid var(--bs-hair);border-radius:10px;padding:14px 16px;
+}
+.bs-fname{color:var(--bs-ink);font-size:16px;font-weight:500;letter-spacing:.2px;font-family:var(--bs-mono);
+  max-width:min(420px,52vw);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bs-fmt{
+  display:inline-flex;align-items:center;gap:6px;height:22px;padding:2px 8px;border-radius:4px;
+  background:var(--bs-blue-soft);color:var(--bs-blue);font-size:12px;letter-spacing:.4px;
+}
+.bs-fmt[data-kind="risk"]{background:var(--bs-red-soft);color:var(--bs-red)}
+.bs-fmt[data-kind="unknown"]{background:var(--bs-elev);color:var(--bs-mute)}
+.bs-fmeta{color:var(--bs-mute);font-size:13px;letter-spacing:.1px;font-family:var(--bs-mono)}
+.bs-spacer{flex:1}
+
+/* ── 标签页 ── */
+.bs-tabs{display:flex;gap:6px;flex-wrap:wrap;margin:24px 0 16px}
+.bs-tab{
+  min-width:64px;height:32px;padding:4px 14px;border-radius:9999px;cursor:pointer;
+  background:transparent;border:1px solid transparent;color:var(--bs-body);
+  font-size:14px;font-weight:400;letter-spacing:.2px;display:inline-flex;align-items:center;gap:8px;
+}
+.bs-tab:hover{color:var(--bs-ink);background:var(--bs-surface)}
+.bs-tab[aria-selected="true"]{background:var(--bs-elev);border-color:var(--bs-hair);color:var(--bs-white);font-weight:500}
+.bs-tab kbd{opacity:.7}
+
+/* ── 卡片 ── */
+.bs-card{background:var(--bs-surface);border:1px solid var(--bs-hair);border-radius:10px;padding:24px}
+.bs-card-tight{padding:16px}
+.bs-card-h{display:flex;align-items:baseline;gap:10px;margin-bottom:14px;flex-wrap:wrap}
+.bs-card-h h3{font-size:18px;letter-spacing:.2px}
+.bs-card-h .bs-hint{margin-left:auto}
+.bs-grid{display:grid;gap:16px}
+.bs-g2{grid-template-columns:minmax(0,1.15fr) minmax(0,1fr)}
+.bs-g2e{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+.bs-g3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.bs-stack{display:flex;flex-direction:column;gap:16px}
+
+/* ── 键值表 ── */
+.bs-kv{display:grid;grid-template-columns:auto minmax(0,1fr);gap:0}
+.bs-kv dt{
+  padding:7px 16px 7px 0;color:var(--bs-mute);font-size:13px;letter-spacing:.1px;
+  border-bottom:1px solid var(--bs-hair-soft);white-space:nowrap;
+}
+.bs-kv dd{
+  margin:0;padding:7px 0;color:var(--bs-charcoal);font-size:13px;font-family:var(--bs-mono);
+  border-bottom:1px solid var(--bs-hair-soft);word-break:break-all;
+}
+.bs-kv dt:last-of-type,.bs-kv dd:last-of-type{border-bottom:none}
+.bs-num{font-family:var(--bs-mono);font-variant-numeric:tabular-nums}
+
+/* ── 体检发现 ── */
+.bs-finds{display:flex;flex-direction:column;gap:8px}
+.bs-find{
+  display:flex;gap:12px;align-items:flex-start;padding:12px 14px;border-radius:8px;
+  background:var(--bs-elev);border:1px solid var(--bs-hair);
+}
+.bs-sev{
+  flex:none;height:22px;padding:2px 8px;border-radius:4px;font-size:12px;letter-spacing:.4px;
+  display:inline-flex;align-items:center;background:var(--bs-elev);color:var(--bs-mute);
+}
+.bs-sev[data-sev="high"]{background:var(--bs-red-soft);color:var(--bs-red)}
+.bs-sev[data-sev="warn"]{background:var(--bs-yellow-soft);color:var(--bs-yellow)}
+.bs-sev[data-sev="info"]{background:var(--bs-blue-soft);color:var(--bs-blue)}
+.bs-sev[data-sev="ok"]{background:var(--bs-green-soft);color:var(--bs-green)}
+.bs-find-b{min-width:0}
+.bs-find-t{color:var(--bs-ink);font-size:14px;font-weight:500;letter-spacing:.2px}
+.bs-find-d{color:var(--bs-mute);font-size:13px;line-height:1.5;word-break:break-word}
+
+/* ── 文件地图 ── */
+.bs-map{display:flex;height:42px;width:100%;border:1px solid var(--bs-hair);border-radius:8px;overflow:hidden;background:var(--bs-elev)}
+.bs-seg{
+  position:relative;min-width:2px;display:flex;align-items:center;justify-content:center;overflow:hidden;
+  border-right:1px solid rgba(0,0,0,.45);cursor:pointer;padding:0 2px;
+}
+.bs-seg:last-child{border-right:none}
+.bs-seg:hover{filter:brightness(1.35)}
+.bs-seg-l{
+  font-family:var(--bs-mono);font-size:10px;letter-spacing:0;color:rgba(255,255,255,.92);
+  white-space:nowrap;pointer-events:none;text-shadow:0 1px 2px rgba(0,0,0,.85);
+}
+.bs-legend{display:flex;gap:14px;flex-wrap:wrap;margin-top:10px}
+.bs-lg{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--bs-mute);letter-spacing:.1px}
+.bs-lg i{width:10px;height:10px;border-radius:2px;display:block;flex:none}
+
+/* ── 预览 ── */
+.bs-prev{
+  border:1px solid var(--bs-hair);border-radius:8px;background:
+    linear-gradient(45deg,#0e0f10 25%,transparent 25%,transparent 75%,#0e0f10 75%),
+    linear-gradient(45deg,#0e0f10 25%,#0a0b0c 25%,#0a0b0c 75%,#0e0f10 75%);
+  background-size:16px 16px;background-position:0 0,8px 8px;
+  min-height:150px;display:flex;align-items:center;justify-content:center;padding:12px;overflow:hidden;
+}
+.bs-prev img{max-width:100%;max-height:260px;display:block;image-rendering:auto}
+.bs-prev-none{color:var(--bs-ash);font-size:13px}
+
+/* ── 结构树 ── */
+.bs-tree{
+  font-family:var(--bs-mono);font-size:13px;max-height:520px;overflow:auto;
+  border:1px solid var(--bs-hair);border-radius:8px;background:var(--bs-elev);padding:6px;
+}
+.bs-node{
+  display:flex;align-items:center;gap:8px;padding:4px 8px;border-radius:6px;cursor:pointer;
+  border:1px solid transparent;color:var(--bs-body);width:100%;background:transparent;text-align:left;
+  font-family:var(--bs-mono);font-size:13px;
+}
+.bs-node:hover{background:var(--bs-card);color:var(--bs-ink)}
+.bs-node[data-sel="1"]{background:var(--bs-card);border-color:var(--bs-hair-strong);color:var(--bs-white)}
+.bs-caret{width:14px;flex:none;color:var(--bs-ash);text-align:center;font-size:10px}
+.bs-node-n{flex:none;color:var(--bs-ink);font-weight:500}
+.bs-node-d{flex:1;min-width:0;color:var(--bs-mute);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bs-node-o{flex:none;color:var(--bs-stone);font-variant-numeric:tabular-nums}
+.bs-node-s{flex:none;color:var(--bs-ash);font-variant-numeric:tabular-nums;min-width:74px;text-align:right}
+.bs-chip{
+  flex:none;height:18px;padding:0 6px;border-radius:4px;font-size:11px;letter-spacing:.2px;
+  display:inline-flex;align-items:center;background:var(--bs-surface);color:var(--bs-mute);border:1px solid var(--bs-hair)
+}
+.bs-chip[data-t="ok"]{color:var(--bs-green);border-color:rgba(89,212,153,.3)}
+.bs-chip[data-t="bad"]{color:var(--bs-red);border-color:rgba(255,97,97,.3)}
+
+/* ── 十六进制 ── */
+.bs-hexbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+.bs-hexscroll{
+  height:452px;overflow:auto;border:1px solid var(--bs-hair);border-radius:8px;background:var(--bs-elev);
+  position:relative;font-family:var(--bs-mono);font-size:13px;line-height:22px;
+}
+.bs-hexinner{position:relative;width:100%}
+.bs-hexrows{position:absolute;left:0;right:0;top:0;padding:0 12px}
+.bs-hexrow{display:flex;gap:12px;height:22px;white-space:pre;align-items:center}
+.bs-hexoff{color:var(--bs-stone);flex:none;font-variant-numeric:tabular-nums}
+.bs-hexb{flex:none;letter-spacing:0}
+.bs-hexb span{display:inline-block;width:22px;text-align:center;color:var(--bs-body);border-radius:3px;cursor:pointer}
+.bs-hexb span[data-z="1"]{color:var(--bs-stone)}
+.bs-hexb span[data-hl="1"]{background:var(--bs-blue-soft);color:var(--bs-blue)}
+.bs-hexb span[data-cur="1"]{background:var(--bs-white);color:var(--bs-onwhite)}
+.bs-hexb span:hover{background:var(--bs-hair-strong)}
+.bs-hexa{flex:none;color:var(--bs-ash)}
+.bs-hexa span{display:inline-block;width:9px;text-align:center;border-radius:2px}
+.bs-hexa span[data-hl="1"]{background:var(--bs-blue-soft);color:var(--bs-blue)}
+.bs-hexa span[data-cur="1"]{background:var(--bs-white);color:var(--bs-onwhite)}
+.bs-hexa span[data-p="0"]{color:var(--bs-stone)}
+
+/* ── 表单控件 ── */
+input[type="text"],input[type="number"],input[type="search"],select{
+  height:36px;min-width:112px;padding:6px 12px;border-radius:8px;
+  background:var(--bs-elev);border:1px solid var(--bs-hair);color:var(--bs-ink);
+  font-family:var(--bs-mono);font-size:13px;outline:none;
+}
+input:focus,select:focus{border-color:var(--bs-hair-strong)}
+select{cursor:pointer;padding-right:8px}
+label.bs-lab{display:inline-flex;align-items:center;gap:8px;color:var(--bs-mute);font-size:13px;letter-spacing:.1px}
+input[type="checkbox"]{width:18px;height:18px;accent-color:var(--bs-blue);cursor:pointer}
+
+/* ── 通用表格 ── */
+.bs-tbl{width:100%;border-collapse:collapse;font-family:var(--bs-mono);font-size:13px}
+.bs-tbl th{
+  text-align:left;color:var(--bs-mute);font-weight:500;font-size:12px;letter-spacing:.2px;
+  padding:6px 10px;border-bottom:1px solid var(--bs-hair);white-space:nowrap;font-family:var(--bs-sans);
+}
+.bs-tbl td{padding:6px 10px;border-bottom:1px solid var(--bs-hair-soft);color:var(--bs-charcoal);vertical-align:top}
+.bs-tbl tr:last-child td{border-bottom:none}
+.bs-tbl td.bs-r,.bs-tbl th.bs-r{text-align:right;font-variant-numeric:tabular-nums}
+.bs-tbl tbody tr:hover td{background:var(--bs-elev)}
+.bs-scrollx{overflow-x:auto;max-width:100%}
+.bs-tblwrap{max-height:420px;overflow:auto;border:1px solid var(--bs-hair);border-radius:8px}
+.bs-tblwrap .bs-tbl th{position:sticky;top:0;background:var(--bs-elev);z-index:1}
+.bs-bar{display:block;height:6px;border-radius:3px;background:var(--bs-hair-strong);min-width:2px}
+
+/* ── 画布 ── */
+.bs-canvaswrap{border:1px solid var(--bs-hair);border-radius:8px;background:var(--bs-elev);padding:10px}
+canvas{display:block;width:100%;height:auto}
+
+/* ── 字符串 ── */
+.bs-strrow{cursor:pointer}
+.bs-strrow td.bs-str{color:var(--bs-ink);word-break:break-all;white-space:pre-wrap}
+.bs-tag{
+  display:inline-flex;align-items:center;height:18px;padding:0 6px;border-radius:4px;font-size:11px;
+  background:var(--bs-surface);border:1px solid var(--bs-hair);color:var(--bs-mute);letter-spacing:.2px
+}
+
+/* ── 拖放遮罩 ── */
+.bs-drop{
+  position:fixed;inset:0;z-index:60;background:rgba(7,8,10,.88);
+  display:flex;align-items:center;justify-content:center;pointer-events:none;
+}
+.bs-drop-in{
+  border:1px dashed var(--bs-hair-strong);border-radius:16px;padding:48px 64px;background:var(--bs-surface);
+  color:var(--bs-ink);font-size:20px;letter-spacing:.2px;text-align:center;
+}
+.bs-drop-in small{display:block;margin-top:8px;color:var(--bs-mute);font-size:13px;letter-spacing:.1px}
+
+.bs-empty{color:var(--bs-ash);font-size:14px;padding:24px 0;text-align:center}
+.bs-note{color:var(--bs-mute);font-size:13px;line-height:1.6}
+.bs-note code,.bs-mono{font-family:var(--bs-mono);color:var(--bs-charcoal)}
+.bs-foot{border-top:1px solid var(--bs-hair);padding:32px 24px 48px;color:var(--bs-mute);font-size:13px}
+.bs-foot-in{max-width:1240px;margin:0 auto;display:flex;gap:16px;flex-wrap:wrap;align-items:center}
+
+@media (max-width:1080px){
+  .bs-g2,.bs-g2e{grid-template-columns:minmax(0,1fr)}
+  .bs-g3{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media (max-width:820px){
+  .bs-nav{height:auto;min-height:56px;padding:8px 16px;flex-wrap:wrap;row-gap:6px}
+  .bs-mark{font-size:13px}
+}
+@media (max-width:560px){
+  .bs-mark,.bs-nav-l .bs-dot{display:none}
+}
+@media (max-width:720px){
+  .bs-hero{padding:40px 16px 32px}
+  .bs-h1{font-size:34px}
+  .bs-sub{font-size:16px}
+  .bs-wrap{padding:24px 16px 64px}
+  .bs-nav{padding:0 16px}
+  .bs-g3{grid-template-columns:minmax(0,1fr)}
+  .bs-card{padding:16px}
+  .bs-hexscroll{font-size:12px}
+}
+</style>
+</head>
+<body data-ready="0">
+
+<nav class="bs-nav">
+  <div class="bs-nav-l">
+    <a class="bs-back" href="../../">← 返回工具集</a>
+    <span class="bs-dot"></span>
+    <span class="bs-mark">Binary Scope · 二进制解剖台</span>
+  </div>
+  <div class="bs-nav-r">
+    <span class="bs-shield"><i></i>零上传 · 全部在本机解析</span>
+  </div>
+</nav>
+
+<header class="bs-hero">
+  <div class="bs-stripes" aria-hidden="true"><span></span><span></span><span></span></div>
+  <div class="bs-hero-in">
+    <h1 class="bs-h1">把任意文件<em>拆开看</em></h1>
+    <p class="bs-sub">按魔数认格式，逐段拆结构，字节级对照十六进制 —— 顺带体检出 GPS 坐标、路径穿越、尾部藏包这类你未必知道自己带着的东西。文件不出浏览器。</p>
+
+    <div class="bs-palette">
+      <div class="bs-pal-bar">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="7" cy="7" r="5" stroke="currentColor" stroke-width="1.5"/><path d="M11 11l3.5 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        <input id="bs-pal-search" type="search" placeholder="搜索内置样本，或把文件拖进来 / 粘贴剪贴板文件" aria-label="搜索内置样本">
+        <kbd>↑↓</kbd><kbd>⏎</kbd>
+      </div>
+      <div class="bs-pal-list" id="bs-pal-list" role="listbox" aria-label="内置样本"></div>
+      <div class="bs-pal-foot">
+        <button class="bs-btn bs-btn-primary" id="bs-open" type="button">打开本地文件</button>
+        <span class="bs-hint">支持任意二进制；30+ 种格式带结构解析</span>
+        <span class="bs-spacer"></span>
+        <span class="bs-hint"><kbd>1</kbd>–<kbd>5</kbd> 切面板 · <kbd>O</kbd> 打开 · <kbd>G</kbd> 跳偏移 · <kbd>/</kbd> 搜索</span>
+      </div>
+    </div>
+    <input type="file" id="bs-file" hidden>
+  </div>
+</header>
+
+<main class="bs-wrap">
+
+  <section class="bs-filebar" id="bs-filebar">
+    <span class="bs-fname" id="bs-fname">（尚未载入文件）</span>
+    <span class="bs-fmt" id="bs-fmt" data-kind="unknown">—</span>
+    <span class="bs-fmeta" id="bs-fmeta"></span>
+    <span class="bs-spacer"></span>
+    <button class="bs-btn bs-btn-sm" id="bs-export" type="button">导出结构 JSON</button>
+  </section>
+
+  <nav class="bs-tabs" role="tablist" aria-label="解剖视图">
+    <button class="bs-tab" id="bs-tab-overview" role="tab" aria-selected="true" aria-controls="bs-panel-overview" type="button">概览<kbd>1</kbd></button>
+    <button class="bs-tab" id="bs-tab-tree" role="tab" aria-selected="false" aria-controls="bs-panel-tree" type="button">结构<kbd>2</kbd></button>
+    <button class="bs-tab" id="bs-tab-hex" role="tab" aria-selected="false" aria-controls="bs-panel-hex" type="button">十六进制<kbd>3</kbd></button>
+    <button class="bs-tab" id="bs-tab-map" role="tab" aria-selected="false" aria-controls="bs-panel-map" type="button">图谱<kbd>4</kbd></button>
+    <button class="bs-tab" id="bs-tab-str" role="tab" aria-selected="false" aria-controls="bs-panel-str" type="button">字符串<kbd>5</kbd></button>
+  </nav>
+
+  <!-- ══ 面板 1：概览 ══ -->
+  <section class="bs-stack" id="bs-panel-overview" role="tabpanel" aria-labelledby="bs-tab-overview">
+    <div class="bs-grid bs-g2">
+      <div class="bs-card">
+        <div class="bs-card-h"><h3>识别结果</h3><span class="bs-hint" id="bs-magic-hint"></span></div>
+        <dl class="bs-kv" id="bs-kv"></dl>
+      </div>
+      <div class="bs-stack">
+        <div class="bs-card">
+          <div class="bs-card-h"><h3>预览</h3><span class="bs-hint">由浏览器渲染，仅本地 blob</span></div>
+          <div class="bs-prev" id="bs-prev"><span class="bs-prev-none">该格式无可视预览</span></div>
+        </div>
+        <div class="bs-card">
+          <div class="bs-card-h">
+            <h3>体检发现</h3>
+            <span class="bs-hint" id="bs-find-sum"></span>
+          </div>
+          <div class="bs-finds" id="bs-finds"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="bs-card">
+      <div class="bs-card-h"><h3>文件地图</h3><span class="bs-hint">按顶层结构分段，点击跳到十六进制</span></div>
+      <div class="bs-map" id="bs-map"></div>
+      <div class="bs-legend" id="bs-legend"></div>
+    </div>
+  </section>
+
+  <!-- ══ 面板 2：结构 ══ -->
+  <section class="bs-grid bs-g2" id="bs-panel-tree" role="tabpanel" aria-labelledby="bs-tab-tree" hidden>
+    <div class="bs-card">
+      <div class="bs-card-h"><h3>结构树</h3><span class="bs-hint" id="bs-tree-sum"></span></div>
+      <div class="bs-tree" id="bs-tree"></div>
+    </div>
+    <div class="bs-stack">
+      <div class="bs-card">
+        <div class="bs-card-h"><h3 id="bs-detail-title">字段明细</h3><span class="bs-hint" id="bs-detail-range"></span></div>
+        <dl class="bs-kv" id="bs-detail"></dl>
+        <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">
+          <button class="bs-btn bs-btn-sm" id="bs-goto-hex" type="button">在十六进制中定位</button>
+          <button class="bs-btn bs-btn-sm" id="bs-copy-node" type="button">复制该段十六进制</button>
+        </div>
+      </div>
+      <div class="bs-card" id="bs-note-card">
+        <div class="bs-card-h"><h3>这段是什么</h3></div>
+        <p class="bs-note" id="bs-node-note">选中左侧任意节点，这里会解释它在格式规范里的角色。</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══ 面板 3：十六进制 ══ -->
+  <section class="bs-grid bs-g2" id="bs-panel-hex" role="tabpanel" aria-labelledby="bs-tab-hex" hidden>
+    <div class="bs-card">
+      <div class="bs-card-h"><h3>十六进制</h3><span class="bs-hint" id="bs-hex-sum"></span></div>
+      <div class="bs-hexbar">
+        <label class="bs-lab" for="bs-goto">跳转到偏移</label>
+        <input type="text" id="bs-goto" value="0x0" spellcheck="false" aria-label="跳转到偏移（支持 0x 前缀）">
+        <button class="bs-btn bs-btn-sm" id="bs-goto-btn" type="button">跳转</button>
+        <label class="bs-lab" for="bs-bpr">每行字节</label>
+        <select id="bs-bpr" aria-label="每行字节数">
+          <option value="8">8</option>
+          <option value="16" selected>16</option>
+          <option value="24">24</option>
+          <option value="32">32</option>
+        </select>
+      </div>
+      <div class="bs-hexscroll" id="bs-hexscroll" tabindex="0">
+        <div class="bs-hexinner" id="bs-hexinner"><div class="bs-hexrows" id="bs-hexrows"></div></div>
+      </div>
+    </div>
+    <div class="bs-stack">
+      <div class="bs-card">
+        <div class="bs-card-h"><h3>字节解释器</h3><span class="bs-hint" id="bs-insp-off">点任意字节</span></div>
+        <div class="bs-scrollx"><table class="bs-tbl" id="bs-insp"></table></div>
+      </div>
+      <div class="bs-card">
+        <div class="bs-card-h"><h3>当前高亮</h3></div>
+        <dl class="bs-kv" id="bs-hl-kv"></dl>
+        <p class="bs-note" style="margin-top:10px">在「结构」面板点任一节点，其字节范围会在左侧染成蓝色；单击字节则用白底标出光标位置。</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══ 面板 4：图谱 ══ -->
+  <section class="bs-stack" id="bs-panel-map" role="tabpanel" aria-labelledby="bs-tab-map" hidden>
+    <div class="bs-card">
+      <div class="bs-card-h">
+        <h3>熵曲线</h3>
+        <span class="bs-hint">滑动窗口香农熵（0–8 bit/byte）：接近 8 = 已压缩或已加密，低平段 = 明文或填充</span>
+      </div>
+      <div class="bs-canvaswrap"><canvas id="bs-ent" width="1120" height="260"></canvas></div>
+      <div class="bs-grid bs-g3" style="margin-top:14px">
+        <dl class="bs-kv" id="bs-ent-kv"></dl>
+        <dl class="bs-kv" id="bs-ent-kv2"></dl>
+        <dl class="bs-kv" id="bs-ent-kv3"></dl>
+      </div>
+    </div>
+    <div class="bs-grid bs-g2">
+      <div class="bs-card">
+        <div class="bs-card-h"><h3>字节分布</h3><span class="bs-hint">256 个桶的出现频次</span></div>
+        <div class="bs-canvaswrap"><canvas id="bs-hist" width="620" height="236"></canvas></div>
+      </div>
+      <div class="bs-card">
+        <div class="bs-card-h"><h3>分段读数</h3><span class="bs-hint">每段的体积占比与熵</span></div>
+        <div class="bs-tblwrap"><table class="bs-tbl" id="bs-seg-tbl"></table></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══ 面板 5：字符串 ══ -->
+  <section class="bs-card" id="bs-panel-str" role="tabpanel" aria-labelledby="bs-tab-str" hidden>
+    <div class="bs-card-h">
+      <h3>可读字符串</h3>
+      <span class="bs-hint" id="bs-str-sum"></span>
+    </div>
+    <div class="bs-hexbar">
+      <label class="bs-lab" for="bs-str-q">过滤</label>
+      <input type="search" id="bs-str-q" placeholder="子串或 /正则/" spellcheck="false" aria-label="过滤字符串">
+      <label class="bs-lab" for="bs-str-min">最短长度</label>
+      <select id="bs-str-min" aria-label="最短长度">
+        <option value="3">3</option>
+        <option value="4" selected>4</option>
+        <option value="6">6</option>
+        <option value="8">8</option>
+        <option value="12">12</option>
+      </select>
+      <label class="bs-lab"><input type="checkbox" id="bs-str-u16" checked>含 UTF-16LE</label>
+      <label class="bs-lab"><input type="checkbox" id="bs-str-cjk" checked>含中文（UTF-8）</label>
+      <button class="bs-btn bs-btn-sm" id="bs-str-copy" type="button">复制全部</button>
+    </div>
+    <div class="bs-tblwrap" style="max-height:520px"><table class="bs-tbl" id="bs-str-tbl"></table></div>
+  </section>
+
+</main>
+
+<footer class="bs-foot">
+  <div class="bs-foot-in">
+    <span>每日工具集 · 二进制解剖台</span>
+    <span class="bs-dot"></span>
+    <span>所有解析器（含 inflate 解压、EXIF/IFD、ZIP 目录、ISO-BMFF box 树、sfnt 表目录）均在本页手写实现，无第三方库</span>
+    <span class="bs-spacer"></span>
+    <a href="../../">返回工具集</a>
+  </div>
+</footer>
+
+<div class="bs-drop" id="bs-drop" hidden><div class="bs-drop-in">松手即解剖<small>文件只在你的浏览器里读取，不会上传到任何地方</small></div></div>
+
+<script>
+/* ══════════════════════════════════════════════════════════════════════════
+   二进制解剖台 · Binary Scope
+   全部解析器手写：CRC32 / Adler32 / inflate(RFC1951) / PNG / JPEG+EXIF(TIFF IFD)
+   / GIF / BMP / RIFF(WAV·WebP) / ZIP / GZIP / ISO-BMFF / sfnt 字体 / PDF /
+   ID3+MPEG / ELF / Mach-O / PE / SQLite / TAR / ICO / WebAssembly。零依赖零上传。
+   ══════════════════════════════════════════════════════════════════════════ */
+'use strict';
+
+/* ───────── 基础工具 ───────── */
+const $ = (s) => document.querySelector(s);
+const $$ = (s) => Array.from(document.querySelectorAll(s));
+const el = (tag, cls, txt) => { const n = document.createElement(tag); if (cls) n.className = cls; if (txt != null) n.textContent = txt; return n; };
+const hex = (n, w = 2) => (n >>> 0).toString(16).toUpperCase().padStart(w, '0');
+const hx = (n) => '0x' + hex(n, n > 0xffff ? 8 : 4);
+const num = (n) => n.toLocaleString('zh-CN');
+function fmtBytes(n) {
+  if (n < 1024) return n + ' 字节';
+  const u = ['KB', 'MB', 'GB', 'TB']; let i = -1, v = n;
+  while (v >= 1024 && i < 3) { v /= 1024; i++; }
+  return v.toFixed(v < 10 ? 2 : 1) + ' ' + u[i] + '（' + num(n) + ' 字节）';
+}
+function fmtBytesShort(n) {
+  if (n < 1024) return n + ' B';
+  const u = ['KB', 'MB', 'GB', 'TB']; let i = -1, v = n;
+  while (v >= 1024 && i < 3) { v /= 1024; i++; }
+  return v.toFixed(v < 10 ? 2 : 1) + ' ' + u[i];
+}
+function fmtDur(sec) {
+  if (!isFinite(sec) || sec < 0) return '—';
+  if (sec < 60) return sec.toFixed(3) + ' 秒';
+  const m = Math.floor(sec / 60), s = sec - m * 60;
+  return m + ' 分 ' + s.toFixed(1) + ' 秒';
+}
+const ASCII = (u8, s, n) => { let r = ''; for (let i = 0; i < n; i++) r += String.fromCharCode(u8[s + i]); return r; };
+function utf8(u8, s, n) { try { return new TextDecoder('utf-8', { fatal: false }).decode(u8.subarray(s, s + n)); } catch (e) { return ASCII(u8, s, n); } }
+function decodeName(bytes, isUTF8) {
+  try { return new TextDecoder(isUTF8 ? 'utf-8' : 'gbk', { fatal: false }).decode(bytes); }
+  catch (e) { return new TextDecoder('utf-8', { fatal: false }).decode(bytes); }
+}
+/* 去掉不可打印控制字符（只有正则码点范围保留转义写法，见 2026-08-09 教训） */
+const clean = (s) => s.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]+/g, '').trim();
+
+/* ───────── CRC32 / Adler32 ───────── */
+const CRC_TBL = (() => {
+  const t = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1); t[n] = c >>> 0; }
+  return t;
+})();
+function crc32(u8, start = 0, len = u8.length - start) {
+  let c = 0xFFFFFFFF;
+  for (let i = start; i < start + len; i++) c = CRC_TBL[(c ^ u8[i]) & 0xFF] ^ (c >>> 8);
+  return (c ^ 0xFFFFFFFF) >>> 0;
+}
+function adler32(u8) {
+  let a = 1, b = 0;
+  for (let i = 0; i < u8.length; i++) { a = (a + u8[i]) % 65521; b = (b + a) % 65521; }
+  return ((b << 16) | a) >>> 0;
+}
+
+/* ───────── inflate（RFC 1951，手写；ZIP / GZIP / zTXt 共用） ───────── */
+const LEN_BASE = [3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31, 35, 43, 51, 59, 67, 83, 99, 115, 131, 163, 195, 227, 258];
+const LEN_EXTRA = [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0];
+const DIST_BASE = [1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193, 257, 385, 513, 769, 1025, 1537, 2049, 3073, 4097, 6145, 8193, 12289, 16385, 24577];
+const DIST_EXTRA = [0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13];
+const CLEN_ORDER = [16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15];
+
+function huffTable(lengths) {
+  const counts = new Int32Array(16);
+  for (let i = 0; i < lengths.length; i++) counts[lengths[i]]++;
+  counts[0] = 0;
+  const offs = new Int32Array(17);
+  for (let i = 1; i <= 15; i++) offs[i + 1] = offs[i] + counts[i];
+  const symbols = new Int32Array(lengths.length);
+  for (let s = 0; s < lengths.length; s++) if (lengths[s]) symbols[offs[lengths[s]]++] = s;
+  return { counts, symbols };
+}
+function inflateRaw(src, startByte) {
+  let pos = startByte, bitbuf = 0, bitcnt = 0;
+  let out = new Uint8Array(Math.max(1024, (src.length - startByte) * 4)), olen = 0;
+  const grow = (need) => {
+    if (olen + need <= out.length) return;
+    let cap = out.length; while (cap < olen + need) cap *= 2;
+    const n = new Uint8Array(cap); n.set(out.subarray(0, olen)); out = n;
+  };
+  const bits = (n) => {
+    while (bitcnt < n) {
+      if (pos >= src.length) throw new Error('数据流在解压中途结束');
+      bitbuf |= src[pos++] << bitcnt; bitcnt += 8;
+    }
+    const v = bitbuf & ((1 << n) - 1); bitbuf >>>= n; bitcnt -= n; return v;
+  };
+  const decode = (h) => {
+    let code = 0, first = 0, index = 0;
+    for (let len = 1; len <= 15; len++) {
+      code |= bits(1);
+      const count = h.counts[len];
+      if (code - first < count) return h.symbols[index + (code - first)];
+      index += count; first = (first + count) << 1; code <<= 1;
+    }
+    throw new Error('遇到无效的 Huffman 编码');
+  };
+  let fixedLit = null, fixedDist = null;
+  for (;;) {
+    const last = bits(1), type = bits(2);
+    if (type === 0) {
+      bitbuf = 0; bitcnt = 0;
+      if (pos + 4 > src.length) throw new Error('stored 块头被截断');
+      const len = src[pos] | (src[pos + 1] << 8), nlen = src[pos + 2] | (src[pos + 3] << 8);
+      pos += 4;
+      if ((len ^ 0xFFFF) !== nlen) throw new Error('stored 块的 LEN/NLEN 不互补');
+      grow(len); out.set(src.subarray(pos, pos + len), olen); olen += len; pos += len;
+    } else if (type === 1 || type === 2) {
+      let lit, dist;
+      if (type === 1) {
+        if (!fixedLit) {
+          const l = new Uint8Array(288);
+          for (let i = 0; i < 144; i++) l[i] = 8; for (let i = 144; i < 256; i++) l[i] = 9;
+          for (let i = 256; i < 280; i++) l[i] = 7; for (let i = 280; i < 288; i++) l[i] = 8;
+          fixedLit = huffTable(l); fixedDist = huffTable(new Uint8Array(30).fill(5));
+        }
+        lit = fixedLit; dist = fixedDist;
+      } else {
+        const hlit = bits(5) + 257, hdist = bits(5) + 1, hclen = bits(4) + 4;
+        const cl = new Uint8Array(19);
+        for (let i = 0; i < hclen; i++) cl[CLEN_ORDER[i]] = bits(3);
+        const clh = huffTable(cl);
+        const lens = new Uint8Array(hlit + hdist);
+        for (let i = 0; i < hlit + hdist;) {
+          const sym = decode(clh);
+          if (sym < 16) lens[i++] = sym;
+          else if (sym === 16) { const prev = lens[i - 1]; let r = 3 + bits(2); while (r--) lens[i++] = prev; }
+          else if (sym === 17) { let r = 3 + bits(3); while (r--) lens[i++] = 0; }
+          else { let r = 11 + bits(7); while (r--) lens[i++] = 0; }
+        }
+        lit = huffTable(lens.subarray(0, hlit)); dist = huffTable(lens.subarray(hlit));
+      }
+      for (;;) {
+        const sym = decode(lit);
+        if (sym < 256) { grow(1); out[olen++] = sym; }
+        else if (sym === 256) break;
+        else {
+          const li = sym - 257;
+          if (li >= LEN_BASE.length) throw new Error('长度码越界');
+          const length = LEN_BASE[li] + bits(LEN_EXTRA[li]);
+          const ds = decode(dist);
+          const distance = DIST_BASE[ds] + bits(DIST_EXTRA[ds]);
+          if (distance > olen) throw new Error('回溯距离超出已解压数据');
+          grow(length);
+          let from = olen - distance;
+          for (let i = 0; i < length; i++) out[olen++] = out[from++];
+        }
+      }
+    } else throw new Error('保留的块类型 3');
+    if (last) break;
+  }
+  return { data: out.subarray(0, olen), end: pos };
+}
+function inflateZlib(src, start) {
+  const cmf = src[start], flg = src[start + 1];
+  if ((cmf & 0x0f) !== 8) throw new Error('zlib 头的压缩方法不是 deflate');
+  if (((cmf << 8) | flg) % 31 !== 0) throw new Error('zlib 头校验位不通过');
+  const r = inflateRaw(src, start + 2 + ((flg & 0x20) ? 4 : 0));
+  return r;
+}
+
+/* ───────── 读取游标 ───────── */
+class R {
+  constructor(u8, p = 0) { this.u = u8; this.dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength); this.p = p; }
+  get left() { return this.u.length - this.p; }
+  u8() { return this.u[this.p++]; }
+  u16(le) { const v = this.dv.getUint16(this.p, !!le); this.p += 2; return v; }
+  u32(le) { const v = this.dv.getUint32(this.p, !!le); this.p += 4; return v; }
+  i32(le) { const v = this.dv.getInt32(this.p, !!le); this.p += 4; return v; }
+  i16(le) { const v = this.dv.getInt16(this.p, !!le); this.p += 2; return v; }
+  u64(le) { const v = this.dv.getBigUint64(this.p, !!le); this.p += 8; return Number(v); }
+  s(n) { const v = ASCII(this.u, this.p, n); this.p += n; return v; }
+  skip(n) { this.p += n; return this; }
+}
+
+/* ───────── 结构节点 ───────── */
+let NODE_ID = 0;
+function nd(name, desc, start, len, kind, extra) {
+  return Object.assign({ id: ++NODE_ID, name, desc: desc || '', start, len, kind: kind || 'data', fields: [], children: [], note: '' }, extra || {});
+}
+const KIND_COLOR = { header: '#57c1ff', meta: '#ffc533', data: '#59d499', risk: '#ff6161', pad: '#434345' };
+const KIND_LABEL = { header: '结构头', meta: '元数据', data: '主数据', risk: '异常 / 附加', pad: '未识别' };
+
+/* ───────── TIFF / EXIF IFD（JPEG APP1 · PNG eXIf · TIFF 通用） ───────── */
+const TIFF_TYPE_SIZE = { 1: 1, 2: 1, 3: 2, 4: 4, 5: 8, 6: 1, 7: 1, 8: 2, 9: 4, 10: 8, 11: 4, 12: 8 };
+const TAG_IFD0 = {
+  0x010e: '图像描述', 0x010f: '厂商', 0x0110: '型号', 0x0112: '方向', 0x011a: '水平分辨率', 0x011b: '垂直分辨率',
+  0x0128: '分辨率单位', 0x0131: '软件', 0x0132: '修改时间', 0x013b: '作者', 0x8298: '版权',
+  0x8769: 'Exif 子 IFD 指针', 0x8825: 'GPS 子 IFD 指针', 0x0100: '宽度', 0x0101: '高度', 0x9c9b: '标题', 0x9c9c: '备注',
+};
+const TAG_EXIF = {
+  0x829a: '曝光时间', 0x829d: '光圈值', 0x8822: '曝光程序', 0x8827: 'ISO 感光度', 0x9000: 'Exif 版本',
+  0x9003: '拍摄时间', 0x9004: '数字化时间', 0x9201: '快门速度', 0x9202: '光圈', 0x9204: '曝光补偿',
+  0x9207: '测光模式', 0x9209: '闪光灯', 0x920a: '焦距', 0xa002: '像素宽度', 0xa003: '像素高度',
+  0xa405: '等效 35mm 焦距', 0xa430: '机主姓名', 0xa431: '机身序列号', 0xa433: '镜头厂商', 0xa434: '镜头型号', 0xa435: '镜头序列号',
+  0x9291: '拍摄时间（毫秒）', 0xa420: '图像唯一 ID',
+};
+const TAG_GPS = {
+  0x0000: 'GPS 版本', 0x0001: '纬度参考', 0x0002: '纬度', 0x0003: '经度参考', 0x0004: '经度',
+  0x0005: '海拔参考', 0x0006: '海拔', 0x0007: 'GPS 时间', 0x0012: '大地基准', 0x001d: 'GPS 日期',
+};
+const ORIENT = { 1: '正常', 2: '水平镜像', 3: '旋转 180°', 4: '垂直镜像', 5: '转置', 6: '顺时针 90°', 7: '反转置', 8: '逆时针 90°' };
+
+function parseTIFF(u8, base, limit) {
+  if (base + 8 > u8.length) return null;
+  const b0 = u8[base], b1 = u8[base + 1];
+  if (!((b0 === 0x49 && b1 === 0x49) || (b0 === 0x4d && b1 === 0x4d))) return null;
+  const le = b0 === 0x49;
+  const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+  const end = Math.min(limit == null ? u8.length : limit, u8.length);
+  const g16 = (o) => (base + o + 2 <= end ? dv.getUint16(base + o, le) : 0);
+  const g32 = (o) => (base + o + 4 <= end ? dv.getUint32(base + o, le) : 0);
+  if (g16(2) !== 42) return null;
+  const out = { le, entries: [], gps: null, byIfd: {} };
+
+  const readVals = (type, count, off) => {
+    const sz = TIFF_TYPE_SIZE[type] || 1, total = sz * count;
+    const at = total <= 4 ? off.inline : off.ptr;
+    if (base + at + total > end) return null;
+    const vals = [];
+    for (let i = 0; i < count; i++) {
+      const o = base + at + i * sz;
+      switch (type) {
+        case 1: case 7: vals.push(u8[o]); break;
+        case 2: vals.push(u8[o]); break;
+        case 3: vals.push(dv.getUint16(o, le)); break;
+        case 4: vals.push(dv.getUint32(o, le)); break;
+        case 9: vals.push(dv.getInt32(o, le)); break;
+        case 5: vals.push([dv.getUint32(o, le), dv.getUint32(o + 4, le)]); break;
+        case 10: vals.push([dv.getInt32(o, le), dv.getInt32(o + 4, le)]); break;
+        case 11: vals.push(dv.getFloat32(o, le)); break;
+        case 12: vals.push(dv.getFloat64(o, le)); break;
+        case 6: vals.push(dv.getInt8(o)); break;
+        case 8: vals.push(dv.getInt16(o, le)); break;
+        default: vals.push(u8[o]);
+      }
+    }
+    // ASCII 字段按 UTF-8 解码：规范说 ASCII，但相机与修图软件普遍往里塞 UTF-8
+    if (type === 2) return clean(new TextDecoder('utf-8', { fatal: false }).decode(new Uint8Array(vals)));
+    return vals;
+  };
+
+  const seen = new Set();
+  const readIFD = (off, which) => {
+    if (seen.has(off) || base + off + 2 > end) return 0;
+    seen.add(off);
+    const n = dv.getUint16(base + off, le);
+    if (n > 512) return 0;
+    const list = [];
+    for (let i = 0; i < n; i++) {
+      const eo = base + off + 2 + i * 12;
+      if (eo + 12 > end) break;
+      const tag = dv.getUint16(eo, le), type = dv.getUint16(eo + 2, le), count = dv.getUint32(eo + 4, le);
+      if (count > 1e6) continue;
+      const val = readVals(type, count, { inline: eo + 8 - base, ptr: dv.getUint32(eo + 8, le) });
+      const dict = which === 'GPS' ? TAG_GPS : which === 'Exif' ? TAG_EXIF : TAG_IFD0;
+      const name = dict[tag] || (TAG_IFD0[tag] || TAG_EXIF[tag] || ('标签 ' + hx(tag)));
+      const rec = { ifd: which, tag, type, count, name, value: val };
+      list.push(rec); out.entries.push(rec);
+      if (tag === 0x8769 && Array.isArray(val) && val[0]) readIFD(val[0], 'Exif');
+      if (tag === 0x8825 && Array.isArray(val) && val[0]) readIFD(val[0], 'GPS');
+    }
+    out.byIfd[which] = (out.byIfd[which] || []).concat(list);
+    return base + off + 2 + n * 12 + 4 <= end ? dv.getUint32(base + off + 2 + n * 12, le) : 0;
+  };
+  let next = readIFD(g32(4), 'IFD0');
+  if (next) readIFD(next, 'IFD1');
+
+  const gTag = (which, tag) => out.entries.find((e) => e.ifd === which && e.tag === tag);
+  const rat = (v) => (Array.isArray(v) && v[1] ? v[0] / v[1] : 0);
+  const dms = (v) => (Array.isArray(v) && v.length >= 3 ? rat(v[0]) + rat(v[1]) / 60 + rat(v[2]) / 3600 : null);
+  const latE = gTag('GPS', 0x0002), lonE = gTag('GPS', 0x0004);
+  if (latE && lonE) {
+    const latRef = (gTag('GPS', 0x0001) || {}).value, lonRef = (gTag('GPS', 0x0003) || {}).value;
+    let lat = dms(latE.value), lon = dms(lonE.value);
+    if (lat != null && lon != null) {
+      const ns = typeof latRef === 'string' ? latRef.toUpperCase() : 'N';
+      const ew = typeof lonRef === 'string' ? lonRef.toUpperCase() : 'E';
+      const alt = gTag('GPS', 0x0006);
+      out.gps = {
+        lat: ns === 'S' ? -lat : lat, lon: ew === 'W' ? -lon : lon, ns, ew,
+        alt: alt ? rat(Array.isArray(alt.value) ? alt.value[0] : 0) : null,
+      };
+    }
+  }
+  return out;
+}
+function tiffDisplay(e) {
+  const v = e.value;
+  if (v == null) return '—';
+  if (typeof v === 'string') return v;
+  if (e.tag === 0x0112 && e.ifd === 'IFD0') return (ORIENT[v[0]] || v[0]) + '（' + v[0] + '）';
+  const one = (x) => {
+    if (Array.isArray(x)) {
+      if (!x[1]) return x[0] + '/0';
+      const q = x[0] / x[1];
+      return (Number.isInteger(q) ? String(q) : q.toFixed(4).replace(/0+$/, '').replace(/\.$/, '')) +
+        (x[1] === 1 ? '' : '（' + x[0] + '/' + x[1] + '）');
+    }
+    return String(x);
+  };
+  if (Array.isArray(v)) {
+    if (v.length > 8) return v.slice(0, 8).map(one).join(' ') + ' …（共 ' + v.length + ' 项）';
+    return v.map(one).join(v.length > 1 ? ' · ' : '');
+  }
+  return String(v);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   格式解析器：每个返回 {fmt, kv, nodes, finds, preview}
+   ══════════════════════════════════════════════════════════════ */
+const PNG_COLOR = { 0: '灰度', 2: '真彩色 RGB', 3: '调色板', 4: '灰度 + Alpha', 6: '真彩色 + Alpha' };
+const PNG_NOTE = {
+  IHDR: '图像头：宽高、位深、颜色类型、隔行方式，必须是第一个数据块。',
+  PLTE: '调色板：颜色类型 3 必需，最多 256 项 RGB 三元组。',
+  IDAT: '像素数据：所有 IDAT 顺序拼接后是一条 zlib 流，解压得到「每行 1 字节滤波器 + 行像素」。',
+  IEND: '结束标记：长度恒为 0，其后的任何字节都不属于 PNG。',
+  tEXt: '未压缩文本元数据：关键字 + NUL + Latin-1 文本。',
+  zTXt: '压缩文本元数据：关键字 + NUL + 压缩方法 + zlib 流。',
+  iTXt: '国际化文本元数据：可带语言标记，UTF-8。',
+  pHYs: '物理像素尺寸：每单位像素数，用来推断 DPI。',
+  tIME: '最后修改时间（UTC）。',
+  acTL: 'APNG 动画控制块：帧数与循环次数，出现即说明这是动图。',
+  eXIf: '内嵌 EXIF：与 JPEG 的 APP1 同为 TIFF IFD 结构，同样可能带 GPS。',
+  gAMA: '图像 gamma。', sRGB: '声明使用 sRGB 色彩空间。', iCCP: '内嵌 ICC 色彩配置文件（zlib 压缩）。',
+  bKGD: '建议背景色。', tRNS: '简单透明度信息。', cHRM: '色度坐标。', sBIT: '原始有效位数。',
+};
+function parsePNG(u8) {
+  const nodes = [], finds = [], kv = [];
+  const N = u8.length;
+  nodes.push(nd('签名', 'PNG 魔数 89 50 4E 47 0D 0A 1A 0A', 0, 8, 'header', {
+    note: '八字节签名同时用于探测传输过程中的换行改写：第 2–4 字节是 PNG，随后的 CR LF / SUB / LF 组合能识别出被文本模式破坏的文件。',
+  }));
+  let p = 8, ihdr = null, idatBytes = 0, idatCount = 0, crcBad = 0, iend = -1;
+  const texts = [], chunkCount = {};
+  let apng = null, exif = null, phys = null;
+  while (p + 8 <= N) {
+    const len = new DataView(u8.buffer, u8.byteOffset, u8.byteLength).getUint32(p);
+    const type = ASCII(u8, p + 4, 4);
+    if (!/^[A-Za-z]{4}$/.test(type)) { finds.push({ sev: 'warn', title: '数据块类型异常', detail: '偏移 ' + hx(p) + ' 处的块名不是四个字母，解析在此停止。' }); break; }
+    const dataStart = p + 8, total = 12 + len;
+    if (p + total > N) { finds.push({ sev: 'high', title: '文件被截断', detail: type + ' 块声明 ' + num(len) + ' 字节，但文件在此之前就结束了。' }); break; }
+    const crcStored = new DataView(u8.buffer, u8.byteOffset, u8.byteLength).getUint32(p + 8 + len);
+    const crcCalc = crc32(u8, p + 4, len + 4);
+    const ok = crcStored === crcCalc;
+    if (!ok) crcBad++;
+    chunkCount[type] = (chunkCount[type] || 0) + 1;
+    const node = nd(type, '', p, total, type === 'IDAT' ? 'data' : (type === 'IHDR' || type === 'IEND' ? 'header' : 'meta'), {
+      note: PNG_NOTE[type] || '辅助数据块（' + (type[0] === type[0].toLowerCase() ? '非关键块，解码器可跳过' : '关键块') + '）。',
+      chip: { t: ok ? 'ok' : 'bad', text: ok ? 'CRC ✓' : 'CRC ✗' },
+    });
+    node.fields.push(['数据长度', num(len) + ' 字节'], ['块类型', type + (type[0] === type[0].toLowerCase() ? '（辅助块）' : '（关键块）')],
+      ['CRC-32', hx(crcStored) + (ok ? '（校验通过）' : '（实算 ' + hx(crcCalc) + '，不匹配）')]);
+    const d = new R(u8, dataStart);
+    if (type === 'IHDR' && len >= 13) {
+      ihdr = { w: d.u32(), h: d.u32(), depth: d.u8(), color: d.u8(), comp: d.u8(), filter: d.u8(), inter: d.u8() };
+      node.desc = ihdr.w + ' × ' + ihdr.h + ' · ' + (PNG_COLOR[ihdr.color] || '?') + ' · ' + ihdr.depth + ' 位';
+      node.fields.push(['宽度', num(ihdr.w) + ' px'], ['高度', num(ihdr.h) + ' px'], ['位深', ihdr.depth + ' 位/通道'],
+        ['颜色类型', ihdr.color + ' · ' + (PNG_COLOR[ihdr.color] || '未知')], ['隔行', ihdr.inter ? 'Adam7 隔行' : '无（逐行）']);
+    } else if (type === 'IDAT') { idatBytes += len; idatCount++; node.desc = num(len) + ' 字节 zlib 流片段'; }
+    else if (type === 'tEXt' || type === 'zTXt' || type === 'iTXt') {
+      let z = dataStart; while (z < dataStart + len && u8[z] !== 0) z++;
+      const key = ASCII(u8, dataStart, z - dataStart);
+      let val = '';
+      try {
+        if (type === 'tEXt') val = utf8(u8, z + 1, dataStart + len - z - 1);
+        else if (type === 'zTXt') val = new TextDecoder().decode(inflateZlib(u8, z + 2).data);
+        else { let q = z + 3; while (q < dataStart + len && u8[q] !== 0) q++; q++; while (q < dataStart + len && u8[q] !== 0) q++; val = utf8(u8, q + 1, dataStart + len - q - 1); }
+      } catch (e) { val = '（解压失败：' + e.message + '）'; }
+      val = clean(val).slice(0, 400);
+      texts.push([key, val]);
+      node.desc = key + ' = ' + val.slice(0, 60);
+      node.fields.push(['关键字', key], ['文本', val || '（空）']);
+    } else if (type === 'pHYs' && len >= 9) {
+      const x = d.u32(), y = d.u32(), unit = d.u8();
+      phys = unit === 1 ? Math.round(x * 0.0254) : null;
+      node.desc = unit === 1 ? (phys + ' DPI') : (x + ' × ' + y + '（无单位）');
+      node.fields.push(['每单位像素 X', num(x)], ['每单位像素 Y', num(y)], ['单位', unit === 1 ? '米' : '未指定']);
+    } else if (type === 'acTL' && len >= 8) {
+      apng = { frames: d.u32(), plays: d.u32() };
+      node.desc = 'APNG · ' + apng.frames + ' 帧';
+      node.fields.push(['帧数', apng.frames], ['循环次数', apng.plays === 0 ? '无限' : apng.plays]);
+    } else if (type === 'eXIf') {
+      exif = parseTIFF(u8, dataStart, dataStart + len);
+      node.desc = exif ? exif.entries.length + ' 个 EXIF 标签' : '无法解析';
+    } else if (type === 'tIME' && len >= 7) {
+      const y = d.u16();
+      node.desc = y + '-' + String(d.u8()).padStart(2, '0') + '-' + String(d.u8()).padStart(2, '0') + ' ' +
+        String(d.u8()).padStart(2, '0') + ':' + String(d.u8()).padStart(2, '0') + ':' + String(d.u8()).padStart(2, '0') + ' UTC';
+    } else if (type === 'PLTE') { node.desc = (len / 3 | 0) + ' 种颜色'; node.fields.push(['调色板条目', (len / 3 | 0)]); }
+    nodes.push(node);
+    if (type === 'IEND') { iend = p + total; p = iend; break; }
+    p += total;
+  }
+  const trailing = iend > 0 ? N - iend : 0;
+  if (trailing > 0) {
+    const sub = detectMagic(u8, iend);
+    nodes.push(nd('尾部附加数据', num(trailing) + ' 字节' + (sub ? '，识别为 ' + sub.name : ''), iend, trailing, 'risk', {
+      note: 'IEND 之后的字节不属于 PNG 图像本体。图片查看器会忽略它们，因此这里常被用来夹带另一个文件（所谓「聚合体 / polyglot」）。',
+    }));
+    finds.push({
+      sev: 'warn', title: '图像结束标记后还有 ' + num(trailing) + ' 字节',
+      detail: 'IEND 是 PNG 的终点，其后数据会被所有看图工具忽略' + (sub ? '；这段内容的魔数指向 ' + sub.name + '，很可能是被藏进图片里的另一个文件。' : '，可能是隐写载荷或拼接残留。'),
+    });
+  }
+  if (crcBad) finds.push({ sev: 'high', title: crcBad + ' 个数据块 CRC 校验失败', detail: '文件在传输或编辑中被改动过；多数解码器会拒绝或渲染出花屏。' });
+  else if (nodes.length > 2) finds.push({ sev: 'ok', title: '全部数据块 CRC 校验通过', detail: '逐块用 CRC-32 重算并与文件内记录比对，' + (Object.values(chunkCount).reduce((a, b) => a + b, 0)) + ' 个块全部一致。' });
+  if (exif && exif.gps) pushGPS(finds, exif.gps);
+  if (ihdr) {
+    const raw = ihdr.h * (1 + Math.ceil(ihdr.w * ({ 0: 1, 2: 3, 3: 1, 4: 2, 6: 4 }[ihdr.color] || 3) * ihdr.depth / 8));
+    kv.push(['图像尺寸', ihdr.w + ' × ' + ihdr.h + ' px'], ['颜色类型', (PNG_COLOR[ihdr.color] || '未知') + '（类型 ' + ihdr.color + '）'],
+      ['位深', ihdr.depth + ' 位/通道'], ['隔行', ihdr.inter ? 'Adam7' : '无'],
+      ['像素数据', num(idatBytes) + ' 字节 / ' + idatCount + ' 个 IDAT'],
+      ['压缩比', (raw / Math.max(1, idatBytes)).toFixed(2) + ' : 1（对未压缩扫描线 ' + fmtBytesShort(raw) + '）']);
+    if (phys) kv.push(['分辨率', phys + ' DPI']);
+    if (apng) kv.push(['APNG 动画', apng.frames + ' 帧 · ' + (apng.plays === 0 ? '无限循环' : apng.plays + ' 次')]);
+  }
+  for (const [k, v] of texts.slice(0, 6)) kv.push(['文本 · ' + k, v.slice(0, 120)]);
+  if (exif) kv.push(['内嵌 EXIF', exif.entries.length + ' 个标签' + (exif.gps ? ' · 含 GPS' : '')]);
+  return {
+    fmt: { name: 'PNG 图像', short: 'PNG', mime: 'image/png', kind: 'image' },
+    kv, nodes, finds, preview: 'image', exif,
+  };
+}
+
+function pushGPS(finds, gps) {
+  const f = (v, pos, neg) => Math.abs(v).toFixed(6) + '°' + (v >= 0 ? pos : neg);
+  finds.push({
+    sev: 'high', title: '含 GPS 定位：' + f(gps.lat, 'N', 'S') + ' ' + f(gps.lon, 'E', 'W'),
+    detail: '这张图记录了拍摄地点的经纬度' + (gps.alt ? '与海拔 ' + gps.alt.toFixed(1) + ' 米' : '') +
+      '，精度通常在十米级。直接发到社交平台或聊天工具（原图 / 文件形式）等于公开了拍摄位置，发布前建议清除 EXIF。',
+  });
+}
+
+const JPEG_MARK = {
+  0xD8: ['SOI', '图像开始'], 0xD9: ['EOI', '图像结束'], 0xDA: ['SOS', '扫描开始'], 0xDB: ['DQT', '量化表'],
+  0xC4: ['DHT', '霍夫曼表'], 0xDD: ['DRI', '重启间隔'], 0xFE: ['COM', '注释'],
+  0xC0: ['SOF0', '基线 DCT 帧头'], 0xC1: ['SOF1', '扩展顺序 DCT'], 0xC2: ['SOF2', '渐进式 DCT 帧头'], 0xC3: ['SOF3', '无损'],
+  0xE0: ['APP0', 'JFIF 应用段'], 0xE1: ['APP1', 'EXIF / XMP 应用段'], 0xE2: ['APP2', 'ICC 色彩配置'], 0xEC: ['APP12', 'Ducky'],
+  0xED: ['APP13', 'Photoshop IRB'], 0xEE: ['APP14', 'Adobe 色彩变换'], 0xE3: ['APP3', '应用段'], 0xE4: ['APP4', '应用段'],
+  0xE5: ['APP5', '应用段'], 0xE6: ['APP6', '应用段'], 0xE7: ['APP7', '应用段'], 0xE8: ['APP8', '应用段'],
+  0xE9: ['APP9', '应用段'], 0xEA: ['APP10', '应用段'], 0xEB: ['APP11', '应用段'], 0xEF: ['APP15', '应用段'],
+};
+function parseJPEG(u8) {
+  const nodes = [], finds = [], kv = [];
+  const N = u8.length;
+  let p = 2, sof = null, exif = null, exifAt = -1, scanBytes = 0, dqt = 0, dht = 0, eoi = -1, jfif = null, comments = [], adobe = false, icc = 0, xmp = null;
+  nodes.push(nd('SOI', '图像开始标记 FF D8', 0, 2, 'header', { note: '每个 JPEG 都以 FF D8 开头；JPEG 的一切都由 FF 打头的两字节标记切分。' }));
+  let guard = 0;
+  while (p + 1 < N && guard++ < 4096) {
+    if (u8[p] !== 0xFF) { p++; continue; }
+    let m = u8[p + 1];
+    while (m === 0xFF && p + 2 < N) { p++; m = u8[p + 1]; }
+    if (m === 0x00) { p += 2; continue; }
+    if (m === 0xD9) { eoi = p + 2; nodes.push(nd('EOI', '图像结束标记 FF D9', p, 2, 'header', { note: 'EOI 之后的字节不属于图像。' })); p = eoi; break; }
+    if (m >= 0xD0 && m <= 0xD7) { p += 2; continue; }
+    if (p + 4 > N) break;
+    const len = (u8[p + 2] << 8) | u8[p + 3];
+    const info = JPEG_MARK[m] || ['FF' + hex(m), '未知标记'];
+    const node = nd(info[0], info[1], p, len + 2, m === 0xDA ? 'data' : (m >= 0xE0 && m <= 0xEF) || m === 0xFE ? 'meta' : 'header');
+    node.fields.push(['标记', 'FF ' + hex(m)], ['段长度', num(len) + ' 字节（含长度字段本身）']);
+    const ds = p + 4;
+    if (m === 0xC0 || m === 0xC1 || m === 0xC2) {
+      const r = new R(u8, ds);
+      sof = { prec: r.u8(), h: r.u16(), w: r.u16(), nc: r.u8(), prog: m === 0xC2 };
+      const comps = [];
+      for (let i = 0; i < sof.nc && r.p + 3 <= N; i++) comps.push({ id: r.u8(), samp: r.u8(), q: r.u8() });
+      sof.comps = comps;
+      const y = comps[0] ? { h: comps[0].samp >> 4, v: comps[0].samp & 15 } : { h: 1, v: 1 };
+      sof.sub = comps.length < 3 ? '单通道' : (y.h === 2 && y.v === 2 ? '4:2:0' : y.h === 2 && y.v === 1 ? '4:2:2' : y.h === 1 && y.v === 1 ? '4:4:4' : y.h + 'x' + y.v);
+      node.desc = sof.w + ' × ' + sof.h + ' · ' + (sof.prog ? '渐进式' : '基线') + ' · ' + sof.sub;
+      node.fields.push(['宽度', num(sof.w) + ' px'], ['高度', num(sof.h) + ' px'], ['精度', sof.prec + ' 位'],
+        ['分量数', sof.nc + '（' + (sof.nc === 3 ? 'Y Cb Cr' : sof.nc === 1 ? '仅亮度' : 'CMYK 或其他') + '）'], ['色度抽样', sof.sub]);
+      node.note = sof.prog ? '渐进式 JPEG：图像分多遍扫描，由粗到细，加载时会先看到模糊全图。' : '基线 JPEG：一次扫描，自上而下解码。';
+    } else if (m === 0xE0 && ASCII(u8, ds, 4) === 'JFIF') {
+      const r = new R(u8, ds + 5);
+      const vmaj = r.u8(), vmin = r.u8(), unit = r.u8(), dx = r.u16(), dy = r.u16();
+      jfif = { v: vmaj + '.' + String(vmin).padStart(2, '0'), unit, dx, dy };
+      node.desc = 'JFIF ' + jfif.v + ' · ' + (unit === 1 ? dx + ' DPI' : unit === 2 ? dx + ' 点/厘米' : '无单位密度 ' + dx + ':' + dy);
+      node.fields.push(['JFIF 版本', jfif.v], ['密度单位', unit === 1 ? '每英寸' : unit === 2 ? '每厘米' : '无（纵横比）'], ['密度', dx + ' × ' + dy]);
+    } else if (m === 0xE1 && ASCII(u8, ds, 4) === 'Exif') {
+      exifAt = ds + 6;
+      exif = parseTIFF(u8, exifAt, p + 2 + len);
+      node.desc = 'EXIF · ' + (exif ? exif.entries.length + ' 个标签' + (exif.gps ? '（含 GPS）' : '') : '解析失败');
+      node.note = 'APP1 里塞的是一个完整的 TIFF 结构：字节序标记 + IFD 链。相机的型号、快门、镜头、GPS 全在这里。';
+      if (exif) for (const e of exif.entries.slice(0, 24)) node.fields.push([e.ifd + ' · ' + e.name, tiffDisplay(e)]);
+    } else if (m === 0xE1 && ASCII(u8, ds, 4) === 'http') {
+      xmp = utf8(u8, ds, Math.min(len - 2, 4000));
+      node.desc = 'XMP 元数据 · ' + num(len) + ' 字节';
+    } else if (m === 0xE2 && ASCII(u8, ds, 4) === 'ICC_') { icc += len; node.desc = 'ICC 色彩配置片段 · ' + num(len) + ' 字节'; }
+    else if (m === 0xEE) { adobe = true; node.desc = 'Adobe 段（色彩变换标记）'; }
+    else if (m === 0xFE) { const c = clean(utf8(u8, ds, len - 2)); comments.push(c); node.desc = c.slice(0, 60); node.fields.push(['注释', c.slice(0, 300)]); }
+    else if (m === 0xDB) { dqt++; node.desc = '量化表 · ' + num(len - 2) + ' 字节'; node.note = '量化表决定压缩强度：数值越大丢弃的高频越多，也就越糊。'; }
+    else if (m === 0xC4) { dht++; node.desc = '霍夫曼表 · ' + num(len - 2) + ' 字节'; }
+    else if (m === 0xDD) { node.desc = '重启间隔 = ' + ((u8[ds] << 8) | u8[ds + 1]) + ' 个 MCU'; }
+    else if (m === 0xDA) {
+      let q = p + 2 + len;
+      while (q + 1 < N) {
+        if (u8[q] === 0xFF) { const nx = u8[q + 1]; if (nx !== 0x00 && !(nx >= 0xD0 && nx <= 0xD7) && nx !== 0xFF) break; }
+        q++;
+      }
+      scanBytes = q - (p + 2 + len);
+      node.len = q - p;
+      node.desc = '扫描头 + ' + num(scanBytes) + ' 字节熵编码数据';
+      node.note = '真正的像素在这里：霍夫曼编码后的 DCT 系数流。流里遇到 FF 会补一个 00（字节填充），以免与标记混淆。';
+      node.fields.push(['熵编码数据', num(scanBytes) + ' 字节']);
+      nodes.push(node); p = q; continue;
+    }
+    nodes.push(node);
+    p += 2 + len;
+  }
+  const trailing = eoi > 0 ? N - eoi : 0;
+  if (trailing > 0) {
+    const sub = detectMagic(u8, eoi);
+    nodes.push(nd('尾部附加数据', num(trailing) + ' 字节' + (sub ? '，识别为 ' + sub.name : ''), eoi, trailing, 'risk',
+      { note: 'EOI 之后的内容不会被任何解码器读取，是最常见的夹带位置。' }));
+    finds.push({ sev: 'warn', title: 'EOI 之后还有 ' + num(trailing) + ' 字节', detail: sub ? '尾部数据的魔数指向 ' + sub.name + '，这是典型的图片聚合体。' : '可能是缩略图残留、隐写载荷或拼接产生的垃圾数据。' });
+  }
+  if (exif) {
+    if (exif.gps) pushGPS(finds, exif.gps);
+    const mk = exif.entries.find((e) => e.tag === 0x010f), md = exif.entries.find((e) => e.tag === 0x0110);
+    const sn = exif.entries.find((e) => e.tag === 0xa431), ow = exif.entries.find((e) => e.tag === 0xa430);
+    if (mk || md) finds.push({
+      sev: 'info', title: '含设备指纹：' + [mk && mk.value, md && md.value].filter(Boolean).join(' '),
+      detail: '厂商与型号会跟着原图一起传播' + (sn ? '；此外还带机身序列号 ' + sn.value + '，同一台相机拍的照片可被串联' : '') + (ow ? '；机主字段为「' + ow.value + '」' : '') + '。',
+    });
+    const dt = exif.entries.find((e) => e.tag === 0x9003 || e.tag === 0x0132);
+    if (dt) finds.push({ sev: 'info', title: '含时间戳：' + dt.value, detail: '记录了拍摄或修改的本地时间，能反推作息与行程。' });
+  } else if (sof) finds.push({ sev: 'ok', title: '未发现 EXIF 元数据', detail: '这张图不带相机信息与 GPS —— 多数社交平台的转码输出、或经过清洗的图片就是这样。' });
+  if (sof) {
+    kv.push(['图像尺寸', sof.w + ' × ' + sof.h + ' px'], ['编码方式', sof.prog ? '渐进式 DCT' : '基线 DCT'],
+      ['色度抽样', sof.sub], ['分量', sof.nc + ' 个'], ['量化表 / 霍夫曼表', dqt + ' / ' + dht],
+      ['熵编码数据', fmtBytesShort(scanBytes) + '（占 ' + (scanBytes / N * 100).toFixed(1) + '%）'],
+      ['每像素比特', (N * 8 / (sof.w * sof.h)).toFixed(2) + ' bpp']);
+    if (jfif) kv.push(['JFIF', jfif.v + ' · ' + (jfif.unit === 1 ? jfif.dx + ' DPI' : '无单位')]);
+    if (icc) kv.push(['ICC 配置', num(icc) + ' 字节']);
+    if (adobe) kv.push(['Adobe 段', '存在（可能是 CMYK 或反色 JPEG）']);
+  }
+  if (exif) {
+    const pick = [0x010f, 0x0110, 0xa434, 0xa431, 0x829a, 0x829d, 0x8827, 0x920a, 0x9003, 0x0112, 0x0131];
+    for (const t of pick) { const e = exif.entries.find((x) => x.tag === t); if (e) kv.push(['EXIF · ' + e.name, tiffDisplay(e)]); }
+    if (exif.gps) kv.push(['EXIF · GPS', exif.gps.lat.toFixed(6) + '°' + (exif.gps.lat >= 0 ? 'N' : 'S') + ' ' + exif.gps.lon.toFixed(6) + '°' + (exif.gps.lon >= 0 ? 'E' : 'W')]);
+  }
+  for (const c of comments.slice(0, 3)) kv.push(['注释', c.slice(0, 120)]);
+  if (xmp) { const m = xmp.match(/<dc:title>[\s\S]*?>([^<]{1,80})</); if (m) kv.push(['XMP 标题', clean(m[1])]); }
+  return { fmt: { name: 'JPEG 图像', short: 'JPEG', mime: 'image/jpeg', kind: 'image' }, kv, nodes, finds, preview: 'image', exif };
+}
+
+function parseGIF(u8) {
+  const nodes = [], finds = [], kv = [];
+  const N = u8.length, r = new R(u8, 0);
+  const sig = r.s(6);
+  nodes.push(nd('文件头', sig + '（' + (sig === 'GIF89a' ? '支持动画与透明' : '早期版本') + '）', 0, 6, 'header',
+    { note: 'GIF87a 与 GIF89a 的差别在于后者引入了图形控制扩展（延时、透明色）与应用扩展（循环次数）。' }));
+  const w = r.u16(1), h = r.u16(1), flags = r.u8(), bg = r.u8(), aspect = r.u8();
+  const gctSize = (flags & 7), hasGCT = !!(flags & 0x80), gctLen = hasGCT ? 3 * (1 << (gctSize + 1)) : 0;
+  const lsd = nd('逻辑屏幕描述符', w + ' × ' + h + ' · ' + (hasGCT ? (1 << (gctSize + 1)) + ' 色全局调色板' : '无全局调色板'), 6, 7, 'header');
+  lsd.fields.push(['画布宽度', w + ' px'], ['画布高度', h + ' px'], ['全局调色板', hasGCT ? '有，' + (1 << (gctSize + 1)) + ' 色' : '无'],
+    ['颜色深度', ((flags >> 4) & 7) + 1 + ' 位/原色'], ['背景色索引', bg], ['像素宽高比', aspect === 0 ? '未指定' : ((aspect + 15) / 64).toFixed(3)]);
+  nodes.push(lsd);
+  if (hasGCT) nodes.push(nd('全局调色板', (gctLen / 3) + ' 项 RGB', 13, gctLen, 'meta', { note: '每项 3 字节 RGB，索引由图像数据引用。' }));
+  let p = 13 + gctLen, frames = 0, delayTotal = 0, loop = null, comment = '', trailer = -1, guard = 0;
+  const skipBlocks = (q) => { while (q < N && u8[q] !== 0) q += 1 + u8[q]; return q + 1; };
+  while (p < N && guard++ < 20000) {
+    const b = u8[p];
+    if (b === 0x3B) { trailer = p; nodes.push(nd('尾块', '0x3B 文件结束', p, 1, 'header')); p += 1; break; }
+    if (b === 0x21) {
+      const label = u8[p + 1], dataEnd = skipBlocks(p + 2);
+      if (label === 0xF9) {
+        const packed = u8[p + 3], delay = u8[p + 4] | (u8[p + 5] << 8);
+        delayTotal += delay;
+        const n = nd('图形控制扩展', '延时 ' + (delay * 10) + ' ms · 处置方式 ' + ((packed >> 2) & 7) + (packed & 1 ? ' · 有透明色' : ''), p, dataEnd - p, 'meta');
+        n.fields.push(['延时', (delay * 10) + ' ms（' + delay + ' 厘秒）'], ['处置方式', ['未指定', '保留原样', '恢复背景', '恢复上一帧'][(packed >> 2) & 7] || String((packed >> 2) & 7)],
+          ['透明色', (packed & 1) ? '索引 ' + u8[p + 6] : '无']);
+        n.note = 'GIF 的帧延时以 1/100 秒为单位。多数浏览器把 0 与 1 厘秒都钳到 10 厘秒，这是「GIF 最快只能 10 fps」传说的由来。';
+        nodes.push(n);
+      } else if (label === 0xFF) {
+        const app = ASCII(u8, p + 3, 11);
+        if (app.startsWith('NETSCAPE')) { loop = u8[p + 16] | (u8[p + 17] << 8); }
+        nodes.push(nd('应用扩展', app + (loop != null ? ' · 循环 ' + (loop === 0 ? '无限' : loop + ' 次') : ''), p, dataEnd - p, 'meta',
+          { note: 'NETSCAPE2.0 是事实标准的循环次数扩展；0 表示无限循环。' }));
+      } else if (label === 0xFE) {
+        comment = clean(utf8(u8, p + 3, Math.min(200, dataEnd - p - 3)));
+        nodes.push(nd('注释扩展', comment.slice(0, 60), p, dataEnd - p, 'meta'));
+      } else nodes.push(nd('扩展块 0x' + hex(label), '', p, dataEnd - p, 'meta'));
+      p = dataEnd; continue;
+    }
+    if (b === 0x2C) {
+      const rr = new R(u8, p + 1);
+      const fx = rr.u16(1), fy = rr.u16(1), fw = rr.u16(1), fh = rr.u16(1), lf = rr.u8();
+      const lctLen = (lf & 0x80) ? 3 * (1 << ((lf & 7) + 1)) : 0;
+      const minCode = u8[p + 10 + lctLen];
+      const dataEnd = skipBlocks(p + 11 + lctLen);
+      frames++;
+      const n = nd('图像块 #' + frames, fw + ' × ' + fh + ' @ (' + fx + ',' + fy + ')' + ((lf & 0x40) ? ' · 隔行' : ''), p, dataEnd - p, 'data');
+      n.fields.push(['位置', '(' + fx + ', ' + fy + ')'], ['尺寸', fw + ' × ' + fh], ['局部调色板', lctLen ? (lctLen / 3) + ' 色' : '无（用全局）'],
+        ['隔行', (lf & 0x40) ? '是' : '否'], ['LZW 最小码长', minCode + ' 位'], ['压缩数据', num(dataEnd - p - 11 - lctLen) + ' 字节']);
+      n.note = 'GIF 用 LZW 压缩索引色数据，码长从「最小码长 + 1」开始，字典满 4096 项后发清除码重来。';
+      nodes.push(n);
+      p = dataEnd; continue;
+    }
+    p++;
+  }
+  const dur = delayTotal * 10 / 1000;
+  kv.push(['画布尺寸', w + ' × ' + h + ' px'], ['版本', sig], ['帧数', frames + (frames > 1 ? ' 帧（动图）' : ' 帧（静图）')]);
+  if (frames > 1) kv.push(['总时长', fmtDur(dur)], ['平均帧率', dur > 0 ? (frames / dur).toFixed(2) + ' fps' : '—'],
+    ['循环', loop == null ? '未声明（多数浏览器按一次播放）' : loop === 0 ? '无限循环' : loop + ' 次']);
+  kv.push(['全局调色板', hasGCT ? (1 << (gctSize + 1)) + ' 色' : '无'], ['每像素平均字节', (N / (w * h)).toFixed(3)]);
+  if (comment) kv.push(['注释', comment]);
+  if (trailer > 0 && N - trailer - 1 > 0) {
+    nodes.push(nd('尾部附加数据', num(N - trailer - 1) + ' 字节', trailer + 1, N - trailer - 1, 'risk'));
+    finds.push({ sev: 'warn', title: '尾块之后还有 ' + num(N - trailer - 1) + ' 字节', detail: '0x3B 之后的内容不属于 GIF。' });
+  }
+  if (frames > 1) finds.push({ sev: 'info', title: '这是一张 ' + frames + ' 帧的动图', detail: '总时长 ' + fmtDur(dur) + '；GIF 每帧都是完整的调色板图像，体积随帧数线性增长，同画质下通常比 WebP / 视频大数倍。' });
+  if (trailer < 0) finds.push({ sev: 'warn', title: '缺少尾块 0x3B', detail: '文件可能被截断，部分解码器会拒绝显示最后一帧。' });
+  return { fmt: { name: 'GIF 图像', short: 'GIF', mime: 'image/gif', kind: 'image' }, kv, nodes, finds, preview: 'image' };
+}
+
+function parseBMP(u8) {
+  const nodes = [], finds = [], kv = [];
+  const r = new R(u8, 2);
+  const size = r.u32(1); r.skip(4);
+  const off = r.u32(1), dib = r.u32(1);
+  const fh = nd('文件头 BITMAPFILEHEADER', '声明大小 ' + fmtBytesShort(size) + ' · 像素起点 ' + hx(off), 0, 14, 'header');
+  fh.fields.push(['魔数', 'BM'], ['文件大小（声明）', num(size) + ' 字节'], ['像素数据偏移', hx(off)]);
+  nodes.push(fh);
+  const r2 = new R(u8, 18);
+  const w = r2.i32(1), h = r2.i32(1), planes = r2.u16(1), bpp = r2.u16(1), comp = r2.u32(1), imgSize = r2.u32(1);
+  const xppm = r2.i32(1), yppm = r2.i32(1), clrUsed = r2.u32(1);
+  const COMP = { 0: 'BI_RGB（不压缩）', 1: 'BI_RLE8', 2: 'BI_RLE4', 3: 'BI_BITFIELDS', 4: 'JPEG', 5: 'PNG' };
+  const dh = nd('信息头 BITMAPINFOHEADER', w + ' × ' + Math.abs(h) + ' · ' + bpp + ' 位', 14, dib, 'header');
+  dh.fields.push(['信息头大小', dib + ' 字节（' + (dib === 40 ? 'BITMAPINFOHEADER' : dib === 124 ? 'BITMAPV5HEADER' : '变体') + '）'],
+    ['宽度', w + ' px'], ['高度', Math.abs(h) + ' px（' + (h > 0 ? '自下而上' : '自上而下') + '）'],
+    ['位深', bpp + ' 位/像素'], ['压缩', COMP[comp] || String(comp)], ['像素数据大小', num(imgSize) + ' 字节'],
+    ['分辨率', xppm ? Math.round(xppm * 0.0254) + ' DPI' : '未指定'], ['调色板项数', clrUsed || (bpp <= 8 ? (1 << bpp) : 0)]);
+  nodes.push(dh);
+  if (off > 14 + dib) nodes.push(nd('调色板', ((off - 14 - dib) / 4) + ' 项 BGRA', 14 + dib, off - 14 - dib, 'meta'));
+  nodes.push(nd('像素数据', num(u8.length - off) + ' 字节', off, u8.length - off, 'data',
+    { note: 'BMP 每行按 4 字节对齐补零，所以行字节数是 ceil(宽 × 位深 / 32) × 4。' }));
+  kv.push(['图像尺寸', w + ' × ' + Math.abs(h) + ' px'], ['位深', bpp + ' 位/像素'], ['压缩', COMP[comp] || String(comp)],
+    ['行方向', h > 0 ? '自下而上（BMP 传统）' : '自上而下'],
+    ['理论未压缩大小', fmtBytesShort(Math.ceil(w * bpp / 32) * 4 * Math.abs(h))]);
+  if (size !== u8.length) finds.push({ sev: 'warn', title: '文件头声明的大小与实际不符', detail: '头里写着 ' + num(size) + ' 字节，实际 ' + num(u8.length) + ' 字节。' });
+  if (comp === 0 && bpp >= 24) finds.push({ sev: 'info', title: '未压缩的真彩色位图', detail: '同样内容转成 PNG 通常能小 60% 以上且无损。' });
+  return { fmt: { name: 'BMP 位图', short: 'BMP', mime: 'image/bmp', kind: 'image' }, kv, nodes, finds, preview: 'image' };
+}
+
+const WAV_FMT = { 1: 'PCM（未压缩）', 3: 'IEEE 浮点', 6: 'A-law', 7: 'mu-law', 0xFFFE: '可扩展格式' };
+function parseRIFF(u8) {
+  const nodes = [], finds = [], kv = [];
+  const N = u8.length;
+  const riffSize = new DataView(u8.buffer, u8.byteOffset, u8.byteLength).getUint32(4, true);
+  const form = ASCII(u8, 8, 4);
+  nodes.push(nd('RIFF 头', form + ' 容器 · 声明 ' + fmtBytesShort(riffSize + 8), 0, 12, 'header',
+    { note: 'RIFF 是「块 = 四字符标识 + 32 位小端长度 + 数据」的通用容器，WAV / WebP / AVI 都用它。奇数长度的块后面要补一个填充字节。' }));
+  let p = 12, fmt = null, dataLen = 0, info = [], vp8x = null, dims = null, animFrames = 0, hasAlpha = false, exif = null;
+  while (p + 8 <= N) {
+    const id = ASCII(u8, p, 4);
+    const len = new DataView(u8.buffer, u8.byteOffset, u8.byteLength).getUint32(p + 4, true);
+    const total = 8 + len + (len & 1);
+    const node = nd(id, '', p, Math.min(total, N - p), id === 'data' || id === 'VP8 ' || id === 'VP8L' ? 'data' : 'meta');
+    node.fields.push(['块长度', num(len) + ' 字节']);
+    const r = new R(u8, p + 8);
+    if (id === 'fmt ') {
+      fmt = { tag: r.u16(1), ch: r.u16(1), rate: r.u32(1), byteRate: r.u32(1), align: r.u16(1), bits: r.u16(1) };
+      node.desc = (WAV_FMT[fmt.tag] || '格式 ' + fmt.tag) + ' · ' + fmt.rate + ' Hz · ' + fmt.ch + ' 声道 · ' + fmt.bits + ' 位';
+      node.fields.push(['编码', WAV_FMT[fmt.tag] || String(fmt.tag)], ['声道数', fmt.ch], ['采样率', num(fmt.rate) + ' Hz'],
+        ['字节率', num(fmt.byteRate) + ' 字节/秒'], ['块对齐', fmt.align + ' 字节'], ['位深', fmt.bits + ' 位']);
+      node.note = '采样率 × 声道数 × 位深 ÷ 8 = 字节率，三者对不上的文件多半是手工拼的。';
+    } else if (id === 'data') {
+      dataLen = len; node.desc = num(len) + ' 字节采样数据';
+      if (fmt && fmt.byteRate) node.desc += ' · ' + fmtDur(len / fmt.byteRate);
+    } else if (id === 'LIST') {
+      const kind = ASCII(u8, p + 8, 4);
+      node.desc = kind + ' 列表';
+      if (kind === 'INFO') {
+        let q = p + 12;
+        while (q + 8 <= p + 8 + len) {
+          const k = ASCII(u8, q, 4), l = new DataView(u8.buffer, u8.byteOffset, u8.byteLength).getUint32(q + 4, true);
+          info.push([k, clean(utf8(u8, q + 8, l))]);
+          q += 8 + l + (l & 1);
+        }
+        node.desc += ' · ' + info.length + ' 条元数据';
+        for (const [k, v] of info) node.fields.push([k, v]);
+      }
+    } else if (id === 'VP8X') {
+      const f = u8[p + 8];
+      hasAlpha = !!(f & 0x10);
+      const cw = 1 + (u8[p + 12] | (u8[p + 13] << 8) | (u8[p + 14] << 16));
+      const ch = 1 + (u8[p + 15] | (u8[p + 16] << 8) | (u8[p + 17] << 16));
+      vp8x = { w: cw, h: ch, anim: !!(f & 2), alpha: hasAlpha, exif: !!(f & 8) };
+      dims = dims || { w: cw, h: ch };
+      node.desc = cw + ' × ' + ch + (vp8x.anim ? ' · 动画' : '') + (hasAlpha ? ' · 含 Alpha' : '');
+    } else if (id === 'VP8 ') {
+      const o = p + 8 + 6;
+      if (u8[o] === 0x9D && u8[o + 1] === 0x01 && u8[o + 2] === 0x2A) {
+        const w = ((u8[o + 3] | (u8[o + 4] << 8)) & 0x3FFF), h = ((u8[o + 5] | (u8[o + 6] << 8)) & 0x3FFF);
+        dims = dims || { w, h }; node.desc = '有损帧 ' + w + ' × ' + h;
+      } else node.desc = '有损帧数据';
+    } else if (id === 'VP8L') {
+      const b = u8[p + 9] | (u8[p + 10] << 8) | (u8[p + 11] << 16) | (u8[p + 12] << 24);
+      const w = (b & 0x3FFF) + 1, h = ((b >> 14) & 0x3FFF) + 1;
+      dims = dims || { w, h }; node.desc = '无损帧 ' + w + ' × ' + h;
+    } else if (id === 'ANMF') { animFrames++; node.desc = '动画帧 #' + animFrames; }
+    else if (id === 'EXIF') { exif = parseTIFF(u8, p + 8, p + 8 + len); node.desc = 'EXIF · ' + (exif ? exif.entries.length + ' 个标签' : '解析失败'); }
+    nodes.push(node);
+    if (total <= 0) break;
+    p += total;
+  }
+  if (form === 'WAVE') {
+    const dur = fmt && fmt.byteRate ? dataLen / fmt.byteRate : 0;
+    kv.push(['容器', 'RIFF / WAVE'], ['编码', fmt ? (WAV_FMT[fmt.tag] || '格式 ' + fmt.tag) : '未知'],
+      ['采样率', fmt ? num(fmt.rate) + ' Hz' : '—'], ['声道', fmt ? (fmt.ch === 1 ? '单声道' : fmt.ch === 2 ? '立体声' : fmt.ch + ' 声道') : '—'],
+      ['位深', fmt ? fmt.bits + ' 位' : '—'], ['时长', fmtDur(dur)],
+      ['采样点数', fmt && fmt.align ? num(Math.floor(dataLen / fmt.align)) : '—'],
+      ['码率', fmt ? (fmt.byteRate * 8 / 1000).toFixed(0) + ' kbps' : '—']);
+    for (const [k, v] of info.slice(0, 5)) kv.push(['INFO · ' + k, v]);
+    if (fmt && fmt.byteRate !== fmt.rate * fmt.ch * fmt.bits / 8) finds.push({ sev: 'warn', title: '字节率与采样参数不自洽', detail: '声明 ' + num(fmt.byteRate) + '，按采样率 × 声道 × 位深算应为 ' + num(fmt.rate * fmt.ch * fmt.bits / 8) + '。' });
+    if (fmt && fmt.tag === 1) finds.push({ sev: 'info', title: '未压缩 PCM', detail: '每秒占 ' + fmtBytesShort(fmt.byteRate) + '；转成 FLAC 通常省一半，转 AAC/Opus 可省九成。' });
+    return { fmt: { name: 'WAV 音频', short: 'WAV', mime: 'audio/wav', kind: 'audio' }, kv, nodes, finds, preview: 'audio' };
+  }
+  if (form === 'WEBP') {
+    kv.push(['容器', 'RIFF / WEBP'], ['尺寸', dims ? dims.w + ' × ' + dims.h + ' px' : '未知'],
+      ['类型', vp8x ? (vp8x.anim ? '动画 WebP · ' + animFrames + ' 帧' : '扩展 WebP') : '简单 WebP'],
+      ['Alpha 通道', hasAlpha ? '有' : '无']);
+    if (dims) kv.push(['每像素比特', (N * 8 / (dims.w * dims.h)).toFixed(3) + ' bpp']);
+    if (exif && exif.gps) pushGPS(finds, exif.gps);
+    return { fmt: { name: 'WebP 图像', short: 'WebP', mime: 'image/webp', kind: 'image' }, kv, nodes, finds, preview: 'image', exif };
+  }
+  kv.push(['容器', 'RIFF / ' + form], ['声明大小', num(riffSize + 8) + ' 字节']);
+  if (riffSize + 8 !== N) finds.push({ sev: 'warn', title: 'RIFF 声明大小与实际不符', detail: '头里写着 ' + num(riffSize + 8) + ' 字节，实际 ' + num(N) + ' 字节。' });
+  return { fmt: { name: 'RIFF 容器（' + form + '）', short: 'RIFF', mime: 'application/octet-stream', kind: 'binary' }, kv, nodes, finds, preview: null };
+}
+
+/* ───────── ZIP（中央目录 + 本地条目 + 真解压校验） ───────── */
+const ZIP_METHOD = { 0: '存储（不压缩）', 1: 'Shrink', 6: 'Implode', 8: 'Deflate', 9: 'Deflate64', 12: 'BZip2', 14: 'LZMA', 93: 'Zstandard', 95: 'XZ', 98: 'PPMd', 99: 'AES 加密' };
+function dosTime(t, d) {
+  const y = 1980 + ((d >> 9) & 0x7f), mo = (d >> 5) & 0xf, da = d & 0x1f;
+  const h = (t >> 11) & 0x1f, mi = (t >> 5) & 0x3f, s = (t & 0x1f) * 2;
+  if (!mo || !da) return '未记录';
+  const p2 = (n) => String(n).padStart(2, '0');
+  return y + '-' + p2(mo) + '-' + p2(da) + ' ' + p2(h) + ':' + p2(mi) + ':' + p2(s);
+}
+function parseZIP(u8) {
+  const nodes = [], finds = [], kv = [];
+  const N = u8.length, dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+  let eocd = -1;
+  for (let i = N - 22; i >= Math.max(0, N - 66000); i--) {
+    if (u8[i] === 0x50 && u8[i + 1] === 0x4b && u8[i + 2] === 0x05 && u8[i + 3] === 0x06) { eocd = i; break; }
+  }
+  if (eocd < 0) {
+    finds.push({ sev: 'high', title: '找不到中央目录结束记录（EOCD）', detail: '文件可能被截断，或只是一段以 PK 开头的分卷 / 嵌入片段。' });
+    return { fmt: { name: 'ZIP 压缩包（结构不完整）', short: 'ZIP', mime: 'application/zip', kind: 'archive' }, kv, nodes, finds, preview: null };
+  }
+  const entriesTotal = dv.getUint16(eocd + 10, true), cdSize = dv.getUint32(eocd + 12, true), cdOff = dv.getUint32(eocd + 16, true);
+  const cmtLen = dv.getUint16(eocd + 20, true);
+  const zip64 = cdOff === 0xFFFFFFFF || entriesTotal === 0xFFFF;
+  const entries = [];
+  let p = cdOff, budget = 3 * 1024 * 1024, decoded = 0, crcOK = 0, crcBad = 0;
+  const cdNode = nd('中央目录', entriesTotal + ' 个条目 · ' + fmtBytesShort(cdSize), cdOff, cdSize, 'meta', {
+    note: '解压器只信中央目录：它记录了每个条目的名字、方法、CRC、大小与本地头偏移。中央目录与本地头不一致的包（例如两处名字不同）曾被用来做「同一个 zip 两种内容」的攻击。',
+  });
+  const localNode = nd('本地条目区', '', 0, Math.max(0, cdOff), 'data');
+  while (p + 46 <= N && entries.length < 4000) {
+    if (dv.getUint32(p, true) !== 0x02014b50) break;
+    const flags = dv.getUint16(p + 8, true), method = dv.getUint16(p + 10, true);
+    const mtime = dv.getUint16(p + 12, true), mdate = dv.getUint16(p + 14, true);
+    const crc = dv.getUint32(p + 16, true), csize = dv.getUint32(p + 20, true), usize = dv.getUint32(p + 24, true);
+    const nlen = dv.getUint16(p + 28, true), elen = dv.getUint16(p + 30, true), clen = dv.getUint16(p + 32, true);
+    const extAttr = dv.getUint32(p + 38, true), lho = dv.getUint32(p + 42, true);
+    const nameBytes = u8.subarray(p + 46, p + 46 + nlen);
+    const utf8Flag = !!(flags & 0x800);
+    const name = decodeName(nameBytes, utf8Flag);
+    const isDir = name.endsWith('/');
+    const e = { name, method, crc, csize, usize, flags, lho, isDir, utf8Flag, time: dosTime(mtime, mdate), cdAt: p, extAttr };
+    entries.push(e);
+    p += 46 + nlen + elen + clen;
+    const en = nd(name.slice(-42) || '(空名)', (isDir ? '目录' : (ZIP_METHOD[method] || '方法 ' + method) + ' · ' + fmtBytesShort(usize) +
+      (usize ? ' → ' + fmtBytesShort(csize) + '（' + (100 - csize / usize * 100).toFixed(0) + '% 省）' : '')), p - (46 + nlen + elen + clen), 46 + nlen + elen + clen, 'meta');
+    en.fields.push(['完整路径', name], ['压缩方法', ZIP_METHOD[method] || String(method)], ['原始大小', num(usize) + ' 字节'],
+      ['压缩后', num(csize) + ' 字节'], ['CRC-32（记录值）', hx(crc)], ['修改时间', e.time],
+      ['文件名编码', utf8Flag ? 'UTF-8（标志位 11 置位）' : '未声明 UTF-8（按 GBK 尝试解码）'],
+      ['本地头偏移', hx(lho)], ['加密', (flags & 1) ? '是' : '否']);
+    e.node = en;
+    cdNode.children.push(en);
+  }
+  // 本地头 + 真解压校验
+  for (const e of entries) {
+    if (e.lho + 30 > N || dv.getUint32(e.lho, true) !== 0x04034b50) continue;
+    const nlen = dv.getUint16(e.lho + 26, true), elen = dv.getUint16(e.lho + 28, true);
+    const dataAt = e.lho + 30 + nlen + elen;
+    e.dataAt = dataAt;
+    const ln = nd(e.name.slice(-42) || '(空名)', (e.isDir ? '目录项' : fmtBytesShort(e.csize) + ' · ' + (ZIP_METHOD[e.method] || e.method)),
+      e.lho, 30 + nlen + elen + e.csize, e.isDir ? 'meta' : 'data');
+    ln.fields.push(['本地头', hx(e.lho)], ['数据起点', hx(dataAt)], ['压缩数据', num(e.csize) + ' 字节']);
+    ln.note = '本地头之后紧跟压缩数据。ZIP 允许本地头与中央目录不一致，解压器以中央目录为准。';
+    if (!e.isDir && e.csize > 0 && e.usize <= 512 * 1024 && budget > 0 && !(e.flags & 1)) {
+      try {
+        let out = null;
+        if (e.method === 0) out = u8.subarray(dataAt, dataAt + e.csize);
+        else if (e.method === 8) out = inflateRaw(u8, dataAt).data;
+        if (out) {
+          budget -= out.length; decoded++;
+          const c = crc32(out);
+          const ok = c === e.crc;
+          ok ? crcOK++ : crcBad++;
+          ln.chip = { t: ok ? 'ok' : 'bad', text: ok ? 'CRC ✓' : 'CRC ✗' };
+          if (e.node) e.node.chip = ln.chip;
+          ln.fields.push(['解压校验', ok ? '解压后 CRC-32 = ' + hx(c) + '，与记录一致' : '解压后 CRC-32 = ' + hx(c) + '，与记录的 ' + hx(e.crc) + ' 不一致']);
+          const txt = sniffText(out);
+          if (txt) {
+            e.preview = txt.slice(0, 600);
+            ln.fields.push(['内容预览', e.preview.slice(0, 300)]);
+            if (e.node) e.node.fields.push(['内容预览', e.preview.slice(0, 300)]);
+          } else {
+            const sub = detectMagic(out, 0);
+            if (sub) { ln.fields.push(['内容识别', sub.name]); if (e.node) e.node.fields.push(['内容识别', sub.name]); }
+          }
+        }
+      } catch (err) { ln.chip = { t: 'bad', text: '解压失败' }; ln.fields.push(['解压', err.message]); }
+    }
+    localNode.children.push(ln);
+  }
+  localNode.desc = localNode.children.length + ' 个本地条目 · ' + fmtBytesShort(cdOff);
+  nodes.push(localNode, cdNode);
+  const eo = nd('EOCD', '中央目录结束记录', eocd, 22 + cmtLen, 'header');
+  eo.fields.push(['条目总数', entriesTotal], ['中央目录大小', num(cdSize) + ' 字节'], ['中央目录偏移', hx(cdOff)],
+    ['注释', cmtLen ? clean(utf8(u8, eocd + 22, cmtLen)).slice(0, 200) : '（无）']);
+  eo.note = 'ZIP 从文件末尾往回找这 22 字节，所以在 ZIP 前面拼任何数据都不影响解压 —— 自解压程序和图片聚合体就是这么来的。';
+  nodes.push(eo);
+
+  // 容器类型
+  const names = entries.map((e) => e.name);
+  const has = (s) => names.some((n) => n === s || n.startsWith(s));
+  let container = null;
+  if (has('[Content_Types].xml')) container = names.some((n) => n.startsWith('word/')) ? 'Word 文档（.docx）' :
+    names.some((n) => n.startsWith('xl/')) ? 'Excel 工作簿（.xlsx）' : names.some((n) => n.startsWith('ppt/')) ? 'PowerPoint 演示（.pptx）' : 'Office Open XML';
+  else if (has('mimetype') && names.some((n) => n.startsWith('OEBPS') || n.startsWith('EPUB'))) container = 'EPUB 电子书';
+  else if (has('AndroidManifest.xml')) container = 'Android 安装包（.apk）';
+  else if (has('META-INF/MANIFEST.MF')) container = 'Java 归档（.jar）';
+  else if (has('content.json') || has('manifest.json')) container = '含 manifest.json 的包（浏览器扩展 / 应用包）';
+
+  const totalU = entries.reduce((a, e) => a + e.usize, 0), totalC = entries.reduce((a, e) => a + e.csize, 0);
+  kv.push(['条目数', entriesTotal + ' 个（目录 ' + entries.filter((e) => e.isDir).length + ' 个）'],
+    ['原始总大小', fmtBytesShort(totalU)], ['压缩后', fmtBytesShort(totalC)],
+    ['整体压缩率', totalU ? (100 - totalC / totalU * 100).toFixed(1) + '%' : '—'],
+    ['压缩方法', Array.from(new Set(entries.map((e) => ZIP_METHOD[e.method] || e.method))).join(' / ') || '—'],
+    ['ZIP64', zip64 ? '是（超过 4 GB 或 65535 条目）' : '否'],
+    ['解压自检', decoded ? decoded + ' 个条目已真解压，CRC 通过 ' + crcOK + ' / 失败 ' + crcBad : '未做（条目过大或已加密）']);
+  if (container) kv.push(['容器类型', container]);
+  if (cdOff > 0 && localNode.children.length && localNode.children[0].start > 0) {
+    kv.push(['前置数据', hx(localNode.children[0].start) + ' 字节（自解压头或聚合体前缀）']);
+  }
+  const bad = entries.filter((e) => /(^|\/)\.\.(\/|$)/.test(e.name) || e.name.startsWith('/') || /^[A-Za-z]:/.test(e.name) || e.name.includes('\\'));
+  if (bad.length) finds.push({
+    sev: 'high', title: bad.length + ' 个条目带穿越或绝对路径', detail: '例如「' + bad[0].name + '」。解压时若不做路径规范化，文件会落到目标目录之外（Zip Slip）。命令行 unzip 会拒绝，但很多程序库不会。',
+  });
+  const enc = entries.filter((e) => e.flags & 1);
+  if (enc.length) finds.push({ sev: 'warn', title: enc.length + ' 个条目已加密', detail: '传统 ZipCrypto 或 AES；本工具不尝试解密，内容无法预览。' });
+  if (crcBad) finds.push({ sev: 'high', title: crcBad + ' 个条目解压后 CRC 不符', detail: '压缩数据已损坏或被篡改。' });
+  else if (crcOK) finds.push({ sev: 'ok', title: crcOK + ' 个条目真解压并通过 CRC 校验', detail: '本页手写的 inflate 把数据解出来后重算 CRC-32，与中央目录记录逐一比对。' });
+  const bomb = entries.filter((e) => e.csize > 512 && e.usize / Math.max(1, e.csize) > 200);
+  if (bomb.length) finds.push({ sev: 'warn', title: '存在超高压缩比条目（' + Math.round(bomb[0].usize / bomb[0].csize) + ' : 1）', detail: '「' + bomb[0].name + '」解开后是压缩前的 ' + Math.round(bomb[0].usize / bomb[0].csize) + ' 倍，需留意解压炸弹。' });
+  const nonUtf = entries.filter((e) => !e.utf8Flag && Array.from(e.name).some((c) => c.charCodeAt(0) > 127));
+  if (nonUtf.length) finds.push({ sev: 'info', title: nonUtf.length + ' 个非 ASCII 文件名未声明 UTF-8', detail: '这类包在 macOS / Linux 上解压常出现乱码；本工具已按 GBK 尝试还原，例如「' + nonUtf[0].name + '」。' });
+  if (names.some((n) => /vbaProject\.bin$/i.test(n))) finds.push({ sev: 'high', title: 'Office 文档内含 VBA 宏', detail: '存在 vbaProject.bin，说明这份文档带宏代码，来源不明时不要启用。' });
+  if (container) finds.push({ sev: 'info', title: '这其实是一个 ' + container, detail: '现代办公文档与安装包本质上都是 ZIP，改名后可以直接解开看里面的 XML 与资源。' });
+  return { fmt: { name: container ? container + '（ZIP 容器）' : 'ZIP 压缩包', short: 'ZIP', mime: 'application/zip', kind: 'archive' }, kv, nodes, finds, preview: null, zipEntries: entries };
+}
+
+/* ───────── GZIP ───────── */
+function parseGZIP(u8) {
+  const nodes = [], finds = [], kv = [];
+  const N = u8.length, dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+  const flg = u8[3], mtime = dv.getUint32(4, true), xfl = u8[8], os = u8[9];
+  const OS = { 0: 'FAT（Windows）', 3: 'Unix', 7: 'Macintosh', 11: 'NTFS', 255: '未知' };
+  let p = 10, name = '', comment = '', extra = 0;
+  if (flg & 4) { extra = dv.getUint16(p, true); p += 2 + extra; }
+  if (flg & 8) { const s = p; while (p < N && u8[p]) p++; name = decodeName(u8.subarray(s, p), true); p++; }
+  if (flg & 16) { const s = p; while (p < N && u8[p]) p++; comment = decodeName(u8.subarray(s, p), true); p++; }
+  if (flg & 2) p += 2;
+  const head = nd('GZIP 头', (name ? '原名 ' + name + ' · ' : '') + (OS[os] || '系统 ' + os), 0, p, 'header');
+  head.fields.push(['魔数', '1F 8B'], ['压缩方法', u8[2] === 8 ? 'deflate' : String(u8[2])],
+    ['标志位', 'FTEXT=' + (flg & 1 ? 1 : 0) + ' FHCRC=' + (flg & 2 ? 1 : 0) + ' FEXTRA=' + (flg & 4 ? 1 : 0) + ' FNAME=' + (flg & 8 ? 1 : 0) + ' FCOMMENT=' + (flg & 16 ? 1 : 0)],
+    ['修改时间', mtime ? new Date(mtime * 1000).toLocaleString('zh-CN') : '未记录'],
+    ['压缩强度', xfl === 2 ? '最大压缩' : xfl === 4 ? '最快' : String(xfl)], ['来源系统', OS[os] || String(os)]);
+  if (name) head.fields.push(['原始文件名', name]);
+  if (comment) head.fields.push(['注释', comment]);
+  head.note = 'GZIP 只是给一条 deflate 流套了头尾：头里放原名与时间，尾部 8 字节放 CRC-32 与原始长度（模 2³²）。';
+  nodes.push(head);
+  const isize = N >= 8 ? dv.getUint32(N - 4, true) : 0, storedCrc = N >= 8 ? dv.getUint32(N - 8, true) : 0;
+  nodes.push(nd('deflate 数据流', fmtBytesShort(N - p - 8), p, Math.max(0, N - p - 8), 'data',
+    { note: 'LZ77 回溯匹配 + Huffman 编码。本页的 inflate 会把它真解出来并核对尾部 CRC。' }));
+  const tail = nd('尾部校验', 'CRC-32 ' + hx(storedCrc) + ' · 原始长度 ' + num(isize) + ' 字节', Math.max(0, N - 8), 8, 'header');
+  nodes.push(tail);
+  let out = null, err = null;
+  try { out = inflateRaw(u8, p).data; } catch (e) { err = e.message; }
+  kv.push(['压缩后', fmtBytesShort(N)], ['原始长度（尾部记录）', num(isize) + ' 字节'],
+    ['压缩率', isize ? (100 - N / isize * 100).toFixed(1) + '%' : '—'],
+    ['原始文件名', name || '（未记录）'], ['来源系统', OS[os] || String(os)]);
+  if (out) {
+    const c = crc32(out), ok = c === storedCrc && out.length === isize;
+    tail.chip = { t: ok ? 'ok' : 'bad', text: ok ? 'CRC ✓' : 'CRC ✗' };
+    kv.push(['解压自检', ok ? '解出 ' + num(out.length) + ' 字节，CRC-32 与长度均一致' : '解出 ' + num(out.length) + ' 字节，CRC ' + hx(c) + ' 与记录不符']);
+    finds.push(ok ? { sev: 'ok', title: '解压成功且校验通过', detail: '用本页手写的 inflate 解出 ' + num(out.length) + ' 字节，CRC-32 与 ISIZE 都对得上。' }
+      : { sev: 'high', title: '解压结果与校验值不符', detail: '数据可能损坏。' });
+    const txt = sniffText(out);
+    if (txt) kv.push(['内容预览', txt.slice(0, 200)]);
+    else { const sub = detectMagic(out, 0); if (sub) { kv.push(['内层格式', sub.name]); finds.push({ sev: 'info', title: '压缩的是一个 ' + sub.name, detail: '解开后仍是二进制文件；常见于 .tar.gz 这类双层封装。' }); } }
+    if (out.length > 512 && ASCII(out, 257, 5) === 'ustar') finds.push({ sev: 'info', title: '内层是 TAR 归档（即 .tar.gz）', detail: 'GZIP 本身只压一条流，目录结构由里面的 TAR 提供。' });
+  } else finds.push({ sev: 'high', title: '解压失败：' + err, detail: '数据流在中途出错，文件可能被截断。' });
+  return { fmt: { name: 'GZIP 压缩流', short: 'GZIP', mime: 'application/gzip', kind: 'archive' }, kv, nodes, finds, preview: null };
+}
+
+/* ───────── ISO-BMFF（MP4 / MOV / M4A / HEIC） ───────── */
+const BOX_CONTAINER = new Set(['moov', 'trak', 'mdia', 'minf', 'stbl', 'dinf', 'edts', 'udta', 'moof', 'traf', 'mvex', 'mfra', 'skip', 'meta', 'ipro', 'sinf', 'stsd', 'iprp', 'ipco']);
+const BOX_NOTE = {
+  ftyp: '文件类型盒：主品牌 + 兼容品牌列表，播放器据此判断能否解。必须是第一个 box。',
+  moov: '影片盒：全部索引与元数据都在这。它若在文件末尾，边下边播就得先把整段拉完（所谓 faststart 就是把它挪到前面）。',
+  mdat: '媒体数据盒：真正的音视频码流，通常占 99% 体积，本身没有结构信息。',
+  mvhd: '影片头：时间基（timescale）与总时长，时长 ÷ 时间基 = 秒。',
+  tkhd: '轨道头：轨道 ID、时长与显示宽高（16.16 定点数）。',
+  stsd: '样本描述：里面第一个子 box 的四字符名就是编解码器（avc1 / hvc1 / mp4a …）。',
+  stco: '块偏移表：每个 chunk 在文件里的位置，剪辑软件改动文件时必须同步重写。',
+  stsz: '样本大小表。', stts: '时间-样本映射表。', hdlr: '处理器类型：vide 视频 / soun 音频 / text 字幕。',
+  free: '空闲占位，可安全删除。', mdhd: '媒体头：该轨道自己的时间基与语言。',
+};
+function parseMP4(u8) {
+  const nodes = [], finds = [], kv = [];
+  const N = u8.length, dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+  let brand = '', compat = [], dur = 0, timescale = 0, tracks = [], created = null, mdatBytes = 0, moovAt = -1, mdatAt = -1, boxCount = 0;
+  const walk = (start, end, depth) => {
+    const list = [];
+    let p = start;
+    while (p + 8 <= end && boxCount < 6000) {
+      let size = dv.getUint32(p), type = ASCII(u8, p + 4, 4);
+      let hdr = 8;
+      if (size === 1) { if (p + 16 > end) break; size = Number(dv.getBigUint64(p + 8)); hdr = 16; }
+      else if (size === 0) size = end - p;
+      if (size < hdr || p + size > end) { if (p + 8 <= end && /^[a-zA-Z0-9 ]{4}$/.test(type)) { size = end - p; } else break; }
+      boxCount++;
+      const node = nd(type, '', p, size, type === 'mdat' ? 'data' : (depth === 0 ? 'header' : 'meta'), { note: BOX_NOTE[type] || '' });
+      node.fields.push(['box 类型', type], ['大小', num(size) + ' 字节'], ['头长度', hdr + ' 字节']);
+      const r = new R(u8, p + hdr);
+      if (type === 'ftyp') {
+        brand = r.s(4); r.skip(4);
+        while (r.p + 4 <= p + size) compat.push(r.s(4));
+        node.desc = '主品牌 ' + brand + ' · 兼容 ' + compat.join(' ');
+        node.fields.push(['主品牌', brand], ['兼容品牌', compat.join(' / ')]);
+      } else if (type === 'mvhd') {
+        const ver = r.u8(); r.skip(3);
+        if (ver === 1) { created = Number(r.u64()); r.skip(8); timescale = r.u32(); dur = Number(r.u64()); }
+        else { created = r.u32(); r.skip(4); timescale = r.u32(); dur = r.u32(); }
+        node.desc = '时间基 ' + num(timescale) + ' · 时长 ' + fmtDur(dur / (timescale || 1));
+        node.fields.push(['版本', ver], ['时间基', num(timescale) + ' 单位/秒'], ['时长', num(dur) + ' 单位 = ' + fmtDur(dur / (timescale || 1))],
+          ['创建时间', created ? new Date((created - 2082844800) * 1000).toLocaleString('zh-CN') : '未记录']);
+      } else if (type === 'tkhd') {
+        const ver = r.u8(); r.skip(3);
+        if (ver === 1) { r.skip(16); } else { r.skip(8); }
+        const tid = r.u32(); r.skip(4);
+        const tdur = ver === 1 ? Number(r.u64()) : r.u32();
+        r.skip(8 + 2 + 2 + 2 + 2 + 36);
+        const w = r.u32() / 65536, h = r.u32() / 65536;
+        tracks.push({ id: tid, w, h, dur: tdur });
+        node.desc = '轨道 ' + tid + (w ? ' · ' + Math.round(w) + ' × ' + Math.round(h) : '（无画面）');
+        node.fields.push(['轨道 ID', tid], ['显示尺寸', w ? Math.round(w) + ' × ' + Math.round(h) : '无'], ['轨道时长', num(tdur)]);
+      } else if (type === 'hdlr') {
+        r.skip(8); const h = r.s(4);
+        const HL = { vide: '视频', soun: '音频', text: '文本', subt: '字幕', hint: '提示', meta: '元数据' };
+        node.desc = (HL[h] || h) + ' 轨';
+        node.fields.push(['处理器类型', h + '（' + (HL[h] || '未知') + '）']);
+        const t = tracks[tracks.length - 1]; if (t) t.kind = HL[h] || h;
+      } else if (type === 'mdat') { mdatBytes += size; mdatAt = p; node.desc = fmtBytesShort(size) + ' 媒体码流（占 ' + (size / N * 100).toFixed(1) + '%）'; }
+      else if (type === 'stsd') {
+        r.skip(4); const cnt = r.u32();
+        const codec = r.p + 8 <= p + size ? ASCII(u8, r.p + 4, 4) : '';
+        node.desc = cnt + ' 个样本描述 · 编解码 ' + codec;
+        node.fields.push(['条目数', cnt], ['编解码器', codec]);
+        const t = tracks[tracks.length - 1]; if (t) t.codec = codec;
+      } else if (type === 'mdhd') {
+        const ver = r.u8(); r.skip(3);
+        if (ver === 1) { r.skip(16); } else { r.skip(8); }
+        const ts = r.u32(), d2 = ver === 1 ? Number(r.u64()) : r.u32();
+        const langBits = r.u16();
+        const lang = String.fromCharCode(0x60 + ((langBits >> 10) & 31), 0x60 + ((langBits >> 5) & 31), 0x60 + (langBits & 31));
+        node.desc = '时间基 ' + num(ts) + ' · ' + fmtDur(d2 / (ts || 1)) + ' · 语言 ' + lang;
+        node.fields.push(['时间基', num(ts)], ['时长', fmtDur(d2 / (ts || 1))], ['语言', lang]);
+      } else if (type === 'moov') moovAt = p;
+      if (BOX_CONTAINER.has(type)) {
+        const inner = type === 'stsd' ? p + hdr + 8 : type === 'meta' ? p + hdr + 4 : p + hdr;
+        node.children = walk(inner, p + size, depth + 1);
+      }
+      list.push(node);
+      p += size;
+    }
+    return list;
+  };
+  const top = walk(0, N, 0);
+  for (const n of top) nodes.push(n);
+  const seconds = timescale ? dur / timescale : 0;
+  const vt = tracks.find((t) => t.kind === '视频') || tracks.find((t) => t.w > 0);
+  kv.push(['容器', 'ISO 基础媒体文件（ISO-BMFF）'], ['主品牌', brand || '未知'], ['兼容品牌', compat.join(' / ') || '—'],
+    ['时长', fmtDur(seconds)], ['轨道数', tracks.length + ' 条' + (tracks.length ? '（' + tracks.map((t) => t.kind || '未知').join(' / ') + '）' : '')]);
+  if (vt) kv.push(['画面尺寸', Math.round(vt.w) + ' × ' + Math.round(vt.h) + (vt.codec ? ' · ' + vt.codec : '')]);
+  kv.push(['媒体码流', fmtBytesShort(mdatBytes) + '（占 ' + (mdatBytes / N * 100).toFixed(1) + '%）']);
+  if (seconds > 0) kv.push(['平均码率', (N * 8 / seconds / 1000).toFixed(0) + ' kbps']);
+  if (created) kv.push(['创建时间', new Date((created - 2082844800) * 1000).toLocaleString('zh-CN')]);
+  if (moovAt >= 0 && mdatAt >= 0) {
+    const fast = moovAt < mdatAt;
+    finds.push({
+      sev: fast ? 'ok' : 'warn', title: fast ? 'moov 在 mdat 之前（适合边下边播）' : 'moov 位于媒体数据之后',
+      detail: fast ? '索引在前，浏览器只需拉到头部就能起播。' : '播放器必须先拿到文件末尾的索引才能起播，网页里表现为「要等整段下完」。用 faststart 重排即可解决。',
+    });
+  }
+  if (created) finds.push({ sev: 'info', title: '含创建时间戳', detail: 'ISO-BMFF 的时间以 1904-01-01 为纪元；这份文件记录了 ' + new Date((created - 2082844800) * 1000).toLocaleString('zh-CN') + '。' });
+  const isHeic = compat.includes('heic') || compat.includes('mif1');
+  return {
+    fmt: {
+      name: isHeic ? 'HEIF / HEIC 图像' : brand === 'M4A ' ? 'M4A 音频' : brand === 'qt  ' ? 'QuickTime 影片' : 'MP4 视频',
+      short: isHeic ? 'HEIC' : brand === 'M4A ' ? 'M4A' : 'MP4', mime: isHeic ? 'image/heic' : 'video/mp4', kind: 'media',
+    }, kv, nodes, finds, preview: isHeic ? 'image' : 'video',
+  };
+}
+
+/* ───────── sfnt 字体（TTF / OTF） ───────── */
+const NAME_ID = { 0: '版权', 1: '字体家族', 2: '子家族', 3: '唯一标识', 4: '完整名称', 5: '版本', 6: 'PostScript 名', 7: '商标', 8: '厂商', 9: '设计者', 11: '厂商网址', 13: '许可协议', 14: '许可网址', 16: '首选家族', 17: '首选子家族' };
+const FSTYPE = { 0: '可自由安装嵌入', 2: '禁止嵌入', 4: '仅预览与打印', 8: '可编辑嵌入' };
+function parseFont(u8) {
+  const nodes = [], finds = [], kv = [];
+  const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+  const tagNum = dv.getUint32(0);
+  const isOTF = ASCII(u8, 0, 4) === 'OTTO';
+  const numTables = dv.getUint16(4);
+  const dirLen = 12 + numTables * 16;
+  const dirNode = nd('表目录', numTables + ' 张表', 0, dirLen, 'header', {
+    note: 'sfnt 的一切都由这张目录索引：每项 16 字节 = 四字符表名 + 校验和 + 偏移 + 长度。TTF 与 OTF 的差别只在轮廓表是 glyf 还是 CFF。',
+  });
+  dirNode.fields.push(['版本', isOTF ? 'OTTO（CFF 轮廓）' : tagNum === 0x00010000 ? '1.0（TrueType 轮廓）' : ASCII(u8, 0, 4)], ['表数量', numTables]);
+  nodes.push(dirNode);
+  const tables = {};
+  for (let i = 0; i < numTables; i++) {
+    const o = 12 + i * 16;
+    const tag = ASCII(u8, o, 4), off = dv.getUint32(o + 8), len = dv.getUint32(o + 12);
+    tables[tag] = { off, len };
+    const TN = {
+      head: '字体头', hhea: '水平度量头', maxp: '轮廓统计', 'OS/2': '排版与授权', name: '名称表', cmap: '字符映射',
+      glyf: '字形轮廓', loca: '字形索引', hmtx: '水平度量', post: 'PostScript 信息', kern: '字距对', GPOS: '字形定位', GSUB: '字形替换',
+      CFF: 'CFF 轮廓', 'CFF ': 'CFF 轮廓', fvar: '可变字体轴', gvar: '可变字形', DSIG: '数字签名', 'cvt ': '控制值', fpgm: '字体程序', prep: '预处理程序',
+    };
+    const n = nd(tag, (TN[tag] || '扩展表') + ' · ' + fmtBytesShort(len), off, len, tag === 'glyf' || tag === 'CFF ' ? 'data' : 'meta');
+    n.fields.push(['表名', tag], ['偏移', hx(off)], ['长度', num(len) + ' 字节'], ['校验和', hx(dv.getUint32(o + 4))]);
+    nodes.push(n);
+  }
+  let upem = 0, glyphs = 0, weight = 0, fsType = 0, names = {}, created = null;
+  if (tables.head && tables.head.len >= 54) {
+    const h = tables.head.off;
+    upem = dv.getUint16(h + 18);
+    const d = Number(dv.getBigInt64(h + 20));
+    created = new Date((d - 2082844800) * 1000);
+    const hn = nodes.find((n) => n.name === 'head');
+    if (hn) hn.fields.push(['每 em 单位', num(upem)], ['创建时间', created.toLocaleDateString('zh-CN')],
+      ['边界框', [dv.getInt16(h + 36), dv.getInt16(h + 38), dv.getInt16(h + 40), dv.getInt16(h + 42)].join(' , ')]);
+  }
+  if (tables.maxp) glyphs = dv.getUint16(tables.maxp.off + 4);
+  if (tables['OS/2']) {
+    const o = tables['OS/2'].off;
+    weight = dv.getUint16(o + 4); fsType = dv.getUint16(o + 8);
+  }
+  if (tables.name) {
+    const o = tables.name.off, count = dv.getUint16(o + 2), strOff = o + dv.getUint16(o + 4);
+    for (let i = 0; i < count; i++) {
+      const e = o + 6 + i * 12;
+      const pid = dv.getUint16(e), eid = dv.getUint16(e + 2), nid = dv.getUint16(e + 6);
+      const len = dv.getUint16(e + 8), off = dv.getUint16(e + 10);
+      if (!NAME_ID[nid] || names[nid]) continue;
+      let s = '';
+      if (pid === 3 || (pid === 0)) { for (let k = 0; k + 1 < len; k += 2) s += String.fromCharCode(dv.getUint16(strOff + off + k)); }
+      else s = ASCII(u8, strOff + off, len);
+      names[nid] = clean(s).slice(0, 200);
+    }
+    const nn = nodes.find((n) => n.name === 'name');
+    if (nn) for (const k of Object.keys(names)) nn.fields.push([NAME_ID[k], names[k]]);
+  }
+  let mapped = 0, cmapFmts = [];
+  if (tables.cmap) {
+    const o = tables.cmap.off, n = dv.getUint16(o + 2);
+    for (let i = 0; i < n; i++) {
+      const so = o + dv.getUint32(o + 4 + i * 8 + 4);
+      if (so + 4 > u8.length) continue;
+      const f = dv.getUint16(so);
+      cmapFmts.push(f);
+      if (f === 4) {
+        const segX2 = dv.getUint16(so + 6);
+        let cnt = 0;
+        for (let s = 0; s < segX2 / 2; s++) {
+          const endC = dv.getUint16(so + 14 + s * 2), startC = dv.getUint16(so + 16 + segX2 + s * 2);
+          if (endC !== 0xFFFF) cnt += endC - startC + 1;
+        }
+        mapped = Math.max(mapped, cnt);
+      } else if (f === 12) {
+        const groups = dv.getUint32(so + 12);
+        let cnt = 0;
+        for (let g = 0; g < Math.min(groups, 10000); g++) cnt += dv.getUint32(so + 16 + g * 12 + 4) - dv.getUint32(so + 16 + g * 12) + 1;
+        mapped = Math.max(mapped, cnt);
+      }
+    }
+    const cn = nodes.find((x) => x.name === 'cmap');
+    if (cn) cn.fields.push(['子表数', n], ['格式', cmapFmts.join(' / ')], ['可映射码位', num(mapped)]);
+  }
+  kv.push(['字体家族', names[16] || names[1] || '（未命名）'], ['样式', names[17] || names[2] || '—'],
+    ['轮廓类型', isOTF || tables['CFF '] ? 'CFF（三次贝塞尔）' : 'TrueType glyf（二次贝塞尔）'],
+    ['字形数', num(glyphs)], ['可映射码位', num(mapped) + (mapped > 20000 ? '（含中日韩大字集）' : '')],
+    ['每 em 单位', num(upem)], ['字重', weight + (weight >= 700 ? '（粗体级）' : weight <= 300 ? '（细体级）' : '')],
+    ['版本', names[5] || '—'], ['表数量', numTables]);
+  if (created) kv.push(['创建时间', created.toLocaleDateString('zh-CN')]);
+  if (names[0]) kv.push(['版权', names[0].slice(0, 120)]);
+  const emb = FSTYPE[fsType & 0xf] || (fsType & 0xf ? '受限（' + (fsType & 0xf) + '）' : '可自由安装嵌入');
+  kv.push(['嵌入许可位', emb]);
+  if ((fsType & 0xf) === 2) finds.push({ sev: 'warn', title: '该字体禁止嵌入（fsType = 2）', detail: '把它打进 PDF、网页 woff 或应用包属于违反授权位；商用前请核对授权。' });
+  else finds.push({ sev: 'info', title: '嵌入许可位：' + emb, detail: 'fsType 只是字体厂商声明的意图，不构成授权本身，仍以许可协议为准。' });
+  if (tables.DSIG) finds.push({ sev: 'ok', title: '带数字签名表（DSIG）', detail: '通常是厂商正式发布的版本。' });
+  if (tables.fvar) finds.push({ sev: 'info', title: '这是可变字体', detail: '含 fvar 轴定义，一个文件即可覆盖整条字重 / 字宽连续变化。' });
+  if (!tables.cmap) finds.push({ sev: 'warn', title: '缺少 cmap 字符映射表', detail: '没有 cmap 的字体无法按字符取字形，通常只作为子集资源使用。' });
+  return { fmt: { name: isOTF ? 'OpenType 字体（CFF）' : 'TrueType 字体', short: isOTF ? 'OTF' : 'TTF', mime: 'font/' + (isOTF ? 'otf' : 'ttf'), kind: 'font' }, kv, nodes, finds, preview: 'font' };
+}
+
+/* ───────── PDF ───────── */
+function parsePDF(u8) {
+  const nodes = [], finds = [], kv = [];
+  const N = u8.length;
+  const head = ASCII(u8, 0, Math.min(16, N));
+  const ver = (head.match(/%PDF-(\d\.\d)/) || [])[1] || '?';
+  nodes.push(nd('文件头', '%PDF-' + ver, 0, 9, 'header', { note: 'PDF 以 %PDF-x.y 开头；紧跟的注释行常含高位字节，用来告诉传输工具这是二进制文件。' }));
+  const txt = new TextDecoder('latin1').decode(u8);
+  const objs = (txt.match(/\n\s*\d+\s+\d+\s+obj\b/g) || []).length + (/^\s*\d+\s+\d+\s+obj\b/.test(txt) ? 1 : 0);
+  const pages = (txt.match(/\/Type\s*\/Page[^s]/g) || []).length;
+  const streams = (txt.match(/\bstream\b/g) || []).length;
+  const startxref = txt.lastIndexOf('startxref');
+  const trailerAt = txt.lastIndexOf('trailer');
+  const eofAt = txt.lastIndexOf('%%EOF');
+  const enc = /\/Encrypt\b/.test(txt), lin = /\/Linearized\b/.test(txt);
+  const js = /\/JavaScript\b|\/JS\b/.test(txt), oa = /\/OpenAction\b/.test(txt), ef = /\/EmbeddedFile\b/.test(txt), lau = /\/Launch\b/.test(txt);
+  const grab = (re) => { const m = txt.match(re); return m ? clean(m[1]).slice(0, 120) : null; };
+  const producer = grab(/\/Producer\s*\(([^)]{1,120})\)/), creator = grab(/\/Creator\s*\(([^)]{1,120})\)/);
+  const cdate = grab(/\/CreationDate\s*\(D:(\d{8,14})/), author = grab(/\/Author\s*\(([^)]{1,80})\)/), title = grab(/\/Title\s*\(([^)]{1,120})\)/);
+  if (startxref > 0) {
+    nodes.push(nd('startxref', '交叉引用表入口', startxref, Math.min(40, N - startxref), 'header',
+      { note: '阅读器从文件末尾读 startxref，拿到交叉引用表的偏移，再按需跳读对象 —— 这就是 PDF 能「打开大文件秒显示第一页」的原因。' }));
+  }
+  if (trailerAt > 0) nodes.push(nd('trailer', '尾部字典（/Root /Info /Encrypt）', trailerAt, Math.min(200, N - trailerAt), 'meta'));
+  if (eofAt > 0 && N - eofAt - 5 > 4) {
+    nodes.push(nd('尾部附加数据', num(N - eofAt - 5) + ' 字节', eofAt + 5, N - eofAt - 5, 'risk'));
+    finds.push({ sev: 'warn', title: '%%EOF 之后还有 ' + num(N - eofAt - 5) + ' 字节', detail: '可能是增量更新残留，也可能是夹带内容。' });
+  }
+  const xrefs = (txt.match(/\nxref\b/g) || []).length;
+  kv.push(['PDF 版本', ver], ['对象数（估）', num(objs)], ['页数（估）', num(pages)], ['流对象', num(streams)],
+    ['交叉引用表', xrefs + ' 处' + (xrefs > 1 ? '（存在增量更新）' : '')], ['线性化', lin ? '是（适合网页逐页加载）' : '否'], ['加密', enc ? '是' : '否']);
+  if (title) kv.push(['标题', title]);
+  if (author) kv.push(['作者', author]);
+  if (producer) kv.push(['生成器', producer]);
+  if (creator) kv.push(['创建程序', creator]);
+  if (cdate) kv.push(['创建时间', cdate.slice(0, 4) + '-' + cdate.slice(4, 6) + '-' + cdate.slice(6, 8) + (cdate.length >= 12 ? ' ' + cdate.slice(8, 10) + ':' + cdate.slice(10, 12) : '')]);
+  if (enc) finds.push({ sev: 'warn', title: '文档已加密', detail: '含 /Encrypt 字典；即使能打开（空口令），内容流也是加密存放的。' });
+  if (js || oa) finds.push({ sev: 'high', title: '含 JavaScript 或打开时动作', detail: [js && '/JavaScript', oa && '/OpenAction'].filter(Boolean).join(' + ') + '：打开文档即可触发脚本，是 PDF 最常见的攻击面。来源不明请勿在带脚本支持的阅读器里打开。' });
+  if (lau) finds.push({ sev: 'high', title: '含 /Launch 动作', detail: '文档可请求启动外部程序，正常文档极少用到。' });
+  if (ef) finds.push({ sev: 'warn', title: '含嵌入文件', detail: 'PDF 里可以夹带任意附件（/EmbeddedFile），常被用来携带载荷。' });
+  if (author || producer) finds.push({ sev: 'info', title: '含作者 / 生成器元数据', detail: [author && '作者「' + author + '」', producer && '由「' + producer + '」生成'].filter(Boolean).join('；') + '。对外发布前可考虑清理。' });
+  if (xrefs > 1) finds.push({ sev: 'info', title: '文件经过 ' + xrefs + ' 次增量更新', detail: 'PDF 的修改是往后追加的，旧版本内容仍留在文件里 —— 被「涂黑」的段落有时能从历史版本恢复。' });
+  return { fmt: { name: 'PDF 文档', short: 'PDF', mime: 'application/pdf', kind: 'doc' }, kv, nodes, finds, preview: null };
+}
+
+/* ───────── ID3 + MPEG 音频 ───────── */
+const ID3_FRAME = { TIT2: '标题', TPE1: '艺术家', TPE2: '专辑艺术家', TALB: '专辑', TYER: '年份', TDRC: '录制时间', TRCK: '音轨号', TCON: '流派', TSSE: '编码软件', COMM: '注释', APIC: '封面图', TPOS: '碟号', TCOM: '作曲', USLT: '歌词' };
+const MPEG_BITRATE_V1L3 = [0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 0];
+const MPEG_BITRATE_V2L3 = [0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160, 0];
+const MPEG_RATE = { 3: [44100, 48000, 32000], 2: [22050, 24000, 16000], 0: [11025, 12000, 8000] };
+function parseMP3(u8) {
+  const nodes = [], finds = [], kv = [];
+  const N = u8.length;
+  let p = 0, tags = [];
+  if (ASCII(u8, 0, 3) === 'ID3') {
+    const ver = u8[3] + '.' + u8[4];
+    const size = ((u8[6] & 0x7f) << 21) | ((u8[7] & 0x7f) << 14) | ((u8[8] & 0x7f) << 7) | (u8[9] & 0x7f);
+    const idn = nd('ID3v2 标签', 'v2.' + ver + ' · ' + fmtBytesShort(size + 10), 0, size + 10, 'meta', {
+      note: 'ID3v2 用「同步安全整数」记长度（每字节只用 7 位），以免标签长度里出现 FF 被误当成帧同步。',
+    });
+    let q = 10;
+    while (q + 10 < size + 10 && q + 10 < N) {
+      const id = ASCII(u8, q, 4);
+      if (!/^[A-Z0-9]{4}$/.test(id)) break;
+      const fs = u8[3] >= 4
+        ? (((u8[q + 4] & 0x7f) << 21) | ((u8[q + 5] & 0x7f) << 14) | ((u8[q + 6] & 0x7f) << 7) | (u8[q + 7] & 0x7f))
+        : ((u8[q + 4] << 24) | (u8[q + 5] << 16) | (u8[q + 6] << 8) | u8[q + 7]) >>> 0;
+      if (fs <= 0 || q + 10 + fs > N) break;
+      let val = '';
+      if (id[0] === 'T' || id === 'COMM') {
+        const encByte = u8[q + 10];
+        const body = u8.subarray(q + 11, q + 10 + fs);
+        try {
+          val = encByte === 1 ? new TextDecoder('utf-16').decode(body) : encByte === 3 ? new TextDecoder('utf-8').decode(body) : new TextDecoder('latin1').decode(body);
+        } catch (e) { val = ASCII(u8, q + 11, fs - 1); }
+        val = clean(val).slice(0, 160);
+      } else val = fmtBytesShort(fs);
+      tags.push([ID3_FRAME[id] || id, val]);
+      idn.fields.push([(ID3_FRAME[id] || id) + '（' + id + '）', val]);
+      q += 10 + fs;
+    }
+    idn.desc += ' · ' + tags.length + ' 个帧';
+    nodes.push(idn);
+    p = size + 10;
+  }
+  let sync = -1;
+  for (let i = p; i < Math.min(N - 4, p + 200000); i++) if (u8[i] === 0xFF && (u8[i + 1] & 0xE0) === 0xE0) { sync = i; break; }
+  let info = null;
+  if (sync >= 0) {
+    const b1 = u8[sync + 1], b2 = u8[sync + 2], b3 = u8[sync + 3];
+    const verBits = (b1 >> 3) & 3, layerBits = (b1 >> 1) & 3;
+    const rateIdx = (b2 >> 2) & 3, brIdx = (b2 >> 4) & 15, pad = (b2 >> 1) & 1, chMode = (b3 >> 6) & 3;
+    const rate = (MPEG_RATE[verBits] || MPEG_RATE[3])[rateIdx] || 44100;
+    const br = (verBits === 3 ? MPEG_BITRATE_V1L3 : MPEG_BITRATE_V2L3)[brIdx];
+    const VER = { 3: 'MPEG-1', 2: 'MPEG-2', 0: 'MPEG-2.5' }, LAY = { 1: 'Layer III', 2: 'Layer II', 3: 'Layer I' };
+    const CH = { 0: '立体声', 1: '联合立体声', 2: '双声道', 3: '单声道' };
+    info = { ver: VER[verBits] || '?', layer: LAY[layerBits] || '?', rate, br, ch: CH[chMode] };
+    const fn = nd('MPEG 帧头', info.ver + ' ' + info.layer + ' · ' + br + ' kbps · ' + num(rate) + ' Hz · ' + info.ch, sync, 4, 'header');
+    fn.fields.push(['版本', info.ver], ['层', info.layer], ['码率', br + ' kbps'], ['采样率', num(rate) + ' Hz'], ['声道模式', info.ch], ['填充位', pad]);
+    fn.note = 'MPEG 音频没有全局文件头，只有一串自带同步字（11 个 1）的帧；播放器靠扫描同步字定位。';
+    nodes.push(fn);
+    nodes.push(nd('音频帧数据', fmtBytesShort(N - sync), sync, N - sync, 'data'));
+    const dur = br ? (N - p) * 8 / (br * 1000) : 0;
+    kv.push(['编码', info.ver + ' ' + info.layer], ['码率', br + ' kbps（按首帧，VBR 时为近似）'],
+      ['采样率', num(rate) + ' Hz'], ['声道', info.ch], ['时长（估）', fmtDur(dur)], ['ID3 标签', tags.length ? tags.length + ' 个帧' : '无']);
+  }
+  for (const [k, v] of tags.slice(0, 8)) if (v) kv.push(['标签 · ' + k, v]);
+  if (tags.length) finds.push({ sev: 'info', title: '含 ID3 元数据 ' + tags.length + ' 项', detail: '曲目、艺术家、封面等信息随文件传播；封面图往往是文件里最大的非音频块。' });
+  if (sync < 0) finds.push({ sev: 'warn', title: '未找到 MPEG 帧同步字', detail: '可能只是一段裸 ID3 标签，或音频数据已损坏。' });
+  return { fmt: { name: 'MP3 音频', short: 'MP3', mime: 'audio/mpeg', kind: 'audio' }, kv, nodes, finds, preview: 'audio' };
+}
+
+/* ───────── 可执行文件：ELF / Mach-O / PE ───────── */
+const ELF_MACHINE = { 3: 'x86', 62: 'x86-64', 40: 'ARM', 183: 'AArch64', 243: 'RISC-V', 8: 'MIPS', 20: 'PowerPC', 21: 'PowerPC64' };
+const ELF_TYPE = { 1: '可重定位目标文件（.o）', 2: '可执行文件', 3: '共享对象（.so / PIE 可执行）', 4: '核心转储' };
+function parseELF(u8) {
+  const nodes = [], finds = [], kv = [];
+  const is64 = u8[4] === 2, le = u8[5] === 1;
+  const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+  const g16 = (o) => dv.getUint16(o, le), g32 = (o) => dv.getUint32(o, le);
+  const gN = (o) => (is64 ? Number(dv.getBigUint64(o, le)) : dv.getUint32(o, le));
+  const type = g16(16), machine = g16(18);
+  const entry = gN(24), phoff = gN(is64 ? 32 : 28), shoff = gN(is64 ? 40 : 32);
+  const ehsize = g16(is64 ? 52 : 40), phnum = g16(is64 ? 56 : 44), shentsize = g16(is64 ? 58 : 46), shnum = g16(is64 ? 60 : 48), shstrndx = g16(is64 ? 62 : 50);
+  const OSABI = { 0: 'System V', 3: 'Linux', 9: 'FreeBSD' };
+  const hn = nd('ELF 头', (is64 ? '64 位' : '32 位') + ' · ' + (ELF_MACHINE[machine] || '机器 ' + machine) + ' · ' + (ELF_TYPE[type] || '类型 ' + type), 0, ehsize, 'header');
+  hn.fields.push(['字长', is64 ? '64 位' : '32 位'], ['字节序', le ? '小端' : '大端'], ['ABI', OSABI[u8[7]] || String(u8[7])],
+    ['类型', ELF_TYPE[type] || String(type)], ['架构', ELF_MACHINE[machine] || String(machine)], ['入口地址', '0x' + entry.toString(16)],
+    ['程序头', phnum + ' 个 @ ' + hx(phoff)], ['节头', shnum + ' 个 @ ' + hx(shoff)]);
+  hn.note = 'ELF 头之后有两张表：程序头（告诉内核怎么装载）与节头（给链接器和调试器用，strip 掉也能跑）。';
+  nodes.push(hn);
+  if (phnum) nodes.push(nd('程序头表', phnum + ' 个段', phoff, phnum * (is64 ? 56 : 32), 'meta'));
+  const sects = [];
+  if (shnum && shoff && shstrndx < shnum) {
+    const strOff = gN(shoff + shstrndx * shentsize + (is64 ? 24 : 16));
+    for (let i = 0; i < Math.min(shnum, 200); i++) {
+      const so = shoff + i * shentsize;
+      const nameOff = g32(so);
+      let nm = ''; let q = strOff + nameOff;
+      while (q < u8.length && u8[q] && nm.length < 40) nm += String.fromCharCode(u8[q++]);
+      const off = gN(so + (is64 ? 24 : 16)), size = gN(so + (is64 ? 32 : 20)), stype = g32(so + 4);
+      sects.push({ nm, off, size, stype });
+    }
+    const sn = nd('节头表', shnum + ' 个节', shoff, shnum * shentsize, 'meta');
+    for (const s of sects.slice(0, 40)) if (s.nm) sn.fields.push([s.nm, fmtBytesShort(s.size) + ' @ ' + hx(s.off)]);
+    nodes.push(sn);
+    for (const s of sects) if (s.size > 4096 && s.stype !== 8 && s.nm) nodes.push(nd(s.nm, '节 · ' + fmtBytesShort(s.size), s.off, s.size, 'data'));
+  }
+  kv.push(['文件类型', ELF_TYPE[type] || String(type)], ['架构', ELF_MACHINE[machine] || String(machine)],
+    ['字长 / 字节序', (is64 ? '64 位' : '32 位') + ' · ' + (le ? '小端' : '大端')],
+    ['入口地址', '0x' + entry.toString(16)], ['段 / 节', phnum + ' 段 · ' + shnum + ' 节'],
+    ['调试符号', sects.some((s) => s.nm === '.symtab') ? '保留（未 strip）' : '已剥离（stripped）'],
+    ['动态链接', sects.some((s) => s.nm === '.dynamic') ? '是' : '否（可能是静态链接）']);
+  finds.push({ sev: 'warn', title: '这是一个可执行文件', detail: 'ELF 是 Linux / Android 的原生可执行格式。来源不明的可执行文件不要直接运行。' });
+  if (!sects.some((s) => s.nm === '.symtab')) finds.push({ sev: 'info', title: '符号表已剥离', detail: '发布版常见做法，体积更小但也更难排错与逆向。' });
+  return { fmt: { name: 'ELF 可执行 / 目标文件', short: 'ELF', mime: 'application/x-elf', kind: 'exec' }, kv, nodes, finds, preview: null };
+}
+const MACHO_CPU = { 7: 'x86', 16777223: 'x86-64', 12: 'ARM', 16777228: 'ARM64', 18: 'PowerPC' };
+const MACHO_FILETYPE = { 1: '目标文件', 2: '可执行文件', 6: '动态库', 8: '包（bundle）', 10: '调试符号', 11: 'kext' };
+const LC_NAME = { 0x19: 'LC_SEGMENT_64', 0x1: 'LC_SEGMENT', 0xc: 'LC_LOAD_DYLIB', 0x1b: 'LC_UUID', 0x1d: 'LC_CODE_SIGNATURE', 0x22: 'LC_DYLD_INFO_ONLY', 0x28: 'LC_MAIN', 0x32: 'LC_BUILD_VERSION', 0x24: 'LC_VERSION_MIN_MACOSX', 0x2: 'LC_SYMTAB', 0xb: 'LC_DYSYMTAB', 0xe: 'LC_LOAD_DYLINKER' };
+function parseMachO(u8) {
+  const nodes = [], finds = [], kv = [];
+  const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+  const magic = dv.getUint32(0);
+  if (magic === 0xCAFEBABE || magic === 0xBEBAFECA) {
+    const n = dv.getUint32(4);
+    nodes.push(nd('FAT 头', n + ' 个架构切片', 0, 8 + n * 20, 'header', { note: '通用二进制（Universal Binary）把多个架构的 Mach-O 拼在一起，运行时由系统挑合适的那片。' }));
+    const arcs = [];
+    for (let i = 0; i < Math.min(n, 8); i++) {
+      const o = 8 + i * 20, cpu = dv.getUint32(o), off = dv.getUint32(o + 8), size = dv.getUint32(o + 12);
+      arcs.push((MACHO_CPU[cpu] || 'CPU ' + cpu) + ' · ' + fmtBytesShort(size));
+      nodes.push(nd(MACHO_CPU[cpu] || 'CPU ' + cpu, '切片 ' + fmtBytesShort(size), off, size, 'data'));
+    }
+    kv.push(['类型', '通用二进制（FAT）'], ['架构数', n], ['包含', arcs.join(' / ')]);
+    finds.push({ sev: 'warn', title: '这是一个 macOS 可执行文件（通用二进制）', detail: '含 ' + n + ' 个架构切片；来源不明不要运行。' });
+    return { fmt: { name: 'Mach-O 通用二进制', short: 'Mach-O', mime: 'application/x-mach-binary', kind: 'exec' }, kv, nodes, finds, preview: null };
+  }
+  const le = magic === 0xCEFAEDFE || magic === 0xCFFAEDFE;
+  const is64 = magic === 0xFEEDFACF || magic === 0xCFFAEDFE;
+  const g32 = (o) => dv.getUint32(o, le);
+  const cpu = g32(4), ftype = g32(12), ncmds = g32(16), sizeofcmds = g32(20);
+  const hlen = is64 ? 32 : 28;
+  const hn = nd('Mach-O 头', (is64 ? '64 位' : '32 位') + ' · ' + (MACHO_CPU[cpu] || 'CPU ' + cpu) + ' · ' + (MACHO_FILETYPE[ftype] || '类型 ' + ftype), 0, hlen, 'header');
+  hn.fields.push(['魔数', hx(magic)], ['架构', MACHO_CPU[cpu] || String(cpu)], ['文件类型', MACHO_FILETYPE[ftype] || String(ftype)],
+    ['加载命令数', ncmds], ['加载命令区大小', num(sizeofcmds) + ' 字节']);
+  nodes.push(hn);
+  let p = hlen; const libs = [], segs = [];
+  let signed = false;
+  for (let i = 0; i < Math.min(ncmds, 400) && p + 8 <= u8.length; i++) {
+    const cmd = g32(p), cs = g32(p + 4);
+    if (cs < 8) break;
+    const nm = LC_NAME[cmd] || 'LC 0x' + hex(cmd);
+    if (cmd === 0xc) { let s = ''; let q = p + g32(p + 8); while (q < p + cs && u8[q]) s += String.fromCharCode(u8[q++]); libs.push(s); }
+    if (cmd === 0x1d) signed = true;
+    if (cmd === 0x19 || cmd === 0x1) segs.push(clean(ASCII(u8, p + 8, 16)));
+    p += cs;
+  }
+  nodes.push(nd('加载命令区', ncmds + ' 条命令', hlen, sizeofcmds, 'meta', { note: '加载命令告诉 dyld 怎么把各段映射进内存、依赖哪些动态库、入口在哪。' }));
+  kv.push(['架构', MACHO_CPU[cpu] || String(cpu)], ['文件类型', MACHO_FILETYPE[ftype] || String(ftype)],
+    ['加载命令', ncmds + ' 条'], ['段', segs.join(' / ') || '—'], ['代码签名', signed ? '有' : '无'],
+    ['依赖动态库', libs.length + ' 个']);
+  for (const l of libs.slice(0, 6)) kv.push(['依赖', l]);
+  finds.push({ sev: 'warn', title: '这是一个 macOS 可执行文件', detail: 'Mach-O 是 macOS / iOS 的原生格式。' + (signed ? '它带代码签名段。' : '未发现代码签名，Gatekeeper 会拦截。') });
+  return { fmt: { name: 'Mach-O 可执行文件', short: 'Mach-O', mime: 'application/x-mach-binary', kind: 'exec' }, kv, nodes, finds, preview: null };
+}
+const PE_MACHINE = { 0x14c: 'x86', 0x8664: 'x86-64', 0x1c0: 'ARM', 0xaa64: 'ARM64', 0x1c4: 'ARMv7' };
+const PE_SUBSYS = { 1: '原生', 2: 'Windows 图形界面', 3: 'Windows 控制台', 9: 'Windows CE', 10: 'EFI 应用' };
+function parsePE(u8) {
+  const nodes = [], finds = [], kv = [];
+  const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+  const peOff = dv.getUint32(0x3c, true);
+  nodes.push(nd('DOS 头', 'MZ · PE 头位于 ' + hx(peOff), 0, 64, 'header', { note: '开头 64 字节是 1980 年代 DOS 的遗产，其后的 DOS stub 会打印「This program cannot be run in DOS mode」。' }));
+  nodes.push(nd('DOS stub', '实模式桩程序', 64, Math.max(0, peOff - 64), 'pad'));
+  if (ASCII(u8, peOff, 4) !== 'PE') {
+    return { fmt: { name: 'DOS / MZ 可执行文件', short: 'MZ', mime: 'application/x-msdownload', kind: 'exec' }, kv, nodes, finds, preview: null };
+  }
+  const machine = dv.getUint16(peOff + 4, true), nsec = dv.getUint16(peOff + 6, true);
+  const ts = dv.getUint32(peOff + 8, true), optSize = dv.getUint16(peOff + 20, true), chars = dv.getUint16(peOff + 22, true);
+  const optOff = peOff + 24, optMagic = dv.getUint16(optOff, true);
+  const subsys = dv.getUint16(optOff + 68, true);
+  const hn = nd('PE 头', (PE_MACHINE[machine] || '机器 ' + hex(machine)) + ' · ' + nsec + ' 个节', peOff, 24 + optSize, 'header');
+  hn.fields.push(['签名', 'PE'], ['架构', PE_MACHINE[machine] || hx(machine)], ['节数', nsec],
+    ['链接时间戳', ts ? new Date(ts * 1000).toLocaleString('zh-CN') : '未记录'],
+    ['可选头', optMagic === 0x20b ? 'PE32+（64 位）' : 'PE32（32 位）'], ['子系统', PE_SUBSYS[subsys] || String(subsys)],
+    ['属性', (chars & 0x2000) ? '动态库（DLL）' : '可执行程序']);
+  nodes.push(hn);
+  const secOff = optOff + optSize;
+  for (let i = 0; i < Math.min(nsec, 32); i++) {
+    const o = secOff + i * 40;
+    if (o + 40 > u8.length) break;
+    const nm = clean(ASCII(u8, o, 8));
+    const vsize = dv.getUint32(o + 8, true), rawSize = dv.getUint32(o + 16, true), rawOff = dv.getUint32(o + 20, true), ch = dv.getUint32(o + 36, true);
+    const n = nd(nm || '节 ' + i, fmtBytesShort(rawSize) + ((ch & 0x20000000) ? ' · 可执行' : '') + ((ch & 0x80000000) ? ' · 可写' : ''), rawOff, rawSize, 'data');
+    n.fields.push(['节名', nm], ['虚拟大小', num(vsize)], ['文件内大小', num(rawSize)], ['文件内偏移', hx(rawOff)],
+      ['属性', [(ch & 0x20000000) && '可执行', (ch & 0x80000000) && '可写', (ch & 0x40000000) && '可读'].filter(Boolean).join(' / ')]);
+    nodes.push(n);
+  }
+  kv.push(['架构', PE_MACHINE[machine] || hx(machine)], ['类型', (chars & 0x2000) ? 'DLL 动态库' : '可执行程序（EXE）'],
+    ['位数', optMagic === 0x20b ? '64 位' : '32 位'], ['子系统', PE_SUBSYS[subsys] || String(subsys)],
+    ['节数', nsec], ['链接时间', ts ? new Date(ts * 1000).toLocaleString('zh-CN') : '未记录']);
+  finds.push({ sev: 'warn', title: '这是一个 Windows 可执行文件', detail: '来源不明的 EXE / DLL 不要运行；注意「文档.pdf.exe」这类双扩展名伪装。' });
+  if (ts) finds.push({ sev: 'info', title: '含链接时间戳：' + new Date(ts * 1000).toLocaleString('zh-CN'), detail: '这是编译链接的时刻，可用于判断样本新旧（也可能被伪造）。' });
+  return { fmt: { name: 'Windows PE 可执行文件', short: 'PE', mime: 'application/x-msdownload', kind: 'exec' }, kv, nodes, finds, preview: null };
+}
+
+/* ───────── SQLite / TAR / ICO / WASM ───────── */
+function parseSQLite(u8) {
+  const nodes = [], finds = [], kv = [];
+  const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+  let pageSize = dv.getUint16(16); if (pageSize === 1) pageSize = 65536;
+  const pages = dv.getUint32(28), enc = dv.getUint32(56), uv = dv.getUint32(60), appId = dv.getUint32(68);
+  const ENC = { 1: 'UTF-8', 2: 'UTF-16LE', 3: 'UTF-16BE' };
+  const hn = nd('数据库头', '页大小 ' + num(pageSize) + ' · ' + num(pages) + ' 页', 0, 100, 'header');
+  hn.fields.push(['魔数', 'SQLite format 3'], ['页大小', num(pageSize) + ' 字节'], ['页数', num(pages)],
+    ['文本编码', ENC[enc] || String(enc)], ['写版本', u8[18] === 2 ? 'WAL' : '回滚日志'], ['user_version', uv], ['application_id', appId]);
+  hn.note = 'SQLite 文件 = 定长页数组，第一页前 100 字节是文件头，其后是 sqlite_master 表的 B 树根。';
+  nodes.push(hn);
+  nodes.push(nd('页数据', num(pages) + ' 页 × ' + num(pageSize) + ' 字节', 100, u8.length - 100, 'data'));
+  const txt = new TextDecoder('latin1').decode(u8.subarray(0, Math.min(u8.length, 1 << 20)));
+  const tbls = Array.from(new Set((txt.match(/CREATE TABLE [`"[]?(\w+)/gi) || []).map((s) => s.replace(/CREATE TABLE [`"[]?/i, '')))).slice(0, 20);
+  kv.push(['页大小', num(pageSize) + ' 字节'], ['页数', num(pages)], ['数据库大小', fmtBytesShort(pageSize * pages)],
+    ['文本编码', ENC[enc] || String(enc)], ['日志模式', u8[18] === 2 ? 'WAL' : '回滚日志'], ['表（扫描到的）', tbls.join(' , ') || '—']);
+  finds.push({ sev: 'info', title: '这是一个 SQLite 数据库', detail: '浏览器 Cookie、聊天记录、手机应用数据大多是这个格式；里面往往有敏感内容。' + (tbls.length ? '扫描到表：' + tbls.slice(0, 8).join(' / ') + '。' : '') });
+  return { fmt: { name: 'SQLite 数据库', short: 'SQLite', mime: 'application/vnd.sqlite3', kind: 'data' }, kv, nodes, finds, preview: null };
+}
+function parseTAR(u8) {
+  const nodes = [], finds = [], kv = [];
+  let p = 0, count = 0, total = 0, names = [];
+  while (p + 512 <= u8.length && count < 2000) {
+    if (u8[p] === 0) break;
+    const name = clean(ASCII(u8, p, 100));
+    const sizeStr = clean(ASCII(u8, p + 124, 12)).replace(/[^0-7]/g, '');
+    const size = parseInt(sizeStr, 8) || 0;
+    const typeflag = String.fromCharCode(u8[p + 156] || 48);
+    const mtime = parseInt(clean(ASCII(u8, p + 136, 12)).replace(/[^0-7]/g, ''), 8) || 0;
+    const TY = { '0': '普通文件', '5': '目录', '2': '符号链接', '1': '硬链接', 'x': 'pax 扩展头', 'g': '全局扩展头', 'L': '长文件名' };
+    const n = nd(name.slice(-40) || '(空)', (TY[typeflag] || '类型 ' + typeflag) + ' · ' + fmtBytesShort(size), p, 512 + Math.ceil(size / 512) * 512, typeflag === '0' ? 'data' : 'meta');
+    n.fields.push(['路径', name], ['大小', num(size) + ' 字节'], ['类型', TY[typeflag] || typeflag],
+      ['修改时间', mtime ? new Date(mtime * 1000).toLocaleString('zh-CN') : '—'], ['权限', clean(ASCII(u8, p + 100, 8))]);
+    nodes.push(n);
+    if (typeflag === '0') { total += size; names.push(name); }
+    count++;
+    p += 512 + Math.ceil(size / 512) * 512;
+  }
+  kv.push(['条目数', count], ['文件总大小', fmtBytesShort(total)], ['封装开销', fmtBytesShort(u8.length - total) + '（每条目 512 字节头 + 块对齐补零）'],
+    ['格式', ASCII(u8, 257, 5) === 'ustar' ? 'POSIX ustar' : '古典 tar']);
+  finds.push({ sev: 'info', title: 'TAR 本身不压缩', detail: '它只是把文件首尾相接（每个 512 字节对齐），所以几乎总是配合 gzip / xz 使用。' });
+  const bad = names.filter((n) => n.includes('../') || n.startsWith('/'));
+  if (bad.length) finds.push({ sev: 'high', title: bad.length + ' 个条目带穿越或绝对路径', detail: '例如「' + bad[0] + '」。' });
+  return { fmt: { name: 'TAR 归档', short: 'TAR', mime: 'application/x-tar', kind: 'archive' }, kv, nodes, finds, preview: null };
+}
+function parseICO(u8) {
+  const nodes = [], finds = [], kv = [];
+  const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+  const type = dv.getUint16(2, true), n = dv.getUint16(4, true);
+  nodes.push(nd('目录头', (type === 1 ? '图标' : '光标') + ' · ' + n + ' 个尺寸', 0, 6, 'header'));
+  const sizes = [];
+  for (let i = 0; i < n; i++) {
+    const o = 6 + i * 16;
+    const w = u8[o] || 256, h = u8[o + 1] || 256, bits = dv.getUint16(o + 6, true);
+    const size = dv.getUint32(o + 8, true), off = dv.getUint32(o + 12, true);
+    const isPNG = u8[off] === 0x89 && ASCII(u8, off + 1, 3) === 'PNG';
+    sizes.push(w + '×' + h);
+    const e = nd(w + ' × ' + h, (isPNG ? 'PNG 压缩' : 'BMP 位图') + ' · ' + bits + ' 位 · ' + fmtBytesShort(size), off, size, 'data');
+    e.fields.push(['尺寸', w + ' × ' + h], ['色深', bits + ' 位'], ['存储', isPNG ? 'PNG（Vista 起支持）' : 'BMP（含 AND 掩码）'], ['数据偏移', hx(off)]);
+    nodes.push(nd('目录项 #' + (i + 1), w + ' × ' + h, 6 + i * 16, 16, 'meta'));
+    nodes.push(e);
+  }
+  kv.push(['类型', type === 1 ? 'ICO 图标' : 'CUR 光标'], ['尺寸数', n], ['包含尺寸', sizes.join(' , ')]);
+  return { fmt: { name: type === 1 ? 'ICO 图标' : 'CUR 光标', short: 'ICO', mime: 'image/x-icon', kind: 'image' }, kv, nodes, finds, preview: 'image' };
+}
+const WASM_SEC = { 0: '自定义段', 1: '类型段', 2: '导入段', 3: '函数段', 4: '表段', 5: '内存段', 6: '全局段', 7: '导出段', 8: '起始段', 9: '元素段', 10: '代码段', 11: '数据段', 12: '数据计数段' };
+function parseWASM(u8) {
+  const nodes = [], finds = [], kv = [];
+  const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+  nodes.push(nd('模块头', 'magic + 版本 ' + dv.getUint32(4, true), 0, 8, 'header', { note: 'WebAssembly 模块以 00 61 73 6D（即一个 NUL 加 asm 三个字母的 ASCII）开头，随后 4 字节版本号。' }));
+  let p = 8; const counts = {};
+  const leb = () => { let r = 0, s = 0, b; do { b = u8[p++]; r |= (b & 0x7f) << s; s += 7; } while (b & 0x80); return r >>> 0; };
+  while (p < u8.length) {
+    const start = p, id = u8[p++], size = leb();
+    const body = p;
+    let desc = '';
+    if (id === 0) { const nl = leb(); desc = '名称：' + utf8(u8, p, nl); p = body + size; }
+    else { const c = leb(); counts[id] = c; desc = num(c) + ' 项'; p = body + size; }
+    nodes.push(nd(WASM_SEC[id] || '段 ' + id, desc + ' · ' + fmtBytesShort(size), start, p - start, id === 10 || id === 11 ? 'data' : 'meta'));
+    if (p <= start) break;
+  }
+  kv.push(['模块版本', dv.getUint32(4, true)], ['函数数', num(counts[3] || 0)], ['导入数', num(counts[2] || 0)],
+    ['导出数', num(counts[7] || 0)], ['内存段', num(counts[5] || 0)], ['数据段', num(counts[11] || 0)]);
+  finds.push({ sev: 'info', title: '这是一个 WebAssembly 模块', detail: '浏览器里的原生速度代码；导入段决定它能调用宿主的哪些能力。' });
+  return { fmt: { name: 'WebAssembly 模块', short: 'WASM', mime: 'application/wasm', kind: 'exec' }, kv, nodes, finds, preview: null };
+}
+
+/* ───────── 文本 / 未知 ───────── */
+function sniffText(u8) {
+  const n = Math.min(u8.length, 4096);
+  if (!n) return null;
+  let ctrl = 0, zero = 0;
+  for (let i = 0; i < n; i++) { const b = u8[i]; if (b === 0) zero++; if (b < 9 || (b > 13 && b < 32)) ctrl++; }
+  if (zero > 0 || ctrl / n > 0.02) return null;
+  try {
+    const s = new TextDecoder('utf-8', { fatal: true }).decode(u8.subarray(0, n));
+    return s;
+  } catch (e) { return null; }
+}
+function parseText(u8, hintName) {
+  const nodes = [], finds = [], kv = [];
+  const txt = new TextDecoder('utf-8', { fatal: false }).decode(u8.subarray(0, Math.min(u8.length, 1 << 20)));
+  const lines = txt.split('\n');
+  const bom = u8[0] === 0xEF && u8[1] === 0xBB && u8[2] === 0xBF;
+  const crlf = (txt.match(/\r\n/g) || []).length;
+  let kind = '纯文本', mime = 'text/plain', short = 'TXT';
+  const t = txt.trimStart();
+  if (t.startsWith('{') || t.startsWith('[')) {
+    try { JSON.parse(txt); kind = 'JSON 数据'; mime = 'application/json'; short = 'JSON'; }
+    catch (e) { kind = '疑似 JSON（解析失败）'; short = 'JSON?'; finds.push({ sev: 'warn', title: 'JSON 解析失败', detail: e.message }); }
+  } else if (/^<\?xml|^<svg|^<!DOCTYPE html|^<html/i.test(t)) {
+    kind = /^<svg/i.test(t) ? 'SVG 矢量图' : /html/i.test(t.slice(0, 40)) ? 'HTML 文档' : 'XML 文档';
+    mime = kind.startsWith('SVG') ? 'image/svg+xml' : kind.startsWith('HTML') ? 'text/html' : 'application/xml';
+    short = kind.split(' ')[0];
+  } else if (lines.length > 2 && lines.slice(0, 5).every((l) => (l.match(/,/g) || []).length >= 1)) {
+    kind = 'CSV 表格'; mime = 'text/csv'; short = 'CSV';
+  }
+  if (bom) nodes.push(nd('UTF-8 BOM', 'EF BB BF', 0, 3, 'header', { note: 'UTF-8 不需要 BOM；它常常是 Windows 记事本加的，会让某些解析器把首行第一个字段读成乱码。' }));
+  nodes.push(nd('文本内容', num(lines.length) + ' 行', bom ? 3 : 0, u8.length - (bom ? 3 : 0), 'data'));
+  const cjk = (txt.match(/[一-鿿]/g) || []).length;
+  kv.push(['文本类型', kind], ['行数', num(lines.length)], ['字符数', num(txt.length)],
+    ['换行风格', crlf > lines.length / 2 ? 'CRLF（Windows）' : crlf ? '混用 CRLF 与 LF' : 'LF（Unix）'],
+    ['BOM', bom ? '有（EF BB BF）' : '无'], ['中文字符', num(cjk)],
+    ['最长行', num(Math.max.apply(null, lines.slice(0, 5000).map((l) => l.length)))]);
+  if (short === 'JSON') {
+    try {
+      const o = JSON.parse(txt);
+      const depth = (function d(x) { return x && typeof x === 'object' ? 1 + Math.max(0, ...Object.values(x).map(d)) : 0; })(o);
+      kv.push(['JSON 顶层', Array.isArray(o) ? '数组（' + o.length + ' 项）' : '对象（' + Object.keys(o).length + ' 个键）'], ['嵌套深度', depth]);
+      finds.push({ sev: 'ok', title: 'JSON 语法有效', detail: '完整解析通过，顶层是' + (Array.isArray(o) ? '数组' : '对象') + '。' });
+    } catch (e) { /* 已在上面记过 */ }
+  }
+  if (crlf && crlf < lines.length / 2) finds.push({ sev: 'warn', title: '换行符混用', detail: '文件里同时存在 CRLF 与 LF，容易在 diff 与脚本执行时出问题。' });
+  if (bom) finds.push({ sev: 'info', title: '带 UTF-8 BOM', detail: 'shell 脚本、CSV 首列名、JSON 解析器常因为这三个字节出错。' });
+  return { fmt: { name: kind, short, mime, kind: 'text' }, kv, nodes, finds, preview: short === 'SVG' ? 'image' : 'text', text: txt };
+}
+function parseUnknown(u8) {
+  const nodes = [], finds = [], kv = [];
+  nodes.push(nd('未识别数据', fmtBytesShort(u8.length), 0, u8.length, 'pad',
+    { note: '没有命中任何已知魔数。可以看熵曲线判断它是压缩 / 加密数据还是结构化二进制，也可以在字符串面板里找线索。' }));
+  kv.push(['魔数（前 16 字节）', Array.from(u8.subarray(0, 16)).map((b) => hex(b)).join(' ')],
+    ['可打印字节占比', (() => { let c = 0; const n = Math.min(u8.length, 65536); for (let i = 0; i < n; i++) if (u8[i] >= 32 && u8[i] < 127) c++; return (c / n * 100).toFixed(1) + '%'; })()]);
+  finds.push({ sev: 'info', title: '未匹配到已知格式的魔数', detail: '本工具按前几十字节的特征识别 30 多种格式。若这是自定义格式或加密数据，请用熵图谱与字符串面板继续找线索。' });
+  return { fmt: { name: '未知二进制', short: '未知', mime: 'application/octet-stream', kind: 'binary' }, kv, nodes, finds, preview: null };
+}
+
+/* ───────── 魔数识别表 ───────── */
+const MAGIC = [
+  { name: 'PNG 图像', short: 'PNG', test: (u) => u[0] === 0x89 && u[1] === 0x50 && u[2] === 0x4e && u[3] === 0x47, parse: parsePNG },
+  { name: 'JPEG 图像', short: 'JPEG', test: (u) => u[0] === 0xFF && u[1] === 0xD8 && u[2] === 0xFF, parse: parseJPEG },
+  { name: 'GIF 图像', short: 'GIF', test: (u) => ASCII(u, 0, 3) === 'GIF', parse: parseGIF },
+  { name: 'BMP 位图', short: 'BMP', test: (u) => u[0] === 0x42 && u[1] === 0x4D, parse: parseBMP },
+  { name: 'RIFF 容器（WAV / WebP）', short: 'RIFF', test: (u) => ASCII(u, 0, 4) === 'RIFF', parse: parseRIFF },
+  { name: 'ZIP 压缩包', short: 'ZIP', test: (u) => u[0] === 0x50 && u[1] === 0x4B && (u[2] === 3 || u[2] === 5 || u[2] === 7), parse: parseZIP },
+  { name: 'GZIP 压缩流', short: 'GZIP', test: (u) => u[0] === 0x1F && u[1] === 0x8B, parse: parseGZIP },
+  { name: 'ISO 基础媒体（MP4 / MOV / HEIC）', short: 'MP4', test: (u) => ASCII(u, 4, 4) === 'ftyp', parse: parseMP4 },
+  { name: 'TrueType 字体', short: 'TTF', test: (u) => (u[0] === 0 && u[1] === 1 && u[2] === 0 && u[3] === 0) || ASCII(u, 0, 4) === 'true', parse: parseFont },
+  { name: 'OpenType 字体', short: 'OTF', test: (u) => ASCII(u, 0, 4) === 'OTTO', parse: parseFont },
+  { name: 'PDF 文档', short: 'PDF', test: (u) => ASCII(u, 0, 5) === '%PDF-', parse: parsePDF },
+  { name: 'MP3 音频', short: 'MP3', test: (u) => ASCII(u, 0, 3) === 'ID3' || (u[0] === 0xFF && (u[1] & 0xE0) === 0xE0), parse: parseMP3 },
+  { name: 'ELF 可执行文件', short: 'ELF', test: (u) => u[0] === 0x7F && ASCII(u, 1, 3) === 'ELF', parse: parseELF },
+  { name: 'Mach-O 可执行文件', short: 'Mach-O', test: (u) => { const m = (u[0] << 24 | u[1] << 16 | u[2] << 8 | u[3]) >>> 0; return m === 0xFEEDFACE || m === 0xFEEDFACF || m === 0xCEFAEDFE || m === 0xCFFAEDFE || m === 0xCAFEBABE; }, parse: parseMachO },
+  { name: 'Windows 可执行文件', short: 'PE', test: (u) => u[0] === 0x4D && u[1] === 0x5A, parse: parsePE },
+  { name: 'SQLite 数据库', short: 'SQLite', test: (u) => ASCII(u, 0, 15) === 'SQLite format 3', parse: parseSQLite },
+  { name: 'TAR 归档', short: 'TAR', test: (u) => u.length > 262 && ASCII(u, 257, 5) === 'ustar', parse: parseTAR },
+  { name: 'ICO 图标', short: 'ICO', test: (u) => u[0] === 0 && u[1] === 0 && (u[2] === 1 || u[2] === 2) && u[3] === 0 && u[4] > 0 && u[5] === 0, parse: parseICO },
+  { name: 'WebAssembly 模块', short: 'WASM', test: (u) => u[0] === 0 && ASCII(u, 1, 3) === 'asm', parse: parseWASM },
+  { name: '7-Zip 压缩包', short: '7z', test: (u) => ASCII(u, 0, 2) === '7z' && u[2] === 0xBC },
+  { name: 'RAR 压缩包', short: 'RAR', test: (u) => ASCII(u, 0, 4) === 'Rar!' },
+  { name: 'XZ 压缩流', short: 'XZ', test: (u) => u[0] === 0xFD && ASCII(u, 1, 2) === '7z' },
+  { name: 'BZip2 压缩流', short: 'BZ2', test: (u) => ASCII(u, 0, 3) === 'BZh' },
+  { name: 'Zstandard 压缩流', short: 'ZSTD', test: (u) => u[0] === 0x28 && u[1] === 0xB5 && u[2] === 0x2F && u[3] === 0xFD },
+  { name: 'Java class 文件', short: 'class', test: (u) => u[0] === 0xCA && u[1] === 0xFE && u[2] === 0xBA && u[3] === 0xBE && u.length > 8 && u[7] > 40 },
+  { name: 'FLAC 无损音频', short: 'FLAC', test: (u) => ASCII(u, 0, 4) === 'fLaC' },
+  { name: 'Ogg 容器', short: 'OGG', test: (u) => ASCII(u, 0, 4) === 'OggS' },
+  { name: 'Matroska / WebM', short: 'MKV', test: (u) => u[0] === 0x1A && u[1] === 0x45 && u[2] === 0xDF && u[3] === 0xA3 },
+  { name: 'MIDI 乐曲', short: 'MIDI', test: (u) => ASCII(u, 0, 4) === 'MThd' },
+  { name: 'Photoshop 文档', short: 'PSD', test: (u) => ASCII(u, 0, 4) === '8BPS' },
+  { name: 'WOFF 网页字体', short: 'WOFF', test: (u) => ASCII(u, 0, 4) === 'wOFF' },
+  { name: 'WOFF2 网页字体', short: 'WOFF2', test: (u) => ASCII(u, 0, 4) === 'wOF2' },
+  { name: 'TIFF 图像', short: 'TIFF', test: (u) => (ASCII(u, 0, 2) === 'II' && u[2] === 42) || (ASCII(u, 0, 2) === 'MM' && u[3] === 42) },
+  { name: 'AVIF 图像', short: 'AVIF', test: (u) => ASCII(u, 4, 4) === 'ftyp' && ASCII(u, 8, 4) === 'avif', parse: parseMP4 },
+  { name: 'Windows 快捷方式', short: 'LNK', test: (u) => u[0] === 0x4C && u[1] === 0 && u[2] === 0 && u[3] === 0 && u[4] === 0x01 && u[5] === 0x14 },
+  { name: 'PCAP 抓包文件', short: 'PCAP', test: (u) => { const m = (u[0] << 24 | u[1] << 16 | u[2] << 8 | u[3]) >>> 0; return m === 0xD4C3B2A1 || m === 0xA1B2C3D4 || m === 0x0A0D0D0A; } },
+  { name: 'Apple 图标集', short: 'ICNS', test: (u) => ASCII(u, 0, 4) === 'icns' },
+  { name: 'Adobe Flash 影片', short: 'SWF', test: (u) => (u[0] === 0x46 || u[0] === 0x43) && ASCII(u, 1, 2) === 'WS' },
+];
+function detectMagic(u8, off) {
+  const view = off ? u8.subarray(off) : u8;
+  if (view.length < 4) return null;
+  for (const m of MAGIC) { try { if (m.test(view)) return m; } catch (e) { /* 忽略越界 */ } }
+  return null;
+}
+function analyze(u8, name) {
+  NODE_ID = 0;
+  const m = detectMagic(u8, 0);
+  let res;
+  if (m && m.parse) {
+    try { res = m.parse(u8); }
+    catch (e) {
+      res = parseUnknown(u8);
+      res.fmt = { name: m.name + '（解析中断）', short: m.short, mime: 'application/octet-stream', kind: 'binary' };
+      res.finds.unshift({ sev: 'high', title: '解析在中途出错：' + e.message, detail: '魔数匹配到 ' + m.name + '，但结构不符合规范，文件可能被截断或损坏。十六进制与字符串面板仍可正常使用。' });
+    }
+  } else if (m) {
+    res = parseUnknown(u8);
+    res.fmt = { name: m.name, short: m.short, mime: 'application/octet-stream', kind: 'binary' };
+    res.finds = [{ sev: 'info', title: '已按魔数识别为 ' + m.name, detail: '本工具尚未为该格式写结构解析器，仍可用十六进制、熵图谱与字符串面板检查。' }];
+    res.nodes = [nd(m.short + ' 数据', fmtBytesShort(u8.length), 0, u8.length, 'data')];
+  } else {
+    const txt = sniffText(u8);
+    res = txt != null ? parseText(u8, name) : parseUnknown(u8);
+  }
+  // 通用发现
+  const ent = shannon(u8);
+  if (ent > 7.9 && u8.length > 2048 && res.fmt.kind !== 'archive' && res.fmt.kind !== 'image' && res.fmt.kind !== 'media') {
+    res.finds.push({ sev: 'info', title: '整体熵 ' + ent.toFixed(2) + ' bit/byte，接近理论上限', detail: '数据几乎不含可压缩冗余，通常意味着已压缩或已加密。' });
+  }
+  return res;
+}
+function shannon(u8, start, len) {
+  const s = start || 0, n = Math.min(len == null ? u8.length - s : len, u8.length - s);
+  if (n <= 0) return 0;
+  const c = new Uint32Array(256);
+  const stride = n > 4 << 20 ? Math.ceil(n / (4 << 20)) : 1;
+  let tot = 0;
+  for (let i = 0; i < n; i += stride) { c[u8[s + i]]++; tot++; }
+  let h = 0;
+  for (let i = 0; i < 256; i++) if (c[i]) { const p = c[i] / tot; h -= p * Math.log2(p); }
+  return h;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   样本构造：全部在页内按格式规范逐字节写出，用来演示与自检
+   ══════════════════════════════════════════════════════════════ */
+class W {
+  constructor() { this.a = []; }
+  u8(v) { this.a.push(v & 255); return this; }
+  u16be(v) { this.a.push((v >> 8) & 255, v & 255); return this; }
+  u16le(v) { this.a.push(v & 255, (v >> 8) & 255); return this; }
+  u32be(v) { this.a.push((v >>> 24) & 255, (v >>> 16) & 255, (v >>> 8) & 255, v & 255); return this; }
+  u32le(v) { this.a.push(v & 255, (v >>> 8) & 255, (v >>> 16) & 255, (v >>> 24) & 255); return this; }
+  str(s) { for (let i = 0; i < s.length; i++) this.a.push(s.charCodeAt(i) & 255); return this; }
+  utf8(s) { const b = new TextEncoder().encode(s); for (const v of b) this.a.push(v); return this; }
+  raw(arr) { for (let i = 0; i < arr.length; i++) this.a.push(arr[i]); return this; }
+  get bytes() { return new Uint8Array(this.a); }
+  get len() { return this.a.length; }
+}
+function zlibStored(data) {
+  const w = new W(); w.u8(0x78).u8(0x01);
+  let p = 0;
+  do {
+    const n = Math.min(65535, data.length - p), last = (p + n >= data.length) ? 1 : 0;
+    w.u8(last).u16le(n).u16le((~n) & 0xFFFF);
+    for (let i = 0; i < n; i++) w.u8(data[p + i]);
+    p += n;
+  } while (p < data.length);
+  const ad = adler32(data);
+  w.u32be(ad);
+  return w.bytes;
+}
+function pngChunk(type, data) {
+  const w = new W();
+  w.u32be(data.length).str(type).raw(data);
+  const body = new Uint8Array(4 + data.length);
+  for (let i = 0; i < 4; i++) body[i] = type.charCodeAt(i);
+  body.set(data, 4);
+  w.u32be(crc32(body));
+  return w.bytes;
+}
+async function zlibDeflate(data) {
+  if (typeof CompressionStream !== 'undefined') {
+    try {
+      const cs = new CompressionStream('deflate');
+      const stream = new Blob([data]).stream().pipeThrough(cs);
+      return new Uint8Array(await new Response(stream).arrayBuffer());
+    } catch (e) { /* 退回 stored */ }
+  }
+  return zlibStored(data);
+}
+async function buildPNG(width, height, texts) {
+  const raw = new Uint8Array(height * (1 + width * 3));
+  let k = 0;
+  for (let y = 0; y < height; y++) {
+    raw[k++] = 0;
+    for (let x = 0; x < width; x++) {
+      const t = (x / width) * 0.72 + (y / height) * 0.28;
+      const band = Math.abs(((x * 0.6 + y * 1.6) % 46) - 23) / 23;
+      raw[k++] = Math.round(255 * (0.10 + 0.88 * t) * (0.82 + 0.18 * band));
+      raw[k++] = Math.round(255 * (0.06 + 0.28 * (1 - t)) * (0.75 + 0.25 * band));
+      raw[k++] = Math.round(255 * (0.10 + 0.22 * (1 - t)));
+    }
+  }
+  const ihdr = new W().u32be(width).u32be(height).u8(8).u8(2).u8(0).u8(0).u8(0).bytes;
+  const parts = [new Uint8Array([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]), pngChunk('IHDR', ihdr)];
+  for (const [k2, v] of texts) parts.push(pngChunk('tEXt', new W().str(k2).u8(0).utf8(v).bytes));
+  parts.push(pngChunk('pHYs', new W().u32be(2835).u32be(2835).u8(1).bytes));
+  parts.push(pngChunk('IDAT', await zlibDeflate(raw)));
+  parts.push(pngChunk('IEND', new Uint8Array(0)));
+  return concat(parts);
+}
+function concat(arrs) {
+  let n = 0; for (const a of arrs) n += a.length;
+  const out = new Uint8Array(n); let p = 0;
+  for (const a of arrs) { out.set(a, p); p += a.length; }
+  return out;
+}
+
+/* ── EXIF APP1（含 GPS）：三个 IFD + 共享数据区 ── */
+function encTiffVals(type, vals) {
+  const w = new W();
+  if (type === 2) { w.utf8(String(vals)); w.u8(0); return { bytes: w.bytes, count: w.len }; }
+  const arr = Array.isArray(vals) ? vals : [vals];
+  for (const v of arr) {
+    if (type === 1 || type === 7) w.u8(v);
+    else if (type === 3) w.u16le(v);
+    else if (type === 4) w.u32le(v);
+    else if (type === 5) { w.u32le(v[0]); w.u32le(v[1]); }
+  }
+  return { bytes: w.bytes, count: arr.length };
+}
+function buildExifAPP1(opts) {
+  const ifd0 = [
+    { tag: 0x010F, type: 2, vals: opts.make },
+    { tag: 0x0110, type: 2, vals: opts.model },
+    { tag: 0x0112, type: 3, vals: 1 },
+    { tag: 0x0131, type: 2, vals: opts.software },
+    { tag: 0x0132, type: 2, vals: opts.datetime },
+    { tag: 0x8769, type: 4, vals: 0, ptr: 'exif' },
+    { tag: 0x8825, type: 4, vals: 0, ptr: 'gps' },
+  ];
+  const exif = [
+    { tag: 0x9003, type: 2, vals: opts.datetime },
+    { tag: 0x829A, type: 5, vals: [[1, 125]] },
+    { tag: 0x829D, type: 5, vals: [[28, 10]] },
+    { tag: 0x8827, type: 3, vals: 200 },
+    { tag: 0x920A, type: 5, vals: [[350, 10]] },
+    { tag: 0xA434, type: 2, vals: opts.lens },
+    { tag: 0xA431, type: 2, vals: opts.serial },
+  ];
+  const toDMS = (deg) => {
+    const d = Math.floor(deg), mf = (deg - d) * 60, m = Math.floor(mf), s = Math.round((mf - m) * 60 * 100);
+    return [[d, 1], [m, 1], [s, 100]];
+  };
+  const gps = [
+    { tag: 0x0000, type: 1, vals: [2, 3, 0, 0] },
+    { tag: 0x0001, type: 2, vals: opts.lat >= 0 ? 'N' : 'S' },
+    { tag: 0x0002, type: 5, vals: toDMS(Math.abs(opts.lat)) },
+    { tag: 0x0003, type: 2, vals: opts.lon >= 0 ? 'E' : 'W' },
+    { tag: 0x0004, type: 5, vals: toDMS(Math.abs(opts.lon)) },
+    { tag: 0x0005, type: 1, vals: [0] },
+    { tag: 0x0006, type: 5, vals: [[opts.alt * 10, 10]] },
+  ];
+  const sz = (l) => 2 + l.length * 12 + 4;
+  const ifd0Off = 8, exifOff = ifd0Off + sz(ifd0), gpsOff = exifOff + sz(exif), dataOff = gpsOff + sz(gps);
+  const dataW = new W();
+  const encode = (list, nextOff) => {
+    const w = new W();
+    w.u16le(list.length);
+    for (const e of list) {
+      let value = e.vals;
+      if (e.ptr === 'exif') value = exifOff;
+      if (e.ptr === 'gps') value = gpsOff;
+      const { bytes, count } = encTiffVals(e.type, value);
+      w.u16le(e.tag).u16le(e.type).u32le(count);
+      if (bytes.length <= 4) { const pad = new Uint8Array(4); pad.set(bytes, 0); w.raw(pad); }
+      else { w.u32le(dataOff + dataW.len); dataW.raw(bytes); if (dataW.len & 1) dataW.u8(0); }
+    }
+    w.u32le(nextOff);
+    return w.bytes;
+  };
+  const b0 = encode(ifd0, 0), b1 = encode(exif, 0), b2 = encode(gps, 0);
+  const tiff = concat([new W().str('II').u16le(42).u32le(8).bytes, b0, b1, b2, dataW.bytes]);
+  const app1 = new W().u8(0xFF).u8(0xE1).u16be(2 + 6 + tiff.length).str('Exif').u8(0).u8(0).raw(tiff).bytes;
+  return app1;
+}
+function b64ToBytes(b64) {
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+function buildJPEG() {
+  const c = document.createElement('canvas');
+  c.width = 240; c.height = 150;
+  const g = c.getContext('2d');
+  const grd = g.createLinearGradient(0, 0, 240, 150);
+  grd.addColorStop(0, '#ff5757'); grd.addColorStop(0.55, '#a1131a'); grd.addColorStop(1, '#101111');
+  g.fillStyle = grd; g.fillRect(0, 0, 240, 150);
+  g.fillStyle = 'rgba(255,255,255,0.9)';
+  g.font = '600 20px system-ui, sans-serif';
+  g.fillText('DemoCam', 16, 34);
+  g.font = '13px system-ui, sans-serif';
+  g.fillStyle = 'rgba(255,255,255,0.75)';
+  g.fillText('演示照片 · 带 GPS 的 EXIF', 16, 56);
+  for (let i = 0; i < 7; i++) {
+    g.fillStyle = 'rgba(255,255,255,' + (0.06 + i * 0.03) + ')';
+    g.fillRect(16 + i * 30, 92, 22, 42 - i * 4);
+  }
+  const jpg = b64ToBytes(c.toDataURL('image/jpeg', 0.85).split(',')[1]);
+  const app1 = buildExifAPP1({
+    make: 'BinaryScope', model: 'DemoCam X1', software: '每日工具集 · 二进制解剖台',
+    datetime: '2026:08:12 15:04:22', lens: 'DemoLens 35mm f/2', serial: 'SN-DEMO-0042',
+    lat: 1.3521, lon: 103.8198, alt: 15,
+  });
+  return concat([jpg.subarray(0, 2), app1, jpg.subarray(2)]);
+}
+
+/* ── GIF：256 色调色板 + 「不压缩的 LZW」写法（每 250 码发一次清除码，码长恒 9 位） ── */
+function gifLZWStore(indices) {
+  const out = [];
+  let cur = 0, bits = 0;
+  const emit = (code) => { cur |= code << bits; bits += 9; while (bits >= 8) { out.push(cur & 255); cur >>>= 8; bits -= 8; } };
+  emit(256);
+  let since = 0;
+  for (let i = 0; i < indices.length; i++) {
+    emit(indices[i]);
+    if (++since === 250) { emit(256); since = 0; }
+  }
+  emit(257);
+  if (bits > 0) out.push(cur & 255);
+  return out;
+}
+function gifSubBlocks(w, bytes) {
+  let p = 0;
+  while (p < bytes.length) {
+    const n = Math.min(255, bytes.length - p);
+    w.u8(n);
+    for (let i = 0; i < n; i++) w.u8(bytes[p + i]);
+    p += n;
+  }
+  w.u8(0);
+}
+function buildGIF() {
+  const W_ = 128, H_ = 80, w = new W();
+  w.str('GIF89a').u16le(W_).u16le(H_).u8(0xF7).u8(0).u8(0);
+  for (let i = 0; i < 256; i++) {
+    const t = i / 255;
+    w.u8(Math.round(255 * (0.08 + 0.9 * t))).u8(Math.round(255 * (0.05 + 0.32 * (1 - t)))).u8(Math.round(255 * (0.12 + 0.18 * (1 - t))));
+  }
+  w.u8(0x21).u8(0xFF).u8(11).str('NETSCAPE2.0').u8(3).u8(1).u16le(0).u8(0);
+  for (let f = 0; f < 3; f++) {
+    w.u8(0x21).u8(0xF9).u8(4).u8(0x04).u16le(20).u8(0).u8(0);
+    w.u8(0x2C).u16le(0).u16le(0).u16le(W_).u16le(H_).u8(0);
+    const idx = new Uint8Array(W_ * H_);
+    for (let y = 0; y < H_; y++) for (let x = 0; x < W_; x++) {
+      const v = (x * 1.6 + y * 0.9 + f * 42) % 256;
+      idx[y * W_ + x] = v | 0;
+    }
+    w.u8(8);
+    gifSubBlocks(w, gifLZWStore(idx));
+  }
+  const cmt = new TextEncoder().encode('由 Binary Scope 现场按 GIF89a 规范写出');
+  w.u8(0x21).u8(0xFE);
+  gifSubBlocks(w, cmt);
+  w.u8(0x3B);
+  return w.bytes;
+}
+function buildWAV() {
+  const rate = 22050, sec = 0.5, n = Math.round(rate * sec);
+  const w = new W();
+  w.str('RIFF').u32le(36 + n * 2).str('WAVE').str('fmt ').u32le(16).u16le(1).u16le(1).u32le(rate).u32le(rate * 2).u16le(2).u16le(16).str('data').u32le(n * 2);
+  for (let i = 0; i < n; i++) {
+    const t = i / rate;
+    const env = Math.min(1, t * 12) * Math.min(1, (sec - t) * 12);
+    const v = Math.round(12000 * env * (Math.sin(2 * Math.PI * 440 * t) * 0.7 + Math.sin(2 * Math.PI * 660 * t) * 0.3));
+    w.u16le(v < 0 ? v + 65536 : v);
+  }
+  return w.bytes;
+}
+async function deflateRaw(bytes) {
+  if (typeof CompressionStream === 'undefined') return null;
+  try {
+    const cs = new CompressionStream('deflate-raw');
+    const stream = new Blob([bytes]).stream().pipeThrough(cs);
+    return new Uint8Array(await new Response(stream).arrayBuffer());
+  } catch (e) { return null; }
+}
+function dosNow() {
+  const d = new Date(2026, 7, 12, 15, 4, 22);
+  return {
+    time: ((d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1)) & 0xFFFF,
+    date: (((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate()) & 0xFFFF,
+  };
+}
+async function buildZIP() {
+  const enc = new TextEncoder();
+  const readme = enc.encode('二进制解剖台 · 示例压缩包\n\n这个 ZIP 是页面里按规范逐字节写出来的：\n  · 本条目用浏览器的 deflate-raw 真压缩，再由本页手写的 inflate 解回来核对 CRC-32\n  · assets/ 下放了一张同样现场生成的 PNG\n  · 还故意放了一个带 ../ 的穿越路径条目，用来演示 Zip Slip 体检\n');
+  const nested = await buildPNG(64, 40, [['Comment', 'nested sample']]);
+  const files = [
+    { name: 'notes/读我.txt', data: readme, deflate: true },
+    { name: 'assets/pixel.png', data: nested, deflate: false },
+    { name: '../etc/evil.conf', data: enc.encode('# 这个条目的路径会跳出解压目录\nrooted=true\n'), deflate: false },
+  ];
+  const { time, date } = dosNow();
+  const locals = [], centrals = [];
+  let offset = 0;
+  for (const f of files) {
+    const nameBytes = enc.encode(f.name);
+    let data = f.data, method = 0;
+    if (f.deflate) { const d = await deflateRaw(f.data); if (d && d.length < f.data.length) { data = d; method = 8; } }
+    const crc = crc32(f.data);
+    const lh = new W();
+    lh.u32le(0x04034b50).u16le(20).u16le(0x0800).u16le(method).u16le(time).u16le(date)
+      .u32le(crc).u32le(data.length).u32le(f.data.length).u16le(nameBytes.length).u16le(0).raw(nameBytes).raw(data);
+    locals.push(lh.bytes);
+    const ch = new W();
+    ch.u32le(0x02014b50).u16le(0x031E).u16le(20).u16le(0x0800).u16le(method).u16le(time).u16le(date)
+      .u32le(crc).u32le(data.length).u32le(f.data.length).u16le(nameBytes.length).u16le(0).u16le(0)
+      .u16le(0).u16le(0).u32le(0).u32le(offset).raw(nameBytes);
+    centrals.push(ch.bytes);
+    offset += lh.len;
+  }
+  const cdBytes = concat(centrals), lBytes = concat(locals);
+  const eocd = new W().u32le(0x06054b50).u16le(0).u16le(0).u16le(files.length).u16le(files.length)
+    .u32le(cdBytes.length).u32le(lBytes.length).u16le(0).bytes;
+  return concat([lBytes, cdBytes, eocd]);
+}
+async function buildGZIP() {
+  const enc = new TextEncoder();
+  const body = enc.encode('GZIP 示例 —— 这段文本用浏览器的 deflate-raw 压缩，尾部 8 字节记录 CRC-32 与原始长度。\n本页手写的 inflate 会把它解回来，并核对这两个值是否一致。\n' + '重复的行会被 LZ77 引用成一条回溯指针。\n'.repeat(24));
+  let data = await deflateRaw(body), stored = false;
+  if (!data) {
+    const w = new W(); let p = 0;
+    do { const n = Math.min(65535, body.length - p); w.u8(p + n >= body.length ? 1 : 0).u16le(n).u16le((~n) & 0xFFFF); for (let i = 0; i < n; i++) w.u8(body[p + i]); p += n; } while (p < body.length);
+    data = w.bytes; stored = true;
+  }
+  const name = enc.encode('report.txt');
+  const w = new W();
+  w.u8(0x1F).u8(0x8B).u8(8).u8(0x08).u32le(Math.floor(Date.UTC(2026, 7, 12, 7, 0, 0) / 1000)).u8(stored ? 0 : 2).u8(3);
+  for (const b of name) w.u8(b);
+  w.u8(0);
+  w.raw(data).u32le(crc32(body)).u32le(body.length >>> 0);
+  return w.bytes;
+}
+function box(type, payload) {
+  const w = new W(); w.u32be(8 + payload.length).str(type).raw(payload); return w.bytes;
+}
+function buildMP4() {
+  const ts = 1000, dur = 5000, mts = 15360, mdur = 76800;
+  const cre = Math.floor(Date.UTC(2026, 7, 12, 7, 0, 0) / 1000) + 2082844800;
+  const mvhd = box('mvhd', new W().u32be(0).u32be(cre).u32be(cre).u32be(ts).u32be(dur)
+    .u32be(0x00010000).u16be(0x0100).u16be(0).u32be(0).u32be(0)
+    .u32be(0x00010000).u32be(0).u32be(0).u32be(0).u32be(0x00010000).u32be(0).u32be(0).u32be(0).u32be(0x40000000)
+    .u32be(0).u32be(0).u32be(0).u32be(0).u32be(0).u32be(0).u32be(2).bytes);
+  const tkhd = box('tkhd', new W().u32be(3).u32be(cre).u32be(cre).u32be(1).u32be(0).u32be(dur)
+    .u32be(0).u32be(0).u16be(0).u16be(0).u16be(0).u16be(0)
+    .u32be(0x00010000).u32be(0).u32be(0).u32be(0).u32be(0x00010000).u32be(0).u32be(0).u32be(0).u32be(0x40000000)
+    .u32be(320 * 65536).u32be(180 * 65536).bytes);
+  const mdhd = box('mdhd', new W().u32be(0).u32be(cre).u32be(cre).u32be(mts).u32be(mdur).u16be(0x55C4).u16be(0).bytes);
+  const hdlr = box('hdlr', new W().u32be(0).u32be(0).str('vide').u32be(0).u32be(0).u32be(0).str('VideoHandler').u8(0).bytes);
+  const vmhd = box('vmhd', new W().u32be(1).u16be(0).u16be(0).u16be(0).u16be(0).bytes);
+  const url = box('url ', new W().u32be(1).bytes);
+  const dref = box('dref', concat([new W().u32be(0).u32be(1).bytes, url]));
+  const dinf = box('dinf', dref);
+  const avc1 = box('avc1', new W().u32be(0).u16be(0).u16be(1).u32be(0).u32be(0).u32be(0).u32be(0)
+    .u16be(320).u16be(180).u32be(0x00480000).u32be(0x00480000).u32be(0).u16be(1)
+    .raw(new Uint8Array(32)).u16be(0x0018).u16be(0xFFFF).bytes);
+  const stsd = box('stsd', concat([new W().u32be(0).u32be(1).bytes, avc1]));
+  const stts = box('stts', new W().u32be(0).u32be(0).bytes);
+  const stsc = box('stsc', new W().u32be(0).u32be(0).bytes);
+  const stsz = box('stsz', new W().u32be(0).u32be(0).u32be(0).bytes);
+  const stco = box('stco', new W().u32be(0).u32be(0).bytes);
+  const stbl = box('stbl', concat([stsd, stts, stsc, stsz, stco]));
+  const minf = box('minf', concat([vmhd, dinf, stbl]));
+  const mdia = box('mdia', concat([mdhd, hdlr, minf]));
+  const trak = box('trak', concat([tkhd, mdia]));
+  const moov = box('moov', concat([mvhd, trak]));
+  const ftyp = box('ftyp', new W().str('isom').u32be(512).str('isom').str('iso2').str('avc1').str('mp41').bytes);
+  const filler = new Uint8Array(4096);
+  for (let i = 0; i < filler.length; i++) filler[i] = (i * 37 + (i >> 5) * 11) & 255;
+  const mdat = box('mdat', filler);
+  return concat([ftyp, moov, mdat]);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   界面状态与渲染
+   ══════════════════════════════════════════════════════════════ */
+const ST = {
+  u8: null, name: '', res: null, sel: null, cursor: -1, hl: null,
+  tab: 'overview', bpr: 16, strings: [], strAll: [], flat: [], rowH: 22, url: null,
+};
+const LS = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* 隐私模式下忽略 */ } },
+};
+const SETTINGS = Object.assign({ bpr: 16, minLen: 4, u16: true, cjk: true }, LS.get('bs.settings', {}));
+
+const SAMPLES = [
+  { id: 'jpeg', tile: 'JPG', name: '带 GPS 的照片.jpg', meta: 'EXIF · 位置泄露演示', build: async () => buildJPEG() },
+  { id: 'png', tile: 'PNG', name: '渐变图.png', meta: '逐块 CRC 校验', build: async () => await buildPNG(200, 120, [['Title', 'Binary Scope 示例图'], ['Software', '每日工具集'], ['Comment', '这张图的每个数据块都会被逐一 CRC 校验']]) },
+  { id: 'zip', tile: 'ZIP', name: '示例压缩包.zip', meta: '真解压 + 路径穿越体检', build: buildZIP },
+  { id: 'gzip', tile: 'GZ', name: 'report.txt.gz', meta: 'inflate 与 CRC 自检', build: buildGZIP },
+  { id: 'gif', tile: 'GIF', name: '动图.gif', meta: '3 帧 · 帧延时与循环', build: async () => buildGIF() },
+  { id: 'wav', tile: 'WAV', name: '提示音.wav', meta: 'RIFF 块与采样参数', build: async () => buildWAV() },
+  { id: 'mp4', tile: 'MP4', name: '结构示例.mp4', meta: 'ISO-BMFF box 树（无媒体数据）', build: async () => buildMP4() },
+  {
+    id: 'polyglot', tile: '双身', name: '看起来只是图.png', meta: '尾部藏了一个完整 ZIP', build: async () => {
+      const png = await buildPNG(200, 120, [['Title', '尾部藏包演示']]);
+      const zip = await buildZIP();
+      return concat([png, zip]);
+    },
+  },
+];
+
+/* ── 通用小部件 ── */
+function fillKV(dl, pairs) {
+  dl.textContent = '';
+  for (const [k, v] of pairs) {
+    dl.appendChild(el('dt', null, k));
+    dl.appendChild(el('dd', null, String(v)));
+  }
+}
+function esc(s) { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+
+/* ── 面板切换 ── */
+const TABS = ['overview', 'tree', 'hex', 'map', 'str'];
+function setTab(name) {
+  if (!TABS.includes(name)) return;
+  ST.tab = name;
+  for (const t of TABS) {
+    $('#bs-panel-' + t).hidden = t !== name;
+    $('#bs-tab-' + t).setAttribute('aria-selected', String(t === name));
+  }
+  if (name === 'hex') renderHex();
+  if (name === 'map') drawCharts();
+  if (name === 'str') renderStrings();
+}
+
+/* ── 载入文件 ── */
+async function loadBytes(u8, name, sampleId) {
+  ST.u8 = u8; ST.name = name; ST.sel = null; ST.cursor = -1; ST.hl = null;
+  const t0 = performance.now();
+  ST.res = analyze(u8, name);
+  const ms = performance.now() - t0;
+  ST.flat = [];
+  const flatten = (list, depth) => { for (const n of list) { n.depth = depth; ST.flat.push(n); if (n.children && n.children.length) flatten(n.children, depth + 1); } };
+  flatten(ST.res.nodes, 0);
+  $('#bs-fname').textContent = name;
+  const fmtEl = $('#bs-fmt');
+  fmtEl.textContent = ST.res.fmt.short;
+  fmtEl.dataset.kind = ST.res.fmt.kind === 'exec' ? 'risk' : (ST.res.fmt.short === '未知' ? 'unknown' : 'ok');
+  $('#bs-fmeta').textContent = fmtBytes(u8.length) + ' · ' + ST.res.fmt.mime + ' · 解析耗时 ' + ms.toFixed(1) + ' ms';
+  $('#bs-magic-hint').textContent = '魔数 ' + Array.from(u8.subarray(0, 8)).map((b) => hex(b)).join(' ');
+  renderOverview();
+  renderTree();
+  // 默认选中信息量最大的顶层节点（选第一个常常是 2 字节的签名，看不出东西）
+  if (ST.res.nodes.length) {
+    const best = ST.res.nodes.reduce((a, b) => (b.fields.length > a.fields.length ? b : a), ST.res.nodes[0]);
+    selectNode(best);
+  }
+  else { fillKV($('#bs-detail'), []); fillKV($('#bs-hl-kv'), []); $('#bs-detail-title').textContent = '字段明细'; $('#bs-detail-range').textContent = ''; $('#bs-node-note').textContent = '选中左侧任意节点，这里会解释它在格式规范里的角色。'; }
+  ST.strAll = extractStrings(u8);
+  renderHex();
+  renderStrings();
+  drawCharts();
+  pushRecent(name, u8.length, ST.res.fmt.short, sampleId);
+  renderPalette();
+}
+function renderOverview() {
+  const r = ST.res;
+  fillKV($('#bs-kv'), [['识别格式', r.fmt.name], ['MIME 类型', r.fmt.mime], ['文件大小', fmtBytes(ST.u8.length)],
+    ['整体熵', shannon(ST.u8).toFixed(3) + ' bit/byte']].concat(r.kv));
+  // 预览
+  const prev = $('#bs-prev');
+  prev.textContent = '';
+  if (ST.url) { URL.revokeObjectURL(ST.url); ST.url = null; }
+  const kind = r.preview;
+  if (kind === 'image' || kind === 'audio' || kind === 'video') {
+    ST.url = URL.createObjectURL(new Blob([ST.u8], { type: r.fmt.mime }));
+    const tag = kind === 'image' ? 'img' : kind;
+    const m = document.createElement(tag);
+    m.id = 'bs-prev-media';
+    if (kind !== 'image') { m.controls = true; m.style.width = '100%'; }
+    if (kind === 'video') { m.muted = true; m.style.maxHeight = '260px'; }
+    m.src = ST.url;
+    if (kind === 'image') m.alt = '文件预览';
+    m.addEventListener('error', () => { prev.textContent = ''; prev.appendChild(el('span', 'bs-prev-none', '浏览器无法渲染该文件（结构仍可解析）')); });
+    prev.appendChild(m);
+  } else if (kind === 'font') {
+    try {
+      const ff = new FontFace('bsPreviewFont', ST.u8.buffer.slice(ST.u8.byteOffset, ST.u8.byteOffset + ST.u8.length));
+      ff.load().then((f) => {
+        document.fonts.add(f);
+        const d = el('div');
+        d.style.cssText = 'font-family:bsPreviewFont;color:#f4f4f6;text-align:center;line-height:1.5';
+        d.innerHTML = '<div style="font-size:34px">Aa Bb Gg 永和九年</div><div style="font-size:15px;opacity:.7">0123456789 · The quick brown fox</div>';
+        prev.textContent = ''; prev.appendChild(d);
+      }).catch(() => { prev.textContent = ''; prev.appendChild(el('span', 'bs-prev-none', '字体无法加载预览')); });
+      prev.appendChild(el('span', 'bs-prev-none', '正在加载字体…'));
+    } catch (e) { prev.appendChild(el('span', 'bs-prev-none', '字体无法加载预览')); }
+  } else if (kind === 'text' && r.text) {
+    const pre = el('pre');
+    pre.style.cssText = 'margin:0;max-height:240px;overflow:auto;font-family:var(--bs-mono);font-size:12px;color:#cdcdcd;white-space:pre-wrap;width:100%';
+    pre.textContent = r.text.slice(0, 1500);
+    prev.appendChild(pre);
+  } else prev.appendChild(el('span', 'bs-prev-none', '该格式无可视预览'));
+  // 体检发现
+  const box = $('#bs-finds');
+  box.textContent = '';
+  const order = { high: 0, warn: 1, info: 2, ok: 3 };
+  const finds = r.finds.slice().sort((a, b) => order[a.sev] - order[b.sev]);
+  const LBL = { high: '重要', warn: '注意', info: '提示', ok: '通过' };
+  for (const f of finds) {
+    const row = el('div', 'bs-find');
+    const s = el('span', 'bs-sev', LBL[f.sev] || f.sev); s.dataset.sev = f.sev;
+    const b = el('div', 'bs-find-b');
+    b.appendChild(el('div', 'bs-find-t', f.title));
+    b.appendChild(el('div', 'bs-find-d', f.detail));
+    row.appendChild(s); row.appendChild(b);
+    box.appendChild(row);
+  }
+  if (!finds.length) box.appendChild(el('div', 'bs-empty', '没有需要提醒的发现'));
+  const cnt = { high: 0, warn: 0, info: 0, ok: 0 };
+  for (const f of finds) cnt[f.sev]++;
+  $('#bs-find-sum').textContent = '重要 ' + cnt.high + ' · 注意 ' + cnt.warn + ' · 提示 ' + cnt.info + ' · 通过 ' + cnt.ok;
+  renderMap();
+}
+function topSegments() {
+  const N = ST.u8.length, segs = [];
+  const tops = ST.res.nodes.slice().sort((a, b) => a.start - b.start);
+  let cur = 0;
+  for (const n of tops) {
+    if (n.start > cur) segs.push({ name: '未覆盖', start: cur, len: n.start - cur, kind: 'pad' });
+    if (n.start + n.len > cur) segs.push({ name: n.name, start: Math.max(cur, n.start), len: n.start + n.len - Math.max(cur, n.start), kind: n.kind, node: n });
+    cur = Math.max(cur, n.start + n.len);
+  }
+  if (cur < N) segs.push({ name: '未覆盖', start: cur, len: N - cur, kind: 'pad' });
+  // 合并同类微小段，避免几百个 1 像素格
+  const merged = [];
+  for (const s of segs) {
+    const last = merged[merged.length - 1];
+    if (last && last.kind === s.kind && last.name === s.name && s.len / N < 0.01) { last.len += s.len; last.merged = (last.merged || 1) + 1; }
+    else merged.push(Object.assign({}, s));
+  }
+  return merged.filter((s) => s.len > 0);
+}
+function renderMap() {
+  const N = ST.u8.length, map = $('#bs-map');
+  map.textContent = '';
+  const segs = topSegments();
+  for (const s of segs) {
+    const d = el('div', 'bs-seg');
+    d.style.flexGrow = String(s.len);
+    d.style.flexBasis = '0';
+    d.style.background = KIND_COLOR[s.kind] || KIND_COLOR.pad;
+    d.title = s.name + (s.merged ? ' ×' + s.merged : '') + ' · ' + hx(s.start) + ' · ' + fmtBytesShort(s.len) + '（' + (s.len / N * 100).toFixed(1) + '%）';
+    d.dataset.start = String(s.start); d.dataset.len = String(s.len);
+    const label = el('span', 'bs-seg-l', s.name + (s.merged ? ' ×' + s.merged : ''));
+    d.appendChild(label);
+    d.addEventListener('click', () => { if (s.node) selectNode(s.node); jumpTo(s.start); setTab('hex'); });
+    map.appendChild(d);
+  }
+  // 窄格里的文字必须收进格子（2026-08-11 教训）：量完宽度不够就撤掉标签
+  requestAnimationFrame(() => {
+    for (const d of Array.from(map.children)) {
+      const l = d.querySelector('.bs-seg-l');
+      if (!l) continue;
+      if (l.getBoundingClientRect().width + 6 > d.getBoundingClientRect().width) l.remove();
+    }
+  });
+  const lg = $('#bs-legend');
+  lg.textContent = '';
+  const kinds = Array.from(new Set(segs.map((s) => s.kind)));
+  for (const k of kinds) {
+    const w = el('span', 'bs-lg');
+    const i = el('i'); i.style.background = KIND_COLOR[k] || KIND_COLOR.pad;
+    w.appendChild(i); w.appendChild(document.createTextNode(KIND_LABEL[k] || k));
+    lg.appendChild(w);
+  }
+  const tbl = $('#bs-seg-tbl');
+  tbl.innerHTML = '<thead><tr><th>段</th><th class="bs-r">偏移</th><th class="bs-r">大小</th><th class="bs-r">占比</th><th class="bs-r">熵</th><th>体积</th></tr></thead>';
+  const tb = el('tbody');
+  const maxPct = Math.max.apply(null, segs.map((s) => s.len / N * 100));
+  for (const s of segs.slice(0, 60)) {
+    const tr = el('tr');
+    const pct = s.len / N * 100;
+    const cells = [s.name + (s.merged ? ' ×' + s.merged : ''), hx(s.start), fmtBytesShort(s.len), pct.toFixed(1) + '%', shannon(ST.u8, s.start, s.len).toFixed(2)];
+    cells.forEach((c, i) => { const td = el('td', i ? 'bs-r' : null, c); tr.appendChild(td); });
+    const td = el('td');
+    td.style.minWidth = '96px';
+    const bar = el('span', 'bs-bar');
+    bar.style.width = Math.max(4, pct / maxPct * 100) + '%';
+    bar.style.background = KIND_COLOR[s.kind] || KIND_COLOR.pad;
+    td.appendChild(bar); tr.appendChild(td);
+    tb.appendChild(tr);
+  }
+  tbl.appendChild(tb);
+}
+
+/* ── 结构树 ── */
+function renderTree() {
+  const box = $('#bs-tree');
+  box.textContent = '';
+  let shown = 0;
+  const add = (n) => {
+    const b = el('button', 'bs-node');
+    b.type = 'button';
+    b.dataset.id = String(n.id);
+    b.style.paddingLeft = (8 + n.depth * 16) + 'px';
+    const caret = el('span', 'bs-caret', n.children && n.children.length ? (n.open === false ? '▸' : '▾') : '·');
+    b.appendChild(caret);
+    b.appendChild(el('span', 'bs-node-n', n.name));
+    b.appendChild(el('span', 'bs-node-d', n.desc || ''));
+    if (n.chip) { const c = el('span', 'bs-chip', n.chip.text); c.dataset.t = n.chip.t; b.appendChild(c); }
+    b.appendChild(el('span', 'bs-node-o', hx(n.start)));
+    b.appendChild(el('span', 'bs-node-s', fmtBytesShort(n.len)));
+    b.addEventListener('click', (ev) => {
+      if (n.children && n.children.length && ev.offsetX < 22 + n.depth * 16) { n.open = n.open === false; renderTree(); return; }
+      selectNode(n);
+    });
+    box.appendChild(b);
+    shown++;
+    if (n.children && n.open !== false) for (const c of n.children) add(c);
+  };
+  for (const n of ST.res.nodes) add(n);
+  $('#bs-tree-sum').textContent = ST.flat.length + ' 个节点';
+  if (!shown) box.appendChild(el('div', 'bs-empty', '该格式没有可展开的结构'));
+  if (ST.sel) markSelected();
+}
+function markSelected() {
+  for (const b of $$('#bs-tree .bs-node')) b.dataset.sel = (ST.sel && b.dataset.id === String(ST.sel.id)) ? '1' : '0';
+}
+function selectNode(n) {
+  ST.sel = n;
+  ST.hl = { start: n.start, end: n.start + n.len };
+  markSelected();
+  $('#bs-detail-title').textContent = n.name;
+  $('#bs-detail-range').textContent = hx(n.start) + ' → ' + hx(n.start + n.len) + ' · ' + fmtBytesShort(n.len);
+  const pairs = [['偏移', hx(n.start) + '（十进制 ' + num(n.start) + '）'], ['长度', num(n.len) + ' 字节'], ['分类', KIND_LABEL[n.kind] || n.kind]].concat(n.fields);
+  fillKV($('#bs-detail'), pairs);
+  $('#bs-node-note').textContent = n.note || '这一段没有额外说明。';
+  fillKV($('#bs-hl-kv'), [['当前节点', n.name], ['范围', hx(n.start) + ' – ' + hx(n.start + n.len)], ['长度', fmtBytesShort(n.len)],
+    ['该段熵', shannon(ST.u8, n.start, n.len).toFixed(3) + ' bit/byte']]);
+  renderHex();
+}
+
+/* ── 十六进制虚拟滚动 ── */
+function renderHex() {
+  if (!ST.u8) return;
+  const bpr = ST.bpr, N = ST.u8.length, rowH = ST.rowH;
+  const rows = Math.ceil(N / bpr) || 1;
+  const scroller = $('#bs-hexscroll'), inner = $('#bs-hexinner'), rowsEl = $('#bs-hexrows');
+  inner.style.height = (rows * rowH) + 'px';
+  const viewH = scroller.clientHeight || 452;
+  const first = Math.max(0, Math.floor(scroller.scrollTop / rowH) - 2);
+  const count = Math.min(rows - first, Math.ceil(viewH / rowH) + 5);
+  rowsEl.style.transform = 'translateY(' + (first * rowH) + 'px)';
+  const hl = ST.hl;
+  const offW = N > 0xFFFFFF ? 8 : 6;
+  let html = '';
+  for (let r = 0; r < count; r++) {
+    const base = (first + r) * bpr;
+    let hexs = '', asc = '';
+    for (let i = 0; i < bpr; i++) {
+      const off = base + i;
+      if (off >= N) { hexs += '<span>  </span>'; asc += '<span> </span>'; continue; }
+      const b = ST.u8[off];
+      const inHl = hl && off >= hl.start && off < hl.end;
+      const isCur = off === ST.cursor;
+      const attrs = ' data-off="' + off + '"' + (b === 0 ? ' data-z="1"' : '') + (inHl ? ' data-hl="1"' : '') + (isCur ? ' data-cur="1"' : '');
+      hexs += '<span' + attrs + '>' + hex(b) + '</span>';
+      const ch = b >= 32 && b < 127 ? esc(String.fromCharCode(b)) : '.';
+      asc += '<span data-off="' + off + '"' + (b >= 32 && b < 127 ? '' : ' data-p="0"') + (inHl ? ' data-hl="1"' : '') + (isCur ? ' data-cur="1"' : '') + '>' + ch + '</span>';
+    }
+    html += '<div class="bs-hexrow"><span class="bs-hexoff">' + hex(base, offW) + '</span><span class="bs-hexb">' + hexs + '</span><span class="bs-hexa">' + asc + '</span></div>';
+  }
+  rowsEl.innerHTML = html;
+  $('#bs-hex-sum').textContent = num(rows) + ' 行 · 每行 ' + bpr + ' 字节' + (hl ? ' · 高亮 ' + hx(hl.start) + '–' + hx(hl.end) : '');
+}
+function jumpTo(off) {
+  const rowH = ST.rowH;
+  const row = Math.floor(off / ST.bpr);
+  $('#bs-hexscroll').scrollTop = Math.max(0, row * rowH - 60);
+  ST.cursor = off;
+  renderHex();
+  renderInspector();
+}
+function renderInspector() {
+  const t = $('#bs-insp');
+  const off = ST.cursor;
+  if (off < 0 || !ST.u8 || off >= ST.u8.length) {
+    t.innerHTML = '<tbody><tr><td class="bs-empty" colspan="2">点左侧任意字节查看它的多种解释</td></tr></tbody>';
+    $('#bs-insp-off').textContent = '点任意字节';
+    return;
+  }
+  const u = ST.u8, dv = new DataView(u.buffer, u.byteOffset, u.byteLength);
+  const left = u.length - off;
+  const rd = (n, f) => (left >= n ? f() : '—');
+  const rows = [
+    ['偏移', hx(off) + '（十进制 ' + num(off) + '）'],
+    ['无符号 8 位', String(u[off])],
+    ['有符号 8 位', String(dv.getInt8(off))],
+    ['二进制', u[off].toString(2).padStart(8, '0')],
+    ['16 位小端 / 大端', rd(2, () => num(dv.getUint16(off, true)) + '  /  ' + num(dv.getUint16(off)))],
+    ['32 位小端 / 大端', rd(4, () => num(dv.getUint32(off, true)) + '  /  ' + num(dv.getUint32(off)))],
+    ['32 位有符号小端', rd(4, () => num(dv.getInt32(off, true)))],
+    ['64 位小端', rd(8, () => String(dv.getBigUint64(off, true)))],
+    ['32 位浮点小端', rd(4, () => { const v = dv.getFloat32(off, true); return isFinite(v) ? v.toPrecision(7) : String(v); })],
+    ['64 位浮点小端', rd(8, () => { const v = dv.getFloat64(off, true); return isFinite(v) ? v.toPrecision(10) : String(v); })],
+    ['Unix 时间（32 位小端）', rd(4, () => { const s = dv.getUint32(off, true); return s > 315532800 && s < 4102444800 ? new Date(s * 1000).toLocaleString('zh-CN') : '（不像时间戳）'; })],
+    ['ASCII', (() => { let s = ''; for (let i = 0; i < Math.min(8, left); i++) { const b = u[off + i]; s += b >= 32 && b < 127 ? String.fromCharCode(b) : '·'; } return s; })()],
+    ['UTF-8 字符', (() => {
+      try {
+        const s = new TextDecoder('utf-8', { fatal: true }).decode(u.subarray(off, off + Math.min(4, left)));
+        const c = s.codePointAt(0);
+        if (c == null) return '—';
+        if (c < 32 || c === 127) return '控制字符 U+' + hex(c, 4);
+        return String.fromCodePoint(c) + '  （U+' + hex(c, 4) + '）';
+      } catch (e) { return '（不是合法的 UTF-8 起始字节）'; }
+    })()],
+  ];
+  let html = '<tbody>';
+  for (const [k, v] of rows) html += '<tr><td style="color:#9c9c9d;white-space:nowrap">' + esc(k) + '</td><td>' + esc(String(v)) + '</td></tr>';
+  t.innerHTML = html + '</tbody>';
+  $('#bs-insp-off').textContent = '偏移 ' + hx(off);
+}
+
+/* ══ 画布：熵曲线 + 字节分布（所有 fillText 走同一个避让器） ══ */
+function makePlacer(ctx, W_, H_) {
+  const boxes = [], drawn = [];
+  let dropped = 0;
+  const hit = (x, y, w, h) => boxes.some((b) => !(x + w <= b.x || b.x + b.w <= x || y + h <= b.y || b.y + b.h <= y));
+  return {
+    reserve(x, y, w, h) { boxes.push({ x, y, w, h }); },
+    get dropped() { return dropped; },
+    get drawn() { return drawn; },
+    text(str, x, y, o) {
+      o = o || {};
+      const font = o.font || '12px ui-monospace, SFMono-Regular, Menlo, monospace';
+      ctx.font = font;
+      const m = ctx.measureText(str);
+      const w = m.width, h = o.h || 13;
+      const offsets = o.offsets || [[0, 0]];
+      for (const [dx, dy] of offsets) {
+        let x0 = x + dx, y0 = y + dy;
+        if (o.align === 'center') x0 -= w / 2;
+        if (o.align === 'right') x0 -= w;
+        if (o.base === 'middle') y0 -= h / 2;
+        if (o.base === 'bottom') y0 -= h;
+        if (x0 < 1 || y0 < 1 || x0 + w > W_ - 1 || y0 + h > H_ - 1) continue;
+        if (hit(x0 - 2, y0 - 1, w + 4, h + 2)) continue;
+        if (o.plate) {
+          ctx.fillStyle = o.plate;
+          ctx.fillRect(x0 - 3, y0 - 2, w + 6, h + 4);
+        }
+        ctx.fillStyle = o.color || '#9c9c9d';
+        ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+        ctx.fillText(str, x0, y0);
+        boxes.push({ x: x0 - 2, y: y0 - 1, w: w + 4, h: h + 2 });
+        drawn.push({ tag: o.tag || '', text: str, x: x0, y: y0 });
+        return true;
+      }
+      dropped++;
+      return false;
+    },
+  };
+}
+function drawCharts() {
+  if (!ST.u8) return;
+  drawEntropy();
+  drawHistogram();
+}
+function drawEntropy() {
+  const cv = $('#bs-ent'), ctx = cv.getContext('2d');
+  const W_ = cv.width, H_ = cv.height, N = ST.u8.length;
+  ctx.clearRect(0, 0, W_, H_);
+  ctx.fillStyle = '#101111'; ctx.fillRect(0, 0, W_, H_);
+  const padL = 58, padR = 14, padT = 16, padB = 30;
+  const plotW = W_ - padL - padR, plotH = H_ - padT - padB;
+  // 重叠滑动窗口：窗口本身必须够大（n 字节窗口的熵上限是 log2(n)，
+  // 小窗口会把「已压缩」误判成中等熵），所以窗口固定 ≥256 字节，靠重叠取够采样点。
+  const buckets = Math.min(360, Math.max(24, Math.floor(plotW / 3)));
+  const per = Math.max(1, Math.min(N, Math.max(256, Math.ceil(N / 32))));
+  const step = N > per ? (N - per) / (buckets - 1) : 0;
+  const vals = [];
+  for (let i = 0; i < buckets; i++) {
+    const s = Math.round(i * step);
+    vals.push(shannon(ST.u8, s, Math.min(per, N - s)));
+    if (step === 0) break;
+  }
+  const p = makePlacer(ctx, W_, H_);
+  // 坐标轴与网格（细线只画不 reserve；刻度文字一律走避让器）
+  ctx.strokeStyle = '#242728'; ctx.lineWidth = 1;
+  for (let v = 0; v <= 8; v += 2) {
+    const y = padT + plotH - (v / 8) * plotH;
+    ctx.beginPath(); ctx.moveTo(padL, y + 0.5); ctx.lineTo(W_ - padR, y + 0.5); ctx.stroke();
+    p.text(v + ' bit', padL - 8, y, { align: 'right', base: 'middle', color: '#6a6b6c', tag: 'ytick' });
+  }
+  // 曲线
+  const xAt = (i) => padL + (vals.length <= 1 ? 0 : (i / (vals.length - 1)) * plotW);
+  const yAt = (v) => padT + plotH - (v / 8) * plotH;
+  ctx.beginPath();
+  ctx.moveTo(padL, padT + plotH);
+  vals.forEach((v, i) => ctx.lineTo(xAt(i), yAt(v)));
+  ctx.lineTo(xAt(vals.length - 1), padT + plotH);
+  ctx.closePath();
+  const grd = ctx.createLinearGradient(0, padT, 0, padT + plotH);
+  grd.addColorStop(0, 'rgba(87,193,255,0.34)');
+  grd.addColorStop(1, 'rgba(87,193,255,0.03)');
+  ctx.fillStyle = grd; ctx.fill();
+  ctx.beginPath();
+  vals.forEach((v, i) => (i ? ctx.lineTo(xAt(i), yAt(v)) : ctx.moveTo(xAt(i), yAt(v))));
+  ctx.strokeStyle = '#57c1ff'; ctx.lineWidth = 1.6; ctx.stroke();
+  // 分段边界（只画不 reserve）+ 段名标注（自带底板，退让位往上叠成阶梯）
+  const segs = topSegments().filter((s) => s.len / N > 0.04).slice(0, 8);
+  ctx.setLineDash([3, 4]); ctx.lineWidth = 1;
+  const labels = [];
+  for (const s of segs) {
+    const x = padL + (s.start / N) * plotW;
+    ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+    ctx.beginPath(); ctx.moveTo(x + 0.5, padT); ctx.lineTo(x + 0.5, padT + plotH); ctx.stroke();
+    labels.push({ x: x + (s.len / N) * plotW / 2, name: s.name, kind: s.kind });
+  }
+  ctx.setLineDash([]);
+  for (const l of labels) {
+    p.text(l.name, l.x, padT + 4, {
+      align: 'center', offsets: [[0, 0], [0, 15], [0, 30], [0, 45], [0, 60]],
+      color: KIND_COLOR[l.kind] || '#cdcdcd', plate: 'rgba(16,17,17,0.92)', tag: 'seg',
+    });
+  }
+  // x 轴偏移刻度
+  for (let i = 0; i <= 4; i++) {
+    const off = Math.round(N * i / 4);
+    p.text(hx(off), padL + (i / 4) * plotW, H_ - padB + 8, { align: i === 0 ? 'left' : i === 4 ? 'right' : 'center', color: '#6a6b6c', tag: 'xtick' });
+  }
+  const avg = vals.reduce((a, b) => a + b, 0) / Math.max(1, vals.length);
+  const mx = Math.max.apply(null, vals), mn = Math.min.apply(null, vals);
+  fillKV($('#bs-ent-kv'), [['采样点', vals.length + ' 个（窗口重叠滑动）'], ['窗口大小', fmtBytesShort(per) + '（熵上限 ' + Math.min(8, Math.log2(per)).toFixed(2) + '）']]);
+  fillKV($('#bs-ent-kv2'), [['平均熵', avg.toFixed(3) + ' bit/byte'], ['最高 / 最低', mx.toFixed(2) + ' / ' + mn.toFixed(2)]]);
+  fillKV($('#bs-ent-kv3'), [['理论可压缩空间', ((1 - shannon(ST.u8) / 8) * 100).toFixed(1) + '%'],
+    ['高熵窗口占比', (vals.filter((v) => v > 7.5).length / Math.max(1, vals.length) * 100).toFixed(0) + '%']]);
+  window.__bsChart = { drawn: p.drawn, dropped: p.dropped, buckets: vals.length, segs: labels.length };
+}
+function drawHistogram() {
+  const cv = $('#bs-hist'), ctx = cv.getContext('2d');
+  const W_ = cv.width, H_ = cv.height;
+  ctx.clearRect(0, 0, W_, H_);
+  ctx.fillStyle = '#101111'; ctx.fillRect(0, 0, W_, H_);
+  const padL = 52, padR = 10, padT = 16, padB = 24;
+  const plotW = W_ - padL - padR, plotH = H_ - padT - padB;
+  const c = new Uint32Array(256);
+  const n = ST.u8.length, stride = n > (2 << 20) ? Math.ceil(n / (2 << 20)) : 1;
+  let tot = 0;
+  for (let i = 0; i < n; i += stride) { c[ST.u8[i]]++; tot++; }
+  const mx = Math.max.apply(null, Array.from(c)) || 1;
+  const p = makePlacer(ctx, W_, H_);
+  ctx.strokeStyle = '#242728';
+  for (let i = 0; i <= 2; i++) {
+    const y = padT + plotH - (i / 2) * plotH;
+    ctx.beginPath(); ctx.moveTo(padL, y + 0.5); ctx.lineTo(W_ - padR, y + 0.5); ctx.stroke();
+    p.text(i === 0 ? '0' : num(Math.round(mx * i / 2)), padL - 8, y, { align: 'right', base: 'middle', color: '#6a6b6c', tag: 'ytick' });
+  }
+  const bw = plotW / 256;
+  for (let i = 0; i < 256; i++) {
+    const h = (c[i] / mx) * plotH;
+    ctx.fillStyle = i < 32 || i === 127 ? '#434345' : i < 127 ? '#59d499' : '#ffc533';
+    ctx.fillRect(padL + i * bw, padT + plotH - h, Math.max(1, bw - 0.6), h);
+  }
+  const marks = [[0, '00'], [32, '20 空格'], [65, '41 A'], [97, '61 a'], [255, 'FF']];
+  for (const [b, label] of marks) {
+    p.text(label, padL + b * bw + bw / 2, padT + plotH + 6, {
+      align: 'center', offsets: [[0, 0], [8, 0], [16, 0], [-8, 0]], color: '#6a6b6c', tag: 'xmark',
+    });
+  }
+  const zero = (c[0] / tot * 100).toFixed(1), printable = (() => { let s = 0; for (let i = 32; i < 127; i++) s += c[i]; return (s / tot * 100).toFixed(1); })();
+  p.text('0x00 占 ' + zero + '% · 可打印 ASCII 占 ' + printable + '%', W_ - padR, padT, { align: 'right', color: '#9c9c9d', plate: 'rgba(16,17,17,0.92)', offsets: [[0, 0], [0, 16]], tag: 'note' });
+  window.__bsHist = { drawn: p.drawn, dropped: p.dropped, zeroPct: Number(zero), printablePct: Number(printable) };
+}
+
+/* ── 字符串提取 ── */
+function extractStrings(u8) {
+  const out = [];
+  const cap = Math.min(u8.length, 8 << 20);
+  const minRun = 3;
+  let start = -1;
+  for (let i = 0; i <= cap; i++) {
+    const b = i < cap ? u8[i] : 0;
+    const printable = b >= 32 && b < 127;
+    if (printable) { if (start < 0) start = i; }
+    else {
+      if (start >= 0 && i - start >= minRun) out.push({ off: start, kind: 'ASCII', text: ASCII(u8, start, Math.min(i - start, 400)) });
+      start = -1;
+    }
+    if (out.length > 8000) break;
+  }
+  // UTF-8 中文串
+  let cjkStart = -1, cjkCount = 0;
+  for (let i = 0; i < cap;) {
+    const b = u8[i];
+    let size = 0;
+    if (b >= 0xE0 && b <= 0xEF && i + 2 < cap && (u8[i + 1] & 0xC0) === 0x80 && (u8[i + 2] & 0xC0) === 0x80) size = 3;
+    else if (b >= 0xC2 && b <= 0xDF && i + 1 < cap && (u8[i + 1] & 0xC0) === 0x80) size = 2;
+    if (size) {
+      if (cjkStart < 0) { cjkStart = i; cjkCount = 0; }
+      cjkCount++; i += size;
+    } else {
+      if (cjkStart >= 0 && cjkCount >= 2) {
+        const txt = utf8(u8, cjkStart, Math.min(i - cjkStart, 300));
+        if (/[　-鿿]/.test(txt)) out.push({ off: cjkStart, kind: 'UTF-8', text: txt });
+      }
+      cjkStart = -1; i++;
+    }
+    if (out.length > 12000) break;
+  }
+  // UTF-16LE
+  let u16Start = -1, u16Len = 0;
+  for (let i = 0; i + 1 < cap; i += 2) {
+    const lo = u8[i], hi = u8[i + 1];
+    if (hi === 0 && lo >= 32 && lo < 127) { if (u16Start < 0) { u16Start = i; u16Len = 0; } u16Len++; }
+    else {
+      if (u16Start >= 0 && u16Len >= 4) {
+        let s = '';
+        for (let k = 0; k < u16Len; k++) s += String.fromCharCode(u8[u16Start + k * 2]);
+        out.push({ off: u16Start, kind: 'UTF-16LE', text: s.slice(0, 300) });
+      }
+      u16Start = -1;
+    }
+    if (out.length > 16000) break;
+  }
+  out.sort((a, b) => a.off - b.off);
+  return out;
+}
+function renderStrings() {
+  if (!ST.u8) return;
+  const minLen = Number($('#bs-str-min').value);
+  const wantU16 = $('#bs-str-u16').checked, wantCJK = $('#bs-str-cjk').checked;
+  const q = $('#bs-str-q').value.trim();
+  let re = null, sub = '';
+  if (q.length > 2 && q[0] === '/' && q[q.length - 1] === '/') { try { re = new RegExp(q.slice(1, -1), 'i'); } catch (e) { re = null; } }
+  else sub = q.toLowerCase();
+  const list = ST.strAll.filter((s) => {
+    if (s.kind === 'UTF-16LE' && !wantU16) return false;
+    if (s.kind === 'UTF-8' && !wantCJK) return false;
+    if (s.kind !== 'UTF-8' && s.text.length < minLen) return false;
+    if (re) return re.test(s.text);
+    if (sub) return s.text.toLowerCase().includes(sub);
+    return true;
+  });
+  ST.strings = list;
+  const tbl = $('#bs-str-tbl');
+  tbl.innerHTML = '<thead><tr><th style="width:96px">偏移</th><th style="width:86px">编码</th><th>内容</th></tr></thead>';
+  const tb = el('tbody');
+  for (const s of list.slice(0, 1200)) {
+    const tr = el('tr', 'bs-strrow');
+    tr.appendChild(el('td', 'bs-r', hx(s.off)));
+    const t = el('td'); const tag = el('span', 'bs-tag', s.kind); t.appendChild(tag); tr.appendChild(t);
+    tr.appendChild(el('td', 'bs-str', s.text.length > 160 ? s.text.slice(0, 160) + ' …' : s.text));
+    tr.addEventListener('click', () => { setTab('hex'); jumpTo(s.off); ST.hl = { start: s.off, end: s.off + s.text.length }; renderHex(); });
+    tb.appendChild(tr);
+  }
+  tbl.appendChild(tb);
+  if (!list.length) tb.appendChild(el('tr')).appendChild(el('td', 'bs-empty', '没有匹配的字符串')).colSpan = 3;
+  $('#bs-str-sum').textContent = '命中 ' + num(list.length) + ' 条 / 共扫出 ' + num(ST.strAll.length) + ' 条' + (list.length > 1200 ? '（只列前 1200 条）' : '');
+}
+
+/* ── 最近打开 + 命令面板 ── */
+function pushRecent(name, size, fmt, sampleId) {
+  const rec = LS.get('bs.recent', []);
+  const item = { name, size, fmt, at: Date.now(), sample: sampleId || null };
+  const next = [item].concat(rec.filter((r) => !(r.name === name && r.sample === item.sample))).slice(0, 6);
+  LS.set('bs.recent', next);
+}
+function renderPalette() {
+  const list = $('#bs-pal-list');
+  const q = $('#bs-pal-search').value.trim().toLowerCase();
+  list.textContent = '';
+  const match = (s) => !q || s.toLowerCase().includes(q);
+  const secSamples = SAMPLES.filter((s) => match(s.name + ' ' + s.meta + ' ' + s.tile));
+  if (secSamples.length) {
+    list.appendChild(el('div', 'bs-pal-sec', '内置样本 · 全部在本页现场生成'));
+    for (const s of secSamples) {
+      const row = el('button', 'bs-pal-row');
+      row.type = 'button';
+      row.dataset.sample = s.id;
+      row.appendChild(el('span', 'bs-tile', s.tile));
+      row.appendChild(el('span', 'bs-pal-name', s.name));
+      row.appendChild(el('span', 'bs-pal-meta', s.meta));
+      row.addEventListener('click', () => openSample(s.id));
+      list.appendChild(row);
+    }
+  }
+  const rec = LS.get('bs.recent', []).filter((r) => match(r.name));
+  if (rec.length) {
+    list.appendChild(el('div', 'bs-pal-sec', '最近打开'));
+    for (const r of rec) {
+      const row = el('button', 'bs-pal-row');
+      row.type = 'button';
+      row.appendChild(el('span', 'bs-tile', r.fmt.slice(0, 4)));
+      row.appendChild(el('span', 'bs-pal-name', r.name));
+      row.appendChild(el('span', 'bs-pal-meta', fmtBytesShort(r.size) + (r.sample ? ' · 可重新打开' : ' · 仅记录，内容未保存')));
+      row.addEventListener('click', () => { if (r.sample) openSample(r.sample); else $('#bs-file').click(); });
+      list.appendChild(row);
+    }
+  }
+  if (!list.children.length) list.appendChild(el('div', 'bs-empty', '没有匹配的样本'));
+}
+async function openSample(id) {
+  const s = SAMPLES.find((x) => x.id === id);
+  if (!s) return;
+  const bytes = await s.build();
+  await loadBytes(bytes, s.name, id);
+}
+
+/* ── 事件绑定 ── */
+function bind() {
+  for (const t of TABS) $('#bs-tab-' + t).addEventListener('click', () => setTab(t));
+  $('#bs-open').addEventListener('click', () => $('#bs-file').click());
+  $('#bs-file').addEventListener('change', async (e) => {
+    const f = e.target.files && e.target.files[0];
+    if (!f) return;
+    const buf = await f.arrayBuffer();
+    await loadBytes(new Uint8Array(buf), f.name, null);
+    setTab('overview');
+  });
+  $('#bs-pal-search').addEventListener('input', renderPalette);
+  $('#bs-hexscroll').addEventListener('scroll', () => renderHex());
+  $('#bs-hexrows').addEventListener('click', (e) => {
+    const t = e.target.closest('[data-off]');
+    if (!t) return;
+    ST.cursor = Number(t.dataset.off);
+    renderHex(); renderInspector();
+  });
+  $('#bs-goto-btn').addEventListener('click', () => {
+    const v = $('#bs-goto').value.trim();
+    const off = /^0x/i.test(v) ? parseInt(v.slice(2), 16) : /^[0-9]+$/.test(v) ? parseInt(v, 10) : parseInt(v, 16);
+    if (isFinite(off) && off >= 0 && off < ST.u8.length) jumpTo(off);
+  });
+  $('#bs-goto').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('#bs-goto-btn').click(); });
+  $('#bs-bpr').addEventListener('change', () => {
+    ST.bpr = Number($('#bs-bpr').value);
+    SETTINGS.bpr = ST.bpr; LS.set('bs.settings', SETTINGS);
+    renderHex();
+  });
+  $('#bs-goto-hex').addEventListener('click', () => { if (ST.sel) { setTab('hex'); jumpTo(ST.sel.start); } });
+  $('#bs-copy-node').addEventListener('click', async () => {
+    if (!ST.sel) return;
+    const n = Math.min(ST.sel.len, 4096);
+    let s = '';
+    for (let i = 0; i < n; i++) s += hex(ST.u8[ST.sel.start + i]) + ((i + 1) % 16 === 0 ? '\n' : ' ');
+    try { await navigator.clipboard.writeText(s.trim()); $('#bs-copy-node').textContent = '已复制 ' + n + ' 字节'; }
+    catch (e) { $('#bs-copy-node').textContent = '复制失败（浏览器拒绝）'; }
+    setTimeout(() => { $('#bs-copy-node').textContent = '复制该段十六进制'; }, 1800);
+  });
+  for (const id of ['#bs-str-q', '#bs-str-min', '#bs-str-u16', '#bs-str-cjk']) {
+    $(id).addEventListener('input', () => {
+      SETTINGS.minLen = Number($('#bs-str-min').value);
+      SETTINGS.u16 = $('#bs-str-u16').checked; SETTINGS.cjk = $('#bs-str-cjk').checked;
+      LS.set('bs.settings', SETTINGS);
+      renderStrings();
+    });
+  }
+  $('#bs-str-copy').addEventListener('click', async () => {
+    const s = ST.strings.slice(0, 2000).map((x) => hx(x.off) + '  ' + x.text).join('\n');
+    try { await navigator.clipboard.writeText(s); $('#bs-str-copy').textContent = '已复制 ' + Math.min(2000, ST.strings.length) + ' 条'; }
+    catch (e) { $('#bs-str-copy').textContent = '复制失败'; }
+    setTimeout(() => { $('#bs-str-copy').textContent = '复制全部'; }, 1800);
+  });
+  $('#bs-export').addEventListener('click', () => {
+    if (!ST.res) return;
+    const dump = (list) => list.map((n) => ({
+      名称: n.name, 说明: n.desc, 偏移: n.start, 长度: n.len, 分类: KIND_LABEL[n.kind] || n.kind,
+      字段: Object.fromEntries(n.fields), 子节点: n.children && n.children.length ? dump(n.children) : undefined,
+    }));
+    const data = {
+      文件: { 名称: ST.name, 字节数: ST.u8.length, 识别格式: ST.res.fmt.name, MIME: ST.res.fmt.mime },
+      概览: Object.fromEntries(ST.res.kv), 体检发现: ST.res.finds, 结构: dump(ST.res.nodes),
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = ST.name.replace(/\.[^.]+$/, '') + '.structure.json';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  });
+  // 拖放
+  let dragDepth = 0;
+  window.addEventListener('dragenter', (e) => { e.preventDefault(); dragDepth++; $('#bs-drop').hidden = false; });
+  window.addEventListener('dragover', (e) => e.preventDefault());
+  window.addEventListener('dragleave', () => { if (--dragDepth <= 0) { dragDepth = 0; $('#bs-drop').hidden = true; } });
+  window.addEventListener('drop', async (e) => {
+    e.preventDefault(); dragDepth = 0; $('#bs-drop').hidden = true;
+    const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+    if (!f) return;
+    await loadBytes(new Uint8Array(await f.arrayBuffer()), f.name, null);
+    setTab('overview');
+  });
+  window.addEventListener('paste', async (e) => {
+    const items = e.clipboardData && e.clipboardData.files;
+    if (items && items[0]) { await loadBytes(new Uint8Array(await items[0].arrayBuffer()), items[0].name || '剪贴板文件', null); setTab('overview'); }
+  });
+  // 键盘
+  document.addEventListener('keydown', (e) => {
+    const tag = (e.target.tagName || '').toLowerCase();
+    const typing = tag === 'input' || tag === 'select' || tag === 'textarea';
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (typing) { if (e.key === 'Escape') e.target.blur(); return; }
+    const k = e.key.toLowerCase();
+    if (k >= '1' && k <= '5') { setTab(TABS[Number(k) - 1]); e.preventDefault(); }
+    else if (k === 'o') { $('#bs-file').click(); e.preventDefault(); }
+    else if (k === 'g') { setTab('hex'); $('#bs-goto').focus(); $('#bs-goto').select(); e.preventDefault(); }
+    else if (k === '/') { $('#bs-pal-search').focus(); e.preventDefault(); }
+  });
+}
+
+/* ── 启动 ── */
+(async function init() {
+  ST.bpr = SETTINGS.bpr || 16;
+  $('#bs-bpr').value = String(ST.bpr);
+  $('#bs-str-min').value = String(SETTINGS.minLen || 4);
+  $('#bs-str-u16').checked = SETTINGS.u16 !== false;
+  $('#bs-str-cjk').checked = SETTINGS.cjk !== false;
+  bind();
+  renderPalette();
+  renderInspector();
+  try {
+    await openSample('jpeg');
+  } catch (e) {
+    await loadBytes(new TextEncoder().encode('样本生成失败：' + e.message), '错误.txt', null);
+  }
+  setTab('overview');
+  document.body.dataset.ready = '1';
+})();
+</script>
+</body>
+</html>
