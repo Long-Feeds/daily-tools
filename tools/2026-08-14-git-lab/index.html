@@ -1,0 +1,2823 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Git 内核实验室 · Git Lab</title>
+<meta name="description" content="浏览器内的 git 沙盒：真的算 SHA-1、真的建对象、真的做三方合并。对象 id 与真 git 逐字节一致。">
+<style>
+[hidden]{display:none!important}
+*,*::before,*::after{box-sizing:border-box}
+:root{
+  --gl-canvas:#ffffff; --gl-surface:#f7f7f7; --gl-surface-soft:#fafafa; --gl-code:#1c1c1e;
+  --gl-hairline:#e5e5e5; --gl-hairline-soft:#ededed; --gl-hairline-dark:#2a2a2e;
+  --gl-ink:#0a0a0a; --gl-charcoal:#1c1c1e; --gl-slate:#3a3a3c; --gl-steel:#5a5a5c;
+  --gl-stone:#888888; --gl-muted:#a8a8aa; --gl-on-dark:#ffffff; --gl-on-dark-mute:#b3b3b3;
+  --gl-green:#00d4a4; --gl-green-deep:#00b48a; --gl-green-soft:#7cebcb;
+  --gl-tag:#3772cf; --gl-warn:#c37d0d; --gl-error:#d45656; --gl-orange:#f55a3c;
+  --gl-sky-from:#87a8c8; --gl-sky-to:#f5e9d8;
+  --gl-r-xs:4px; --gl-r-sm:6px; --gl-r-md:8px; --gl-r-lg:12px; --gl-r-xl:16px; --gl-r-full:9999px;
+  --gl-sans:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  --gl-mono:"Geist Mono","SF Mono",SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--gl-canvas);color:var(--gl-ink);font-family:var(--gl-sans);
+  font-size:16px;line-height:1.5;-webkit-font-smoothing:antialiased}
+a{color:var(--gl-ink)}
+h1,h2,h3,h4{margin:0;font-weight:600;letter-spacing:-0.01em}
+button,input,select,textarea{font-family:inherit;font-size:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--gl-green);outline-offset:2px}
+
+/* ---------- 顶栏 + hero ---------- */
+.gl-topbar{display:flex;align-items:center;justify-content:space-between;gap:16px;
+  padding:12px 24px;border-bottom:1px solid var(--gl-hairline);background:var(--gl-canvas);
+  position:sticky;top:0;z-index:20}
+.gl-back{font-size:14px;font-weight:500;text-decoration:none;color:var(--gl-steel);
+  padding:8px 12px;border-radius:var(--gl-r-md)}
+.gl-back:hover{color:var(--gl-ink);background:var(--gl-surface)}
+.gl-topbar-actions{display:flex;gap:8px;flex-wrap:wrap}
+.gl-hero{background:linear-gradient(160deg,var(--gl-sky-from) 0%,#c9d8e4 45%,var(--gl-sky-to) 100%);
+  padding:40px 24px 44px;border-bottom:1px solid var(--gl-hairline)}
+.gl-hero-inner{max-width:1280px;margin:0 auto}
+.gl-hero h1{font-size:44px;line-height:1.08;letter-spacing:-1.4px;color:#0a1a26}
+.gl-hero p{margin:12px 0 0;font-size:18px;line-height:1.5;color:#12303f;max-width:66ch}
+.gl-hero-badges{display:flex;flex-wrap:wrap;gap:8px;margin-top:20px}
+.gl-badge{display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,.82);
+  border:1px solid rgba(255,255,255,.6);color:#123;border-radius:var(--gl-r-full);
+  padding:4px 12px;font-size:13px;font-weight:500}
+.gl-badge b{font-weight:600;color:var(--gl-green-deep)}
+
+/* ---------- 布局 ---------- */
+.gl-shell{max-width:1280px;margin:0 auto;padding:24px;display:grid;
+  grid-template-columns:236px minmax(0,1fr) 272px;gap:24px;align-items:start}
+.gl-side,.gl-aside{position:sticky;top:69px;max-height:calc(100vh - 93px);overflow:auto}
+.gl-sec-head{font-size:11px;font-weight:600;letter-spacing:.5px;color:var(--gl-steel);
+  padding:16px 12px 8px}
+.gl-navitem{display:block;width:100%;text-align:left;background:transparent;border:0;
+  border-radius:var(--gl-r-sm);padding:8px 12px;font-size:14px;color:var(--gl-steel);cursor:pointer;
+  line-height:1.4}
+.gl-navitem:hover{background:var(--gl-surface-soft);color:var(--gl-ink)}
+.gl-navitem[aria-current="true"]{background:var(--gl-surface);color:var(--gl-ink);font-weight:500}
+.gl-navitem[aria-current="true"]::before{content:"";display:inline-block;width:6px;height:6px;
+  border-radius:50%;background:var(--gl-green);margin-right:8px;vertical-align:middle}
+.gl-navnote{font-size:12px;color:var(--gl-muted);padding:0 12px 8px;line-height:1.45}
+.gl-cmdlist{display:flex;flex-wrap:wrap;gap:6px;padding:0 12px 12px}
+.gl-cmd{background:var(--gl-surface);border:1px solid var(--gl-hairline);border-radius:var(--gl-r-xs);
+  padding:3px 7px;font-family:var(--gl-mono);font-size:12px;color:var(--gl-charcoal);cursor:pointer;
+  min-height:22px}
+.gl-cmd:hover{border-color:var(--gl-green);color:var(--gl-ink)}
+
+/* ---------- 卡片 / 按钮 ---------- */
+.gl-card{background:var(--gl-canvas);border:1px solid var(--gl-hairline);border-radius:var(--gl-r-lg);
+  padding:20px;margin-bottom:16px}
+.gl-card h3{font-size:18px;margin-bottom:4px}
+.gl-card-sub{font-size:13px;color:var(--gl-steel);margin:0 0 14px}
+.gl-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-width:64px;
+  border-radius:var(--gl-r-full);padding:9px 18px;font-size:14px;font-weight:500;cursor:pointer;
+  background:var(--gl-ink);color:#fff;border:1px solid var(--gl-ink);line-height:1.3}
+.gl-btn:hover{background:var(--gl-charcoal)}
+.gl-btn:disabled{background:var(--gl-hairline);border-color:var(--gl-hairline);color:var(--gl-muted);cursor:not-allowed}
+.gl-btn-2{background:transparent;color:var(--gl-ink);border:1px solid var(--gl-hairline)}
+.gl-btn-2:hover{background:var(--gl-surface);border-color:var(--gl-hairline-soft)}
+.gl-btn-go{background:var(--gl-green);border-color:var(--gl-green);color:#06251e}
+.gl-btn-go:hover{background:var(--gl-green-deep);border-color:var(--gl-green-deep)}
+.gl-btn-sm{min-width:56px;padding:5px 12px;font-size:13px}
+.gl-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.gl-in{background:var(--gl-canvas);border:1px solid var(--gl-hairline);border-radius:var(--gl-r-md);
+  padding:9px 12px;min-width:120px;height:40px;font-size:14px}
+.gl-in:focus{border:2px solid var(--gl-green);outline:none;padding:8px 11px}
+select.gl-in{height:40px;min-width:140px}
+
+/* ---------- 标签页 ---------- */
+.gl-tabs{display:flex;gap:4px;border-bottom:1px solid var(--gl-hairline);margin-bottom:20px;
+  overflow-x:auto}
+.gl-tab{background:transparent;border:0;border-bottom:2px solid transparent;color:var(--gl-steel);
+  font-size:14px;font-weight:500;padding:12px 16px;cursor:pointer;white-space:nowrap;min-width:64px}
+.gl-tab:hover{color:var(--gl-ink)}
+.gl-tab[aria-selected="true"]{color:var(--gl-ink);border-bottom-color:var(--gl-ink)}
+
+/* ---------- 三区视图 ---------- */
+.gl-areas{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.gl-area{border:1px solid var(--gl-hairline);border-radius:var(--gl-r-lg);overflow:hidden;
+  background:var(--gl-canvas);min-width:0}
+.gl-area-h{padding:12px 14px;border-bottom:1px solid var(--gl-hairline-soft);background:var(--gl-surface-soft)}
+.gl-area-h b{display:block;font-size:14px}
+.gl-area-h span{font-size:12px;color:var(--gl-steel);font-family:var(--gl-mono)}
+.gl-files{list-style:none;margin:0;padding:6px;display:flex;flex-direction:column;gap:2px;min-height:60px}
+.gl-file{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:var(--gl-r-sm);
+  font-size:13px;min-width:0}
+.gl-file:hover{background:var(--gl-surface-soft)}
+.gl-file-name{font-family:var(--gl-mono);font-size:12.5px;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap;flex:1 1 auto;min-width:0;text-align:left;background:none;border:0;cursor:pointer;
+  color:var(--gl-charcoal);padding:0;min-height:22px;line-height:22px}
+.gl-file-name:hover{color:var(--gl-ink);text-decoration:underline}
+.gl-oid{font-family:var(--gl-mono);font-size:11.5px;color:var(--gl-stone);flex:0 0 auto}
+.gl-chip{flex:0 0 auto;font-size:11px;font-weight:600;border-radius:var(--gl-r-sm);padding:1px 6px;
+  border:1px solid transparent;white-space:nowrap}
+.gl-chip-new{background:rgba(0,212,164,.14);color:var(--gl-green-deep)}
+.gl-chip-mod{background:rgba(195,125,13,.13);color:var(--gl-warn)}
+.gl-chip-del{background:rgba(212,86,86,.12);color:var(--gl-error)}
+.gl-chip-untracked{background:var(--gl-surface);color:var(--gl-steel)}
+.gl-chip-conflict{background:rgba(245,90,60,.14);color:var(--gl-orange)}
+.gl-empty{padding:14px;font-size:12.5px;color:var(--gl-muted);text-align:center}
+.gl-arrowrow{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:10px 0 2px}
+.gl-arrow{font-size:12px;color:var(--gl-steel);text-align:center}
+.gl-arrow code{font-family:var(--gl-mono);background:var(--gl-surface);border:1px solid var(--gl-hairline);
+  border-radius:var(--gl-r-xs);padding:1px 6px;font-size:11.5px}
+
+/* ---------- 编辑器 ---------- */
+.gl-editor textarea{width:100%;min-height:150px;border:1px solid var(--gl-hairline);
+  border-radius:var(--gl-r-md);padding:12px;font-family:var(--gl-mono);font-size:13px;line-height:1.5;
+  resize:vertical;background:var(--gl-canvas)}
+.gl-editor textarea:focus{border:2px solid var(--gl-green);outline:none;padding:11px}
+.gl-hashline{font-family:var(--gl-mono);font-size:12px;color:var(--gl-steel);margin-top:8px;
+  word-break:break-all}
+.gl-hashline b{color:var(--gl-green-deep);font-weight:600}
+
+/* ---------- 提交图 ---------- */
+.gl-graphwrap{position:relative;min-height:80px}
+.gl-graph-svg{position:absolute;left:0;top:0;pointer-events:none}
+.gl-grow{display:flex;align-items:center;gap:8px;height:44px;padding:0 10px 0 0;border-radius:var(--gl-r-sm);
+  background:none;border:0;width:100%;cursor:pointer;text-align:left;min-width:0}
+.gl-grow:hover{background:var(--gl-surface-soft)}
+.gl-grow[aria-current="true"]{background:var(--gl-surface)}
+.gl-grow .gl-oid{color:var(--gl-tag)}
+.gl-gsubject{font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:1 1 auto}
+.gl-ref{font-size:11px;font-weight:600;border-radius:var(--gl-r-full);padding:1px 8px;white-space:nowrap;flex:0 0 auto}
+.gl-ref-head{background:var(--gl-ink);color:#fff}
+.gl-ref-branch{background:rgba(0,212,164,.16);color:var(--gl-green-deep)}
+.gl-ref-tag{background:rgba(55,114,207,.14);color:var(--gl-tag)}
+.gl-ref-dangling{background:var(--gl-surface);color:var(--gl-muted);border:1px dashed var(--gl-hairline)}
+.gl-gtime{font-size:11.5px;color:var(--gl-muted);flex:0 0 auto;font-family:var(--gl-mono)}
+
+/* ---------- 表格 ---------- */
+.gl-table{width:100%;border-collapse:collapse;font-size:13px}
+.gl-table th{text-align:left;font-size:12px;font-weight:600;color:var(--gl-steel);
+  padding:8px 10px;border-bottom:1px solid var(--gl-hairline);white-space:nowrap}
+.gl-table td{padding:8px 10px;border-bottom:1px solid var(--gl-hairline-soft);vertical-align:top}
+.gl-table tr:last-child td{border-bottom:0}
+.gl-table code,.gl-mono{font-family:var(--gl-mono);font-size:12px}
+.gl-linkish{background:none;border:0;padding:0;font-family:var(--gl-mono);font-size:12px;
+  color:var(--gl-tag);cursor:pointer;text-decoration:underline;text-underline-offset:2px;
+  min-height:20px;line-height:20px}
+.gl-tablewrap{overflow-x:auto}
+
+/* ---------- 代码 / 终端（Mintlify 深色代码面） ---------- */
+.gl-codeblock{background:var(--gl-code);border-radius:var(--gl-r-md);overflow:hidden;border:1px solid #000}
+.gl-codehead{display:flex;align-items:center;justify-content:space-between;gap:12px;
+  padding:8px 16px;border-bottom:1px solid var(--gl-hairline-dark);color:var(--gl-on-dark-mute);font-size:13px}
+.gl-codehead b{color:var(--gl-on-dark);font-weight:500}
+.gl-pre{margin:0;padding:16px;color:var(--gl-on-dark);font-family:var(--gl-mono);font-size:13px;
+  line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere;max-height:340px;overflow-y:auto}
+.gl-term{margin-top:20px}
+.gl-termout{min-height:120px;max-height:300px}
+.gl-termline{display:block}
+.gl-termcmd{color:var(--gl-green-soft)}
+.gl-termerr{color:#ff8f8f}
+.gl-termnote{color:var(--gl-on-dark-mute)}
+.gl-terminput{display:flex;align-items:center;gap:8px;border-top:1px solid var(--gl-hairline-dark);
+  padding:8px 16px;flex-wrap:wrap}
+.gl-prompt{color:var(--gl-green);font-family:var(--gl-mono);font-size:13px;flex:0 1 auto;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
+.gl-terminput input{flex:1 1 auto;min-width:120px;background:transparent;border:0;outline:none;
+  color:var(--gl-on-dark);font-family:var(--gl-mono);font-size:13px;height:26px}
+.gl-diffadd{color:#5ee9c1}
+.gl-diffdel{color:#ff9c9c}
+.gl-diffhunk{color:#8ab4f8}
+.gl-difffile{color:#fff;font-weight:600}
+.gl-cmark{color:#ffcf70;font-weight:600}
+.gl-byte-hdr{color:var(--gl-green-soft)}
+.gl-byte-nul{color:var(--gl-orange);font-weight:600}
+
+/* ---------- 侧栏状态 ---------- */
+.gl-kv{display:flex;justify-content:space-between;gap:10px;padding:7px 0;
+  border-bottom:1px solid var(--gl-hairline-soft);font-size:13px;min-width:0}
+.gl-kv:last-child{border-bottom:0}
+.gl-kv dt{color:var(--gl-steel);flex:0 0 auto;margin:0}
+.gl-kv dd{margin:0;font-family:var(--gl-mono);font-size:12px;text-align:right;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.gl-note{font-size:12.5px;color:var(--gl-steel);line-height:1.5}
+.gl-callout{border:1px solid var(--gl-hairline);border-left:3px solid var(--gl-green);
+  background:var(--gl-surface-soft);border-radius:var(--gl-r-md);padding:12px 14px;font-size:13px;
+  color:var(--gl-slate);line-height:1.55;margin:12px 0}
+.gl-callout-warn{border-left-color:var(--gl-orange)}
+.gl-callout b{color:var(--gl-ink)}
+.gl-inline{font-family:var(--gl-mono);font-size:12.5px;background:var(--gl-surface);
+  border:1px solid var(--gl-hairline);border-radius:var(--gl-r-xs);padding:1px 5px;color:var(--gl-charcoal)}
+
+/* ---------- 教程 ---------- */
+.gl-step{border:1px solid var(--gl-hairline);border-radius:var(--gl-r-md);padding:12px 14px;
+  margin-bottom:8px;background:var(--gl-canvas)}
+.gl-step[data-state="done"]{background:var(--gl-surface-soft);border-color:var(--gl-hairline-soft)}
+.gl-step[data-state="now"]{border:2px solid var(--gl-green);box-shadow:rgba(0,212,164,.08) 0 8px 24px}
+.gl-step-cmd{font-family:var(--gl-mono);font-size:12.5px;color:var(--gl-ink);overflow-wrap:anywhere}
+.gl-step-note{font-size:13px;color:var(--gl-steel);margin-top:6px;line-height:1.5}
+.gl-step-idx{font-family:var(--gl-mono);font-size:11.5px;color:var(--gl-muted);margin-right:8px}
+.gl-progress{height:4px;border-radius:var(--gl-r-full);background:var(--gl-hairline);overflow:hidden;margin:10px 0 14px}
+.gl-progress i{display:block;height:100%;background:var(--gl-green);border-radius:var(--gl-r-full)}
+
+/* ---------- 校验表 ---------- */
+.gl-ok{color:var(--gl-green-deep);font-weight:600;white-space:nowrap}
+.gl-bad{color:var(--gl-error);font-weight:600;white-space:nowrap}
+
+.gl-footer{max-width:1280px;margin:0 auto;padding:32px 24px 56px;color:var(--gl-steel);font-size:13px;
+  border-top:1px solid var(--gl-hairline)}
+.gl-footer a{color:var(--gl-steel)}
+
+@media (max-width:1180px){
+  .gl-shell{grid-template-columns:212px minmax(0,1fr)}
+  .gl-aside{grid-column:1 / -1;position:static;max-height:none}
+  .gl-aside .gl-card{margin-bottom:0}
+  .gl-asidegrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px}
+}
+@media (max-width:880px){
+  .gl-shell{grid-template-columns:minmax(0,1fr);padding:16px}
+  .gl-side{position:static;max-height:none}
+  .gl-areas{grid-template-columns:minmax(0,1fr)}
+  .gl-arrowrow{display:none}
+  .gl-hero{padding:28px 16px 32px}
+  .gl-hero h1{font-size:32px;letter-spacing:-1px}
+  .gl-hero p{font-size:16px}
+  .gl-topbar{padding:10px 16px}
+}
+</style>
+</head>
+<body>
+<div class="gl-topbar">
+  <a class="gl-back" href="../../">← 返回工具集</a>
+  <div class="gl-topbar-actions">
+    <button class="gl-btn gl-btn-2 gl-btn-sm" id="gl-save">保存快照</button>
+    <button class="gl-btn gl-btn-2 gl-btn-sm" id="gl-load">读取快照</button>
+    <button class="gl-btn gl-btn-2 gl-btn-sm" id="gl-reset">清空重来</button>
+  </div>
+</div>
+
+<header class="gl-hero">
+  <div class="gl-hero-inner">
+    <h1>Git 内核实验室</h1>
+    <p>一个跑在浏览器里的 git。它不是动画演示 —— 每次 <code>commit</code> 都真的算 SHA-1、真的往对象库里写 blob / tree / commit，合并真的跑三方算法。你敲的命令产出的 40 位哈希，和本机 <code>git</code> 一模一样。</p>
+    <div class="gl-hero-badges">
+      <span class="gl-badge">对象 id 与真 git <b>逐字节一致</b></span>
+      <span class="gl-badge">三方合并对拍 <b>400/400</b></span>
+      <span class="gl-badge">零上传 · 纯前端</span>
+      <span class="gl-badge">改坏了随时 <b>清空重来</b></span>
+    </div>
+  </div>
+</header>
+
+<div class="gl-shell">
+  <nav class="gl-side" aria-label="场景与命令">
+    <div class="gl-sec-head">动手学（选一个开始）</div>
+    <div id="gl-scenarios"></div>
+    <div class="gl-sec-head">命令速查（点一下填进终端）</div>
+    <div class="gl-cmdlist" id="gl-cmdlist"></div>
+    <div class="gl-navnote">支持 30 多个子命令，<code>git help</code> 看全表。文件用 <code>echo "内容" &gt; 文件名</code> 造。</div>
+  </nav>
+
+  <main class="gl-main">
+    <div class="gl-tabs" role="tablist" id="gl-tabs">
+      <button class="gl-tab" role="tab" id="gl-tab-work" aria-controls="gl-p-work" aria-selected="true">工作区</button>
+      <button class="gl-tab" role="tab" id="gl-tab-graph" aria-controls="gl-p-graph" aria-selected="false">提交图</button>
+      <button class="gl-tab" role="tab" id="gl-tab-obj" aria-controls="gl-p-obj" aria-selected="false">对象库</button>
+      <button class="gl-tab" role="tab" id="gl-tab-diff" aria-controls="gl-p-diff" aria-selected="false">差异</button>
+      <button class="gl-tab" role="tab" id="gl-tab-learn" aria-controls="gl-p-learn" aria-selected="false">教程</button>
+    </div>
+
+    <!-- 工作区 -->
+    <section id="gl-p-work" role="tabpanel" aria-labelledby="gl-tab-work">
+      <div class="gl-card">
+        <h3>三个区域</h3>
+        <p class="gl-card-sub">git 的一切困惑都始于这三个格子：改文件动的是左边，<code>add</code> 把内容搬到中间，<code>commit</code> 把中间的整体拍成一棵树存进右边。</p>
+        <div class="gl-arrowrow">
+          <div class="gl-arrow">① 你直接改的文件</div>
+          <div class="gl-arrow">② <code>git add</code> 搬进来的内容快照</div>
+          <div class="gl-arrow">③ <code>git commit</code> 定格成的一棵树</div>
+        </div>
+        <div class="gl-areas">
+          <div class="gl-area">
+            <div class="gl-area-h"><b>工作区</b><span id="gl-work-sub">你能看见的文件</span></div>
+            <ul class="gl-files" id="gl-work-list"></ul>
+          </div>
+          <div class="gl-area">
+            <div class="gl-area-h"><b>暂存区（索引）</b><span id="gl-index-sub">路径 → blob 哈希</span></div>
+            <ul class="gl-files" id="gl-index-list"></ul>
+          </div>
+          <div class="gl-area">
+            <div class="gl-area-h"><b>HEAD 提交</b><span id="gl-head-sub">仓库里已经定格的样子</span></div>
+            <ul class="gl-files" id="gl-head-list"></ul>
+          </div>
+        </div>
+        <div class="gl-row" style="margin-top:14px">
+          <button class="gl-btn gl-btn-sm" id="gl-quick-add">git add .</button>
+          <input class="gl-in" id="gl-quick-msg" placeholder="提交说明" value="更新" aria-label="提交说明">
+          <button class="gl-btn gl-btn-go gl-btn-sm" id="gl-quick-commit">git commit</button>
+          <button class="gl-btn gl-btn-2 gl-btn-sm" id="gl-quick-status">git status</button>
+          <button class="gl-btn gl-btn-2 gl-btn-sm" id="gl-new-file">新建文件</button>
+        </div>
+        <div id="gl-conflict-box" hidden>
+          <div class="gl-callout gl-callout-warn">
+            <b>有冲突要解决。</b><span id="gl-conflict-text"></span>
+            <div class="gl-row" style="margin-top:10px" id="gl-conflict-actions"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="gl-card gl-editor">
+        <h3>文件编辑器 <span class="gl-mono" id="gl-edit-name" style="color:var(--gl-steel)"></span></h3>
+        <p class="gl-card-sub">改完点「保存到工作区」。下面那行哈希是这段内容<b>此刻</b>的 blob id —— 内容变一个字，id 全变，这就是内容寻址。</p>
+        <textarea id="gl-edit-body" spellcheck="false" aria-label="文件内容"></textarea>
+        <div class="gl-hashline">这段内容的 blob 哈希：<b id="gl-edit-hash">—</b></div>
+        <div class="gl-row" style="margin-top:12px">
+          <button class="gl-btn gl-btn-sm" id="gl-edit-save">保存到工作区</button>
+          <button class="gl-btn gl-btn-go gl-btn-sm" id="gl-edit-stage">保存并 git add</button>
+          <button class="gl-btn gl-btn-2 gl-btn-sm" id="gl-edit-del">删除该文件</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 提交图 -->
+    <section id="gl-p-graph" role="tabpanel" aria-labelledby="gl-tab-graph" hidden>
+      <div class="gl-card">
+        <h3>提交图</h3>
+        <p class="gl-card-sub">每个圆点是一个 commit 对象；连线指向它的父提交。分支名与 HEAD 只是贴在某个点上的标签 —— 灰色虚线框表示<b>没有任何引用指向它</b>（悬空提交，只有 reflog 还记得）。</p>
+        <div class="gl-graphwrap" id="gl-graph"></div>
+      </div>
+      <div class="gl-card" id="gl-commit-card">
+        <h3>提交详情</h3>
+        <p class="gl-card-sub" id="gl-commit-sub">点上面任意一个提交看它的对象内容与改动。</p>
+        <div id="gl-commit-body"></div>
+      </div>
+    </section>
+
+    <!-- 对象库 -->
+    <section id="gl-p-obj" role="tabpanel" aria-labelledby="gl-tab-obj" hidden>
+      <div class="gl-card">
+        <h3>对象库 <span class="gl-mono" id="gl-obj-count" style="color:var(--gl-steel);font-size:13px"></span></h3>
+        <p class="gl-card-sub">.git/objects 的全部内容。git 只有四种对象，这里能看到其中三种：<b>blob</b>（文件内容，不含文件名）、<b>tree</b>（目录：一串 模式+名字+子对象 id）、<b>commit</b>（一棵树 + 父提交 + 作者 + 说明）。</p>
+        <div class="gl-row" style="margin-bottom:12px">
+          <button class="gl-btn gl-btn-2 gl-btn-sm gl-objfilter" data-type="all" aria-pressed="true">全部</button>
+          <button class="gl-btn gl-btn-2 gl-btn-sm gl-objfilter" data-type="commit" aria-pressed="false">commit</button>
+          <button class="gl-btn gl-btn-2 gl-btn-sm gl-objfilter" data-type="tree" aria-pressed="false">tree</button>
+          <button class="gl-btn gl-btn-2 gl-btn-sm gl-objfilter" data-type="blob" aria-pressed="false">blob</button>
+        </div>
+        <div class="gl-tablewrap"><table class="gl-table" id="gl-obj-table"></table></div>
+      </div>
+      <div class="gl-card">
+        <h3>对象剖面</h3>
+        <p class="gl-card-sub">git 存的不是「文件」而是「<span class="gl-inline">类型 长度 NUL 内容</span> 的 SHA-1」。下面是这个对象被喂进 SHA-1 的原始字节。</p>
+        <div class="gl-codeblock">
+          <div class="gl-codehead"><b id="gl-obj-title">选一个对象</b><span id="gl-obj-size"></span></div>
+          <pre class="gl-pre" id="gl-obj-raw">从上表点一行。</pre>
+        </div>
+        <div id="gl-obj-parsed"></div>
+      </div>
+      <div class="gl-card">
+        <h3>与真 git 对拍</h3>
+        <p class="gl-card-sub">下面这些哈希是本机 <span class="gl-inline">git hash-object</span> 事先算好写死在页面里的期望值；「本页算出」这一列是你打开页面时由这里的 SHA-1 现算的。两列一致，才说明这个沙盒是真的。</p>
+        <div class="gl-tablewrap"><table class="gl-table" id="gl-verify-table"></table></div>
+      </div>
+    </section>
+
+    <!-- 差异 -->
+    <section id="gl-p-diff" role="tabpanel" aria-labelledby="gl-tab-diff" hidden>
+      <div class="gl-card">
+        <h3>差异</h3>
+        <p class="gl-card-sub">同一份代码，<span class="gl-inline">git diff</span> 比的是「工作区 ↔ 暂存区」，<span class="gl-inline">git diff --staged</span> 比的是「暂存区 ↔ HEAD」。选错对象是最常见的困惑来源。</p>
+        <div class="gl-row">
+          <label class="gl-note" for="gl-diff-left">左</label>
+          <select class="gl-in" id="gl-diff-left" aria-label="差异左侧"></select>
+          <label class="gl-note" for="gl-diff-right">右</label>
+          <select class="gl-in" id="gl-diff-right" aria-label="差异右侧"></select>
+          <button class="gl-btn gl-btn-sm" id="gl-diff-run">看差异</button>
+        </div>
+        <div class="gl-callout" id="gl-diff-hint">左右都可以选：工作区 / 暂存区 / HEAD / 任意分支或提交。</div>
+        <div class="gl-codeblock">
+          <div class="gl-codehead"><b id="gl-diff-title">差异</b><span id="gl-diff-stat"></span></div>
+          <pre class="gl-pre" id="gl-diff-out">还没有可比的内容。</pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- 教程 -->
+    <section id="gl-p-learn" role="tabpanel" aria-labelledby="gl-tab-learn" hidden>
+      <div class="gl-card">
+        <h3 id="gl-learn-title">动手学</h3>
+        <p class="gl-card-sub" id="gl-learn-sub">左边挑一个场景。每一步都会真的在沙盒里执行，跑完看看三个区域和提交图发生了什么。</p>
+        <div class="gl-progress"><i id="gl-learn-bar" style="width:0%"></i></div>
+        <div class="gl-row" style="margin-bottom:14px">
+          <button class="gl-btn gl-btn-go gl-btn-sm" id="gl-learn-next">运行下一步</button>
+          <button class="gl-btn gl-btn-2 gl-btn-sm" id="gl-learn-all">全部运行</button>
+          <button class="gl-btn gl-btn-2 gl-btn-sm" id="gl-learn-restart">从头开始</button>
+        </div>
+        <div id="gl-learn-steps"></div>
+      </div>
+    </section>
+
+    <section class="gl-term">
+      <div class="gl-codeblock">
+        <div class="gl-codehead"><b>终端</b><span>沙盒里的一切都由这里驱动 · ↑ 翻历史</span></div>
+        <pre class="gl-pre gl-termout" id="gl-term-out"></pre>
+        <div class="gl-terminput">
+          <span class="gl-prompt" id="gl-term-prompt">~/demo (main) $</span>
+          <input id="gl-term-in" autocomplete="off" spellcheck="false" aria-label="命令输入" placeholder="git status">
+          <button class="gl-btn gl-btn-2 gl-btn-sm" id="gl-term-run" style="background:transparent;color:#fff;border-color:#3a3a3e">执行</button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <aside class="gl-aside" aria-label="仓库状态">
+    <div class="gl-asidegrid">
+      <div class="gl-card">
+        <h3 style="font-size:15px">仓库状态</h3>
+        <dl style="margin:10px 0 0">
+          <div class="gl-kv"><dt>HEAD</dt><dd id="gl-st-head">—</dd></div>
+          <div class="gl-kv"><dt>指向</dt><dd id="gl-st-oid">—</dd></div>
+          <div class="gl-kv"><dt>对象数</dt><dd id="gl-st-objs">0</dd></div>
+          <div class="gl-kv"><dt>暂存 / 未暂存</dt><dd id="gl-st-changes">0 / 0</dd></div>
+          <div class="gl-kv"><dt>进行中</dt><dd id="gl-st-state">无</dd></div>
+          <div class="gl-kv"><dt>虚拟时钟</dt><dd id="gl-st-clock">—</dd></div>
+        </dl>
+        <p class="gl-note" style="margin:10px 0 0">沙盒用固定的作者时间（每次提交 +1 小时），所以同样的操作永远得到同样的哈希 —— 真 git 用真实时间，因此同样的内容在你机器上会是另一个 id。</p>
+      </div>
+      <div class="gl-card">
+        <h3 style="font-size:15px">引用（refs）</h3>
+        <p class="gl-card-sub" style="margin-bottom:8px">分支就是一个记着 40 位哈希的小文件。</p>
+        <div id="gl-st-refs" class="gl-note"></div>
+      </div>
+      <div class="gl-card">
+        <h3 style="font-size:15px">HEAD reflog</h3>
+        <p class="gl-card-sub" style="margin-bottom:8px">HEAD 走过的每一步。<b>误操作后的救命稻草。</b></p>
+        <div id="gl-st-reflog" class="gl-note"></div>
+      </div>
+    </div>
+  </aside>
+</div>
+
+<footer class="gl-footer">
+  <p>全部计算发生在你的浏览器里，没有任何网络请求；快照存在 localStorage。SHA-1 / 对象序列化 / LCS 差异 / 三方合并 / rebase 全部在本页手写实现。</p>
+  <p><a href="../../">← 回到每日工具集</a></p>
+</footer>
+<script>
+/* ============================================================
+   Git Lab engine — 浏览器内的 git 内核（对象库 / 索引 / 三方合并 / rebase）
+   零依赖，全部手写。对象 id 与真 git 逐字节一致。
+   ============================================================ */
+
+/* ---------- §1 SHA-1（对字节流） ---------- */
+function sha1(bytes) {
+  const ml = bytes.length;
+  const withOne = ml + 1;
+  const total = withOne + ((56 - (withOne % 64)) + 64) % 64 + 8;
+  const buf = new Uint8Array(total);
+  buf.set(bytes, 0);
+  buf[ml] = 0x80;
+  const bitLen = ml * 8;
+  const hi = Math.floor(bitLen / 4294967296);
+  const lo = bitLen >>> 0;
+  buf[total - 8] = (hi >>> 24) & 0xff; buf[total - 7] = (hi >>> 16) & 0xff;
+  buf[total - 6] = (hi >>> 8) & 0xff;  buf[total - 5] = hi & 0xff;
+  buf[total - 4] = (lo >>> 24) & 0xff; buf[total - 3] = (lo >>> 16) & 0xff;
+  buf[total - 2] = (lo >>> 8) & 0xff;  buf[total - 1] = lo & 0xff;
+
+  let h0 = 0x67452301, h1 = 0xEFCDAB89, h2 = 0x98BADCFE, h3 = 0x10325476, h4 = 0xC3D2E1F0;
+  const w = new Int32Array(80);
+  const rotl = (x, n) => (x << n) | (x >>> (32 - n));
+  for (let off = 0; off < total; off += 64) {
+    for (let i = 0; i < 16; i++) {
+      w[i] = (buf[off + i * 4] << 24) | (buf[off + i * 4 + 1] << 16) | (buf[off + i * 4 + 2] << 8) | buf[off + i * 4 + 3];
+    }
+    for (let i = 16; i < 80; i++) w[i] = rotl(w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16], 1);
+    let a = h0, b = h1, c = h2, d = h3, e = h4;
+    for (let i = 0; i < 80; i++) {
+      let f, k;
+      if (i < 20) { f = (b & c) | (~b & d); k = 0x5A827999; }
+      else if (i < 40) { f = b ^ c ^ d; k = 0x6ED9EBA1; }
+      else if (i < 60) { f = (b & c) | (b & d) | (c & d); k = 0x8F1BBCDC; }
+      else { f = b ^ c ^ d; k = 0xCA62C1D6; }
+      const t = (rotl(a, 5) + f + e + k + w[i]) | 0;
+      e = d; d = c; c = rotl(b, 30); b = a; a = t;
+    }
+    h0 = (h0 + a) | 0; h1 = (h1 + b) | 0; h2 = (h2 + c) | 0; h3 = (h3 + d) | 0; h4 = (h4 + e) | 0;
+  }
+  const hex = (n) => (n >>> 0).toString(16).padStart(8, '0');
+  return hex(h0) + hex(h1) + hex(h2) + hex(h3) + hex(h4);
+}
+
+/* ---------- §2 字节工具 ---------- */
+const TE = new TextEncoder();
+const TD = new TextDecoder();
+const enc = (s) => TE.encode(s);
+const dec = (b) => TD.decode(b);
+function cat(parts) {
+  let n = 0;
+  for (const p of parts) n += p.length;
+  const out = new Uint8Array(n);
+  let o = 0;
+  for (const p of parts) { out.set(p, o); o += p.length; }
+  return out;
+}
+function hexToBytes(hex) {
+  const out = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < out.length; i++) out[i] = parseInt(hex.substr(i * 2, 2), 16);
+  return out;
+}
+function bytesToHex(b) {
+  let s = '';
+  for (let i = 0; i < b.length; i++) s += b[i].toString(16).padStart(2, '0');
+  return s;
+}
+function cmpBytes(a, b) {
+  const n = Math.min(a.length, b.length);
+  for (let i = 0; i < n; i++) { if (a[i] !== b[i]) return a[i] - b[i]; }
+  return a.length - b.length;
+}
+const NUL = new Uint8Array([0]);
+const SP = new Uint8Array([32]);
+
+/* ---------- §3 对象序列化 ---------- */
+function objectBytes(type, body) {
+  return cat([enc(type + ' ' + body.length), NUL, body]);
+}
+function hashObject(type, body) {
+  return sha1(objectBytes(type, body));
+}
+function serializeTree(entries) {
+  // entries: [{mode, name, oid}]，按 git 规则排序（目录名参与比较时补 '/'）
+  const sorted = entries.slice().sort((x, y) => {
+    const kx = enc(x.name + (x.mode === '40000' ? '/' : ''));
+    const ky = enc(y.name + (y.mode === '40000' ? '/' : ''));
+    return cmpBytes(kx, ky);
+  });
+  return cat(sorted.flatMap((e) => [enc(e.mode), SP, enc(e.name), NUL, hexToBytes(e.oid)]));
+}
+function parseTree(body) {
+  const out = [];
+  let i = 0;
+  while (i < body.length) {
+    let sp = i;
+    while (body[sp] !== 32) sp++;
+    const mode = dec(body.subarray(i, sp));
+    let nul = sp + 1;
+    while (body[nul] !== 0) nul++;
+    const name = dec(body.subarray(sp + 1, nul));
+    const oid = bytesToHex(body.subarray(nul + 1, nul + 21));
+    out.push({ mode, name, oid, type: mode === '40000' ? 'tree' : 'blob' });
+    i = nul + 21;
+  }
+  return out;
+}
+function serializeCommit(c) {
+  let s = 'tree ' + c.tree + '\n';
+  for (const p of c.parents) s += 'parent ' + p + '\n';
+  s += 'author ' + c.author.name + ' <' + c.author.email + '> ' + c.author.time + ' ' + c.author.tz + '\n';
+  s += 'committer ' + c.committer.name + ' <' + c.committer.email + '> ' + c.committer.time + ' ' + c.committer.tz + '\n';
+  s += '\n' + c.message;
+  return enc(s);
+}
+function parseCommit(body) {
+  const text = dec(body);
+  const idx = text.indexOf('\n\n');
+  const head = idx < 0 ? text : text.slice(0, idx);
+  const message = idx < 0 ? '' : text.slice(idx + 2);
+  const c = { tree: '', parents: [], author: null, committer: null, message };
+  for (const line of head.split('\n')) {
+    if (line.startsWith('tree ')) c.tree = line.slice(5);
+    else if (line.startsWith('parent ')) c.parents.push(line.slice(7));
+    else if (line.startsWith('author ')) c.author = parseIdent(line.slice(7));
+    else if (line.startsWith('committer ')) c.committer = parseIdent(line.slice(10));
+  }
+  return c;
+}
+function parseIdent(s) {
+  const lt = s.indexOf('<'), gt = s.indexOf('>');
+  const rest = s.slice(gt + 2).split(' ');
+  return { name: s.slice(0, lt - 1), email: s.slice(lt + 1, gt), time: Number(rest[0]), tz: rest[1] || '+0800' };
+}
+
+/* ---------- §4 行级 diff（LCS） ---------- */
+function splitLines(text) {
+  if (text === '') return [];
+  const lines = text.split('\n');
+  if (lines[lines.length - 1] === '') lines.pop();
+  return lines;
+}
+function lcsMatch(a, b) {
+  // 返回 matchA[i] = a[i] 在 b 中配对的下标（无则 -1）
+  const n = a.length, m = b.length;
+  const matchA = new Array(n).fill(-1);
+  if (n === 0 || m === 0) return matchA;
+  if (n * m > 4000000) { // 超大文件：退化为「前缀/后缀对齐」
+    let p = 0;
+    while (p < n && p < m && a[p] === b[p]) { matchA[p] = p; p++; }
+    let s = 0;
+    while (s < n - p && s < m - p && a[n - 1 - s] === b[m - 1 - s]) { matchA[n - 1 - s] = m - 1 - s; s++; }
+    return matchA;
+  }
+  const dp = new Uint32Array((n + 1) * (m + 1));
+  for (let i = n - 1; i >= 0; i--) {
+    for (let j = m - 1; j >= 0; j--) {
+      dp[i * (m + 1) + j] = a[i] === b[j]
+        ? dp[(i + 1) * (m + 1) + j + 1] + 1
+        : Math.max(dp[(i + 1) * (m + 1) + j], dp[i * (m + 1) + j + 1]);
+    }
+  }
+  let i = 0, j = 0;
+  while (i < n && j < m) {
+    if (a[i] === b[j]) { matchA[i] = j; i++; j++; }
+    else if (dp[(i + 1) * (m + 1) + j] >= dp[i * (m + 1) + j + 1]) i++;
+    else j++;
+  }
+  return matchA;
+}
+function diffLines(aLines, bLines) {
+  const match = lcsMatch(aLines, bLines);
+  const ops = [];
+  let j = 0;
+  for (let i = 0; i < aLines.length; i++) {
+    if (match[i] === -1) { ops.push({ t: '-', text: aLines[i], a: i }); continue; }
+    while (j < match[i]) { ops.push({ t: '+', text: bLines[j], b: j }); j++; }
+    ops.push({ t: ' ', text: aLines[i], a: i, b: j });
+    j++;
+  }
+  while (j < bLines.length) { ops.push({ t: '+', text: bLines[j], b: j }); j++; }
+  return ops;
+}
+function unifiedDiff(aText, bText, aName, bName, ctx) {
+  ctx = ctx == null ? 3 : ctx;
+  const A = splitLines(aText), B = splitLines(bText);
+  const ops = diffLines(A, B);
+  const hunks = [];
+  let i = 0;
+  while (i < ops.length) {
+    if (ops[i].t === ' ') { i++; continue; }
+    let start = i;
+    let ctxBefore = 0;
+    while (start > 0 && ops[start - 1].t === ' ' && ctxBefore < ctx) { start--; ctxBefore++; }
+    let end = i;
+    let run = 0;
+    while (end < ops.length) {
+      if (ops[end].t === ' ') {
+        run++;
+        if (run > ctx * 2) break;
+      } else run = 0;
+      end++;
+    }
+    let stop = end;
+    let trailing = 0;
+    while (stop > i && ops[stop - 1].t === ' ' && trailing < ctx) { /* keep */ break; }
+    // 收尾上下文裁剪
+    let last = end - 1;
+    let keep = 0;
+    while (last >= i && ops[last].t === ' ') { keep++; last--; }
+    if (keep > ctx) end -= (keep - ctx);
+    const slice = ops.slice(start, end);
+    let aStart = null, bStart = null, aCount = 0, bCount = 0;
+    for (const op of slice) {
+      if (op.t !== '+') { if (aStart === null) aStart = op.a; aCount++; }
+      if (op.t !== '-') { if (bStart === null) bStart = op.b; bCount++; }
+    }
+    hunks.push({ aStart: (aStart === null ? 0 : aStart + 1), aCount, bStart: (bStart === null ? 0 : bStart + 1), bCount, ops: slice });
+    i = end;
+  }
+  if (!hunks.length) return '';
+  let out = '--- ' + aName + '\n+++ ' + bName + '\n';
+  for (const h of hunks) {
+    out += '@@ -' + (h.aCount ? h.aStart : 0) + ',' + h.aCount + ' +' + (h.bCount ? h.bStart : 0) + ',' + h.bCount + ' @@\n';
+    for (const op of h.ops) out += op.t + op.text + '\n';
+  }
+  return out;
+}
+
+/* ---------- §5 三方合并 ---------- */
+/* 先把「base -> 一侧」的改动切成 hunk（用 base 行号定位），
+   再按 base 坐标聚簇：只有两侧改动真正交叠才算冲突，
+   各改各的行则两边都吃下（git 的行为）。 */
+function changeHunks(base, other) {
+  const m = lcsMatch(base, other);
+  const hunks = [];
+  let i = 0, j = 0;
+  while (i < base.length) {
+    if (m[i] !== -1) {
+      if (m[i] > j) hunks.push({ s: i, e: i, lines: other.slice(j, m[i]) });  // 纯插入
+      j = m[i] + 1;
+      i++;
+    } else {
+      const s = i;
+      while (i < base.length && m[i] === -1) i++;
+      const nextJ = i < base.length ? m[i] : other.length;
+      hunks.push({ s, e: i, lines: other.slice(j, nextJ) });
+      j = nextJ;
+    }
+  }
+  if (j < other.length) hunks.push({ s: base.length, e: base.length, lines: other.slice(j) });
+  return hunks;
+}
+function applyHunks(base, S, E, hunks) {
+  const out = [];
+  let p = S;
+  for (const h of hunks) {
+    for (let k = p; k < h.s; k++) out.push(base[k]);
+    out.push(...h.lines);
+    p = h.e;
+  }
+  for (let k = p; k < E; k++) out.push(base[k]);
+  return out;
+}
+const same_ = (x, y) => x.length === y.length && x.every((v, k) => v === y[k]);
+function classify(base, r) {
+  const baseSlice = base.slice(r.S, r.E);
+  const ourSlice = r.As.length ? applyHunks(base, r.S, r.E, r.As) : baseSlice;
+  const theirSlice = r.Bs.length ? applyHunks(base, r.S, r.E, r.Bs) : baseSlice;
+  let type;
+  if (same_(ourSlice, theirSlice)) type = 'both';
+  else if (same_(baseSlice, ourSlice)) type = 'theirs';
+  else if (same_(baseSlice, theirSlice)) type = 'ours';
+  else type = 'conflict';
+  return Object.assign(r, { baseSlice, ourSlice, theirSlice, type });
+}
+function merge3(baseText, oursText, theirsText, oursLabel, theirsLabel) {
+  const base = splitLines(baseText), ours = splitLines(oursText), theirs = splitLines(theirsText);
+  const A = changeHunks(base, ours), B = changeHunks(base, theirs);
+  // ① 按 base 坐标把两侧改动聚成区域（只有真正交叠才进同一块）
+  let regions = [];
+  let ia = 0, ib = 0;
+  while (ia < A.length || ib < B.length) {
+    const start = Math.min(ia < A.length ? A[ia].s : Infinity, ib < B.length ? B[ib].s : Infinity);
+    let E = start;
+    const As = [], Bs = [];
+    while (ia < A.length && A[ia].s === start) { As.push(A[ia]); E = Math.max(E, A[ia].e); ia++; }
+    while (ib < B.length && B[ib].s === start) { Bs.push(B[ib]); E = Math.max(E, B[ib].e); ib++; }
+    let grew = true;
+    while (grew) {
+      grew = false;
+      while (ia < A.length && A[ia].s < E) { As.push(A[ia]); E = Math.max(E, A[ia].e); ia++; grew = true; }
+      while (ib < B.length && B[ib].s < E) { Bs.push(B[ib]); E = Math.max(E, B[ib].e); ib++; grew = true; }
+    }
+    regions.push(classify(base, { S: start, E, As, Bs }));
+  }
+  // ② 与 git(xdiff) 对齐的区域扩张（实测得出，非记忆）：
+  //    两侧改动「贴在一起」（中间隔 0 行未改动）就并成一块 —— 于是各改各的相邻行也算冲突；
+  //    两个冲突块之间隔 ≤3 行也并成一块。
+  let merged = true;
+  while (merged) {
+    merged = false;
+    for (let i = 0; i + 1 < regions.length; i++) {
+      const a = regions[i], b = regions[i + 1];
+      const gap = b.S - a.E;
+      const bothConflict = a.type === 'conflict' && b.type === 'conflict';
+      if (gap === 0 || (bothConflict && gap <= 3)) {
+        regions.splice(i, 2, classify(base, { S: a.S, E: b.E, As: a.As.concat(b.As), Bs: a.Bs.concat(b.Bs) }));
+        merged = true;
+        break;
+      }
+    }
+  }
+  // ③ 输出
+  const out = [];
+  const marks = [];
+  let conflicts = 0, p = 0;
+  for (const r of regions) {
+    for (let k = p; k < r.S; k++) out.push(base[k]);
+    const from = out.length;
+    if (r.type !== 'conflict') {
+      out.push(...(r.type === 'theirs' ? r.theirSlice : r.ourSlice));
+    } else {
+      // 冲突块只圈真正打架的那几行：剥掉两边共同的前缀 / 后缀（与 git 一致）
+      const o = r.ourSlice, t = r.theirSlice;
+      let pre = 0;
+      while (pre < o.length && pre < t.length && o[pre] === t[pre]) pre++;
+      let suf = 0;
+      while (suf < o.length - pre && suf < t.length - pre && o[o.length - 1 - suf] === t[t.length - 1 - suf]) suf++;
+      out.push(...o.slice(0, pre));
+      out.push('<<<<<<< ' + oursLabel);
+      out.push(...o.slice(pre, o.length - suf));
+      out.push('=======');
+      out.push(...t.slice(pre, t.length - suf));
+      out.push('>>>>>>> ' + theirsLabel);
+      out.push(...o.slice(o.length - suf));
+      conflicts++;
+    }
+    marks.push({ type: r.type, from, to: out.length });
+    p = r.E;
+  }
+  for (let k = p; k < base.length; k++) out.push(base[k]);
+  const text = out.length ? out.join('\n') + '\n' : '';
+  return { text, conflicts, regions: marks };
+}
+
+/* ---------- §6 仓库 ---------- */
+const DEFAULT_IDENT = { name: 'Git Lab', email: 'lab@example.com', tz: '+0800' };
+
+class Repo {
+  constructor(opts) {
+    opts = opts || {};
+    this.objects = new Map();        // oid -> {type, body}
+    this.refs = new Map();           // 'refs/heads/main' -> oid
+    this.head = { detached: false, ref: 'refs/heads/main', oid: null };
+    this.index = new Map();          // path -> [stage0, stage1, stage2, stage3]
+    this.work = new Map();           // path -> {content, mode}
+    this.reflogs = new Map();        // refname -> [{old,new,msg,time}]
+    this.state = null;               // {kind:'merge'|'rebase'|'cherry-pick'|'revert', ...}
+    this.stash = [];                 // [{oid, message}]
+    this.ident = Object.assign({}, DEFAULT_IDENT, opts.ident || {});
+    this.clock = opts.clock || 1786665600;
+    this.step = opts.step || 3600;
+    this.initialized = false;
+  }
+
+  /* --- 对象库 --- */
+  write(type, body) {
+    const oid = hashObject(type, body);
+    if (!this.objects.has(oid)) this.objects.set(oid, { type, body });
+    return oid;
+  }
+  read(oid) {
+    const o = this.objects.get(oid);
+    if (!o) throw new GitError('对象不存在: ' + oid);
+    return o;
+  }
+  has(oid) { return this.objects.has(oid); }
+  commitOf(oid) { return parseCommit(this.read(oid).body); }
+  treeOf(oid) { return parseTree(this.read(oid).body); }
+  blobText(oid) { return dec(this.read(oid).body); }
+
+  /* --- 引用 --- */
+  branches() {
+    return [...this.refs.keys()].filter((r) => r.startsWith('refs/heads/')).map((r) => r.slice(11)).sort();
+  }
+  tags() {
+    return [...this.refs.keys()].filter((r) => r.startsWith('refs/tags/')).map((r) => r.slice(10)).sort();
+  }
+  headOid() {
+    if (this.head.detached) return this.head.oid;
+    return this.refs.get(this.head.ref) || null;
+  }
+  headName() {
+    return this.head.detached ? 'HEAD（游离）' : this.head.ref.slice(11);
+  }
+  setRef(ref, oid, msg) {
+    const old = this.refs.get(ref) || null;
+    this.refs.set(ref, oid);
+    this.logRef(ref, old, oid, msg);
+    if (!this.head.detached && this.head.ref === ref) this.logRef('HEAD', old, oid, msg);
+  }
+  logRef(ref, oldOid, newOid, msg) {
+    if (!this.reflogs.has(ref)) this.reflogs.set(ref, []);
+    this.reflogs.get(ref).unshift({ old: oldOid, new: newOid, msg, time: this.clock });
+  }
+  moveHead(target, msg) {
+    const old = this.headOid();
+    if (target.detached) this.head = { detached: true, ref: null, oid: target.oid };
+    else this.head = { detached: false, ref: target.ref, oid: null };
+    this.logRef('HEAD', old, this.headOid(), msg);
+  }
+
+  /* --- 版本解析 --- */
+  resolve(rev) {
+    if (!rev) throw new GitError('需要一个版本名');
+    let m = rev.match(/^(.*?)(\^\{tree\})$/);
+    if (m) {
+      const c = this.resolve(m[1] || 'HEAD');
+      return this.commitOf(c).tree;
+    }
+    const colon = rev.indexOf(':');
+    if (colon > 0) {
+      const base = this.resolve(rev.slice(0, colon));
+      const path = rev.slice(colon + 1);
+      const found = this.lookupPath(this.commitOf(base).tree, path);
+      if (!found) throw new GitError('路径不存在: ' + path);
+      return found.oid;
+    }
+    m = /@\{\d+\}$/.test(rev) ? null : rev.match(/^(.+?)((\^\d*|~\d+)+)$/);
+    if (m) {
+      let oid = this.resolve(m[1]);
+      const suffixes = m[2].match(/(\^\d*|~\d+)/g) || [];
+      for (const s of suffixes) {
+        if (s[0] === '~') {
+          const n = Number(s.slice(1));
+          for (let k = 0; k < n; k++) {
+            const c = this.commitOf(oid);
+            if (!c.parents.length) throw new GitError(rev + ' 越过了根提交');
+            oid = c.parents[0];
+          }
+        } else {
+          const n = s.length > 1 ? Number(s.slice(1)) : 1;
+          const c = this.commitOf(oid);
+          if (!c.parents[n - 1]) throw new GitError(rev + ' 没有第 ' + n + ' 个父提交');
+          oid = c.parents[n - 1];
+        }
+      }
+      return oid;
+    }
+    return this.resolveName(rev);
+  }
+  resolveName(name) {
+    const at = name.match(/^(.+)@\{(\d+)\}$/);
+    if (at) {
+      const ref = at[1] === 'HEAD' ? 'HEAD' : (this.reflogs.has('refs/heads/' + at[1]) ? 'refs/heads/' + at[1] : at[1]);
+      const log = this.reflogs.get(ref);
+      if (!log) throw new GitError(ref + ' 没有 reflog');
+      const e = log[Number(at[2])];
+      if (!e || !e.new) throw new GitError(ref + '@{' + at[2] + '} 不存在（reflog 只有 ' + log.length + ' 条）');
+      return e.new;
+    }
+    if (name === 'HEAD' || name === '@') {
+      const o = this.headOid();
+      if (!o) throw new GitError('HEAD 还没有指向任何提交（仓库里一个提交都没有）');
+      return o;
+    }
+    if (name === 'ORIG_HEAD' && this.origHead) return this.origHead;
+    for (const full of ['refs/heads/' + name, 'refs/tags/' + name, name]) {
+      if (this.refs.has(full)) return this.refs.get(full);
+    }
+    if (/^[0-9a-f]{4,40}$/.test(name)) {
+      const hits = [...this.objects.keys()].filter((o) => o.startsWith(name));
+      if (hits.length === 1) return hits[0];
+      if (hits.length > 1) throw new GitError('哈希前缀有歧义: ' + name);
+    }
+    if (this.work.has(name)) {
+      throw new GitError('「' + name + '」是工作区里的一个文件路径，不是版本名。' +
+        '想看它在仓库里的内容用 git cat-file -p HEAD:' + name + '，想算它当前内容的哈希用 git hash-object ' + name);
+    }
+    throw new GitError('未知的版本: ' + name);
+  }
+  lookupPath(treeOid, path) {
+    const parts = path.split('/').filter(Boolean);
+    let cur = treeOid;
+    for (let i = 0; i < parts.length; i++) {
+      const entries = this.treeOf(cur);
+      const hit = entries.find((e) => e.name === parts[i]);
+      if (!hit) return null;
+      if (i === parts.length - 1) return hit;
+      if (hit.type !== 'tree') return null;
+      cur = hit.oid;
+    }
+    return null;
+  }
+
+  /* --- 树 <-> 路径表 --- */
+  flattenTree(treeOid, prefix, out) {
+    out = out || new Map();
+    prefix = prefix || '';
+    if (!treeOid) return out;
+    for (const e of this.treeOf(treeOid)) {
+      if (e.type === 'tree') this.flattenTree(e.oid, prefix + e.name + '/', out);
+      else out.set(prefix + e.name, { mode: e.mode, oid: e.oid });
+    }
+    return out;
+  }
+  buildTree(files) {
+    // files: Map<path,{mode,oid}> -> 根 tree oid
+    const root = { dirs: new Map(), files: [] };
+    const dirOf = (parts) => {
+      let node = root;
+      for (const p of parts) {
+        if (!node.dirs.has(p)) node.dirs.set(p, { dirs: new Map(), files: [] });
+        node = node.dirs.get(p);
+      }
+      return node;
+    };
+    for (const [path, meta] of files) {
+      const parts = path.split('/');
+      const name = parts.pop();
+      dirOf(parts).files.push({ mode: meta.mode || '100644', name, oid: meta.oid });
+    }
+    const emit = (node) => {
+      const entries = node.files.slice();
+      for (const [name, child] of node.dirs) {
+        const oid = emit(child);
+        if (oid) entries.push({ mode: '40000', name, oid });
+      }
+      return this.write('tree', serializeTree(entries));
+    };
+    return emit(root);
+  }
+
+  /* --- 索引 --- */
+  indexEntries() {
+    const out = new Map();
+    for (const [path, stages] of this.index) if (stages[0]) out.set(path, stages[0]);
+    return out;
+  }
+  conflictPaths() {
+    return [...this.index.keys()].filter((p) => !this.index.get(p)[0]).sort();
+  }
+  setIndex(path, entry) { this.index.set(path, [entry, null, null, null]); }
+  setConflict(path, b, o, t) { this.index.set(path, [null, b, o, t]); }
+
+  /* --- 提交 --- */
+  createCommit(message, parents, opts) {
+    opts = opts || {};
+    const tree = opts.tree || this.buildTree(this.indexEntries());
+    const author = opts.author || { name: this.ident.name, email: this.ident.email, time: this.clock, tz: this.ident.tz };
+    const committer = { name: this.ident.name, email: this.ident.email, time: opts.commitTime || this.clock, tz: this.ident.tz };
+    const msg = message.endsWith('\n') ? message : message + '\n';
+    return this.write('commit', serializeCommit({ tree, parents, author, committer, message: msg }));
+  }
+
+  /* --- 祖先关系 --- */
+  ancestors(oid, set) {
+    set = set || new Set();
+    const stack = [oid];
+    while (stack.length) {
+      const cur = stack.pop();
+      if (!cur || set.has(cur)) continue;
+      set.add(cur);
+      for (const p of this.commitOf(cur).parents) stack.push(p);
+    }
+    return set;
+  }
+  isAncestor(a, b) { return this.ancestors(b).has(a); }
+  mergeBase(a, b) {
+    const A = this.ancestors(a), B = this.ancestors(b);
+    const common = [...A].filter((o) => B.has(o));
+    if (!common.length) return null;
+    const best = common.filter((c) => !common.some((o) => o !== c && this.isAncestor(c, o)));
+    best.sort((x, y) => this.commitOf(y).committer.time - this.commitOf(x).committer.time);
+    return best[0] || null;
+  }
+
+  /* --- 工作区 --- */
+  writeFile(path, content, mode) {
+    this.work.set(path, { content, mode: mode || (this.work.get(path) || {}).mode || '100644' });
+  }
+  removeFile(path) { this.work.delete(path); }
+  checkoutTree(treeOid) {
+    const files = this.flattenTree(treeOid);
+    this.work = new Map();
+    this.index = new Map();
+    for (const [path, meta] of files) {
+      this.work.set(path, { content: this.blobText(meta.oid), mode: meta.mode });
+      this.setIndex(path, { mode: meta.mode, oid: meta.oid });
+    }
+  }
+
+  /* --- 状态 --- */
+  status() {
+    const headOid = this.headOid();
+    const headFiles = headOid ? this.flattenTree(this.commitOf(headOid).tree) : new Map();
+    const idx = this.indexEntries();
+    const staged = [], unstaged = [], untracked = [];
+    const paths = new Set([...headFiles.keys(), ...idx.keys()]);
+    for (const p of [...paths].sort()) {
+      const h = headFiles.get(p), i = idx.get(p);
+      if (h && i && h.oid !== i.oid) staged.push({ path: p, code: 'M' });
+      else if (!h && i) staged.push({ path: p, code: 'A' });
+      else if (h && !i) staged.push({ path: p, code: 'D' });
+    }
+    for (const [p, e] of [...idx].sort()) {
+      const w = this.work.get(p);
+      if (!w) { unstaged.push({ path: p, code: 'D' }); continue; }
+      const oid = hashObject('blob', enc(w.content));
+      if (oid !== e.oid) unstaged.push({ path: p, code: 'M' });
+    }
+    for (const p of [...this.work.keys()].sort()) {
+      if (!this.index.has(p)) untracked.push({ path: p, code: '?' });
+    }
+    return { staged, unstaged, untracked, conflicts: this.conflictPaths() };
+  }
+  clean() {
+    const s = this.status();
+    return !s.staged.length && !s.unstaged.length && !s.conflicts.length;
+  }
+
+  /* --- 快照（localStorage） --- */
+  snapshot() {
+    return {
+      v: 1,
+      objects: [...this.objects].map(([oid, o]) => [oid, o.type, bytesToHex(o.body)]),
+      refs: [...this.refs],
+      head: this.head,
+      index: [...this.index],
+      work: [...this.work],
+      reflogs: [...this.reflogs],
+      state: this.state,
+      stash: this.stash,
+      clock: this.clock,
+      initialized: this.initialized,
+    };
+  }
+  static restore(snap) {
+    const r = new Repo();
+    for (const [oid, type, hex] of snap.objects) r.objects.set(oid, { type, body: hexToBytes(hex) });
+    r.refs = new Map(snap.refs);
+    r.head = snap.head;
+    r.index = new Map(snap.index);
+    r.work = new Map(snap.work);
+    r.reflogs = new Map(snap.reflogs);
+    r.state = snap.state;
+    r.stash = snap.stash || [];
+    r.clock = snap.clock;
+    r.initialized = snap.initialized;
+    return r;
+  }
+}
+
+class GitError extends Error {}
+
+/* ---------- §7 合并树 ---------- */
+function mergeTrees(repo, baseOid, oursOid, theirsOid, oursLabel, theirsLabel) {
+  const base = baseOid ? repo.flattenTree(baseOid) : new Map();
+  const ours = repo.flattenTree(oursOid);
+  const theirs = repo.flattenTree(theirsOid);
+  const paths = [...new Set([...base.keys(), ...ours.keys(), ...theirs.keys()])].sort();
+  const result = new Map();     // path -> {mode,oid}
+  const conflicts = [];         // {path, kind, text, base, ours, theirs}
+  for (const p of paths) {
+    const b = base.get(p) || null, o = ours.get(p) || null, t = theirs.get(p) || null;
+    const same = (x, y) => (x ? x.oid : null) === (y ? y.oid : null);
+    if (same(o, t)) { if (o) result.set(p, o); continue; }
+    if (same(b, o)) { if (t) result.set(p, t); continue; }
+    if (same(b, t)) { if (o) result.set(p, o); continue; }
+    if (o && t) {
+      const m = merge3(b ? repo.blobText(b.oid) : '', repo.blobText(o.oid), repo.blobText(t.oid), oursLabel, theirsLabel);
+      if (m.conflicts) {
+        conflicts.push({ path: p, kind: 'content', text: m.text, base: b, ours: o, theirs: t });
+      } else {
+        result.set(p, { mode: o.mode, oid: repo.write('blob', enc(m.text)) });
+      }
+    } else {
+      // 一边改一边删
+      const survivor = o || t;
+      conflicts.push({
+        path: p, kind: o ? 'delete-by-them' : 'delete-by-us',
+        text: repo.blobText(survivor.oid), base: b, ours: o, theirs: t,
+      });
+    }
+  }
+  return { files: result, conflicts };
+}
+
+/* ---------- §8 命令层 ---------- */
+function tokenize(line) {
+  const out = [];
+  let cur = '', quote = null, has = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (quote) {
+      if (ch === quote) quote = null;
+      else { cur += ch; }
+      has = true;
+    } else if (ch === '"' || ch === "'") { quote = ch; has = true; }
+    else if (ch === ' ' || ch === '\t') { if (has || cur) { out.push(cur); cur = ''; has = false; } }
+    else { cur += ch; has = true; }
+  }
+  if (has || cur) out.push(cur);
+  return out;
+}
+function shortOid(oid) { return oid ? oid.slice(0, 7) : '(空)'; }
+function subjectOf(msg) { return msg.split('\n')[0]; }
+
+function fmtTime(sec, tz) {
+  const off = tz === '+0800' ? 8 * 3600 : 0;
+  const d = new Date((sec + off) * 1000);
+  const p = (n) => String(n).padStart(2, '0');
+  return d.getUTCFullYear() + '-' + p(d.getUTCMonth() + 1) + '-' + p(d.getUTCDate()) + ' ' +
+    p(d.getUTCHours()) + ':' + p(d.getUTCMinutes());
+}
+
+function run(repo, line) {
+  const raw = line.trim();
+  if (!raw) return { out: '' };
+  try {
+    const out = dispatch(repo, raw);
+    return { out: out == null ? '' : out };
+  } catch (e) {
+    if (e instanceof GitError) return { out: e.message, err: true };
+    return { out: '内部错误: ' + e.message, err: true };
+  }
+}
+
+function dispatch(repo, raw) {
+  // shell 层：echo > 文件 / cat / ls / rm / mv
+  const redir = raw.match(/^echo\s+(.*?)\s*(>>|>)\s*(\S+)$/);
+  if (redir) {
+    let text = redir[1].trim();
+    if ((text.startsWith('"') && text.endsWith('"')) || (text.startsWith("'") && text.endsWith("'"))) text = text.slice(1, -1);
+    text = text.split('\\n').join('\n');
+    const path = redir[3];
+    const prev = redir[2] === '>>' && repo.work.has(path) ? repo.work.get(path).content : '';
+    repo.writeFile(path, prev + text + '\n');
+    return '已写入 ' + path;
+  }
+  const argv = tokenize(raw);
+  const cmd = argv[0];
+  if (cmd === 'cat') {
+    const f = repo.work.get(argv[1]);
+    if (!f) throw new GitError('cat: 工作区没有这个文件: ' + argv[1]);
+    return f.content;
+  }
+  if (cmd === 'ls') {
+    const paths = [...repo.work.keys()].sort();
+    return paths.length ? paths.join('\n') : '（工作区是空的）';
+  }
+  if (cmd === 'rm') {
+    const p = argv[argv.length - 1];
+    if (!repo.work.has(p)) throw new GitError('rm: 没有这个文件: ' + p);
+    repo.removeFile(p);
+    return '已删除 ' + p;
+  }
+  if (cmd === 'mv') {
+    const [, from, to] = argv;
+    if (!repo.work.has(from)) throw new GitError('mv: 没有这个文件: ' + from);
+    repo.writeFile(to, repo.work.get(from).content, repo.work.get(from).mode);
+    repo.removeFile(from);
+    return '已重命名 ' + from + ' -> ' + to;
+  }
+  if (cmd === 'clear') return '';
+  if (cmd !== 'git') throw new GitError('不认识的命令: ' + cmd + '（本沙盒支持 git / echo / cat / ls / rm / mv）');
+
+  const sub = argv[1];
+  const args = argv.slice(2);
+  const flags = args.filter((a) => a.startsWith('-'));
+  const rest = args.filter((a) => !a.startsWith('-'));
+  const hasFlag = (...names) => names.some((n) => flags.includes(n));
+  if (!repo.initialized && sub !== 'init' && sub !== 'help') throw new GitError('这还不是一个 git 仓库，先跑 git init');
+
+  switch (sub) {
+    case 'init': return cmdInit(repo, rest, hasFlag, args);
+    case 'status': return cmdStatus(repo, hasFlag);
+    case 'add': return cmdAdd(repo, rest);
+    case 'rm': return cmdRm(repo, rest, hasFlag);
+    case 'restore': return cmdRestore(repo, rest, hasFlag);
+    case 'commit': return cmdCommit(repo, args, hasFlag);
+    case 'log': return cmdLog(repo, rest, hasFlag, args);
+    case 'show': return cmdShow(repo, rest);
+    case 'diff': return cmdDiff(repo, rest, hasFlag);
+    case 'branch': return cmdBranch(repo, rest, hasFlag);
+    case 'switch': return cmdSwitch(repo, rest, hasFlag);
+    case 'checkout': return cmdCheckout(repo, rest, hasFlag, args);
+    case 'merge': return cmdMerge(repo, args, rest, hasFlag);
+    case 'rebase': return cmdRebase(repo, rest, hasFlag);
+    case 'cherry-pick': return cmdCherryPick(repo, rest, hasFlag);
+    case 'revert': return cmdRevert(repo, rest, hasFlag);
+    case 'reset': return cmdReset(repo, rest, hasFlag);
+    case 'tag': return cmdTag(repo, rest, hasFlag);
+    case 'stash': return cmdStash(repo, rest);
+    case 'reflog': return cmdReflog(repo, rest);
+    case 'cat-file': return cmdCatFile(repo, args);
+    case 'hash-object': return cmdHashObject(repo, args);
+    case 'ls-files': return cmdLsFiles(repo, hasFlag);
+    case 'ls-tree': return cmdLsTree(repo, rest, hasFlag);
+    case 'rev-parse': return cmdRevParse(repo, rest);
+    case 'merge-base': return cmdMergeBase(repo, rest);
+    case 'help': return HELP_TEXT;
+    default: throw new GitError('本沙盒还没实现 git ' + sub + '（git help 看支持的命令）');
+  }
+}
+
+function cmdInit(repo, rest, hasFlag, args) {
+  if (repo.initialized) return '已经是一个 git 仓库了';
+  let branch = 'main';
+  const bi = args.indexOf('-b');
+  if (bi >= 0 && args[bi + 1]) branch = args[bi + 1];
+  repo.initialized = true;
+  repo.head = { detached: false, ref: 'refs/heads/' + branch, oid: null };
+  return '已初始化空仓库，当前分支 ' + branch + '\n（.git 里现在只有空的 objects/ 和 refs/，还没有任何提交）';
+}
+
+function cmdStatus(repo) {
+  const s = repo.status();
+  const lines = [];
+  lines.push(repo.head.detached
+    ? 'HEAD 处于游离状态，指向 ' + shortOid(repo.headOid())
+    : '位于分支 ' + repo.headName());
+  if (repo.state && repo.state.kind === 'merge') lines.push('你正在合并 ' + repo.state.theirsLabel + '（解决冲突后 git add + git commit）');
+  if (repo.state && repo.state.kind === 'rebase') lines.push('你正在 rebase（解决冲突后 git add + git rebase --continue）');
+  if (repo.state && (repo.state.kind === 'cherry-pick' || repo.state.kind === 'revert')) {
+    lines.push('你正在 ' + repo.state.kind + '（解决冲突后 git add + git ' + repo.state.kind + ' --continue）');
+  }
+  if (s.conflicts.length) {
+    lines.push('', '未合并的路径：');
+    for (const p of s.conflicts) lines.push('  双方修改:   ' + p);
+  }
+  if (s.staged.length) {
+    lines.push('', '要提交的变更：');
+    for (const f of s.staged) lines.push('  ' + ({ A: '新文件:', M: '修改:  ', D: '删除:  ' }[f.code]) + '   ' + f.path);
+  }
+  if (s.unstaged.length) {
+    lines.push('', '尚未暂存以备提交的变更：');
+    for (const f of s.unstaged) lines.push('  ' + ({ M: '修改:  ', D: '删除:  ' }[f.code]) + '   ' + f.path);
+  }
+  if (s.untracked.length) {
+    lines.push('', '未跟踪的文件：');
+    for (const f of s.untracked) lines.push('  ' + f.path);
+  }
+  if (!s.staged.length && !s.unstaged.length && !s.untracked.length && !s.conflicts.length) {
+    lines.push('', '无文件要提交，干净的工作区');
+  }
+  return lines.join('\n');
+}
+
+function cmdAdd(repo, rest) {
+  if (!rest.length) throw new GitError('git add 需要路径（或 git add .）');
+  const targets = new Set();
+  for (const p of rest) {
+    if (p === '.' || p === '-A' || p === '*') { for (const k of repo.work.keys()) targets.add(k); for (const k of repo.index.keys()) targets.add(k); }
+    else if (repo.work.has(p)) targets.add(p);
+    else if (repo.index.has(p)) targets.add(p);       // 允许把删除加进暂存区
+    else if ([...repo.work.keys()].some((k) => k.startsWith(p.replace(/\/$/, '') + '/'))) {
+      for (const k of repo.work.keys()) if (k.startsWith(p.replace(/\/$/, '') + '/')) targets.add(k);
+    } else throw new GitError('路径不存在: ' + p);
+  }
+  let n = 0;
+  for (const p of targets) {
+    const w = repo.work.get(p);
+    if (!w) { repo.index.delete(p); n++; continue; }
+    const oid = repo.write('blob', enc(w.content));
+    repo.setIndex(p, { mode: w.mode || '100644', oid });
+    n++;
+  }
+  return '已暂存 ' + n + ' 个路径（内容写进了对象库，索引记下 路径 -> blob 哈希）';
+}
+
+function cmdRm(repo, rest, hasFlag) {
+  if (!rest.length) throw new GitError('git rm 需要路径');
+  for (const p of rest) {
+    if (!repo.index.has(p)) throw new GitError('没有跟踪这个文件: ' + p);
+    repo.index.delete(p);
+    if (!hasFlag('--cached')) repo.work.delete(p);
+  }
+  return hasFlag('--cached') ? '已从索引移除（工作区文件还在）' : '已删除 ' + rest.join(' ');
+}
+
+function cmdRestore(repo, rest, hasFlag) {
+  if (!rest.length) throw new GitError('git restore 需要路径');
+  const headOid = repo.headOid();
+  const headFiles = headOid ? repo.flattenTree(repo.commitOf(headOid).tree) : new Map();
+  for (const p of rest) {
+    if (hasFlag('--staged')) {
+      const h = headFiles.get(p);
+      if (h) repo.setIndex(p, h); else repo.index.delete(p);
+    } else {
+      const e = repo.indexEntries().get(p);
+      if (!e) throw new GitError('索引里没有这个文件: ' + p);
+      repo.writeFile(p, repo.blobText(e.oid), e.mode);
+    }
+  }
+  return hasFlag('--staged') ? '已把 ' + rest.join(' ') + ' 从暂存区撤回（工作区不动）' : '已用索引里的版本覆盖工作区: ' + rest.join(' ');
+}
+
+function parseMessage(args) {
+  const i = args.findIndex((a) => a === '-m' || a === '--message');
+  if (i >= 0 && args[i + 1] != null) return args[i + 1];
+  return null;
+}
+
+function cmdCommit(repo, args, hasFlag) {
+  if (repo.conflictPaths().length) throw new GitError('还有未解决的冲突，先 git add 标记解决');
+  const amend = hasFlag('--amend');
+  let msg = parseMessage(args);
+  const headOid = repo.headOid();
+  if (amend && !headOid) throw new GitError('没有可修补的提交');
+  const s = repo.status();
+  if (!amend && !s.staged.length && !hasFlag('--allow-empty') && !(repo.state && repo.state.kind === 'merge')) {
+    throw new GitError('暂存区是空的，没有要提交的东西（先 git add）');
+  }
+  let parents, author;
+  if (amend) {
+    const old = repo.commitOf(headOid);
+    parents = old.parents;
+    author = old.author;
+    if (msg == null) msg = old.message;
+  } else {
+    parents = headOid ? [headOid] : [];
+    if (repo.state && repo.state.kind === 'merge') {
+      parents = [headOid, repo.state.theirs];
+      if (msg == null) msg = repo.state.message;
+    }
+    if (msg == null) throw new GitError('需要提交信息：git commit -m "说明"');
+  }
+  const oid = repo.createCommit(msg, parents, { author });
+  const isMerge = parents.length > 1;
+  applyCommit(repo, oid, amend ? 'commit (amend): ' + subjectOf(msg) : (isMerge ? 'merge: ' + subjectOf(msg) : 'commit: ' + subjectOf(msg)));
+  repo.state = null;
+  repo.clock += repo.step;
+  const c = repo.commitOf(oid);
+  return '[' + repo.headName() + ' ' + shortOid(oid) + '] ' + subjectOf(msg) +
+    '\n  tree ' + shortOid(c.tree) + (parents.length ? '  parent ' + parents.map(shortOid).join(' ') : '  （根提交，没有父）');
+}
+
+function applyCommit(repo, oid, msg) {
+  if (repo.head.detached) { repo.head.oid = oid; repo.logRef('HEAD', null, oid, msg); }
+  else repo.setRef(repo.head.ref, oid, msg);
+}
+
+function cmdLog(repo, rest, hasFlag, args) {
+  const headOid = repo.headOid();
+  let roots = [];
+  if (hasFlag('--all')) roots = [...repo.refs.values()];
+  else if (rest.length) roots = rest.map((r) => repo.resolve(r));
+  else if (headOid) roots = [headOid];
+  if (!roots.length) return '还没有任何提交';
+  const seen = new Set();
+  const all = [];
+  const stack = roots.slice();
+  while (stack.length) {
+    const oid = stack.pop();
+    if (!oid || seen.has(oid)) continue;
+    seen.add(oid);
+    const c = repo.commitOf(oid);
+    all.push({ oid, c });
+    for (const p of c.parents) stack.push(p);
+  }
+  all.sort((x, y) => y.c.committer.time - x.c.committer.time);
+  const ni = args.indexOf('-n');
+  const limit = ni >= 0 ? Number(args[ni + 1]) : (hasFlag('--oneline') ? 20 : 10);
+  const refsAt = (oid) => {
+    const names = [...repo.refs].filter(([, o]) => o === oid).map(([r]) => r.replace('refs/heads/', '').replace('refs/tags/', 'tag: '));
+    if (repo.headOid() === oid) names.unshift(repo.head.detached ? 'HEAD' : 'HEAD -> ' + repo.headName());
+    return names.length ? ' (' + names.join(', ') + ')' : '';
+  };
+  const lines = [];
+  for (const { oid, c } of all.slice(0, limit)) {
+    if (hasFlag('--oneline')) lines.push(shortOid(oid) + refsAt(oid) + ' ' + subjectOf(c.message));
+    else {
+      lines.push('commit ' + oid + refsAt(oid));
+      if (c.parents.length > 1) lines.push('Merge: ' + c.parents.map(shortOid).join(' '));
+      lines.push('Author: ' + c.author.name + ' <' + c.author.email + '>');
+      lines.push('Date:   ' + fmtTime(c.author.time, c.author.tz));
+      lines.push('', '    ' + c.message.trim().split('\n').join('\n    '), '');
+    }
+  }
+  return lines.join('\n');
+}
+
+function cmdShow(repo, rest) {
+  const oid = repo.resolve(rest[0] || 'HEAD');
+  const o = repo.read(oid);
+  if (o.type !== 'commit') return cmdCatFile(repo, ['-p', oid]);
+  const c = repo.commitOf(oid);
+  const parts = ['commit ' + oid, 'Author: ' + c.author.name + ' <' + c.author.email + '>',
+    'Date:   ' + fmtTime(c.author.time, c.author.tz), '', '    ' + c.message.trim(), ''];
+  const before = c.parents.length ? repo.flattenTree(repo.commitOf(c.parents[0]).tree) : new Map();
+  const after = repo.flattenTree(c.tree);
+  parts.push(diffFileMaps(repo, before, after));
+  return parts.join('\n');
+}
+
+function diffFileMaps(repo, before, after) {
+  const paths = [...new Set([...before.keys(), ...after.keys()])].sort();
+  const out = [];
+  for (const p of paths) {
+    const a = before.get(p), b = after.get(p);
+    if (a && b && a.oid === b.oid) continue;
+    out.push('diff --git a/' + p + ' b/' + p);
+    if (!a) out.push('new file mode ' + b.mode);
+    if (!b) out.push('deleted file mode ' + a.mode);
+    out.push('index ' + shortOid(a ? a.oid : '0000000') + '..' + shortOid(b ? b.oid : '0000000') + (b ? ' ' + b.mode : ''));
+    const d = unifiedDiff(a ? repo.blobText(a.oid) : '', b ? repo.blobText(b.oid) : '', 'a/' + p, 'b/' + p);
+    out.push(d.trimEnd());
+  }
+  return out.length ? out.join('\n') : '（没有差异）';
+}
+
+function cmdDiff(repo, rest, hasFlag) {
+  const headOid = repo.headOid();
+  const headFiles = headOid ? repo.flattenTree(repo.commitOf(headOid).tree) : new Map();
+  if (rest.length === 2) {
+    const a = repo.resolve(rest[0]), b = repo.resolve(rest[1]);
+    return diffFileMaps(repo, repo.flattenTree(repo.commitOf(a).tree), repo.flattenTree(repo.commitOf(b).tree));
+  }
+  if (rest.length === 1) {
+    const a = repo.resolve(rest[0]);
+    return diffFileMaps(repo, repo.flattenTree(repo.commitOf(a).tree), workFileMap(repo));
+  }
+  if (hasFlag('--staged', '--cached')) return diffFileMaps(repo, headFiles, repo.indexEntries());
+  return diffFileMaps(repo, repo.indexEntries(), workFileMap(repo));
+}
+
+function workFileMap(repo) {
+  const out = new Map();
+  for (const [p, w] of repo.work) out.set(p, { mode: w.mode || '100644', oid: repo.write('blob', enc(w.content)) });
+  return out;
+}
+
+function cmdBranch(repo, rest, hasFlag) {
+  if (hasFlag('-d', '-D')) {
+    const name = rest[0];
+    if (!repo.refs.has('refs/heads/' + name)) throw new GitError('分支不存在: ' + name);
+    if (!repo.head.detached && repo.head.ref === 'refs/heads/' + name) throw new GitError('不能删除当前所在的分支');
+    repo.refs.delete('refs/heads/' + name);
+    return '已删除分支 ' + name;
+  }
+  if (!rest.length) {
+    return repo.branches().map((b) => (!repo.head.detached && repo.head.ref === 'refs/heads/' + b ? '* ' : '  ') + b + '  ' + shortOid(repo.refs.get('refs/heads/' + b))).join('\n') || '（还没有分支）';
+  }
+  const name = rest[0];
+  const start = rest[1] ? repo.resolve(rest[1]) : repo.headOid();
+  if (!start) throw new GitError('还没有提交，无法建分支');
+  repo.setRef('refs/heads/' + name, start, 'branch: created from ' + (rest[1] || 'HEAD'));
+  return '新分支 ' + name + ' -> ' + shortOid(start) + '（分支只是一个 41 字节的文件：一行哈希）';
+}
+
+function ensureCleanForCheckout(repo) {
+  const s = repo.status();
+  if (s.conflicts.length) throw new GitError('还有未解决的冲突，不能切换');
+}
+
+function cmdSwitch(repo, rest, hasFlag) {
+  ensureCleanForCheckout(repo);
+  if (hasFlag('-c', '-C')) {
+    const name = rest[0];
+    const start = rest[1] ? repo.resolve(rest[1]) : repo.headOid();
+    if (!start) throw new GitError('还没有提交，无法建分支');
+    repo.setRef('refs/heads/' + name, start, 'branch: created');
+    repo.moveHead({ ref: 'refs/heads/' + name }, 'checkout: moving to ' + name);
+    repo.checkoutTree(repo.commitOf(start).tree);
+    return '已切换到新分支 ' + name;
+  }
+  const name = rest[0];
+  if (name === '-') throw new GitError('本沙盒暂不支持 git switch -');
+  if (!repo.refs.has('refs/heads/' + name)) throw new GitError('分支不存在: ' + name + '（新建用 git switch -c ' + name + '）');
+  const oid = repo.refs.get('refs/heads/' + name);
+  repo.moveHead({ ref: 'refs/heads/' + name }, 'checkout: moving to ' + name);
+  repo.checkoutTree(repo.commitOf(oid).tree);
+  return '已切换到分支 ' + name + '（HEAD 改指向 refs/heads/' + name + '，工作区与索引按该提交的树刷新）';
+}
+
+function cmdCheckout(repo, rest, hasFlag, args) {
+  ensureCleanForCheckout(repo);
+  if (hasFlag('-b')) return cmdSwitch(repo, rest, (...n) => n.includes('-c'));
+  const target = rest[0];
+  if (!target) throw new GitError('git checkout 需要目标');
+  if (repo.refs.has('refs/heads/' + target)) return cmdSwitch(repo, [target], () => false);
+  const oid = repo.resolve(target);
+  const o = repo.read(oid);
+  if (o.type !== 'commit') throw new GitError('只能检出提交');
+  repo.moveHead({ detached: true, oid }, 'checkout: moving to ' + target);
+  repo.checkoutTree(repo.commitOf(oid).tree);
+  return '注意：你正处于游离 HEAD 状态，指向 ' + shortOid(oid) +
+    '\n此时的提交不属于任何分支，切走就可能找不回来（reflog 能救）。想留下就 git switch -c <新分支名>';
+}
+
+function cmdMerge(repo, args, rest, hasFlag) {
+  if (hasFlag('--abort')) {
+    if (!repo.state || repo.state.kind !== 'merge') throw new GitError('当前没有进行中的合并');
+    const oid = repo.headOid();
+    repo.checkoutTree(repo.commitOf(oid).tree);
+    repo.state = null;
+    return '已中止合并，回到合并前的状态';
+  }
+  if (repo.state) throw new GitError('有进行中的 ' + repo.state.kind + '，先完成或 --abort');
+  const label = rest[0];
+  if (!label) throw new GitError('git merge 需要一个分支名');
+  const theirs = repo.resolve(label);
+  const ours = repo.headOid();
+  if (!ours) throw new GitError('当前分支还没有提交');
+  if (repo.isAncestor(theirs, ours)) return '已经是最新的（' + label + ' 是当前分支的祖先，没什么可合的）';
+  const base = repo.mergeBase(ours, theirs);
+  if (base === ours && !hasFlag('--no-ff')) {
+    applyCommit(repo, theirs, 'merge ' + label + ': Fast-forward');
+    repo.checkoutTree(repo.commitOf(theirs).tree);
+    return '快进（Fast-forward）\n  ' + shortOid(ours) + ' -> ' + shortOid(theirs) +
+      '\n没有产生新的提交对象：分支指针直接往前挪了一格。';
+  }
+  const oursTree = repo.commitOf(ours).tree;
+  const theirsTree = repo.commitOf(theirs).tree;
+  const baseTree = base ? repo.commitOf(base).tree : null;
+  const oursLabel = 'HEAD';
+  const res = mergeTrees(repo, baseTree, oursTree, theirsTree, oursLabel, label);
+  const msg = parseMessage(args) || ("Merge branch '" + label + "' into " + repo.headName());
+  return finishMergeLike(repo, res, {
+    kind: 'merge', theirs, theirsLabel: label, message: msg, base,
+    successText: (oid) => '三方合并成功（base=' + shortOid(base) + '）\n[' + repo.headName() + ' ' + shortOid(oid) + '] ' + subjectOf(msg) + '\n合并提交有两个父：' + shortOid(ours) + ' 和 ' + shortOid(theirs),
+  });
+}
+
+function finishMergeLike(repo, res, opts) {
+  // 把合并结果落到索引 + 工作区；无冲突则直接建提交
+  const files = res.files;
+  if (res.conflicts.length) {
+    repo.index = new Map();
+    for (const [p, e] of files) repo.setIndex(p, e);
+    for (const [p, w] of [...repo.work]) if (!files.has(p) && !res.conflicts.find((c) => c.path === p)) repo.work.delete(p);
+    for (const [p, e] of files) repo.writeFile(p, repo.blobText(e.oid), e.mode);
+    for (const c of res.conflicts) {
+      repo.setConflict(p_(c), c.base ? { mode: c.base.mode, oid: c.base.oid } : null,
+        c.ours ? { mode: c.ours.mode, oid: c.ours.oid } : null,
+        c.theirs ? { mode: c.theirs.mode, oid: c.theirs.oid } : null);
+      repo.writeFile(c.path, c.text, (c.ours || c.theirs).mode);
+    }
+    repo.state = Object.assign({}, opts, { conflicts: res.conflicts.map((c) => c.path) });
+    return '自动合并失败：' + res.conflicts.map((c) => c.path).join(', ') +
+      '\n冲突处已经写进工作区文件（<<<<<<< / ======= / >>>>>>> 三段式）。' +
+      '\n索引里同一个路径现在有 3 条记录（阶段 1=共同祖先，2=我们，3=他们）。' +
+      '\n改完文件后 git add 标记解决，再 git commit。';
+  }
+  const tree = repo.buildTree(files);
+  repo.index = new Map();
+  for (const [p, e] of files) repo.setIndex(p, e);
+  repo.work = new Map();
+  for (const [p, e] of files) repo.writeFile(p, repo.blobText(e.oid), e.mode);
+  const parents = opts.kind === 'merge' ? [repo.headOid(), opts.theirs] : [repo.headOid()];
+  const oid = repo.createCommit(opts.message, parents, { tree, author: opts.author });
+  applyCommit(repo, oid, opts.kind + ': ' + subjectOf(opts.message));
+  repo.state = null;
+  repo.clock += repo.step;
+  return opts.successText ? opts.successText(oid) : '[' + repo.headName() + ' ' + shortOid(oid) + '] ' + subjectOf(opts.message);
+}
+function p_(c) { return c.path; }
+
+function cmdRebase(repo, rest, hasFlag) {
+  if (hasFlag('--abort')) {
+    if (!repo.state || repo.state.kind !== 'rebase') throw new GitError('当前没有进行中的 rebase');
+    const st = repo.state;
+    repo.state = null;
+    if (st.origBranch) repo.moveHead({ ref: st.origBranch }, 'rebase: aborting');
+    else repo.moveHead({ detached: true, oid: st.origHead }, 'rebase: aborting');
+    if (st.origBranch) repo.setRef(st.origBranch, st.origHead, 'rebase: abort');
+    repo.checkoutTree(repo.commitOf(st.origHead).tree);
+    return '已中止 rebase，回到 ' + shortOid(st.origHead);
+  }
+  if (hasFlag('--continue')) {
+    if (!repo.state || repo.state.kind !== 'rebase') throw new GitError('当前没有进行中的 rebase');
+    if (repo.conflictPaths().length) throw new GitError('还有未解决的冲突，先改文件再 git add');
+    const st = repo.state;
+    const pick = st.todo[st.at];
+    const c = repo.commitOf(pick);
+    const tree = repo.buildTree(repo.indexEntries());
+    const oid = repo.createCommit(c.message, [repo.headOid()], { tree, author: c.author });
+    applyCommit(repo, oid, 'rebase: ' + subjectOf(c.message));
+    repo.clock += repo.step;
+    st.at++;
+    repo.state = null;
+    return continueRebase(repo, st, ['已应用 ' + shortOid(pick) + ' -> ' + shortOid(oid)]);
+  }
+  if (repo.state) throw new GitError('有进行中的 ' + repo.state.kind + '，先完成或 --abort');
+  const upstreamName = rest[0];
+  if (!upstreamName) throw new GitError('git rebase 需要一个上游分支');
+  const upstream = repo.resolve(upstreamName);
+  const head = repo.headOid();
+  if (repo.isAncestor(head, upstream)) {
+    applyCommit(repo, upstream, 'rebase: fast-forward');
+    repo.checkoutTree(repo.commitOf(upstream).tree);
+    return '当前分支落后于 ' + upstreamName + '，直接快进到 ' + shortOid(upstream);
+  }
+  if (repo.isAncestor(upstream, head)) return '当前分支已经在 ' + upstreamName + ' 之上，无需 rebase';
+  const upAnc = repo.ancestors(upstream);
+  const todo = [];
+  const walk = (oid) => {
+    if (!oid || upAnc.has(oid)) return;
+    const c = repo.commitOf(oid);
+    walk(c.parents[0]);
+    todo.push(oid);
+  };
+  walk(head);
+  const st = {
+    kind: 'rebase', todo, at: 0, onto: upstream, upstreamName,
+    origHead: head, origBranch: repo.head.detached ? null : repo.head.ref,
+  };
+  repo.origHead = head;
+  // HEAD 先移到 onto
+  if (st.origBranch) repo.setRef(st.origBranch, upstream, 'rebase: onto ' + shortOid(upstream));
+  else repo.moveHead({ detached: true, oid: upstream }, 'rebase: onto');
+  repo.checkoutTree(repo.commitOf(upstream).tree);
+  return continueRebase(repo, st, ['把 ' + todo.length + ' 个提交依次重放到 ' + shortOid(upstream) + ' 之上（每个都会得到新的哈希）']);
+}
+
+function continueRebase(repo, st, lines) {
+  while (st.at < st.todo.length) {
+    const pick = st.todo[st.at];
+    const c = repo.commitOf(pick);
+    const baseTree = c.parents.length ? repo.commitOf(c.parents[0]).tree : null;
+    const res = mergeTrees(repo, baseTree, repo.commitOf(repo.headOid()).tree, c.tree, 'HEAD', shortOid(pick) + ' (' + subjectOf(c.message) + ')');
+    if (res.conflicts.length) {
+      const out = finishMergeLike(repo, res, { kind: 'rebase', message: c.message, theirsLabel: subjectOf(c.message) });
+      repo.state = Object.assign({}, st, { kind: 'rebase', conflicts: res.conflicts.map((x) => x.path) });
+      lines.push('在重放 ' + shortOid(pick) + ' 时冲突：');
+      lines.push(out);
+      return lines.join('\n');
+    }
+    const tree = repo.buildTree(res.files);
+    repo.index = new Map();
+    repo.work = new Map();
+    for (const [p, e] of res.files) { repo.setIndex(p, e); repo.writeFile(p, repo.blobText(e.oid), e.mode); }
+    const oid = repo.createCommit(c.message, [repo.headOid()], { tree, author: c.author });
+    applyCommit(repo, oid, 'rebase: ' + subjectOf(c.message));
+    repo.clock += repo.step;
+    lines.push('  ' + shortOid(pick) + ' -> ' + shortOid(oid) + '  ' + subjectOf(c.message));
+    st.at++;
+  }
+  repo.state = null;
+  lines.push('rebase 完成。注意：内容一样，但提交哈希全变了 —— 因为 parent 变了，哈希就变了。');
+  return lines.join('\n');
+}
+
+function cmdCherryPick(repo, rest, hasFlag) {
+  if (hasFlag('--abort')) {
+    if (!repo.state) throw new GitError('当前没有进行中的 cherry-pick');
+    repo.checkoutTree(repo.commitOf(repo.headOid()).tree);
+    repo.state = null;
+    return '已中止 cherry-pick';
+  }
+  if (hasFlag('--continue')) {
+    if (!repo.state || repo.state.kind !== 'cherry-pick') throw new GitError('当前没有进行中的 cherry-pick');
+    if (repo.conflictPaths().length) throw new GitError('还有未解决的冲突');
+    const st = repo.state;
+    const c = repo.commitOf(st.pick);
+    const oid = repo.createCommit(c.message, [repo.headOid()], { tree: repo.buildTree(repo.indexEntries()), author: c.author });
+    applyCommit(repo, oid, 'cherry-pick: ' + subjectOf(c.message));
+    repo.state = null;
+    repo.clock += repo.step;
+    return '[' + repo.headName() + ' ' + shortOid(oid) + '] ' + subjectOf(c.message);
+  }
+  const pick = repo.resolve(rest[0]);
+  const c = repo.commitOf(pick);
+  const baseTree = c.parents.length ? repo.commitOf(c.parents[0]).tree : null;
+  const res = mergeTrees(repo, baseTree, repo.commitOf(repo.headOid()).tree, c.tree, 'HEAD', shortOid(pick));
+  const out = finishMergeLike(repo, res, {
+    kind: 'cherry-pick', message: c.message, author: c.author, pick, theirsLabel: shortOid(pick),
+    successText: (oid) => '[' + repo.headName() + ' ' + shortOid(oid) + '] ' + subjectOf(c.message) +
+      '\n只把这一个提交的改动搬过来，作者与信息保留，哈希是新的（' + shortOid(pick) + ' -> ' + shortOid(oid) + '）',
+  });
+  if (repo.state) repo.state.pick = pick;
+  return out;
+}
+
+function cmdRevert(repo, rest, hasFlag) {
+  if (hasFlag('--continue')) {
+    if (!repo.state || repo.state.kind !== 'revert') throw new GitError('当前没有进行中的 revert');
+    if (repo.conflictPaths().length) throw new GitError('还有未解决的冲突');
+    const st = repo.state;
+    const oid = repo.createCommit(st.message, [repo.headOid()], { tree: repo.buildTree(repo.indexEntries()) });
+    applyCommit(repo, oid, 'revert: ' + subjectOf(st.message));
+    repo.state = null;
+    repo.clock += repo.step;
+    return '[' + repo.headName() + ' ' + shortOid(oid) + '] ' + subjectOf(st.message);
+  }
+  const target = repo.resolve(rest[0]);
+  const c = repo.commitOf(target);
+  if (c.parents.length > 1) throw new GitError('这是合并提交，撤销它需要 -m 指定主线（本沙盒未实现）');
+  const message = 'Revert "' + subjectOf(c.message) + '"\n\nThis reverts commit ' + target + '.\n';
+  const res = mergeTrees(repo, c.tree, repo.commitOf(repo.headOid()).tree,
+    c.parents.length ? repo.commitOf(c.parents[0]).tree : repo.buildTree(new Map()), 'HEAD', 'parent of ' + shortOid(target));
+  const out = finishMergeLike(repo, res, {
+    kind: 'revert', message, theirsLabel: 'revert ' + shortOid(target),
+    successText: (oid) => '[' + repo.headName() + ' ' + shortOid(oid) + '] ' + subjectOf(message) +
+      '\n历史没有被改写：新加了一个把改动反着做一遍的提交。',
+  });
+  if (repo.state) repo.state.message = message;
+  return out;
+}
+
+function cmdReset(repo, rest, hasFlag) {
+  const mode = hasFlag('--hard') ? 'hard' : hasFlag('--soft') ? 'soft' : 'mixed';
+  const target = rest[0] ? repo.resolve(rest[0]) : repo.headOid();
+  if (!target) throw new GitError('没有可重置的目标');
+  const old = repo.headOid();
+  repo.origHead = old;
+  if (repo.head.detached) { repo.head.oid = target; repo.logRef('HEAD', old, target, 'reset: moving to ' + (rest[0] || 'HEAD')); }
+  else repo.setRef(repo.head.ref, target, 'reset: moving to ' + (rest[0] || 'HEAD'));
+  const tree = repo.commitOf(target).tree;
+  if (mode === 'mixed' || mode === 'hard') {
+    const files = repo.flattenTree(tree);
+    repo.index = new Map();
+    for (const [p, e] of files) repo.setIndex(p, e);
+  }
+  if (mode === 'hard') {
+    repo.work = new Map();
+    for (const [p, e] of repo.flattenTree(tree)) repo.writeFile(p, repo.blobText(e.oid), e.mode);
+  }
+  const explain = {
+    soft: '只挪了分支指针；索引与工作区原样保留（改动都还在暂存区里）。',
+    mixed: '挪了分支指针 + 重置索引；工作区文件不动（改动退回“未暂存”）。',
+    hard: '挪了分支指针 + 重置索引 + 覆盖工作区 —— 未提交的改动被丢弃了（这一步不可逆，但被丢掉的提交还能靠 reflog 找回）。',
+  }[mode];
+  return 'HEAD 现在是 ' + shortOid(target) + '（--' + mode + '）\n' + explain;
+}
+
+function cmdTag(repo, rest, hasFlag) {
+  if (hasFlag('-d')) {
+    if (!repo.refs.delete('refs/tags/' + rest[0])) throw new GitError('标签不存在: ' + rest[0]);
+    return '已删除标签 ' + rest[0];
+  }
+  if (!rest.length) return repo.tags().join('\n') || '（还没有标签）';
+  const oid = rest[1] ? repo.resolve(rest[1]) : repo.headOid();
+  repo.setRef('refs/tags/' + rest[0], oid, 'tag: ' + rest[0]);
+  return '标签 ' + rest[0] + ' -> ' + shortOid(oid);
+}
+
+function cmdStash(repo, rest) {
+  const op = rest[0] || 'push';
+  if (op === 'list') {
+    return repo.stash.length
+      ? repo.stash.map((s, i) => 'stash@{' + i + '}: ' + s.message).join('\n')
+      : '（贮藏区是空的）';
+  }
+  if (op === 'push') {
+    const s = repo.status();
+    if (!s.staged.length && !s.unstaged.length) throw new GitError('没有本地改动要贮藏');
+    const headOid = repo.headOid();
+    const workTree = repo.buildTree(workFileMap(repo));
+    const idxCommit = repo.createCommit('index on ' + repo.headName(), [headOid], { tree: repo.buildTree(repo.indexEntries()) });
+    const stashCommit = repo.createCommit('WIP on ' + repo.headName() + ': ' + shortOid(headOid) + ' ' + subjectOf(repo.commitOf(headOid).message),
+      [headOid, idxCommit], { tree: workTree });
+    repo.stash.unshift({ oid: stashCommit, message: 'WIP on ' + repo.headName() + ': ' + shortOid(headOid) });
+    repo.checkoutTree(repo.commitOf(headOid).tree);
+    repo.clock += repo.step;
+    return '已贮藏改动 -> ' + shortOid(stashCommit) + '（工作区回到 HEAD 的样子）\n贮藏本身也是提交对象，只是没有分支指向它。';
+  }
+  if (op === 'pop' || op === 'apply') {
+    if (!repo.stash.length) throw new GitError('贮藏区是空的');
+    const top = repo.stash[0];
+    const c = repo.commitOf(top.oid);
+    const res = mergeTrees(repo, repo.commitOf(c.parents[0]).tree, repo.commitOf(repo.headOid()).tree, c.tree, 'HEAD', 'stash');
+    if (res.conflicts.length) throw new GitError('贮藏与当前工作区冲突，本沙盒不自动解决');
+    repo.work = new Map();
+    for (const [p, e] of res.files) repo.writeFile(p, repo.blobText(e.oid), e.mode);
+    if (op === 'pop') repo.stash.shift();
+    return '已恢复贮藏的改动' + (op === 'pop' ? '（并从贮藏区弹出）' : '');
+  }
+  throw new GitError('git stash 只支持 push / pop / apply / list');
+}
+
+function cmdReflog(repo, rest) {
+  const ref = rest[0] && rest[0] !== 'show' ? rest[0] : 'HEAD';
+  const log = repo.reflogs.get(ref) || [];
+  if (!log.length) return '（' + ref + ' 还没有 reflog）';
+  return log.map((e, i) => shortOid(e.new) + ' ' + ref + '@{' + i + '}: ' + e.msg).join('\n');
+}
+
+function cmdCatFile(repo, args) {
+  const flag = args.find((a) => a.startsWith('-') && a !== '--');
+  const revArg = args.filter((a) => !a.startsWith('-'))[0];
+  if (!revArg) throw new GitError('git cat-file 需要一个对象');
+  const oid = repo.resolve(revArg);
+  const o = repo.read(oid);
+  if (flag === '-t') return o.type;
+  if (flag === '-s') return String(o.body.length);
+  if (o.type === 'tree') {
+    return parseTree(o.body).map((e) => (e.mode === '40000' ? '040000' : e.mode) + ' ' + e.type + ' ' + e.oid + '\t' + e.name).join('\n');
+  }
+  return dec(o.body);
+}
+
+function cmdHashObject(repo, args) {
+  const write = args.includes('-w');
+  const path = args.filter((a) => !a.startsWith('-')).pop();
+  const w = repo.work.get(path);
+  if (!w) throw new GitError('工作区没有这个文件: ' + path);
+  const body = enc(w.content);
+  const oid = hashObject('blob', body);
+  if (write) repo.write('blob', body);
+  return oid + (write ? '（已写入对象库）' : '（只算哈希，没有写进对象库；加 -w 才写）');
+}
+
+function cmdLsFiles(repo, hasFlag) {
+  const rows = [];
+  for (const [p, stages] of [...repo.index].sort()) {
+    for (let s = 0; s < 4; s++) {
+      const e = stages[s];
+      if (!e) continue;
+      rows.push(hasFlag('--stage', '-s') ? e.mode + ' ' + e.oid + ' ' + s + '\t' + p : p);
+    }
+  }
+  return rows.length ? [...new Set(rows)].join('\n') : '（索引是空的）';
+}
+
+function cmdLsTree(repo, rest, hasFlag) {
+  const oid = repo.resolve(rest[0] || 'HEAD');
+  const o = repo.read(oid);
+  const treeOid = o.type === 'commit' ? repo.commitOf(oid).tree : oid;
+  if (hasFlag('-r')) {
+    return [...repo.flattenTree(treeOid)].map(([p, e]) => e.mode + ' blob ' + e.oid + '\t' + p).join('\n');
+  }
+  return repo.treeOf(treeOid).map((e) => (e.mode === '40000' ? '040000' : e.mode) + ' ' + e.type + ' ' + e.oid + '\t' + e.name).join('\n');
+}
+
+function cmdRevParse(repo, rest) {
+  return rest.map((r) => repo.resolve(r)).join('\n');
+}
+
+function cmdMergeBase(repo, rest) {
+  if (rest.length < 2) throw new GitError('git merge-base 需要两个提交');
+  const b = repo.mergeBase(repo.resolve(rest[0]), repo.resolve(rest[1]));
+  return b || '（没有共同祖先）';
+}
+
+const HELP_TEXT = [
+  '沙盒支持的命令（都是真的在算，对象 id 与真 git 一致）：',
+  '  文件：echo "内容" > 文件   echo "追加" >> 文件   cat 文件   ls   rm 文件   mv 旧 新',
+  '  基础：git init [-b 主分支名]   git status   git add <路径|.>   git commit -m "说明" [--amend]',
+  '  查看：git log [--oneline] [--all]   git show [版本]   git diff [--staged] [版本 [版本]]',
+  '  分支：git branch [名字] [-d 名字]   git switch [-c] <分支>   git checkout <提交|分支>   git tag <名字>',
+  '  整合：git merge <分支> [--no-ff|--abort]   git rebase <上游> [--continue|--abort]',
+  '        git cherry-pick <提交>   git revert <提交>   git stash [push|pop|list]',
+  '  撤销：git reset [--soft|--mixed|--hard] <版本>   git restore [--staged] <路径>   git reflog',
+  '  管道：git cat-file -p|-t|-s <对象>   git hash-object [-w] <文件>   git ls-files --stage',
+  '        git ls-tree [-r] <版本>   git rev-parse <版本>   git merge-base <a> <b>',
+  '  版本写法：HEAD  HEAD~2  HEAD^  分支名  标签名  哈希前缀  HEAD:路径  HEAD^{tree}',
+].join('\n');
+
+
+/* ============================================================
+   Git Lab — 界面层（引擎在上面，已在 node 里对着真 git 跑过）
+   ============================================================ */
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+const LS_KEY = 'gl-git-lab-v1';
+
+let repo = null;
+let selFile = null;
+let selOid = null;
+let objFilter = 'all';
+let history = [];
+let histAt = -1;
+let termLines = [];
+let learn = null;   // {id, at}
+let cmdCount = 0;
+let lastConflictKey = '';
+
+/* ---------- 场景 ---------- */
+const SEED = [
+  'git init -b main',
+  'echo "# 我的项目\\n\\n一个用来学 git 的小仓库。" > README.md',
+  'echo "function hi() {\\n  console.log(\'hi\')\\n}" > app.js',
+  'git add .',
+  'git commit -m "init: 项目骨架"',
+  'echo "function hi(name) {\\n  console.log(\'hi, \' + name)\\n}" > app.js',
+  'git add app.js',
+  'git commit -m "feat: 打招呼带上名字"',
+  'git switch -c feature',
+  'echo "# 我的项目\\n\\n一个用来学 git 的小仓库。\\n\\n## 用法\\n\\n直接打开。" > README.md',
+  'git add README.md',
+  'git commit -m "docs: 补一段用法"',
+  'git switch main',
+];
+
+const SCENARIOS = [
+  {
+    id: 'areas',
+    title: '① 三个区域到底是什么',
+    sub: '工作区 / 暂存区 / 仓库 —— 90% 的 git 困惑都出在这三者的关系上。',
+    setup: [],
+    steps: [
+      { cmd: 'git init -b main', note: '建仓库。此刻对象库是空的：一个对象都还没有，右边「对象数」是 0。' },
+      { cmd: 'echo "hello" > a.txt', note: '只动了工作区。git 完全不知道这件事。' },
+      { cmd: 'git status', note: 'a.txt 是「未跟踪」：它在你的目录里，但不在 git 的账本上。' },
+      { cmd: 'git add a.txt', note: '关键一步：内容被算成一个 blob 写进对象库，索引记下「a.txt → 这个哈希」。add 存的是内容快照，不是「这个文件」。' },
+      { cmd: 'git cat-file -p ce01362', note: '直接按哈希把那个 blob 读出来 —— 就是文件内容本身，里面没有文件名，也没有时间。' },
+      { cmd: 'echo "hello world" > a.txt', note: '又改了工作区。但索引里还躺着刚才那份旧内容。' },
+      { cmd: 'git status', note: '同一个文件同时出现在「要提交的变更」和「尚未暂存」两栏 —— 这就是 add 之后又改了的样子。' },
+      { cmd: 'git commit -m "第一个提交"', note: '提交的是**索引**里的内容（hello），不是你现在看到的文件（hello world）。看「暂存区」和「HEAD 提交」两列就明白了。' },
+      { cmd: 'git cat-file -p HEAD', note: '提交对象的全文：一棵树 + 作者 + 提交者 + 说明。它本身不存文件内容，只指向一棵树。' },
+      { cmd: 'git ls-tree HEAD', note: '树里才有文件名，以及它指向哪个 blob。文件名属于树，内容属于 blob —— 这就是 git 能秒切分支的原因。' },
+    ],
+  },
+  {
+    id: 'objects',
+    title: '② 内容寻址：相同内容只存一份',
+    sub: '为什么改个文件名 git 不当成新文件，为什么复制粘贴不占空间。',
+    setup: ['git init -b main'],
+    steps: [
+      { cmd: 'echo "同样的内容" > x.txt', note: '造一个文件。' },
+      { cmd: 'echo "同样的内容" > y.txt', note: '再造一个内容完全一样、名字不同的文件。' },
+      { cmd: 'git add .', note: '两个都暂存。' },
+      { cmd: 'git ls-files --stage', note: '两行不同的路径，指向的却是<b>同一个 blob 哈希</b> —— 对象库里只存了一份内容。' },
+      { cmd: 'git commit -m "两个同内容的文件"', note: '提交。' },
+      { cmd: 'mv x.txt z.txt', note: '把 x.txt 改名。' },
+      { cmd: 'git add .', note: '暂存改名。' },
+      { cmd: 'git status', note: 'git 里没有「重命名」这个操作：它只是发现某个 blob 换了个名字挂在树上。所谓 rename 检测是事后猜出来的。' },
+      { cmd: 'git hash-object y.txt', note: '手算一遍哈希 —— 和上面那个 blob id 一致。哈希只由内容决定。' },
+    ],
+  },
+  {
+    id: 'branch',
+    title: '③ 分支只是一个 41 字节的文件',
+    sub: '新建分支为什么是 O(1)，HEAD 又是什么。',
+    setup: SEED,
+    steps: [
+      { cmd: 'git log --oneline --all', note: '先看看现在的历史：main 和 feature 各在一处。' },
+      { cmd: 'git branch', note: '分支列表。每个分支只是「一个名字 + 一个 40 位哈希」，新建分支不复制任何文件。' },
+      { cmd: 'git switch -c hotfix', note: '从当前提交拉一条新分支。对象库一个新对象都没多。' },
+      { cmd: 'echo "紧急修复" > hotfix.txt', note: '改点东西。' },
+      { cmd: 'git add . && git commit -m "fix: 紧急修复"', note: '提交后，只有 hotfix 这个指针往前挪了；main 还在原地。' },
+      { cmd: 'git log --oneline --all', note: '看提交图那一页更直观：两条线从同一个点分叉。' },
+      { cmd: 'git switch main', note: '切回 main。工作区文件随之变回 main 的样子 —— hotfix.txt 消失了（它还在对象库里，只是这棵树上没有它）。' },
+      { cmd: 'git cat-file -p HEAD', note: 'HEAD 现在指向 main，main 指向这个提交。HEAD → 分支 → 提交 → 树 → blob，一条链。' },
+    ],
+  },
+  {
+    id: 'merge',
+    title: '④ 合并：快进、三方合并与冲突',
+    sub: '什么时候会产生合并提交，冲突到底是什么东西。',
+    setup: SEED,
+    steps: [
+      { cmd: 'git merge feature', note: 'feature 是从 main 上分出去后 main 没动过 —— 于是这是一次<b>快进</b>：没有新提交，指针直接挪过去。' },
+      { cmd: 'git log --oneline --all', note: '历史是一条直线，看不出「这里合并过」。' },
+      { cmd: 'git switch -c topic HEAD~1', note: '回到上一个提交，另开一条分支，制造真正的分叉。' },
+      { cmd: 'echo "function hi(name) {\\n  console.log(\'哈喽, \' + name)\\n}" > app.js', note: '在 topic 上改 app.js 的这一行。' },
+      { cmd: 'git add . && git commit -m "i18n: 中文问候"', note: '提交。' },
+      { cmd: 'git switch main', note: '回到 main。' },
+      { cmd: 'echo "function hi(name) {\\n  console.log(\'HI, \' + name.toUpperCase())\\n}" > app.js', note: '在 main 上改同一行的另一种写法。' },
+      { cmd: 'git add . && git commit -m "style: 大写问候"', note: '提交。现在两条分支改了同一行 —— 冲突的必要条件。' },
+      { cmd: 'git merge-base main topic', note: '合并前 git 先找两条分支的共同祖先，三方合并的「三方」= 祖先 + 我方 + 对方。' },
+      { cmd: 'git merge topic', note: '同一行两边都改了、祖先又是第三种样子 —— git 不敢替你选，于是把三段都写进文件让你决定。' },
+      { cmd: 'git ls-files --stage', note: '看索引：冲突路径有 3 条记录（阶段 1=祖先，2=我方，3=对方）。所谓「解决冲突」就是把它变回一条阶段 0 的记录。' },
+      { cmd: 'git status', note: '状态里明确写着「未合并的路径」。此时不能提交。' },
+    ],
+  },
+  {
+    id: 'rebase',
+    title: '⑤ rebase 与 merge 的真正区别',
+    sub: '同样的代码，为什么 rebase 之后哈希全变了。',
+    setup: SEED.concat([
+      'git switch -c topic HEAD~1',
+      'echo "console.log(\'来自 topic\')" > topic.js',
+      'git add . && git commit -m "feat: topic 的功能"',
+    ]),
+    steps: [
+      { cmd: 'git log --oneline --all', note: 'topic 从 main 的上一个提交分出去，main 后来又往前走了一步。' },
+      { cmd: 'git rebase main', note: 'rebase = 把我这条线上的提交，一个个重新做在 main 的头上。' },
+      { cmd: 'git log --oneline --all', note: '历史变成一条直线了。但注意提交哈希：<b>和刚才不是同一个</b>。' },
+      { cmd: 'git cat-file -p HEAD', note: '父提交换人了 → 提交对象的字节变了 → SHA-1 变了。所以 rebase 是「重写历史」，已经推给别人的分支别乱 rebase。' },
+      { cmd: 'git reflog', note: 'reflog 里还留着 rebase 之前那个旧提交 —— 后悔了可以 git reset --hard 回去。' },
+    ],
+  },
+  {
+    id: 'undo',
+    title: '⑥ 后悔药：reset 三态 / revert / reflog',
+    sub: '--soft、--mixed、--hard 到底差在哪，以及删过头了怎么捞回来。',
+    setup: SEED.concat([
+      'echo "console.log(\'一个待会儿要撤销的改动\')" > temp.js',
+      'git add .',
+      'git commit -m "feat: 待会儿要撤销的提交"',
+    ]),
+    steps: [
+      { cmd: 'git reset --soft HEAD~1', note: '只把分支指针往回挪一格（撤掉刚才那个提交）。索引和工作区<b>原样不动</b> —— 改动全在暂存区等着你重新提交，这正是「改上一条提交信息」的常用手法。' },
+      { cmd: 'git status', note: '看：改动还好好地在「要提交的变更」里。' },
+      { cmd: 'git reset --mixed HEAD', note: '再来一次 mixed：指针不动，但索引被 HEAD 覆盖。改动退回「尚未暂存」。' },
+      { cmd: 'git status', note: '同样的改动，换了个位置待着。工作区文件仍然没丢。' },
+      { cmd: 'git reset --hard HEAD', note: '<b>这一步会真的丢东西</b>：工作区被 HEAD 覆盖，没提交过的改动没了。' },
+      { cmd: 'git log --oneline --all', note: '刚才被 reset 掉的那个提交，已经没有任何分支指向它了 —— 在提交图那一页它会显示成灰色的「悬空」。' },
+      { cmd: 'git reflog', note: '但它没被删！reflog 记着 HEAD 走过的每一步。' },
+      { cmd: 'git reset --hard HEAD@{3}', note: '真的捞回来了：<span class="gl-inline">HEAD@{3}</span> 的意思是「HEAD 三步之前指向的那个提交」，把它填进 reset 即可。填哈希也一样。<b>只要没被垃圾回收，reset 掉的提交永远能找回来。</b>' },
+      { cmd: 'git revert HEAD', note: '换一种思路：如果这个提交已经推给别人了，就别改历史 —— revert 是<b>新加一个反向提交</b>把改动抵消掉，历史保持不变。' },
+      { cmd: 'git log --oneline', note: '对比一下：reset 让历史消失，revert 让历史多一条。团队协作里几乎总是该用 revert。' },
+    ],
+  },
+  {
+    id: 'detached',
+    title: '⑦ 游离 HEAD 与 stash',
+    sub: '「You are in detached HEAD state」到底发生了什么。',
+    setup: SEED,
+    steps: [
+      { cmd: 'git checkout HEAD~1', note: 'HEAD 直接指向一个提交，而不是指向分支 —— 这就叫游离（detached）。' },
+      { cmd: 'git status', note: '状态第一行不再是「位于分支 x」。' },
+      { cmd: 'echo "在游离状态下写的" > lost.txt', note: '照样能改文件、能提交。' },
+      { cmd: 'git add . && git commit -m "游离状态下的提交"', note: '提交成功了，但没有任何分支指向它。' },
+      { cmd: 'git switch main', note: '一切回 main。刚才那个提交立刻变成「悬空」—— 提交图里的灰框就是它。' },
+      { cmd: 'git reflog', note: '想找回来只能靠 reflog。正确做法是当时就 git switch -c 新分支名 把它接住。' },
+      { cmd: 'echo "写了一半的功能" > wip.txt', note: '换个话题：手上有改到一半的东西，但要紧急切分支。' },
+      { cmd: 'git add . && git stash', note: 'stash 把改动打包成一个（没有分支指向的）提交收起来，工作区恢复干净。' },
+      { cmd: 'git stash list', note: '贮藏列表。' },
+      { cmd: 'git stash pop', note: '取回来。stash 的本质也是对象库里的提交对象 —— git 里几乎所有东西都是提交。' },
+    ],
+  },
+];
+
+const QUICK_CMDS = ['git status', 'git add .', 'git commit -m ""', 'git log --oneline --all', 'git diff',
+  'git diff --staged', 'git branch', 'git switch -c ', 'git merge ', 'git rebase ', 'git cherry-pick ',
+  'git revert HEAD', 'git reset --hard HEAD', 'git reflog', 'git cat-file -p HEAD', 'git ls-tree -r HEAD',
+  'git ls-files --stage', 'git rev-parse HEAD', 'git merge-base main ', 'git stash', 'git tag ', 'git help'];
+
+/* ---------- 对拍固定值（由本机真 git CLI 事先算出） ---------- */
+const FIXTURES = [
+  { label: 'blob：内容 hello + 换行', want: 'ce013625030ba8dba906f756967f9e9ca394464a',
+    calc: () => hashObject('blob', enc('hello\n')) },
+  { label: 'blob：空文件', want: 'e69de29bb2d1d6434b8b29ae775ad8c2e48c5391',
+    calc: () => hashObject('blob', enc('')) },
+  { label: 'blob：UTF-8 中文「你好，世界」', want: '98882f78c89031729fe6b6bc52ac3a59f67b0191',
+    calc: () => hashObject('blob', enc('你好，世界\n')) },
+  { label: 'tree：空目录', want: '4b825dc642cb6eb9a060e54bf8d69288fbee4904',
+    calc: () => hashObject('tree', new Uint8Array(0)) },
+  { label: 'tree：README.md + doc/ + src/（含排序规则）', want: '1ea7f2017eb1daa987af2e1a49f2328e776b40e8',
+    calc: () => hashObject('tree', serializeTree([
+      { mode: '100644', name: 'README.md', oid: '31442efbe5d89ecfca84e02623cf904336f2ce7b' },
+      { mode: '40000', name: 'src', oid: 'f59256d240c8e4ab93b468148c976b7aadc5220e' },
+      { mode: '40000', name: 'doc', oid: '640ba63b141ba35b527fee65e78140148c8d0a5b' },
+    ])) },
+  { label: 'commit：上面那棵树 + 固定作者与时间', want: '95f47c92243961b5dd5270c44ae120d3ed3cd09b',
+    calc: () => hashObject('commit', serializeCommit({
+      tree: '1ea7f2017eb1daa987af2e1a49f2328e776b40e8', parents: [],
+      author: { name: 'Git Lab', email: 'lab@example.com', time: 1786665600, tz: '+0800' },
+      committer: { name: 'Git Lab', email: 'lab@example.com', time: 1786665600, tz: '+0800' },
+      message: 'init: 项目骨架\n',
+    })) },
+];
+
+/* ---------- 终端 ---------- */
+function pushLine(text, cls) {
+  termLines.push({ text, cls });
+  if (termLines.length > 400) termLines = termLines.slice(-400);
+}
+function colorizeLine(l) {
+  if (/^<<<<<<<|^=======$|^>>>>>>>/.test(l)) return 'gl-cmark';
+  if (/^diff --git/.test(l)) return 'gl-difffile';
+  if (/^@@/.test(l)) return 'gl-diffhunk';
+  if (/^\+/.test(l)) return 'gl-diffadd';
+  if (/^-/.test(l) && !/^--- /.test(l)) return 'gl-diffdel';
+  return '';
+}
+function renderTerm() {
+  const out = $('gl-term-out');
+  out.innerHTML = termLines.map((l) => {
+    const cls = l.cls === 'auto' ? colorizeLine(l.text) : l.cls;
+    return '<span class="gl-termline ' + cls + '">' + (esc(l.text) || '&nbsp;') + '</span>';
+  }).join('');
+  out.scrollTop = out.scrollHeight;
+}
+function exec(cmd, opts) {
+  opts = opts || {};
+  const parts = cmd.split('&&').map((s) => s.trim()).filter(Boolean);
+  if (!opts.silent) pushLine(promptText() + ' ' + cmd, 'gl-termcmd');
+  let lastErr = false;
+  for (const p of parts) {
+    if (p === 'clear') { termLines = []; continue; }
+    const r = run(repo, p);
+    lastErr = !!r.err;
+    if (!opts.silent && r.out) {
+      for (const line of r.out.split('\n')) pushLine(line, r.err ? 'gl-termerr' : 'auto');
+    }
+  }
+  if (!opts.silent) { pushLine('', ''); renderTerm(); }
+  if (!opts.noRender) render();
+  if (!opts.silent) document.body.dataset.cmds = String(++cmdCount);
+  save();
+  return !lastErr;
+}
+function promptText() {
+  let b = repo && repo.initialized ? repo.headName() : '空';
+  if (repo && repo.state) b += '|' + (repo.state.kind === 'merge' ? 'MERGING' : repo.state.kind.toUpperCase());
+  return '~/demo (' + b + ') $';
+}
+
+/* ---------- 三区视图 ---------- */
+function fileRow(name, chip, chipCls, oid, onPick) {
+  const li = document.createElement('li');
+  li.className = 'gl-file';
+  const btn = document.createElement('button');
+  btn.className = 'gl-file-name';
+  btn.textContent = name;
+  btn.title = name;
+  btn.addEventListener('click', onPick);
+  li.appendChild(btn);
+  if (oid) {
+    const s = document.createElement('span');
+    s.className = 'gl-oid';
+    s.textContent = oid.slice(0, 7);
+    s.title = oid;
+    li.appendChild(s);
+  }
+  if (chip) {
+    const c = document.createElement('span');
+    c.className = 'gl-chip ' + chipCls;
+    c.textContent = chip;
+    li.appendChild(c);
+  }
+  return li;
+}
+function fillList(el, rows) {
+  el.innerHTML = '';
+  if (!rows.length) {
+    const li = document.createElement('li');
+    li.className = 'gl-empty';
+    li.textContent = '（空）';
+    el.appendChild(li);
+    return;
+  }
+  for (const r of rows) el.appendChild(r);
+}
+function renderAreas() {
+  const st = repo.status();
+  const idx = repo.indexEntries();
+  const conflicts = new Set(repo.conflictPaths());
+  const unstaged = new Map(st.unstaged.map((f) => [f.path, f.code]));
+  const stagedMap = new Map(st.staged.map((f) => [f.path, f.code]));
+
+  const workRows = [...repo.work.keys()].sort().map((p) => {
+    let chip = '一致', cls = 'gl-chip-untracked';
+    if (conflicts.has(p)) { chip = '冲突'; cls = 'gl-chip-conflict'; }
+    else if (!repo.index.has(p)) { chip = '未跟踪'; cls = 'gl-chip-untracked'; }
+    else if (unstaged.get(p) === 'M') { chip = '已修改'; cls = 'gl-chip-mod'; }
+    else if (stagedMap.has(p)) { chip = '已暂存'; cls = 'gl-chip-new'; }
+    else { chip = '一致'; cls = 'gl-chip-untracked'; }
+    return fileRow(p, chip, cls, hashObject('blob', enc(repo.work.get(p).content)), () => pickFile(p));
+  });
+  for (const f of st.unstaged) {
+    if (f.code === 'D') workRows.push(fileRow(f.path, '已删除', 'gl-chip-del', null, () => pickFile(f.path)));
+  }
+  fillList($('gl-work-list'), workRows);
+  $('gl-work-sub').textContent = repo.work.size + ' 个文件';
+
+  const idxRows = [];
+  for (const [p, stages] of [...repo.index].sort()) {
+    if (stages[0]) {
+      const code = stagedMap.get(p);
+      idxRows.push(fileRow(p, code === 'A' ? '新增' : code === 'M' ? '已修改' : '', code === 'A' ? 'gl-chip-new' : code === 'M' ? 'gl-chip-mod' : '',
+        stages[0].oid, () => showObject(stages[0].oid)));
+    } else {
+      for (let s = 1; s <= 3; s++) {
+        if (stages[s]) idxRows.push(fileRow(p, '阶段 ' + s, 'gl-chip-conflict', stages[s].oid, () => showObject(stages[s].oid)));
+      }
+    }
+  }
+  fillList($('gl-index-list'), idxRows);
+  $('gl-index-sub').textContent = idx.size + ' 条记录' + (conflicts.size ? ' · ' + conflicts.size + ' 个冲突' : '');
+
+  const headOid = repo.headOid();
+  const headFiles = headOid ? repo.flattenTree(repo.commitOf(headOid).tree) : new Map();
+  fillList($('gl-head-list'), [...headFiles.keys()].sort().map((p) =>
+    fileRow(p, '', '', headFiles.get(p).oid, () => showObject(headFiles.get(p).oid))));
+  $('gl-head-sub').textContent = headOid
+    ? shortOid(headOid) + ' · ' + headFiles.size + ' 个文件'
+    : '还没有提交';
+
+  // 冲突助手
+  const box = $('gl-conflict-box');
+  const cps = repo.conflictPaths();
+  const ckey = cps.join('|');
+  if (ckey && ckey !== lastConflictKey) pickFile(cps[0]);   // 冲突一出现就把它调进编辑器
+  lastConflictKey = ckey;
+  box.hidden = cps.length === 0;
+  if (cps.length) {
+    $('gl-conflict-text').textContent = ' 冲突文件：' + cps.join('、') + '。可以手动编辑文件删掉标记，也可以直接采用某一方：';
+    const acts = $('gl-conflict-actions');
+    acts.innerHTML = '';
+    for (const p of cps) {
+      for (const [side, stage] of [['用我方', 2], ['用对方', 3]]) {
+        const b = document.createElement('button');
+        b.className = 'gl-btn gl-btn-2 gl-btn-sm';
+        b.textContent = side + ' ' + p;
+        b.addEventListener('click', () => {
+          const e = repo.index.get(p)[stage];
+          if (!e) { pushLine('这一方在该路径上没有内容（是删除侧）', 'gl-termerr'); renderTerm(); return; }
+          repo.writeFile(p, repo.blobText(e.oid), e.mode);
+          exec('git add ' + p);
+        });
+        acts.appendChild(b);
+      }
+    }
+  }
+}
+function pickFile(p) {
+  selFile = p;
+  const w = repo.work.get(p);
+  $('gl-edit-name').textContent = p;
+  $('gl-edit-body').value = w ? w.content : '';
+  updateEditHash();
+}
+function updateEditHash() {
+  const v = $('gl-edit-body').value;
+  $('gl-edit-hash').textContent = selFile ? hashObject('blob', enc(v)) : '（先选一个文件）';
+}
+
+/* ---------- 提交图 ---------- */
+const LANE_COLORS = ['#0a0a0a', '#00b48a', '#3772cf', '#f55a3c', '#c37d0d', '#7c3aed'];
+function graphRows() {
+  const commits = [];
+  for (const [oid, o] of repo.objects) if (o.type === 'commit') commits.push(oid);
+  const info = new Map(commits.map((o) => [o, repo.commitOf(o)]));
+  commits.sort((a, b) => (info.get(b).committer.time - info.get(a).committer.time) || (a < b ? 1 : -1));
+  const reachable = new Set();
+  for (const oid of repo.refs.values()) repo.ancestors(oid, reachable);
+  if (repo.headOid()) repo.ancestors(repo.headOid(), reachable);
+  for (const s of repo.stash) repo.ancestors(s.oid, reachable);
+  const lanes = [];
+  const rows = [];
+  for (const oid of commits) {
+    let lane = lanes.indexOf(oid);
+    if (lane === -1) {
+      lane = lanes.indexOf(null);
+      if (lane === -1) { lane = lanes.length; lanes.push(null); }
+    }
+    lanes[lane] = null;
+    const parents = info.get(oid).parents;
+    const parentLanes = [];
+    parents.forEach((p, i) => {
+      if (i === 0) { lanes[lane] = p; parentLanes.push(lane); return; }
+      let l = lanes.indexOf(p);
+      if (l === -1) {
+        l = lanes.indexOf(null);
+        if (l === -1) { l = lanes.length; lanes.push(null); }
+        lanes[l] = p;
+      }
+      parentLanes.push(l);
+    });
+    rows.push({ oid, lane, parents, parentLanes, c: info.get(oid), dangling: !reachable.has(oid) });
+  }
+  return { rows, laneCount: Math.max(1, lanes.length) };
+}
+function renderGraph() {
+  const wrap = $('gl-graph');
+  wrap.innerHTML = '';
+  const { rows, laneCount } = graphRows();
+  if (!rows.length) {
+    wrap.innerHTML = '<div class="gl-empty">还没有任何提交。去终端里跑 <code>git commit</code>，或在左边挑一个场景。</div>';
+    return;
+  }
+  const H = 44, pad = 12, gap = 18;
+  const width = pad * 2 + (laneCount - 1) * gap;
+  const idxOf = new Map(rows.map((r, i) => [r.oid, i]));
+  const svgns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(svgns, 'svg');
+  svg.setAttribute('class', 'gl-graph-svg');
+  svg.setAttribute('width', String(width));
+  svg.setAttribute('height', String(rows.length * H));
+  svg.setAttribute('aria-hidden', 'true');
+  const x = (l) => pad + l * gap;
+  const y = (i) => i * H + H / 2;
+  rows.forEach((r, i) => {
+    r.parents.forEach((p, k) => {
+      const j = idxOf.get(p);
+      if (j == null) return;
+      const pl = r.parentLanes[k];
+      const path = document.createElementNS(svgns, 'path');
+      const x1 = x(r.lane), y1 = y(i), x2 = x(pl), y2 = y(j);
+      path.setAttribute('d', x1 === x2
+        ? 'M' + x1 + ' ' + y1 + ' L' + x2 + ' ' + y2
+        : 'M' + x1 + ' ' + y1 + ' C' + x1 + ' ' + (y1 + H * 0.6) + ' ' + x2 + ' ' + (y2 - H * 0.6) + ' ' + x2 + ' ' + y2);
+      path.setAttribute('fill', 'none');
+      path.setAttribute('stroke', LANE_COLORS[pl % LANE_COLORS.length]);
+      path.setAttribute('stroke-width', '1.6');
+      path.setAttribute('opacity', r.dangling ? '0.3' : '0.75');
+      svg.appendChild(path);
+    });
+  });
+  rows.forEach((r, i) => {
+    const c = document.createElementNS(svgns, 'circle');
+    c.setAttribute('cx', String(x(r.lane)));
+    c.setAttribute('cy', String(y(i)));
+    c.setAttribute('r', r.parents.length > 1 ? '6' : '5');
+    c.setAttribute('fill', r.dangling ? '#ffffff' : LANE_COLORS[r.lane % LANE_COLORS.length]);
+    c.setAttribute('stroke', LANE_COLORS[r.lane % LANE_COLORS.length]);
+    c.setAttribute('stroke-width', r.dangling ? '1.5' : '2');
+    if (r.dangling) c.setAttribute('stroke-dasharray', '2 2');
+    svg.appendChild(c);
+  });
+  wrap.appendChild(svg);
+  const list = document.createElement('div');
+  list.style.paddingLeft = (width + 8) + 'px';
+  const headOid = repo.headOid();
+  rows.forEach((r) => {
+    const btn = document.createElement('button');
+    btn.className = 'gl-grow';
+    btn.setAttribute('data-oid', r.oid);
+    if (r.oid === selOid) btn.setAttribute('aria-current', 'true');
+    const refs = [];
+    if (headOid === r.oid) refs.push(['HEAD' + (repo.head.detached ? '（游离）' : ' → ' + repo.headName()), 'gl-ref-head']);
+    for (const [ref, oid] of repo.refs) {
+      if (oid !== r.oid) continue;
+      if (ref.startsWith('refs/heads/')) refs.push([ref.slice(11), 'gl-ref-branch']);
+      else if (ref.startsWith('refs/tags/')) refs.push(['标签 ' + ref.slice(10), 'gl-ref-tag']);
+    }
+    if (r.dangling) refs.push(['悬空', 'gl-ref-dangling']);
+    let html = '<span class="gl-oid">' + esc(r.oid.slice(0, 7)) + '</span>';
+    for (const [t, cls] of refs) html += '<span class="gl-ref ' + cls + '">' + esc(t) + '</span>';
+    html += '<span class="gl-gsubject">' + esc(subjectOf(r.c.message)) + '</span>';
+    html += '<span class="gl-gtime">' + esc(fmtTime(r.c.committer.time, r.c.committer.tz).slice(5)) + '</span>';
+    btn.innerHTML = html;
+    btn.addEventListener('click', () => { selOid = r.oid; renderGraph(); renderCommit(); });
+    list.appendChild(btn);
+  });
+  wrap.appendChild(list);
+}
+function renderCommit() {
+  const body = $('gl-commit-body');
+  if (!selOid || !repo.has(selOid)) { body.innerHTML = ''; return; }
+  const c = repo.commitOf(selOid);
+  const files = repo.flattenTree(c.tree);
+  const parentLinks = c.parents.length
+    ? c.parents.map((p) => '<button class="gl-linkish" data-goto="' + p + '">' + p.slice(0, 7) + '</button>').join(' ')
+    : '<span class="gl-mono" style="color:var(--gl-muted)">（根提交，没有父）</span>';
+  $('gl-commit-sub').textContent = subjectOf(c.message);
+  const before = c.parents.length ? repo.flattenTree(repo.commitOf(c.parents[0]).tree) : new Map();
+  const diffText = diffFileMaps(repo, before, files);
+  body.innerHTML =
+    '<div class="gl-tablewrap"><table class="gl-table">' +
+    row('对象 id', '<code>' + esc(selOid) + '</code>') +
+    row('树', '<button class="gl-linkish" data-obj="' + c.tree + '">' + esc(c.tree) + '</button>') +
+    row('父提交', parentLinks) +
+    row('作者', esc(c.author.name + ' <' + c.author.email + '>') + ' · ' + fmtTime(c.author.time, c.author.tz)) +
+    row('提交者', esc(c.committer.name + ' <' + c.committer.email + '>') + ' · ' + fmtTime(c.committer.time, c.committer.tz)) +
+    row('说明', '<code>' + esc(c.message.trim()) + '</code>') +
+    row('这棵树上的文件', [...files.keys()].sort().map((p) =>
+      '<code>' + esc(p) + '</code> <span class="gl-oid">' + files.get(p).oid.slice(0, 7) + '</span>').join('<br>') || '（空树）') +
+    '</table></div>' +
+    '<div class="gl-codeblock" style="margin-top:14px"><div class="gl-codehead"><b>与第一个父提交的差异</b><span>' +
+    (c.parents.length ? 'git show ' + selOid.slice(0, 7) : '根提交') + '</span></div>' +
+    '<pre class="gl-pre">' + colorizeBlock(diffText) + '</pre></div>';
+  body.querySelectorAll('[data-goto]').forEach((b) => b.addEventListener('click', () => {
+    selOid = b.getAttribute('data-goto'); renderGraph(); renderCommit();
+  }));
+  body.querySelectorAll('[data-obj]').forEach((b) => b.addEventListener('click', () => {
+    showObject(b.getAttribute('data-obj'));
+  }));
+}
+function row(k, v) {
+  return '<tr><th style="width:130px;white-space:nowrap">' + esc(k) + '</th><td>' + v + '</td></tr>';
+}
+function colorizeBlock(text) {
+  return text.split('\n').map((l) => {
+    const cls = colorizeLine(l);
+    return cls ? '<span class="' + cls + '">' + esc(l) + '</span>' : esc(l);
+  }).join('\n');
+}
+
+/* ---------- 对象库 ---------- */
+function objSummary(oid, o) {
+  if (o.type === 'blob') {
+    const t = dec(o.body).replace(/\n/g, ' ⏎ ');
+    return t.length > 60 ? t.slice(0, 60) + '…' : (t || '（空）');
+  }
+  if (o.type === 'tree') return parseTree(o.body).map((e) => e.name + (e.type === 'tree' ? '/' : '')).join(' ');
+  const c = parseCommit(o.body);
+  return subjectOf(c.message);
+}
+function renderObjects() {
+  const t = $('gl-obj-table');
+  const all = [...repo.objects].map(([oid, o]) => ({ oid, o }));
+  const counts = { blob: 0, tree: 0, commit: 0 };
+  for (const { o } of all) counts[o.type] = (counts[o.type] || 0) + 1;
+  $('gl-obj-count').textContent = all.length + ' 个对象（commit ' + counts.commit + ' · tree ' + counts.tree + ' · blob ' + counts.blob + '）';
+  const rows = all.filter(({ o }) => objFilter === 'all' || o.type === objFilter)
+    .sort((a, b) => (a.o.type < b.o.type ? -1 : a.o.type > b.o.type ? 1 : a.oid < b.oid ? -1 : 1));
+  t.innerHTML = '<thead><tr><th>类型</th><th>对象 id</th><th>字节</th><th>内容摘要</th></tr></thead><tbody>' +
+    (rows.length ? rows.map(({ oid, o }) =>
+      '<tr><td><span class="gl-chip ' + (o.type === 'commit' ? 'gl-chip-new' : o.type === 'tree' ? 'gl-chip-mod' : 'gl-chip-untracked') + '">' + o.type + '</span></td>' +
+      '<td><button class="gl-linkish" data-obj="' + oid + '">' + oid.slice(0, 12) + '</button></td>' +
+      '<td class="gl-mono">' + o.body.length + '</td>' +
+      '<td class="gl-mono" style="color:var(--gl-steel);word-break:break-all">' + esc(objSummary(oid, o)) + '</td></tr>').join('')
+      : '<tr><td colspan="4" class="gl-empty">（没有这一类对象）</td></tr>') + '</tbody>';
+  t.querySelectorAll('[data-obj]').forEach((b) => b.addEventListener('click', () => showObject(b.getAttribute('data-obj'))));
+}
+function showObject(oid) {
+  if (!repo.has(oid)) return;
+  selOid = oid;
+  const o = repo.read(oid);
+  switchTab('obj');
+  $('gl-obj-title').textContent = o.type + ' ' + oid.slice(0, 12);
+  $('gl-obj-size').textContent = '内容 ' + o.body.length + ' 字节 · 连头部共 ' + objectBytes(o.type, o.body).length + ' 字节参与哈希';
+  const head = o.type + ' ' + o.body.length;
+  let bodyView;
+  if (o.type === 'tree') {
+    bodyView = parseTree(o.body).map((e) =>
+      esc(e.mode + ' ' + e.name) + '<span class="gl-byte-nul">[NUL]</span>' +
+      '<span style="color:#8ab4f8">[20 字节二进制 ' + e.oid.slice(0, 12) + '…]</span>').join('\n');
+  } else {
+    bodyView = esc(dec(o.body));
+  }
+  $('gl-obj-raw').innerHTML = '<span class="gl-byte-hdr">' + esc(head) + '</span><span class="gl-byte-nul">[NUL]</span>' + bodyView +
+    '\n\n<span class="gl-termnote">↑ 这一整串（含头部与 NUL 分隔符）的 SHA-1 就是</span>\n<span class="gl-byte-hdr">' + oid + '</span>';
+  const p = $('gl-obj-parsed');
+  if (o.type === 'tree') {
+    p.innerHTML = '<div class="gl-tablewrap"><table class="gl-table"><thead><tr><th>模式</th><th>类型</th><th>名字</th><th>指向</th></tr></thead><tbody>' +
+      parseTree(o.body).map((e) => '<tr><td class="gl-mono">' + (e.mode === '40000' ? '040000' : e.mode) + '</td><td>' + e.type +
+        '</td><td class="gl-mono">' + esc(e.name) + '</td><td><button class="gl-linkish" data-obj="' + e.oid + '">' + e.oid.slice(0, 12) + '</button></td></tr>').join('') +
+      '</tbody></table></div><div class="gl-callout">模式 <span class="gl-inline">100644</span> 是普通文件，<span class="gl-inline">040000</span> 是子目录。名字只存在于树里 —— 这就是为什么 git 认为「改名」不过是换了棵树。</div>';
+  } else if (o.type === 'commit') {
+    const c = parseCommit(o.body);
+    p.innerHTML = '<div class="gl-callout">这个提交指向树 <button class="gl-linkish" data-obj="' + c.tree + '">' + c.tree.slice(0, 12) +
+      '</button>，父提交 ' + (c.parents.length ? c.parents.map((x) => '<button class="gl-linkish" data-obj="' + x + '">' + x.slice(0, 7) + '</button>').join('、') : '无（根提交）') +
+      '。把作者、时间、说明中的任何一个字节改掉，这个 id 就完全变了 —— <b>历史不可篡改</b>正是从这里来的。</div>';
+  } else {
+    p.innerHTML = '<div class="gl-callout">blob 里<b>没有文件名、没有时间戳、没有权限</b> —— 只有内容。任何仓库里同样的内容都会得到同一个 id。</div>';
+  }
+  p.querySelectorAll('[data-obj]').forEach((b) => b.addEventListener('click', () => showObject(b.getAttribute('data-obj'))));
+  renderObjects();
+}
+function renderVerify() {
+  const t = $('gl-verify-table');
+  const rows = FIXTURES.map((f) => {
+    const got = f.calc();
+    const ok = got === f.want;
+    return '<tr><td>' + esc(f.label) + '</td><td class="gl-mono" style="word-break:break-all">' + esc(f.want) +
+      '</td><td class="gl-mono" style="word-break:break-all">' + esc(got) + '</td><td class="' + (ok ? 'gl-ok' : 'gl-bad') + '" data-verify="' + (ok ? 'ok' : 'bad') + '">' +
+      (ok ? '一致' : '不一致') + '</td></tr>';
+  }).join('');
+  t.innerHTML = '<thead><tr><th>对象</th><th>真 git 的答案</th><th>本页算出</th><th>结果</th></tr></thead><tbody>' + rows + '</tbody>';
+}
+
+/* ---------- 差异 ---------- */
+function diffOptions() {
+  const opts = [{ v: 'work', t: '工作区' }, { v: 'index', t: '暂存区（索引）' }];
+  if (repo.headOid()) opts.push({ v: 'HEAD', t: 'HEAD（' + shortOid(repo.headOid()) + '）' });
+  for (const b of repo.branches()) opts.push({ v: 'ref:refs/heads/' + b, t: '分支 ' + b });
+  for (const b of repo.tags()) opts.push({ v: 'ref:refs/tags/' + b, t: '标签 ' + b });
+  const seen = new Set();
+  for (const [oid, o] of repo.objects) {
+    if (o.type !== 'commit' || seen.has(oid)) continue;
+    seen.add(oid);
+    opts.push({ v: 'oid:' + oid, t: shortOid(oid) + ' ' + subjectOf(repo.commitOf(oid).message).slice(0, 18) });
+  }
+  return opts;
+}
+function fillDiffSelects() {
+  const opts = diffOptions();
+  for (const id of ['gl-diff-left', 'gl-diff-right']) {
+    const sel = $(id);
+    const prev = sel.value;
+    sel.innerHTML = opts.map((o) => '<option value="' + esc(o.v) + '">' + esc(o.t) + '</option>').join('');
+    if (opts.some((o) => o.v === prev)) sel.value = prev;
+    else sel.value = id === 'gl-diff-left' ? (repo.headOid() ? 'HEAD' : 'index') : 'work';
+  }
+}
+function sideMap(v) {
+  if (v === 'work') return workFileMap(repo);
+  if (v === 'index') return repo.indexEntries();
+  if (v === 'HEAD') return repo.flattenTree(repo.commitOf(repo.headOid()).tree);
+  if (v.startsWith('ref:')) return repo.flattenTree(repo.commitOf(repo.refs.get(v.slice(4))).tree);
+  return repo.flattenTree(repo.commitOf(v.slice(4)).tree);
+}
+function runDiff() {
+  const l = $('gl-diff-left').value, r = $('gl-diff-right').value;
+  if (!l || !r) return;
+  let text;
+  try { text = diffFileMaps(repo, sideMap(l), sideMap(r)); }
+  catch (e) { text = '无法比较：' + e.message; }
+  const ltext = $('gl-diff-left').selectedOptions[0].textContent;
+  const rtext = $('gl-diff-right').selectedOptions[0].textContent;
+  $('gl-diff-title').textContent = ltext + '  →  ' + rtext;
+  const adds = (text.match(/^\+/gm) || []).length, dels = (text.match(/^-/gm) || []).length;
+  const files = (text.match(/^diff --git/gm) || []).length;
+  $('gl-diff-stat').textContent = files + ' 个文件 · +' + adds + ' / -' + dels;
+  $('gl-diff-out').innerHTML = colorizeBlock(text);
+  const hint = (l === 'HEAD' && r === 'index') || (l === 'index' && r === 'HEAD')
+    ? '这一组等价于 <span class="gl-inline">git diff --staged</span>：暂存区相对上一次提交多了什么。'
+    : (l === 'index' && r === 'work') || (l === 'work' && r === 'index')
+      ? '这一组等价于 <span class="gl-inline">git diff</span>（不带参数）：改了但还没 add 的部分。'
+      : '任意两个快照都能比：分支之间、提交之间、或者跟工作区比。';
+  $('gl-diff-hint').innerHTML = hint;
+}
+
+/* ---------- 侧栏状态 ---------- */
+function renderStatus() {
+  const st = repo.status();
+  $('gl-st-head').textContent = repo.initialized ? (repo.head.detached ? 'HEAD（游离）' : repo.head.ref) : '—';
+  $('gl-st-oid').textContent = repo.headOid() ? repo.headOid().slice(0, 12) : '—';
+  $('gl-st-objs').textContent = String(repo.objects.size);
+  $('gl-st-changes').textContent = st.staged.length + ' / ' + st.unstaged.length + (st.conflicts.length ? ' · 冲突 ' + st.conflicts.length : '');
+  $('gl-st-state').textContent = repo.state ? repo.state.kind : '无';
+  $('gl-st-clock').textContent = fmtTime(repo.clock, '+0800');
+  const refs = [];
+  for (const b of repo.branches()) {
+    const cur = !repo.head.detached && repo.head.ref === 'refs/heads/' + b;
+    refs.push('<div class="gl-kv"><dt>' + (cur ? '● ' : '') + esc(b) + '</dt><dd>' + repo.refs.get('refs/heads/' + b).slice(0, 7) + '</dd></div>');
+  }
+  for (const t of repo.tags()) refs.push('<div class="gl-kv"><dt>标签 ' + esc(t) + '</dt><dd>' + repo.refs.get('refs/tags/' + t).slice(0, 7) + '</dd></div>');
+  $('gl-st-refs').innerHTML = refs.join('') || '<span class="gl-empty">（还没有分支）</span>';
+  const log = repo.reflogs.get('HEAD') || [];
+  $('gl-st-reflog').innerHTML = log.slice(0, 6).map((e, i) =>
+    '<div class="gl-kv"><dt style="font-family:var(--gl-mono);font-size:11.5px">HEAD@{' + i + '}</dt><dd style="text-align:right;max-width:150px">' +
+    esc(e.msg.length > 22 ? e.msg.slice(0, 22) + '…' : e.msg) + '</dd></div>').join('') || '<span class="gl-empty">（还没有记录）</span>';
+  $('gl-term-prompt').textContent = promptText();
+}
+
+/* ---------- 教程 ---------- */
+function renderScenarioList() {
+  const box = $('gl-scenarios');
+  box.innerHTML = '';
+  SCENARIOS.forEach((s) => {
+    const b = document.createElement('button');
+    b.className = 'gl-navitem';
+    b.textContent = s.title;
+    b.setAttribute('data-scenario', s.id);
+    if (learn && learn.id === s.id) b.setAttribute('aria-current', 'true');
+    b.addEventListener('click', () => startScenario(s.id));
+    box.appendChild(b);
+  });
+}
+function scenario() { return SCENARIOS.find((s) => s.id === (learn && learn.id)); }
+function startScenario(id) {
+  const s = SCENARIOS.find((x) => x.id === id);
+  if (!s) return;
+  learn = { id, at: 0 };
+  repo = new Repo();
+  termLines = [];
+  pushLine('# 场景：' + s.title, 'gl-termnote');
+  for (const c of s.setup) exec(c, { silent: true, noRender: true });
+  if (s.setup.length) pushLine('（已准备好起始仓库：' + s.setup.length + ' 条命令）', 'gl-termnote');
+  pushLine('', '');
+  renderTerm();
+  switchTab('learn');
+  renderScenarioList();
+  render();
+}
+function renderLearn() {
+  const s = scenario();
+  const box = $('gl-learn-steps');
+  if (!s) {
+    box.innerHTML = '<div class="gl-empty">左边挑一个场景开始。</div>';
+    $('gl-learn-bar').style.width = '0%';
+    $('gl-learn-next').disabled = true;
+    $('gl-learn-all').disabled = true;
+    $('gl-learn-restart').disabled = true;
+    return;
+  }
+  $('gl-learn-title').textContent = s.title;
+  $('gl-learn-sub').textContent = s.sub;
+  $('gl-learn-next').disabled = learn.at >= s.steps.length;
+  $('gl-learn-all').disabled = learn.at >= s.steps.length;
+  $('gl-learn-restart').disabled = false;
+  $('gl-learn-bar').style.width = Math.round(learn.at / s.steps.length * 100) + '%';
+  box.innerHTML = s.steps.map((st, i) =>
+    '<div class="gl-step" data-state="' + (i < learn.at ? 'done' : i === learn.at ? 'now' : 'todo') + '">' +
+    '<div class="gl-step-cmd"><span class="gl-step-idx">' + (i + 1) + '</span>' +
+    '<span class="gl-inline">' + esc(st.cmd) + '</span></div>' +
+    '<div class="gl-step-note">' + st.note + '</div></div>').join('');
+}
+function nextStep() {
+  const s = scenario();
+  if (!s || learn.at >= s.steps.length) return;
+  const st = s.steps[learn.at];
+  learn.at++;
+  exec(st.cmd);
+  const el = $('gl-learn-steps').children[learn.at - 1];
+  if (el && el.scrollIntoView) el.scrollIntoView({ block: 'nearest' });
+}
+
+/* ---------- 标签页 ---------- */
+const TABS = ['work', 'graph', 'obj', 'diff', 'learn'];
+function switchTab(name) {
+  for (const t of TABS) {
+    const tab = $('gl-tab-' + t), panel = $('gl-p-' + t);
+    const on = t === name;
+    tab.setAttribute('aria-selected', on ? 'true' : 'false');
+    panel.hidden = !on;
+  }
+  if (name === 'graph') renderGraph();
+  if (name === 'diff') { fillDiffSelects(); runDiff(); }
+}
+
+/* ---------- 存档 ---------- */
+let saveTimer = null;
+function save() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    try {
+      localStorage.setItem(LS_KEY, JSON.stringify({
+        repo: repo.snapshot(), term: termLines.slice(-80), learn, history: history.slice(-40),
+      }));
+    } catch (e) { /* 存不下就算了 */ }
+  }, 180);
+}
+function load() {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (!raw) return false;
+    const data = JSON.parse(raw);
+    repo = Repo.restore(data.repo);
+    termLines = data.term || [];
+    learn = data.learn || null;
+    history = data.history || [];
+    return true;
+  } catch (e) { return false; }
+}
+function freshDemo() {
+  repo = new Repo();
+  termLines = [];
+  learn = null;
+  for (const c of SEED) exec(c, { silent: true, noRender: true });
+  pushLine('# 已经给你准备好一个小仓库：main 上两个提交，feature 上一个。', 'gl-termnote');
+  pushLine('# 随便敲命令；左边有 7 个动手场景；改坏了点右上角「清空重来」。', 'gl-termnote');
+  pushLine('', '');
+}
+
+/* ---------- 总渲染 ---------- */
+function render() {
+  renderAreas();
+  renderStatus();
+  renderObjects();
+  renderLearn();
+  if (!$('gl-p-graph').hidden) renderGraph();
+  if (!$('gl-p-diff').hidden) { fillDiffSelects(); runDiff(); }
+  if (selFile && !repo.work.has(selFile) && !$('gl-edit-body').value) $('gl-edit-name').textContent = selFile + '（已不在工作区）';
+}
+
+/* ---------- 绑定 ---------- */
+function bind() {
+  for (const t of TABS) $('gl-tab-' + t).addEventListener('click', () => switchTab(t));
+  $('gl-term-in').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      const v = e.target.value.trim();
+      if (!v) return;
+      history.push(v);
+      histAt = history.length;
+      e.target.value = '';
+      exec(v);
+    } else if (e.key === 'ArrowUp') {
+      if (!history.length) return;
+      histAt = Math.max(0, histAt - 1);
+      e.target.value = history[histAt] || '';
+      e.preventDefault();
+    } else if (e.key === 'ArrowDown') {
+      histAt = Math.min(history.length, histAt + 1);
+      e.target.value = history[histAt] || '';
+      e.preventDefault();
+    }
+  });
+  $('gl-term-run').addEventListener('click', () => {
+    const inp = $('gl-term-in');
+    const v = inp.value.trim();
+    if (!v) return;
+    history.push(v); histAt = history.length; inp.value = '';
+    exec(v);
+  });
+  $('gl-quick-add').addEventListener('click', () => exec('git add .'));
+  $('gl-quick-status').addEventListener('click', () => exec('git status'));
+  $('gl-quick-commit').addEventListener('click', () => {
+    const m = ($('gl-quick-msg').value || '更新').replace(/"/g, "'");
+    exec('git commit -m "' + m + '"');
+  });
+  $('gl-new-file').addEventListener('click', () => {
+    let n = 1, name;
+    do { name = 'new-' + n + '.txt'; n++; } while (repo.work.has(name));
+    repo.writeFile(name, '');
+    pickFile(name);
+    pushLine('# 新建了 ' + name + '，在下面的编辑器里写点东西', 'gl-termnote');
+    renderTerm();
+    render();
+    save();
+  });
+  $('gl-edit-body').addEventListener('input', updateEditHash);
+  $('gl-edit-save').addEventListener('click', () => {
+    if (!selFile) return;
+    repo.writeFile(selFile, $('gl-edit-body').value);
+    pushLine('# 已保存 ' + selFile + ' 到工作区', 'gl-termnote');
+    renderTerm(); render(); save();
+  });
+  $('gl-edit-stage').addEventListener('click', () => {
+    if (!selFile) return;
+    repo.writeFile(selFile, $('gl-edit-body').value);
+    exec('git add ' + selFile);
+  });
+  $('gl-edit-del').addEventListener('click', () => {
+    if (!selFile) return;
+    exec('rm ' + selFile);
+  });
+  document.querySelectorAll('.gl-objfilter').forEach((b) => b.addEventListener('click', () => {
+    objFilter = b.getAttribute('data-type');
+    document.querySelectorAll('.gl-objfilter').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+    renderObjects();
+  }));
+  $('gl-diff-run').addEventListener('click', runDiff);
+  $('gl-diff-left').addEventListener('change', runDiff);
+  $('gl-diff-right').addEventListener('change', runDiff);
+  $('gl-learn-next').addEventListener('click', nextStep);
+  $('gl-learn-all').addEventListener('click', () => {
+    const s = scenario();
+    if (!s) return;
+    let guard = 0;
+    while (learn.at < s.steps.length && guard++ < 50) nextStep();
+  });
+  $('gl-learn-restart').addEventListener('click', () => { if (learn) startScenario(learn.id); });
+  $('gl-save').addEventListener('click', () => {
+    save();
+    pushLine('# 快照已存进浏览器 localStorage（下次打开自动恢复）', 'gl-termnote');
+    renderTerm();
+  });
+  $('gl-load').addEventListener('click', () => {
+    if (load()) { renderTerm(); renderScenarioList(); render(); }
+    else { pushLine('# 没有找到快照', 'gl-termerr'); renderTerm(); }
+  });
+  $('gl-reset').addEventListener('click', () => {
+    learn = null;
+    freshDemo();
+    renderTerm(); renderScenarioList(); render(); save();
+  });
+  const cl = $('gl-cmdlist');
+  for (const c of QUICK_CMDS) {
+    const b = document.createElement('button');
+    b.className = 'gl-cmd';
+    b.textContent = c;
+    b.addEventListener('click', () => {
+      const inp = $('gl-term-in');
+      inp.value = c;
+      inp.focus();
+      if (c.endsWith(' ') || c.endsWith('""')) inp.setSelectionRange(c.length - (c.endsWith('""') ? 1 : 0), c.length - (c.endsWith('""') ? 1 : 0));
+    });
+    cl.appendChild(b);
+  }
+}
+
+/* ---------- 启动 ---------- */
+function boot() {
+  bind();
+  renderVerify();
+  if (!load()) freshDemo();
+  renderScenarioList();
+  renderTerm();
+  switchTab('work');
+  render();
+  const first = [...repo.work.keys()].sort()[0];
+  if (first) pickFile(first);
+  document.body.dataset.cmds = String(cmdCount);
+  document.body.dataset.ready = '1';
+}
+boot();
+
+</script>
+</body>
+</html>
