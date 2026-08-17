@@ -1,0 +1,2208 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>截图工作台 · Shot Studio — 标注 · 一键脱敏 · 美化导出</title>
+<meta name="description" content="拖进一张截图:自动框出所有文字行,一键打码;箭头/序号/高亮标注;背景美化后导出。全部在本地浏览器完成,图片不上传。并现场演示为什么高斯模糊挡不住敏感信息。">
+<style>
+[hidden]{display:none!important}
+
+/* ── Webflow 设计语言 ── 近黑 #080808 + 白画布 + 五色分类强调 + 4px 按钮 / 8px 卡片 ── */
+:root{
+  --ink:#080808; --ink-strong:#222; --body:#363636; --body-mid:#5a5a5a;
+  --mute:#898989; --mute-soft:#ababab; --hair:#d8d8d8; --canvas:#fff;
+  --purple:#7a3dff; --pink:#ed52cb; --blue:#3b89ff; --blue-deep:#006acc; --blue-info:#146ef5;
+  --orange:#ff6b00; --green:#00d722; --yellow:#ffae13; --red:#ee1d36;
+  --r-sm:4px; --r-md:8px;
+  --sans:"Inter","WF Visual Sans Variable",-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,sans-serif;
+  --mono:"Inconsolata",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --shadow-card:0 1px 2px rgba(8,8,8,.05),0 8px 24px rgba(8,8,8,.06),0 2px 6px rgba(8,8,8,.04);
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:var(--canvas); color:var(--body); font-family:var(--sans);
+  font-size:16px; line-height:25.6px; letter-spacing:-.16px;
+  -webkit-font-smoothing:antialiased;
+}
+h1,h2,h3,h4{color:var(--ink); font-weight:500; margin:0}
+a{color:var(--ink)}
+.ss-wrap{max-width:1360px; margin:0 auto; padding:0 32px 64px}
+
+/* 顶部 */
+.ss-top{display:flex; align-items:center; gap:16px; padding:16px 0; border-bottom:1px solid var(--hair)}
+.ss-back{
+  display:inline-flex; align-items:center; gap:8px; text-decoration:none; color:var(--ink);
+  font-size:14px; font-weight:500; line-height:22.4px; border:1px solid var(--hair);
+  border-radius:var(--r-sm); padding:6px 14px; background:var(--canvas);
+}
+.ss-back:hover{border-color:var(--ink)}
+.ss-top-mark{margin-left:auto; font-family:var(--mono); font-size:12px; color:var(--mute); line-height:18px}
+
+/* 英雄区 */
+.ss-hero{padding:40px 0 24px; border-bottom:1px solid var(--hair)}
+.ss-eyebrow{
+  font-size:12px; font-weight:500; line-height:12px; letter-spacing:.6px;
+  color:var(--mute); margin-bottom:16px;
+}
+.ss-hero h1{font-size:56px; line-height:58px; font-weight:600; letter-spacing:-.8px; max-width:16em}
+.ss-hero p{font-size:16px; line-height:25.6px; color:var(--body); max-width:52em; margin:16px 0 0}
+.ss-chips{display:flex; flex-wrap:wrap; gap:8px; margin-top:20px}
+.ss-chip{
+  font-size:12.8px; font-weight:550; line-height:15.36px; padding:6px 10px;
+  border-radius:var(--r-sm); border:1px solid var(--hair); color:var(--body-mid); background:var(--canvas);
+}
+.ss-chip[data-tone="info"]{background:var(--blue-info); border-color:var(--blue-info); color:#fff}
+.ss-chip[data-tone="green"]{background:var(--green); border-color:var(--green); color:var(--ink)}
+
+/* 标签页 */
+.ss-tabs{display:flex; gap:4px; flex-wrap:wrap; border-bottom:1px solid var(--hair); margin-top:28px}
+.ss-tab{
+  appearance:none; background:var(--canvas); border:0; border-bottom:2px solid transparent;
+  color:var(--body-mid); font-family:inherit; font-size:14px; font-weight:500; line-height:22.4px;
+  padding:12px 16px; min-width:52px; min-height:40px; cursor:pointer;
+}
+.ss-tab:hover{color:var(--ink)}
+.ss-tab[aria-selected="true"]{color:var(--ink); border-bottom-color:var(--ink)}
+.ss-tab:focus-visible{outline:2px solid var(--blue-info); outline-offset:-2px}
+.ss-panel{padding-top:24px}
+
+/* 工作台栅格 */
+.ss-work{display:grid; grid-template-columns:56px minmax(0,1fr) 336px; gap:16px; align-items:start}
+.ss-tools{display:flex; flex-direction:column; gap:6px; position:sticky; top:12px}
+.ss-tool{
+  width:56px; height:52px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px;
+  border:1px solid var(--hair); border-radius:var(--r-sm); background:var(--canvas); color:var(--ink);
+  font-family:inherit; font-size:10px; line-height:12px; cursor:pointer; padding:0;
+}
+.ss-tool svg{width:18px; height:18px; display:block}
+.ss-tool:hover{border-color:var(--ink)}
+.ss-tool[aria-pressed="true"]{background:var(--ink); border-color:var(--ink); color:#fff}
+.ss-tool:focus-visible{outline:2px solid var(--blue-info); outline-offset:2px}
+
+.ss-stage{border:1px solid var(--hair); border-radius:var(--r-md); overflow:hidden; background:var(--canvas)}
+.ss-stagebar{
+  display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:10px 12px;
+  border-bottom:1px solid var(--hair); background:var(--canvas);
+}
+.ss-stagebar .ss-sp{margin-left:auto}
+.ss-canvasbox{
+  padding:20px; display:flex; justify-content:center; align-items:flex-start; overflow:auto;
+  background-color:#fbfbfb;
+  background-image:linear-gradient(45deg,#f0f0f0 25%,transparent 25%,transparent 75%,#f0f0f0 75%),
+                   linear-gradient(45deg,#f0f0f0 25%,transparent 25%,transparent 75%,#f0f0f0 75%);
+  background-size:16px 16px; background-position:0 0,8px 8px;
+  min-height:420px;
+}
+#ss-canvas{display:block; box-shadow:var(--shadow-card); background:#fff; touch-action:none; cursor:crosshair; max-width:100%}
+#ss-canvas[data-tool="select"]{cursor:default}
+.ss-hintline{font-size:12.8px; line-height:18px; color:var(--body-mid); padding:8px 12px; border-top:1px solid var(--hair)}
+
+/* 侧栏 */
+.ss-side{display:flex; flex-direction:column; gap:12px; min-width:0}
+.ss-card{border:1px solid var(--hair); border-radius:var(--r-md); background:var(--canvas); padding:16px; min-width:0}
+.ss-card h3{font-size:14px; font-weight:500; line-height:22.4px; display:flex; align-items:center; gap:8px}
+.ss-card h3 .ss-dot{width:8px; height:8px; border-radius:9999px; flex:0 0 auto}
+.ss-card .ss-sub{font-size:12.8px; line-height:18px; color:var(--mute); margin:4px 0 12px}
+.ss-row{display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:10px}
+.ss-row:last-child{margin-bottom:0}
+.ss-lab{font-size:12.8px; line-height:18px; color:var(--body-mid); min-width:60px}
+.ss-grow{flex:1 1 auto; min-width:0}
+
+/* 控件 */
+button.ss-btn{
+  appearance:none; font-family:inherit; font-size:14px; font-weight:500; line-height:22.4px;
+  background:var(--ink); color:#fff; border:1px solid var(--ink); border-radius:var(--r-sm);
+  padding:8px 16px; min-width:52px; min-height:36px; cursor:pointer;
+}
+button.ss-btn:hover{background:#000}
+button.ss-btn[data-variant="ghost"]{background:var(--canvas); color:var(--ink); border-color:var(--hair)}
+button.ss-btn[data-variant="ghost"]:hover{border-color:var(--ink)}
+button.ss-btn[disabled]{opacity:.4; cursor:not-allowed}
+button.ss-btn:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--blue-info); outline-offset:1px}
+input[type=text],input[type=number],select{
+  font-family:inherit; font-size:14px; line-height:22.4px; color:var(--ink); background:var(--canvas);
+  border:1px solid var(--hair); border-radius:var(--r-sm); padding:7px 10px; min-width:100px; min-height:36px;
+}
+input[type=range]{min-width:100px; min-height:20px; flex:1 1 120px; accent-color:var(--ink)}
+input[type=checkbox]{width:18px; height:18px; min-width:18px; min-height:18px; accent-color:var(--ink)}
+label.ss-check{display:inline-flex; align-items:center; gap:8px; font-size:13px; line-height:20px; color:var(--body); min-height:24px}
+.ss-num{font-family:var(--mono); font-size:12px; line-height:18px; color:var(--body-mid); min-width:44px; text-align:right}
+
+/* 分段选择器 */
+.ss-seg{display:flex; border:1px solid var(--hair); border-radius:var(--r-sm); overflow:hidden}
+.ss-seg button{
+  appearance:none; flex:1 1 0; min-width:52px; min-height:34px; border:0; background:var(--canvas);
+  font-family:inherit; font-size:13px; line-height:20px; color:var(--body); cursor:pointer; padding:6px 4px;
+}
+.ss-seg button + button{border-left:1px solid var(--hair)}
+.ss-seg button[aria-pressed="true"]{background:var(--ink); color:#fff}
+
+/* 色板 */
+.ss-swatches{display:flex; gap:6px; flex-wrap:wrap}
+.ss-sw{width:26px; height:26px; min-width:26px; min-height:26px; border-radius:var(--r-sm); border:1px solid rgba(8,8,8,.15); cursor:pointer; padding:0}
+.ss-sw[aria-pressed="true"]{box-shadow:0 0 0 2px var(--canvas),0 0 0 4px var(--ink)}
+
+/* 检测行列表 / 图层列表 */
+.ss-list{list-style:none; margin:0; padding:0; max-height:230px; overflow:auto; border:1px solid var(--hair); border-radius:var(--r-sm)}
+.ss-list li + li{border-top:1px solid var(--hair)}
+.ss-item{
+  display:flex; align-items:center; gap:8px; width:100%; text-align:left; background:var(--canvas);
+  border:0; padding:8px 10px; font-family:inherit; font-size:13px; line-height:20px; color:var(--body); cursor:pointer;
+  min-height:36px;
+}
+.ss-item:hover{background:#fafafa}
+.ss-item[aria-pressed="true"],.ss-item[data-sel="1"]{background:#f2f4ff}
+.ss-item .ss-tag{
+  font-family:var(--mono); font-size:11px; line-height:16px; color:var(--body-mid);
+  border:1px solid var(--hair); border-radius:2px; padding:1px 5px; flex:0 0 auto;
+}
+.ss-item .ss-name{flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.ss-item .ss-flag{width:8px; height:8px; border-radius:9999px; flex:0 0 auto}
+.ss-empty{font-size:12.8px; line-height:18px; color:var(--mute); padding:10px}
+
+/* 表格 */
+table.ss-table{width:100%; border-collapse:collapse; font-size:13px; line-height:20px}
+table.ss-table th{
+  text-align:left; font-size:12px; font-weight:500; line-height:18px; letter-spacing:.6px; color:var(--mute);
+  padding:8px 10px; border-bottom:1px solid var(--hair); white-space:nowrap;
+}
+table.ss-table td{padding:8px 10px; border-bottom:1px solid var(--hair); color:var(--body); vertical-align:top}
+table.ss-table td:first-child{white-space:nowrap}
+table.ss-table tr:last-child td{border-bottom:0}
+.ss-badge{
+  display:inline-block; font-size:12px; font-weight:550; line-height:16px; padding:2px 8px;
+  border-radius:var(--r-sm); border:1px solid var(--hair); color:var(--body-mid); white-space:nowrap;
+}
+.ss-badge[data-level="safe"]{background:var(--green); border-color:var(--green); color:var(--ink)}
+.ss-badge[data-level="weak"]{background:var(--yellow); border-color:var(--yellow); color:var(--ink)}
+.ss-badge[data-level="danger"]{background:var(--red); border-color:var(--red); color:#fff}
+.ss-badge[data-level="none"]{background:var(--canvas)}
+
+/* 分类色卡(Webflow 五色) */
+.ss-cards{display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:12px}
+.ss-cat{border-radius:var(--r-md); padding:24px; color:#fff; min-width:0}
+.ss-cat h4{color:inherit; font-size:24px; line-height:31.2px; font-weight:500; margin-bottom:8px}
+.ss-cat p{margin:0; font-size:14px; line-height:22.4px; color:rgba(255,255,255,.88)}
+.ss-cat[data-c="purple"]{background:var(--purple)}
+.ss-cat[data-c="pink"]{background:var(--pink)}
+.ss-cat[data-c="blue"]{background:var(--blue)}
+.ss-cat[data-c="orange"]{background:var(--orange)}
+.ss-cat[data-c="green"]{background:var(--green); color:var(--ink)}
+.ss-cat[data-c="green"] p{color:rgba(8,8,8,.72)}
+
+/* 实验室 */
+.ss-lab{display:grid; grid-template-columns:300px minmax(0,1fr); gap:16px; align-items:start}
+.ss-strips{display:flex; flex-direction:column; gap:14px; min-width:0}
+.ss-strip{border:1px solid var(--hair); border-radius:var(--r-md); padding:12px; min-width:0; overflow:hidden}
+.ss-strip h4{font-size:14px; font-weight:500; line-height:22.4px; margin-bottom:2px}
+.ss-strip .ss-sub{font-size:12.8px; line-height:18px; color:var(--mute); margin:0 0 10px}
+.ss-strip canvas{display:block; width:100%; height:auto; border-radius:var(--r-sm); background:#fff; border:1px solid #eee}
+
+/* 导出 */
+.ss-export{display:grid; grid-template-columns:336px minmax(0,1fr); gap:16px; align-items:start}
+.ss-previewbox{
+  border:1px solid var(--hair); border-radius:var(--r-md); padding:20px; display:flex; justify-content:center;
+  background:#fbfbfb; overflow:auto;
+}
+#ss-preview{display:block; max-width:100%; height:auto; box-shadow:var(--shadow-card)}
+
+/* 说明 */
+.ss-doc{max-width:80ch}
+.ss-doc h3{font-size:20px; line-height:28px; margin:28px 0 8px}
+.ss-doc h3:first-child{margin-top:0}
+.ss-doc p,.ss-doc li{font-size:15px; line-height:25px; color:var(--body)}
+.ss-doc ul{padding-left:20px}
+.ss-doc code{font-family:var(--mono); font-size:13px; background:#f5f5f5; border-radius:2px; padding:1px 5px}
+.ss-kbd{
+  font-family:var(--mono); font-size:12px; line-height:18px; border:1px solid var(--hair);
+  border-bottom-width:2px; border-radius:var(--r-sm); padding:1px 6px; color:var(--ink); background:var(--canvas);
+}
+.ss-note{border-left:3px solid var(--ink); padding:8px 0 8px 14px; margin:16px 0; color:var(--body)}
+
+.ss-drop{border:1px dashed var(--hair); border-radius:var(--r-sm); padding:14px; text-align:center; font-size:13px; line-height:20px; color:var(--body-mid)}
+.ss-drop[data-over="1"]{border-color:var(--ink); background:#fafafa}
+.ss-status{font-size:12.8px; line-height:18px; color:var(--body-mid); min-height:18px}
+.ss-foot{margin-top:48px; padding-top:20px; border-top:1px solid var(--hair); font-size:14px; line-height:22.4px; color:var(--body-mid)}
+.ss-sr{position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap}
+
+@media (max-width:1120px){
+  .ss-work{grid-template-columns:56px minmax(0,1fr)}
+  .ss-side{grid-column:1 / -1}
+  .ss-export,.ss-lab{grid-template-columns:minmax(0,1fr)}
+}
+@media (max-width:720px){
+  .ss-wrap{padding:0 16px 48px}
+  /* 窄屏下图片缩得很小,固定 420px 高会在下面留一大片空棋盘格 */
+  .ss-canvasbox{min-height:0; padding:12px}
+  .ss-hero h1{font-size:36px; line-height:40px; letter-spacing:-.4px}
+  .ss-work{grid-template-columns:minmax(0,1fr)}
+  .ss-tools{flex-direction:row; flex-wrap:wrap; position:static}
+}
+</style>
+</head>
+<body>
+<div class="ss-wrap">
+
+  <div class="ss-top">
+    <a class="ss-back" href="../../">← 返回工具集</a>
+    <span class="ss-top-mark">SHOT STUDIO · 2026-08-17</span>
+  </div>
+
+  <header class="ss-hero">
+    <div class="ss-eyebrow">REDACT / ANNOTATE / SHIP</div>
+    <h1>发截图之前,先把不该露的挡掉。</h1>
+    <p>拖进一张截图,它会自动把画面里的<strong>每一行文字</strong>框出来 —— 点一下就打码,或者一键全打。再加箭头、序号、高亮,配个背景导出。整个过程在你自己的浏览器里跑完,图片不上传、不落盘。</p>
+    <div class="ss-chips">
+      <span class="ss-chip" data-tone="info">零上传</span>
+      <span class="ss-chip">Sobel 梯度 + 连通域的文字行检测</span>
+      <span class="ss-chip">马赛克 / 模糊 / 色块</span>
+      <span class="ss-chip">脱敏强度体检</span>
+      <span class="ss-chip" data-tone="green">现场演示:模糊是能还原的</span>
+    </div>
+  </header>
+
+  <div class="ss-tabs" role="tablist" aria-label="面板">
+    <button class="ss-tab" id="ss-tab-work" role="tab" aria-selected="true" aria-controls="ss-panel-work" data-tab="work">标注与脱敏</button>
+    <button class="ss-tab" id="ss-tab-export" role="tab" aria-selected="false" aria-controls="ss-panel-export" data-tab="export">美化与导出</button>
+    <button class="ss-tab" id="ss-tab-lab" role="tab" aria-selected="false" aria-controls="ss-panel-lab" data-tab="lab">模糊还原实验</button>
+    <button class="ss-tab" id="ss-tab-doc" role="tab" aria-selected="false" aria-controls="ss-panel-doc" data-tab="doc">怎么才算挡住了</button>
+  </div>
+
+  <!-- ══════════════ 工作台 ══════════════ -->
+  <section class="ss-panel" id="ss-panel-work" role="tabpanel" aria-labelledby="ss-tab-work">
+    <div class="ss-work">
+
+      <div class="ss-tools" role="toolbar" aria-label="工具">
+        <button class="ss-tool" id="ss-tool-select" data-tool="select" aria-pressed="true" title="选择 / 移动 (V)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 3l14 8-6 1.6L10.6 19z"/></svg>选择
+        </button>
+        <button class="ss-tool" id="ss-tool-redact" data-tool="redact" aria-pressed="false" title="脱敏刷 (M)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="6" width="18" height="12" rx="1"/><path d="M7 6v12M11 6v12M15 6v12M3 12h18"/></svg>脱敏
+        </button>
+        <button class="ss-tool" id="ss-tool-rect" data-tool="rect" aria-pressed="false" title="矩形框 (R)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="6" width="16" height="12" rx="1"/></svg>方框
+        </button>
+        <button class="ss-tool" id="ss-tool-arrow" data-tool="arrow" aria-pressed="false" title="箭头 (A)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 19L19 6M19 6h-7M19 6v7"/></svg>箭头
+        </button>
+        <button class="ss-tool" id="ss-tool-pen" data-tool="pen" aria-pressed="false" title="画笔 (P)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 20c3-1 4-3 6-6s4-6 7-7c2 3-1 6-4 8s-6 4-9 5z"/></svg>画笔
+        </button>
+        <button class="ss-tool" id="ss-tool-text" data-tool="text" aria-pressed="false" title="文字 (T)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 6h14M12 6v13M9 19h6"/></svg>文字
+        </button>
+        <button class="ss-tool" id="ss-tool-badge" data-tool="badge" aria-pressed="false" title="序号徽标 (N)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8"/><path d="M11 9l2-1v8"/></svg>序号
+        </button>
+        <button class="ss-tool" id="ss-tool-hl" data-tool="hl" aria-pressed="false" title="高亮 (H)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 15l7-9 5 4-6 9H5z"/><path d="M3 21h18"/></svg>高亮
+        </button>
+      </div>
+
+      <div class="ss-stage">
+        <div class="ss-stagebar">
+          <button class="ss-btn" data-variant="ghost" id="ss-undo" title="撤销 (Ctrl+Z)">撤销</button>
+          <button class="ss-btn" data-variant="ghost" id="ss-redo" title="重做 (Ctrl+Shift+Z)">重做</button>
+          <button class="ss-btn" data-variant="ghost" id="ss-del">删除选中</button>
+          <button class="ss-btn" data-variant="ghost" id="ss-clear">清空标注</button>
+          <label class="ss-check ss-sp"><input type="checkbox" id="ss-showboxes" checked>显示检测框</label>
+          <select id="ss-zoom" aria-label="缩放">
+            <option value="fit" selected>适应宽度</option>
+            <option value="1">100%</option>
+            <option value="0.5">50%</option>
+            <option value="2">200%</option>
+          </select>
+        </div>
+        <div class="ss-canvasbox" id="ss-canvasbox">
+          <canvas id="ss-canvas" width="880" height="540" data-tool="select" role="img" aria-label="截图编辑画布"></canvas>
+        </div>
+        <div class="ss-hintline" id="ss-hint">选一张示例截图开始,或把你自己的图片拖进来 / 直接按 Ctrl+V 粘贴。</div>
+      </div>
+
+      <aside class="ss-side">
+
+        <div class="ss-card">
+          <h3><span class="ss-dot" style="background:var(--blue)"></span>图片</h3>
+          <p class="ss-sub" id="ss-imginfo">未载入</p>
+          <div class="ss-row">
+            <button class="ss-btn" data-variant="ghost" id="ss-sample-order">示例:订单</button>
+            <button class="ss-btn" data-variant="ghost" id="ss-sample-term">示例:终端</button>
+            <button class="ss-btn" data-variant="ghost" id="ss-sample-chat">示例:聊天</button>
+          </div>
+          <div class="ss-drop" id="ss-drop">
+            把图片拖到这里,或
+            <label style="text-decoration:underline; cursor:pointer">选择文件<input type="file" id="ss-file" accept="image/*" class="ss-sr"></label>
+            <br><span style="color:var(--mute)">图片只在本机内存里处理,不会上传</span>
+          </div>
+        </div>
+
+        <div class="ss-card">
+          <h3><span class="ss-dot" style="background:var(--pink)"></span>自动找出文字</h3>
+          <p class="ss-sub">用 Sobel 梯度 + 8 邻接连通域把笔画聚成字、把字聚成行,和明暗底色无关。</p>
+          <div class="ss-row">
+            <span class="ss-lab">灵敏度</span>
+            <input type="range" id="ss-sens" min="0.4" max="2" step="0.05" value="1">
+            <span class="ss-num" id="ss-sens-v">1.00</span>
+          </div>
+          <div class="ss-row">
+            <span class="ss-lab">最小字高</span>
+            <input type="range" id="ss-minh" min="4" max="24" step="1" value="7">
+            <span class="ss-num" id="ss-minh-v">7px</span>
+          </div>
+          <div class="ss-row">
+            <button class="ss-btn" data-variant="ghost" id="ss-detect">重新检测</button>
+            <span class="ss-status ss-grow" id="ss-detect-status">尚未检测</span>
+          </div>
+          <div class="ss-row">
+            <button class="ss-btn" id="ss-mask-all">一键打码全部文字</button>
+            <button class="ss-btn" data-variant="ghost" id="ss-mask-none">清除脱敏</button>
+          </div>
+          <div class="ss-row">
+            <span class="ss-lab ss-grow" style="min-width:0">点一行 = 打码那一行(再点取消)</span>
+          </div>
+          <ul class="ss-list" id="ss-lines"><li><div class="ss-empty">还没有检测结果</div></li></ul>
+        </div>
+
+        <div class="ss-card">
+          <h3><span class="ss-dot" style="background:var(--orange)"></span>脱敏方式</h3>
+          <div class="ss-row">
+            <div class="ss-seg ss-grow" id="ss-mode" role="group" aria-label="脱敏方式">
+              <button type="button" data-mode="pixelate" aria-pressed="true">马赛克</button>
+              <button type="button" data-mode="blur" aria-pressed="false">模糊</button>
+              <button type="button" data-mode="solid" aria-pressed="false">色块</button>
+            </div>
+          </div>
+          <div class="ss-row" id="ss-row-block">
+            <span class="ss-lab">格子</span>
+            <input type="range" id="ss-block" min="2" max="48" step="1" value="14">
+            <span class="ss-num" id="ss-block-v">14px</span>
+          </div>
+          <div class="ss-row" id="ss-row-sigma" hidden>
+            <span class="ss-lab">σ 强度</span>
+            <input type="range" id="ss-sigma" min="1" max="24" step="0.5" value="6">
+            <span class="ss-num" id="ss-sigma-v">6.0</span>
+          </div>
+          <div class="ss-row">
+            <label class="ss-check"><input type="checkbox" id="ss-autoblock" checked>按字高自动挑安全参数</label>
+          </div>
+        </div>
+
+        <div class="ss-card">
+          <h3><span class="ss-dot" style="background:var(--green)"></span>脱敏强度体检</h3>
+          <p class="ss-sub">遮挡块够不够大,是能不能被还原的分界线。</p>
+          <div class="ss-row"><span class="ss-badge" id="ss-audit-overall" data-level="none">还没有脱敏块</span></div>
+          <div style="overflow:auto"><table class="ss-table" id="ss-audit"><tbody></tbody></table></div>
+        </div>
+
+        <div class="ss-card">
+          <h3><span class="ss-dot" style="background:var(--purple)"></span>样式</h3>
+          <div class="ss-row">
+            <span class="ss-lab">颜色</span>
+            <div class="ss-swatches" id="ss-colors"></div>
+          </div>
+          <div class="ss-row">
+            <span class="ss-lab">线宽</span>
+            <input type="range" id="ss-stroke" min="1" max="16" step="1" value="4">
+            <span class="ss-num" id="ss-stroke-v">4px</span>
+          </div>
+          <div class="ss-row">
+            <span class="ss-lab">字号</span>
+            <input type="range" id="ss-fsize" min="12" max="72" step="1" value="26">
+            <span class="ss-num" id="ss-fsize-v">26px</span>
+          </div>
+          <div class="ss-row" id="ss-row-text" hidden>
+            <span class="ss-lab">文字</span>
+            <input type="text" id="ss-text-input" class="ss-grow" placeholder="选中一个文字图层后在这里改">
+          </div>
+        </div>
+
+        <div class="ss-card">
+          <h3>图层 <span class="ss-num" id="ss-layer-count" style="min-width:0">0</span></h3>
+          <ul class="ss-list" id="ss-layers"><li><div class="ss-empty">还没有图层</div></li></ul>
+          <div class="ss-row" style="margin-top:10px">
+            <button class="ss-btn" data-variant="ghost" id="ss-lay-up">上移</button>
+            <button class="ss-btn" data-variant="ghost" id="ss-lay-down">下移</button>
+            <button class="ss-btn" data-variant="ghost" id="ss-lay-del">删除</button>
+          </div>
+        </div>
+
+      </aside>
+    </div>
+  </section>
+
+  <!-- ══════════════ 美化与导出 ══════════════ -->
+  <section class="ss-panel" id="ss-panel-export" role="tabpanel" aria-labelledby="ss-tab-export" hidden>
+    <div class="ss-export">
+      <aside class="ss-side">
+        <div class="ss-card">
+          <h3><span class="ss-dot" style="background:var(--purple)"></span>衬底</h3>
+          <div class="ss-row">
+            <div class="ss-seg ss-grow" id="ss-bg" role="group" aria-label="背景">
+              <button type="button" data-bg="none" aria-pressed="true">无</button>
+              <button type="button" data-bg="light" aria-pressed="false">浅灰</button>
+              <button type="button" data-bg="ink" aria-pressed="false">墨黑</button>
+              <button type="button" data-bg="grad" aria-pressed="false">渐变</button>
+            </div>
+          </div>
+          <div class="ss-row">
+            <span class="ss-lab">留白</span>
+            <input type="range" id="ss-pad" min="0" max="160" step="4" value="48">
+            <span class="ss-num" id="ss-pad-v">48px</span>
+          </div>
+          <div class="ss-row">
+            <span class="ss-lab">圆角</span>
+            <input type="range" id="ss-radius" min="0" max="40" step="1" value="10">
+            <span class="ss-num" id="ss-radius-v">10px</span>
+          </div>
+          <div class="ss-row">
+            <label class="ss-check"><input type="checkbox" id="ss-shadow" checked>投影</label>
+          </div>
+        </div>
+        <div class="ss-card">
+          <h3><span class="ss-dot" style="background:var(--blue)"></span>导出</h3>
+          <div class="ss-row">
+            <span class="ss-lab">格式</span>
+            <select id="ss-fmt" class="ss-grow">
+              <option value="image/png" selected>PNG(无损)</option>
+              <option value="image/jpeg">JPEG</option>
+              <option value="image/webp">WebP</option>
+            </select>
+          </div>
+          <div class="ss-row" id="ss-row-quality" hidden>
+            <span class="ss-lab">质量</span>
+            <input type="range" id="ss-quality" min="0.3" max="1" step="0.05" value="0.9">
+            <span class="ss-num" id="ss-quality-v">0.90</span>
+          </div>
+          <div class="ss-row">
+            <span class="ss-lab">倍率</span>
+            <select id="ss-scale" class="ss-grow">
+              <option value="0.5">0.5×</option>
+              <option value="1" selected>1×(原始像素)</option>
+              <option value="2">2×</option>
+            </select>
+          </div>
+          <div class="ss-row">
+            <button class="ss-btn" id="ss-download">下载图片</button>
+            <button class="ss-btn" data-variant="ghost" id="ss-copy">复制到剪贴板</button>
+          </div>
+          <div class="ss-row"><span class="ss-status ss-grow" id="ss-export-status">导出的是栅格像素:脱敏块已经烧进图里,原始像素不在文件中。</span></div>
+          <div class="ss-row">
+            <button class="ss-btn" data-variant="ghost" id="ss-save-json">导出标注 JSON</button>
+            <button class="ss-btn" data-variant="ghost" id="ss-load-json">导入标注</button>
+            <input type="file" id="ss-json-file" accept="application/json,.json" class="ss-sr">
+          </div>
+        </div>
+        <div class="ss-card">
+          <h3>导出前检查</h3>
+          <ul class="ss-list" id="ss-preflight"><li><div class="ss-empty">载入图片后自动检查</div></li></ul>
+        </div>
+      </aside>
+      <div>
+        <div class="ss-previewbox"><canvas id="ss-preview" width="880" height="540"></canvas></div>
+        <p class="ss-sub" style="margin-top:12px" id="ss-preview-info">预览按比例缩小显示;导出时按上面选的倍率写出真实像素。</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════════ 模糊还原实验 ══════════════ -->
+  <section class="ss-panel" id="ss-panel-lab" role="tabpanel" aria-labelledby="ss-tab-lab" hidden>
+    <div class="ss-lab">
+      <aside class="ss-side">
+        <div class="ss-card">
+          <h3><span class="ss-dot" style="background:var(--red)"></span>为什么这一页存在</h3>
+          <p class="ss-sub" style="color:var(--body)">高斯模糊是一次<strong>线性、可逆性很强</strong>的运算:原始像素还在,只是被摊开了。知道模糊半径,就能用 Richardson–Lucy 迭代把它逼回来。马赛克和色块不一样 —— 一整格只剩一个均值,信息是真的被丢掉了。</p>
+          <p class="ss-sub" style="margin-bottom:0">说句公道话:σ 拉得越大,这套朴素反卷积能逼回来的越少(σ=4 时差距缩小五成上下,σ=12 时只剩一成半)。但原始像素<strong>始终还在文件里</strong>,换个更强的先验(比如已知这是一串数字)就能接着挖 —— 所以别把身家押在模糊上。</p>
+        </div>
+        <div class="ss-card">
+          <h3>实验参数</h3>
+          <div class="ss-row">
+            <span class="ss-lab">被挡内容</span>
+            <select id="ss-lab-text" class="ss-grow">
+              <option value="138 2946 5507" selected>手机号 138 2946 5507</option>
+              <option value="sk-9F3A2B7C41">密钥 sk-9F3A2B7C41</option>
+              <option value="余额 82,450.00">金额 余额 82,450.00</option>
+            </select>
+          </div>
+          <div class="ss-row">
+            <span class="ss-lab">遮挡方式</span>
+            <div class="ss-seg ss-grow" id="ss-lab-mode" role="group" aria-label="遮挡方式">
+              <button type="button" data-mode="blur" aria-pressed="true">高斯模糊</button>
+              <button type="button" data-mode="pixelate" aria-pressed="false">马赛克</button>
+            </div>
+          </div>
+          <div class="ss-row">
+            <span class="ss-lab">强度</span>
+            <input type="range" id="ss-lab-strength" min="1" max="16" step="0.5" value="4">
+            <span class="ss-num" id="ss-lab-strength-v">σ 4.0</span>
+          </div>
+          <div class="ss-row">
+            <span class="ss-lab">迭代</span>
+            <input type="range" id="ss-lab-iters" min="5" max="120" step="5" value="60">
+            <span class="ss-num" id="ss-lab-iters-v">60</span>
+          </div>
+          <div class="ss-row">
+            <button class="ss-btn" id="ss-lab-run">跑一次还原</button>
+            <span class="ss-status ss-grow" id="ss-lab-status">准备就绪</span>
+          </div>
+        </div>
+        <div class="ss-card">
+          <h3>结论</h3>
+          <div class="ss-row"><span class="ss-badge" id="ss-lab-verdict" data-level="none">还没跑</span></div>
+          <div style="overflow:auto"><table class="ss-table" id="ss-lab-table"><tbody></tbody></table></div>
+        </div>
+      </aside>
+      <div class="ss-strips">
+        <div class="ss-strip">
+          <h4>① 原图</h4>
+          <p class="ss-sub">程序在页内画出来的一条文字,当作「被截图截到的敏感信息」。</p>
+          <canvas id="ss-lab-src" width="640" height="88"></canvas>
+        </div>
+        <div class="ss-strip">
+          <h4>② 遮挡之后 —— 你以为已经安全了</h4>
+          <p class="ss-sub" id="ss-lab-sub2">高斯模糊 σ = 3.0</p>
+          <canvas id="ss-lab-hid" width="640" height="88"></canvas>
+        </div>
+        <div class="ss-strip">
+          <h4>③ 反卷积还原 —— 攻击者拿到图之后</h4>
+          <p class="ss-sub">Richardson–Lucy 迭代:反复「假设一个清晰图 → 按同样的核糊一遍 → 和手上这张比 → 按比值修正」。</p>
+          <canvas id="ss-lab-rec" width="640" height="88"></canvas>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════════ 说明 ══════════════ -->
+  <section class="ss-panel" id="ss-panel-doc" role="tabpanel" aria-labelledby="ss-tab-doc" hidden>
+    <div class="ss-cards" style="margin-bottom:28px">
+      <div class="ss-cat" data-c="green"><h4>色块</h4><p>唯一无条件安全的做法。整块像素被替换成一个颜色,原信息不存在于文件里,也就没有还原可言。</p></div>
+      <div class="ss-cat" data-c="purple"><h4>马赛克</h4><p>格子够大就安全:一格只剩一个均值。格子小于字高的一半时,笔画轮廓会残留,配合字典穷举有被猜出的先例。</p></div>
+      <div class="ss-cat" data-c="orange"><h4>模糊</h4><p>不推荐。它是线性运算,原始信息只是被摊开;知道核的形状就能反卷积。左边那一页就是现场演示。</p></div>
+      <div class="ss-cat" data-c="pink"><h4>裁掉</h4><p>比什么都强:不需要出现在图里的东西,一开始就别截进来。</p></div>
+    </div>
+    <div class="ss-doc">
+      <h3>检测是怎么做的</h3>
+      <p>没有用任何 OCR —— 这个工具不认字,它只找「哪里像文字」:</p>
+      <ul>
+        <li>先转灰度,再算 <strong>Sobel 梯度幅值</strong> |Gx|+|Gy|。文字的笔画边缘梯度密集,大片纯色背景接近 0,所以深色底白字和浅色底黑字一视同仁。</li>
+        <li>用<strong>大津法</strong>在梯度直方图上自动定阈值,二值化成笔画掩膜。</li>
+        <li><strong>8 邻接连通域标记</strong>(两遍扫描 + 并查集)把掩膜切成一个个连通块,再按高度、宽高比、填充率把分隔线、面板边框、噪点滤掉。</li>
+        <li>按垂直重叠把连通块聚成「行」,行内按水平间隙切成「词块」:间隙大于 2.4 倍字高的算换了一段(比如左右分栏),大于 0.62 倍字高的算换了一个词。</li>
+      </ul>
+      <p>这四步的每一个算子都和 <code>scipy.ndimage</code> 的对应实现做过随机对拍(高斯 200 组、均值 200 组、Sobel 200 组、连通域 200 组、大津 200 组,逐值一致),所以「框画在哪」是可复现的,不是玄学。</p>
+
+      <h3>「够不够安全」是怎么判的</h3>
+      <p>判据只有一条:<strong>遮挡块要大到能把一个字压进一格以内</strong>。工具会取遮挡区域里检测到的中位字高 h,然后:</p>
+      <ul>
+        <li>马赛克格子 ≥ 0.9h → 安全;≥ 0.45h → 偏弱;更小 → 危险。</li>
+        <li>模糊无论 σ 多大都不会评「安全」,最高只到「偏弱」。</li>
+        <li>色块 → 安全。</li>
+      </ul>
+      <div class="ss-note">现实里的教训:2016 年前后多起「马赛克被逆推」的案例,以及浏览器里常见的「毛玻璃遮挡」,都是栽在遮挡强度不足 —— 而不是栽在算法本身有后门。</div>
+
+      <h3>导出的时候发生了什么</h3>
+      <ul>
+        <li>脱敏是<strong>直接改像素</strong>再导出的,导出的 PNG/JPEG 里没有任何一份原始像素,也没有图层信息 —— 拿到文件的人无从「关掉图层」。</li>
+        <li>Canvas 导出天然不带 EXIF:原图里的 GPS、机型、拍摄时间在这一步就没了。</li>
+        <li>如果你只是想留个可继续编辑的版本,用「导出标注 JSON」—— 那份 JSON 里只有图形坐标,不含图片。</li>
+      </ul>
+
+      <h3>快捷键</h3>
+      <p>
+        <span class="ss-kbd">V</span> 选择 ·
+        <span class="ss-kbd">M</span> 脱敏刷 ·
+        <span class="ss-kbd">R</span> 方框 ·
+        <span class="ss-kbd">A</span> 箭头 ·
+        <span class="ss-kbd">P</span> 画笔 ·
+        <span class="ss-kbd">T</span> 文字 ·
+        <span class="ss-kbd">N</span> 序号 ·
+        <span class="ss-kbd">H</span> 高亮 ·
+        <span class="ss-kbd">Delete</span> 删除选中 ·
+        <span class="ss-kbd">Ctrl+Z</span> 撤销 ·
+        <span class="ss-kbd">Ctrl+Shift+Z</span> 重做 ·
+        <span class="ss-kbd">Ctrl+V</span> 粘贴图片
+      </p>
+
+      <h3>隐私</h3>
+      <p>图片从 <code>&lt;input type="file"&gt;</code>、拖放或剪贴板进来之后,始终只存在于这一页的内存与 canvas 里。没有任何网络请求,也没有把图片写进 localStorage —— 关掉标签页就什么都不剩。只有界面上的参数(颜色、格子大小、衬底设置)会记在本地,方便下次打开还是你顺手的那套。</p>
+    </div>
+  </section>
+
+  <div class="ss-foot">
+    截图工作台 · Shot Studio —— 每日工具集的第 59 个工具。检测与脱敏算子在离线阶段与 scipy.ndimage 逐值对拍;设计语言取自 Webflow。
+  </div>
+</div>
+
+<script>
+"use strict";
+/* ═══════════════════════ 1. 引擎(与 scipy.ndimage 对拍过的纯函数) ═══════════════════════ */
+const E = (() => {
+/* ENGINE-BEGIN */
+function toGray(rgba, w, h) {
+  const g = new Float32Array(w * h);
+  for (let i = 0, p = 0; i < g.length; i++, p += 4) {
+    g[i] = 0.299 * rgba[p] + 0.587 * rgba[p + 1] + 0.114 * rgba[p + 2];
+  }
+  return g;
+}
+function clampIdx(v, n) { return v < 0 ? 0 : (v >= n ? n - 1 : v); }
+function sobelMag(g, w, h) {
+  const out = new Float32Array(w * h);
+  const at = (x, y) => g[clampIdx(y, h) * w + clampIdx(x, w)];
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const a = at(x - 1, y - 1), b = at(x, y - 1), c = at(x + 1, y - 1);
+      const d = at(x - 1, y), f = at(x + 1, y);
+      const i = at(x - 1, y + 1), j = at(x, y + 1), k = at(x + 1, y + 1);
+      const gx = (c + 2 * f + k) - (a + 2 * d + i);
+      const gy = (i + 2 * j + k) - (a + 2 * b + c);
+      out[y * w + x] = Math.abs(gx) + Math.abs(gy);
+    }
+  }
+  return out;
+}
+function otsu(hist) {
+  let total = 0, sum = 0;
+  for (let i = 0; i < 256; i++) { total += hist[i]; sum += i * hist[i]; }
+  if (total === 0) return 0;
+  let sumB = 0, wB = 0, best = -1, thr = 0;
+  for (let t = 0; t < 256; t++) {
+    wB += hist[t];
+    if (wB === 0) continue;
+    const wF = total - wB;
+    if (wF === 0) break;
+    sumB += t * hist[t];
+    const mB = sumB / wB, mF = (sum - sumB) / wF;
+    const v = wB * wF * (mB - mF) * (mB - mF);
+    if (v > best) { best = v; thr = t; }
+  }
+  return thr;
+}
+function histogram(arr, scale) {
+  scale = scale === undefined ? 1 : scale;
+  const h = new Int32Array(256);
+  for (let i = 0; i < arr.length; i++) {
+    let v = Math.round(arr[i] * scale);
+    if (v < 0) v = 0; else if (v > 255) v = 255;
+    h[v]++;
+  }
+  return h;
+}
+function boxBlurGray(src, w, h, r) {
+  if (r <= 0) return Float32Array.from(src);
+  const tmp = new Float32Array(w * h), out = new Float32Array(w * h);
+  const n = 2 * r + 1;
+  for (let y = 0; y < h; y++) {
+    const row = y * w;
+    let acc = 0;
+    for (let k = -r; k <= r; k++) acc += src[row + clampIdx(k, w)];
+    tmp[row] = acc / n;
+    for (let x = 1; x < w; x++) {
+      acc += src[row + clampIdx(x + r, w)] - src[row + clampIdx(x - r - 1, w)];
+      tmp[row + x] = acc / n;
+    }
+  }
+  for (let x = 0; x < w; x++) {
+    let acc = 0;
+    for (let k = -r; k <= r; k++) acc += tmp[clampIdx(k, h) * w + x];
+    out[x] = acc / n;
+    for (let y = 1; y < h; y++) {
+      acc += tmp[clampIdx(y + r, h) * w + x] - tmp[clampIdx(y - r - 1, h) * w + x];
+      out[y * w + x] = acc / n;
+    }
+  }
+  return out;
+}
+function gaussianKernel(sigma, truncate) {
+  truncate = truncate === undefined ? 4 : truncate;
+  const r = Math.max(1, Math.trunc(truncate * sigma + 0.5));
+  const k = new Float64Array(2 * r + 1);
+  let s = 0;
+  for (let i = -r; i <= r; i++) { const v = Math.exp(-(i * i) / (2 * sigma * sigma)); k[i + r] = v; s += v; }
+  for (let i = 0; i < k.length; i++) k[i] /= s;
+  return { k: k, r: r };
+}
+function gaussianBlurGray(src, w, h, sigma) {
+  if (sigma <= 0) return Float32Array.from(src);
+  const kk = gaussianKernel(sigma), k = kk.k, r = kk.r;
+  const tmp = new Float32Array(w * h), out = new Float32Array(w * h);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      let a = 0;
+      for (let i = -r; i <= r; i++) a += k[i + r] * src[y * w + clampIdx(x + i, w)];
+      tmp[y * w + x] = a;
+    }
+  }
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      let a = 0;
+      for (let i = -r; i <= r; i++) a += k[i + r] * tmp[clampIdx(y + i, h) * w + x];
+      out[y * w + x] = a;
+    }
+  }
+  return out;
+}
+function labelCC(mask, w, h) {
+  const labels = new Int32Array(w * h);
+  const parent = [0];
+  const find = (a) => { while (parent[a] !== a) { parent[a] = parent[parent[a]]; a = parent[a]; } return a; };
+  const union = (a, b) => { a = find(a); b = find(b); if (a !== b) parent[Math.max(a, b)] = Math.min(a, b); };
+  let next = 1;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = y * w + x;
+      if (!mask[i]) continue;
+      let best = 0;
+      for (let dy = -1; dy <= 0; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          if (dy === 0 && dx >= 0) continue;
+          const ny = y + dy, nx = x + dx;
+          if (ny < 0 || nx < 0 || nx >= w) continue;
+          const l = labels[ny * w + nx];
+          if (!l) continue;
+          if (!best) best = l; else union(best, l);
+        }
+      }
+      if (!best) { best = next++; parent[best] = best; }
+      labels[i] = best;
+    }
+  }
+  const remap = new Int32Array(next);
+  let count = 0;
+  for (let l = 1; l < next; l++) if (find(l) === l) remap[l] = ++count;
+  const boxes = [];
+  for (let i = 0; i < count; i++) boxes.push({ x0: 1e9, y0: 1e9, x1: -1, y1: -1, area: 0 });
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = y * w + x;
+      if (!labels[i]) continue;
+      const id = remap[find(labels[i])];
+      labels[i] = id;
+      const b = boxes[id - 1];
+      if (x < b.x0) b.x0 = x; if (x > b.x1) b.x1 = x;
+      if (y < b.y0) b.y0 = y; if (y > b.y1) b.y1 = y;
+      b.area++;
+    }
+  }
+  return {
+    n: count, labels: labels,
+    boxes: boxes.map((b, i) => ({ id: i + 1, x: b.x0, y: b.y0, w: b.x1 - b.x0 + 1, h: b.y1 - b.y0 + 1, area: b.area }))
+  };
+}
+const DETECT_DEFAULTS = { sens: 1, minH: 7, maxH: 72, gapK: 0.62, lineGapK: 2.4, pad: 2 };
+function detectText(rgba, w, h, opts) {
+  const o = Object.assign({}, DETECT_DEFAULTS, opts || {});
+  const gray = toGray(rgba, w, h);
+  const grad = sobelMag(gray, w, h);
+  const hist = histogram(grad, 0.25);
+  let thr = otsu(hist) * 4 * o.sens;
+  thr = Math.max(24, Math.min(400, thr));
+  const mask = new Uint8Array(w * h);
+  for (let i = 0; i < mask.length; i++) mask[i] = grad[i] > thr ? 1 : 0;
+  const boxes = labelCC(mask, w, h).boxes;
+  const total = w * h;
+  const glyphs = boxes.filter((b) => {
+    if (b.h < o.minH || b.h > o.maxH) return false;
+    if (b.w < 2) return false;
+    if (b.area < 6) return false;
+    if (b.w > 26 * b.h) return false;
+    if (b.w * b.h > total * 0.25) return false;
+    if (b.area / (b.w * b.h) < 0.06) return false;
+    return true;
+  });
+  if (!glyphs.length) return { glyphs: [], lines: [], thr: thr };
+  const gs = glyphs.slice().sort((a, b) => (a.y + a.h / 2) - (b.y + b.h / 2));
+  const rows = [];
+  for (const g of gs) {
+    const gc = g.y + g.h / 2;
+    let hit = null;
+    for (const r of rows) {
+      const ov = Math.min(r.y1, g.y + g.h) - Math.max(r.y0, g.y);
+      const minH = Math.min(r.y1 - r.y0, g.h);
+      const ratio = Math.max(r.y1 - r.y0, g.h) / Math.max(1, minH);
+      if (ov > 0.45 * minH && ratio < 3 && Math.abs(gc - (r.y0 + r.y1) / 2) < 0.75 * Math.max(r.y1 - r.y0, g.h)) {
+        if (!hit || Math.abs(gc - (r.y0 + r.y1) / 2) < Math.abs(gc - (hit.y0 + hit.y1) / 2)) hit = r;
+      }
+    }
+    if (hit) { hit.y0 = Math.min(hit.y0, g.y); hit.y1 = Math.max(hit.y1, g.y + g.h); hit.items.push(g); }
+    else rows.push({ y0: g.y, y1: g.y + g.h, items: [g] });
+  }
+  const lines = [];
+  for (const r of rows) {
+    const items = r.items.slice().sort((a, b) => a.x - b.x);
+    const hs = items.map((i) => i.h).sort((a, b) => a - b);
+    const gh = hs[Math.floor(hs.length / 2)];
+    let seg = [items[0]];
+    const segs = [];
+    for (let i = 1; i < items.length; i++) {
+      const prev = seg[seg.length - 1];
+      const gap = items[i].x - (prev.x + prev.w);
+      if (gap > o.lineGapK * gh) { segs.push(seg); seg = [items[i]]; } else seg.push(items[i]);
+    }
+    segs.push(seg);
+    for (const s of segs) {
+      const x0 = Math.min.apply(null, s.map((g) => g.x)), x1 = Math.max.apply(null, s.map((g) => g.x + g.w));
+      const y0 = Math.min.apply(null, s.map((g) => g.y)), y1 = Math.max.apply(null, s.map((g) => g.y + g.h));
+      if (x1 - x0 < 4) continue;
+      const words = [];
+      let cur = [s[0]];
+      for (let i = 1; i < s.length; i++) {
+        const prev = cur[cur.length - 1];
+        const gap = s[i].x - (prev.x + prev.w);
+        if (gap > o.gapK * gh) { words.push(cur); cur = [s[i]]; } else cur.push(s[i]);
+      }
+      words.push(cur);
+      const pad = o.pad;
+      lines.push({
+        x: Math.max(0, x0 - pad), y: Math.max(0, y0 - pad),
+        w: Math.min(w, x1 + pad) - Math.max(0, x0 - pad),
+        h: Math.min(h, y1 + pad) - Math.max(0, y0 - pad),
+        gh: gh, n: s.length,
+        words: words.map((ws) => {
+          const a = Math.min.apply(null, ws.map((g) => g.x)), b = Math.max.apply(null, ws.map((g) => g.x + g.w));
+          const c = Math.min.apply(null, ws.map((g) => g.y)), d = Math.max.apply(null, ws.map((g) => g.y + g.h));
+          return {
+            x: Math.max(0, a - pad), y: Math.max(0, c - pad),
+            w: Math.min(w, b + pad) - Math.max(0, a - pad),
+            h: Math.min(h, d + pad) - Math.max(0, c - pad)
+          };
+        })
+      });
+    }
+  }
+  lines.sort((a, b) => (a.y - b.y) || (a.x - b.x));
+  return { glyphs: glyphs, lines: lines, thr: thr };
+}
+function clipRect(r, w, h) {
+  const x = Math.max(0, Math.round(r.x)), y = Math.max(0, Math.round(r.y));
+  const x1 = Math.min(w, Math.round(r.x + r.w)), y1 = Math.min(h, Math.round(r.y + r.h));
+  return { x: x, y: y, w: Math.max(0, x1 - x), h: Math.max(0, y1 - y) };
+}
+function pixelateRect(data, w, h, rect, block) {
+  const r = clipRect(rect, w, h);
+  const b = Math.max(1, Math.round(block));
+  for (let by = r.y; by < r.y + r.h; by += b) {
+    for (let bx = r.x; bx < r.x + r.w; bx += b) {
+      const x1 = Math.min(bx + b, r.x + r.w), y1 = Math.min(by + b, r.y + r.h);
+      let sr = 0, sg = 0, sb = 0, n = 0;
+      for (let y = by; y < y1; y++) {
+        for (let x = bx; x < x1; x++) {
+          const p = (y * w + x) * 4;
+          sr += data[p]; sg += data[p + 1]; sb += data[p + 2]; n++;
+        }
+      }
+      if (!n) continue;
+      const cr = Math.round(sr / n), cg = Math.round(sg / n), cb = Math.round(sb / n);
+      for (let y = by; y < y1; y++) {
+        for (let x = bx; x < x1; x++) {
+          const p = (y * w + x) * 4;
+          data[p] = cr; data[p + 1] = cg; data[p + 2] = cb; data[p + 3] = 255;
+        }
+      }
+    }
+  }
+  return r;
+}
+function blurRect(data, w, h, rect, sigma) {
+  const r = clipRect(rect, w, h);
+  if (!r.w || !r.h || sigma <= 0) return r;
+  const ch = [0, 1, 2].map(() => new Float32Array(r.w * r.h));
+  for (let y = 0; y < r.h; y++) {
+    for (let x = 0; x < r.w; x++) {
+      const p = ((y + r.y) * w + (x + r.x)) * 4;
+      ch[0][y * r.w + x] = data[p]; ch[1][y * r.w + x] = data[p + 1]; ch[2][y * r.w + x] = data[p + 2];
+    }
+  }
+  const out = ch.map((c) => gaussianBlurGray(c, r.w, r.h, sigma));
+  for (let y = 0; y < r.h; y++) {
+    for (let x = 0; x < r.w; x++) {
+      const p = ((y + r.y) * w + (x + r.x)) * 4;
+      data[p] = Math.round(out[0][y * r.w + x]);
+      data[p + 1] = Math.round(out[1][y * r.w + x]);
+      data[p + 2] = Math.round(out[2][y * r.w + x]);
+      data[p + 3] = 255;
+    }
+  }
+  return r;
+}
+function fillRectSolid(data, w, h, rect, rgb) {
+  const r = clipRect(rect, w, h);
+  for (let y = r.y; y < r.y + r.h; y++) {
+    for (let x = r.x; x < r.x + r.w; x++) {
+      const p = (y * w + x) * 4;
+      data[p] = rgb[0]; data[p + 1] = rgb[1]; data[p + 2] = rgb[2]; data[p + 3] = 255;
+    }
+  }
+  return r;
+}
+function richardsonLucy(observed, w, h, sigma, iters) {
+  const eps = 1e-6;
+  const u = Float32Array.from(observed);
+  for (let it = 0; it < iters; it++) {
+    const conv = gaussianBlurGray(u, w, h, sigma);
+    const ratio = new Float32Array(w * h);
+    for (let i = 0; i < ratio.length; i++) ratio[i] = observed[i] / (conv[i] + eps);
+    const corr = gaussianBlurGray(ratio, w, h, sigma);
+    for (let i = 0; i < u.length; i++) {
+      let v = u[i] * corr[i];
+      if (!(v >= 0)) v = 0;
+      if (v > 255) v = 255;
+      u[i] = v;
+    }
+  }
+  return u;
+}
+function gradeRedaction(mode, param, textH) {
+  const th = Math.max(6, textH || 0);
+  if (mode === 'solid') return { level: 'safe', label: '安全', why: '整块覆盖为纯色,原像素已被彻底丢弃,不存在还原路径。' };
+  if (mode === 'pixelate') {
+    const need = Math.max(8, Math.round(th * 0.9));
+    if (param >= need) return { level: 'safe', label: '安全', why: '格子(' + param + 'px)不小于建议值 ' + need + 'px,单字被压进一格以内,信息已不可恢复。' };
+    if (param >= Math.max(5, Math.round(th * 0.45))) return { level: 'weak', label: '偏弱', why: '格子(' + param + 'px)小于建议值 ' + need + 'px,笔画轮廓仍有残留,配合字典穷举有被猜出的风险。' };
+    return { level: 'danger', label: '危险', why: '格子(' + param + 'px)远小于文字高度 ' + Math.round(th) + 'px,马赛克后仍能看出字形。' };
+  }
+  if (mode === 'blur') {
+    if (param >= th * 0.8) return { level: 'weak', label: '偏弱', why: '高斯模糊是线性可逆运算,σ=' + param + ' 已经很强,但反卷积仍可能逼出轮廓,重要信息请改用马赛克或色块。' };
+    return { level: 'danger', label: '危险', why: 'σ=' + param + ' 相对文字高度 ' + Math.round(th) + 'px 太弱,Richardson–Lucy 反卷积几十次迭代即可读回内容。' };
+  }
+  return { level: 'weak', label: '未知', why: '' };
+}
+function rectsIntersect(a, b) {
+  return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+}
+function normRect(x0, y0, x1, y1) {
+  return { x: Math.min(x0, x1), y: Math.min(y0, y1), w: Math.abs(x1 - x0), h: Math.abs(y1 - y0) };
+}
+function distToSeg(px, py, x0, y0, x1, y1) {
+  const dx = x1 - x0, dy = y1 - y0;
+  const L = dx * dx + dy * dy;
+  let t = L ? ((px - x0) * dx + (py - y0) * dy) / L : 0;
+  t = Math.max(0, Math.min(1, t));
+  const qx = x0 + t * dx, qy = y0 + t * dy;
+  return Math.hypot(px - qx, py - qy);
+}
+function mergeRects(rects, tol) {
+  tol = tol === undefined ? 2 : tol;
+  const out = rects.map((r) => Object.assign({}, r));
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (let i = 0; i < out.length && !changed; i++) {
+      for (let j = i + 1; j < out.length; j++) {
+        const a = out[i], b = out[j];
+        const grown = { x: a.x - tol, y: a.y - tol, w: a.w + 2 * tol, h: a.h + 2 * tol };
+        if (rectsIntersect(grown, b)) {
+          const x0 = Math.min(a.x, b.x), y0 = Math.min(a.y, b.y);
+          const x1 = Math.max(a.x + a.w, b.x + b.w), y1 = Math.max(a.y + a.h, b.y + b.h);
+          out[i] = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+          out.splice(j, 1);
+          changed = true;
+          break;
+        }
+      }
+    }
+  }
+  return out;
+}
+/* ENGINE-END */
+return {
+  toGray, sobelMag, otsu, histogram, boxBlurGray, gaussianKernel, gaussianBlurGray, labelCC,
+  detectText, clipRect, pixelateRect, blurRect, fillRectSolid, richardsonLucy, gradeRedaction,
+  rectsIntersect, normRect, distToSeg, mergeRects, DETECT_DEFAULTS
+};
+})();
+
+/* ═══════════════════════ 2. 示例截图(全部页内绘制,不外链) ═══════════════════════ */
+const SANS = '-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif';
+const MONO = 'ui-monospace,SFMono-Regular,Menlo,Consolas,monospace';
+
+function newCanvas(w, h) {
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  return c;
+}
+function T(ctx, text, x, y, o) {
+  o = o || {};
+  ctx.font = (o.weight || 400) + ' ' + (o.size || 14) + 'px ' + (o.mono ? MONO : SANS);
+  ctx.fillStyle = o.color || '#111';
+  ctx.textAlign = o.align || 'left';
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillText(text, x, y);
+}
+function rr(ctx, x, y, w, h, r) {
+  const k = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + k, y);
+  ctx.arcTo(x + w, y, x + w, y + h, k);
+  ctx.arcTo(x + w, y + h, x, y + h, k);
+  ctx.arcTo(x, y + h, x, y, k);
+  ctx.arcTo(x, y, x + w, y, k);
+  ctx.closePath();
+}
+
+function sampleOrder() {
+  const W = 900, H = 560, c = newCanvas(W, H), x = c.getContext('2d');
+  x.fillStyle = '#eef0f4'; x.fillRect(0, 0, W, H);
+  x.fillStyle = '#fff'; x.fillRect(0, 0, W, 56);
+  x.strokeStyle = '#e3e6ec'; x.lineWidth = 1;
+  x.beginPath(); x.moveTo(0, 56.5); x.lineTo(W, 56.5); x.stroke();
+  T(x, '订单详情', 28, 36, { size: 19, weight: 600, color: '#101418' });
+  T(x, '已发货', 812, 35, { size: 13, color: '#0a8f3c' });
+  x.fillStyle = '#dff3e5'; rr(x, 800, 20, 66, 22, 4); x.fill();
+  T(x, '已发货', 812, 35, { size: 13, color: '#0a8f3c' });
+
+  x.fillStyle = '#fff'; rr(x, 24, 80, 852, 236, 8); x.fill();
+  T(x, '收货信息', 48, 112, { size: 15, weight: 600, color: '#101418' });
+  const rows = [
+    ['收件人', '张伟'],
+    ['手机号码', '138 2946 5507'],
+    ['身份证号', '330106 1992 0307 4218'],
+    ['收货地址', '浙江省杭州市西湖区文三路 388 号莱茵达大厦 12 层 A 座'],
+    ['订单编号', 'SO-20260817-004821'],
+    ['支付方式', '招商银行储蓄卡 (6214 8812 3352)']
+  ];
+  rows.forEach((r, i) => {
+    const y = 148 + i * 27;
+    T(x, r[0], 48, y, { size: 13.5, color: '#8b93a1' });
+    T(x, r[1], 148, y, { size: 13.5, color: '#1b2129' });
+  });
+
+  x.fillStyle = '#fff'; rr(x, 24, 332, 852, 200, 8); x.fill();
+  T(x, '商品清单', 48, 364, { size: 15, weight: 600, color: '#101418' });
+  x.strokeStyle = '#eceef2';
+  const cols = [48, 470, 610, 760];
+  ['商品', '单价', '数量', '小计'].forEach((t, i) => T(x, t, cols[i], 394, { size: 12.5, color: '#8b93a1' }));
+  const items = [
+    ['机械键盘 87 键 · 茶轴', '¥ 469.00', '1', '¥ 469.00'],
+    ['USB-C 扩展坞 7 合 1', '¥ 258.00', '2', '¥ 516.00'],
+    ['显示器支架臂 · 银', '¥ 329.00', '1', '¥ 329.00']
+  ];
+  items.forEach((it, i) => {
+    const y = 424 + i * 28;
+    x.beginPath(); x.moveTo(48, y - 16.5); x.lineTo(852, y - 16.5); x.stroke();
+    it.forEach((t, k) => T(x, t, cols[k], y, { size: 13, color: k === 0 ? '#1b2129' : '#39414d' }));
+  });
+  x.beginPath(); x.moveTo(48, 495.5); x.lineTo(852, 495.5); x.stroke();
+  T(x, '实付金额', 610, 516, { size: 13, color: '#8b93a1' });
+  T(x, '¥ 1,314.00', 760, 516, { size: 15, weight: 600, color: '#d4380d' });
+  return c;
+}
+
+function sampleTerminal() {
+  const W = 900, H = 560, c = newCanvas(W, H), x = c.getContext('2d');
+  x.fillStyle = '#12141a'; x.fillRect(0, 0, W, H);
+  x.fillStyle = '#1c1f27'; x.fillRect(0, 0, W, 40);
+  ['#ff5f57', '#febc2e', '#28c840'].forEach((col, i) => {
+    x.fillStyle = col; x.beginPath(); x.arc(26 + i * 20, 20, 6, 0, Math.PI * 2); x.fill();
+  });
+  T(x, 'deploy — zsh — 120x32', 450, 25, { size: 12.5, color: '#8b90a0', align: 'center' });
+  const lines = [
+    ['$ ', 'cat .env.production', '#7ee787'],
+    ['', 'OPENAI_API_KEY=sk-proj-9F3A2B7C41D8E056A2B4C7D9E1F0', '#c9d1d9'],
+    ['', 'DATABASE_URL=postgres://admin:Hx7*pQ2m@10.24.8.31:5432/orders', '#c9d1d9'],
+    ['', 'STRIPE_SECRET=sk_live_51Kd9ZfLm2QpXvT0rYb', '#c9d1d9'],
+    ['', '', '#c9d1d9'],
+    ['$ ', 'ssh deploy@203.0.113.42 -i ~/.ssh/prod_ed25519', '#7ee787'],
+    ['', 'Last login: Mon Aug 17 09:12:44 2026 from 118.89.204.7', '#8b949e'],
+    ['', 'deploy@prod-web-01:~$ whoami', '#c9d1d9'],
+    ['', 'deploy', '#8b949e'],
+    ['', '', '#c9d1d9'],
+    ['$ ', 'git log --oneline -3', '#7ee787'],
+    ['', 'a91c4e7 fix(billing): 结算金额四舍五入到分', '#c9d1d9'],
+    ['', '3f77b02 feat(auth): 支持一次性登录码', '#c9d1d9'],
+    ['', 'd05aa19 chore: 升级依赖到 2026.8', '#c9d1d9'],
+    ['', '', '#c9d1d9'],
+    ['$ ', 'echo $SUPPORT_MAIL', '#7ee787'],
+    ['', 'zhangwei.li@example-corp.com', '#c9d1d9']
+  ];
+  lines.forEach((l, i) => {
+    const y = 74 + i * 27;
+    if (l[0]) T(x, l[0], 28, y, { size: 14, mono: true, color: '#58a6ff' });
+    if (l[1]) T(x, l[1], l[0] ? 46 : 28, y, { size: 14, mono: true, color: l[2] });
+  });
+  return c;
+}
+
+function sampleChat() {
+  const W = 900, H = 560, c = newCanvas(W, H), x = c.getContext('2d');
+  x.fillStyle = '#f2f3f5'; x.fillRect(0, 0, W, H);
+  x.fillStyle = '#fff'; x.fillRect(0, 0, W, 52);
+  x.strokeStyle = '#e3e4e7'; x.beginPath(); x.moveTo(0, 52.5); x.lineTo(W, 52.5); x.stroke();
+  T(x, '项目群 · 12 人', 450, 33, { size: 15, weight: 600, color: '#111', align: 'center' });
+  const msgs = [
+    { who: 'l', name: '产品 · 小林', text: '合同扫描件我发在群里了,注意别外传' },
+    { who: 'l', name: '产品 · 小林', text: '甲方联系人:王倩 189 5522 0184' },
+    { who: 'r', name: '我', text: '收到,我这边把发票信息补一下' },
+    { who: 'r', name: '我', text: '税号 91330106MA2GXK7N3B,开票邮箱 fin@example-corp.com' },
+    { who: 'l', name: '财务 · 老陈', text: '账户是招商银行杭州分行 6214 8812 3352' },
+    { who: 'l', name: '财务 · 老陈', text: '这个别截图发出去啊' },
+    { who: 'r', name: '我', text: '放心,发之前会打码' }
+  ];
+  let y = 84;
+  msgs.forEach((m) => {
+    const right = m.who === 'r';
+    x.font = '14px ' + SANS;
+    const tw = Math.min(560, x.measureText(m.text).width + 28);
+    const bx = right ? W - 40 - tw : 92;
+    T(x, m.name, right ? W - 40 : 92, y, { size: 11.5, color: '#9aa0a8', align: right ? 'right' : 'left' });
+    x.fillStyle = right ? '#95ec69' : '#ffffff';
+    rr(x, bx, y + 8, tw, 40, 6); x.fill();
+    T(x, m.text, bx + 14, y + 34, { size: 14, color: '#0f1114' });
+    x.fillStyle = right ? '#c9cdd4' : '#d8dbe0';
+    x.beginPath(); x.arc(right ? W - 40 - tw - 24 : 60, y + 26, 16, 0, Math.PI * 2); x.fill();
+    y += 66;
+  });
+  return c;
+}
+
+const SAMPLES = { order: sampleOrder, term: sampleTerminal, chat: sampleChat };
+
+/* ═══════════════════════ 3. 应用状态 ═══════════════════════ */
+const $ = (id) => document.getElementById(id);
+const PALETTE = ['#ee1d36', '#ff6b00', '#ffae13', '#00d722', '#3b89ff', '#7a3dff', '#ed52cb', '#080808', '#ffffff'];
+
+const S = {
+  base: null, W: 0, H: 0, source: '',
+  layers: [], sel: null, tool: 'select', badgeNext: 1,
+  detect: { lines: [], glyphs: [], done: false },
+  maskedLines: new Set(),
+  style: { color: '#ee1d36', stroke: 4, fsize: 26, mode: 'pixelate', block: 14, sigma: 6, autoblock: true },
+  frame: { bg: 'none', pad: 48, radius: 10, shadow: true },
+  view: { scale: 1, zoom: 'fit', showBoxes: true },
+  hist: [], hi: -1, uid: 1
+};
+
+const flat = newCanvas(1, 1);
+const fctx = flat.getContext('2d', { willReadFrequently: true });
+const cv = $('ss-canvas');
+const ctx = cv.getContext('2d');
+
+function snapshot() { return JSON.stringify({ layers: S.layers, badgeNext: S.badgeNext, masked: Array.from(S.maskedLines) }); }
+function pushHist() {
+  const s = snapshot();
+  if (S.hi >= 0 && S.hist[S.hi] === s) return;
+  S.hist = S.hist.slice(0, S.hi + 1);
+  S.hist.push(s);
+  if (S.hist.length > 80) S.hist.shift();
+  S.hi = S.hist.length - 1;
+  syncHistButtons();
+}
+function restore(s) {
+  const o = JSON.parse(s);
+  S.layers = o.layers; S.badgeNext = o.badgeNext; S.maskedLines = new Set(o.masked || []);
+  S.sel = null;
+  markDirty(); renderAll();
+}
+function syncHistButtons() {
+  $('ss-undo').disabled = S.hi <= 0;
+  $('ss-redo').disabled = S.hi >= S.hist.length - 1;
+}
+function undo() { if (S.hi > 0) { S.hi--; restore(S.hist[S.hi]); syncHistButtons(); } }
+function redo() { if (S.hi < S.hist.length - 1) { S.hi++; restore(S.hist[S.hi]); syncHistButtons(); } }
+
+let flatDirty = true;
+function markDirty() { flatDirty = true; }
+
+function rebuildFlat() {
+  if (!S.base) return;
+  flat.width = S.W; flat.height = S.H;
+  fctx.clearRect(0, 0, S.W, S.H);
+  fctx.drawImage(S.base, 0, 0);
+  const reds = S.layers.filter((l) => l.type === 'redact');
+  if (reds.length) {
+    const id = fctx.getImageData(0, 0, S.W, S.H);
+    for (const l of reds) {
+      if (l.mode === 'pixelate') E.pixelateRect(id.data, S.W, S.H, l, l.block);
+      else if (l.mode === 'blur') E.blurRect(id.data, S.W, S.H, l, l.sigma);
+      else E.fillRectSolid(id.data, S.W, S.H, l, hexToRgb(l.color || '#080808'));
+    }
+    fctx.putImageData(id, 0, 0);
+  }
+  flatDirty = false;
+}
+function hexToRgb(h) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(h.trim());
+  if (!m) return [8, 8, 8];
+  const v = parseInt(m[1], 16);
+  return [(v >> 16) & 255, (v >> 8) & 255, v & 255];
+}
+
+/* ═══════════════════════ 4. 绘制 ═══════════════════════ */
+function fitView() {
+  if (!S.base) return;
+  const box = $('ss-canvasbox');
+  const avail = Math.max(240, box.clientWidth - 40);
+  let scale = S.view.zoom === 'fit' ? Math.min(1, avail / S.W) : parseFloat(S.view.zoom);
+  if (!(scale > 0)) scale = 1;
+  S.view.scale = scale;
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  cv.style.width = Math.round(S.W * scale) + 'px';
+  cv.style.height = Math.round(S.H * scale) + 'px';
+  cv.width = Math.round(S.W * scale * dpr);
+  cv.height = Math.round(S.H * scale * dpr);
+  cv.dataset.scale = String(scale);
+}
+
+function arrowPath(c, l, k) {
+  const dx = l.x1 - l.x0, dy = l.y1 - l.y0;
+  const len = Math.hypot(dx, dy) || 1;
+  const head = Math.max(l.stroke * 3.2, 12);
+  const ux = dx / len, uy = dy / len;
+  const bx = l.x1 - ux * head, by = l.y1 - uy * head;
+  c.lineCap = 'round'; c.lineJoin = 'round';
+  c.strokeStyle = l.color; c.fillStyle = l.color; c.lineWidth = l.stroke * k;
+  c.beginPath(); c.moveTo(l.x0 * k, l.y0 * k); c.lineTo(bx * k, by * k); c.stroke();
+  const px = -uy, py = ux;
+  c.beginPath();
+  c.moveTo(l.x1 * k, l.y1 * k);
+  c.lineTo((bx + px * head * 0.42) * k, (by + py * head * 0.42) * k);
+  c.lineTo((bx - px * head * 0.42) * k, (by - py * head * 0.42) * k);
+  c.closePath(); c.fill();
+}
+
+function drawLayer(c, l, k) {
+  c.save();
+  if (l.type === 'rect') {
+    c.strokeStyle = l.color; c.lineWidth = l.stroke * k; c.lineJoin = 'round';
+    c.strokeRect(l.x * k, l.y * k, l.w * k, l.h * k);
+  } else if (l.type === 'hl') {
+    c.globalAlpha = 0.34; c.fillStyle = l.color;
+    c.fillRect(l.x * k, l.y * k, l.w * k, l.h * k);
+  } else if (l.type === 'arrow') {
+    arrowPath(c, l, k);
+  } else if (l.type === 'pen') {
+    c.strokeStyle = l.color; c.lineWidth = l.stroke * k; c.lineCap = 'round'; c.lineJoin = 'round';
+    c.beginPath();
+    l.pts.forEach((p, i) => { if (i) c.lineTo(p[0] * k, p[1] * k); else c.moveTo(p[0] * k, p[1] * k); });
+    c.stroke();
+  } else if (l.type === 'text') {
+    c.font = '600 ' + (l.size * k) + 'px ' + SANS;
+    c.textBaseline = 'top';
+    const m = c.measureText(l.text || ' ');
+    const padX = 8 * k, padY = 5 * k;
+    if (l.bg !== false) {
+      c.fillStyle = 'rgba(255,255,255,.92)';
+      rr(c, l.x * k - padX, l.y * k - padY, m.width + padX * 2, l.size * k * 1.28 + padY * 2, 4 * k);
+      c.fill();
+    }
+    c.fillStyle = l.color;
+    c.fillText(l.text || '', l.x * k, l.y * k);
+  } else if (l.type === 'badge') {
+    const r = l.size * k * 0.62;
+    c.fillStyle = l.color;
+    c.beginPath(); c.arc(l.x * k, l.y * k, r, 0, Math.PI * 2); c.fill();
+    c.fillStyle = pickFg(l.color);
+    c.font = '600 ' + (l.size * k * 0.78) + 'px ' + SANS;
+    c.textAlign = 'center'; c.textBaseline = 'middle';
+    c.fillText(String(l.num), l.x * k, l.y * k + 0.5 * k);
+  } else if (l.type === 'redact') {
+    /* 像素已经烧进 flat,这里只在选中时画边框 */
+  }
+  c.restore();
+}
+function pickFg(hex) {
+  const [r, g, b] = hexToRgb(hex);
+  return (0.299 * r + 0.587 * g + 0.114 * b) > 150 ? '#080808' : '#ffffff';
+}
+
+function draw() {
+  if (!S.base) return;
+  if (flatDirty) rebuildFlat();
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const k = S.view.scale;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, cv.width / dpr, cv.height / dpr);
+  ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(flat, 0, 0, S.W * k, S.H * k);
+
+  if (S.view.showBoxes && S.detect.lines.length) {
+    ctx.save();
+    ctx.lineWidth = 1;
+    S.detect.lines.forEach((L, i) => {
+      const masked = S.maskedLines.has(i);
+      ctx.strokeStyle = masked ? 'rgba(0,215,34,.95)' : 'rgba(237,82,203,.85)';
+      ctx.setLineDash(masked ? [] : [4, 3]);
+      ctx.strokeRect(L.x * k + 0.5, L.y * k + 0.5, L.w * k - 1, L.h * k - 1);
+    });
+    ctx.restore();
+  }
+
+  S.layers.forEach((l) => drawLayer(ctx, l, k));
+
+  const sel = S.layers.find((l) => l.id === S.sel);
+  if (sel) {
+    const b = layerBBox(sel);
+    ctx.save();
+    ctx.strokeStyle = '#146ef5'; ctx.lineWidth = 1.5; ctx.setLineDash([5, 4]);
+    ctx.strokeRect(b.x * k - 3, b.y * k - 3, b.w * k + 6, b.h * k + 6);
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#146ef5';
+    const hx = (b.x + b.w) * k, hy = (b.y + b.h) * k;
+    ctx.fillRect(hx - 4, hy - 4, 9, 9);
+    ctx.restore();
+  }
+  if (drag && drag.preview) {
+    ctx.save();
+    ctx.strokeStyle = '#146ef5'; ctx.setLineDash([4, 3]); ctx.lineWidth = 1;
+    const p = drag.preview;
+    ctx.strokeRect(p.x * k, p.y * k, p.w * k, p.h * k);
+    ctx.restore();
+  }
+}
+
+function layerBBox(l) {
+  if (l.type === 'arrow') return E.normRect(l.x0, l.y0, l.x1, l.y1);
+  if (l.type === 'pen') {
+    const xs = l.pts.map((p) => p[0]), ys = l.pts.map((p) => p[1]);
+    return { x: Math.min.apply(null, xs), y: Math.min.apply(null, ys), w: Math.max.apply(null, xs) - Math.min.apply(null, xs), h: Math.max.apply(null, ys) - Math.min.apply(null, ys) };
+  }
+  if (l.type === 'text') {
+    ctx.save(); ctx.font = '600 ' + l.size + 'px ' + SANS;
+    const w = ctx.measureText(l.text || ' ').width; ctx.restore();
+    return { x: l.x, y: l.y, w: w, h: l.size * 1.3 };
+  }
+  if (l.type === 'badge') { const r = l.size * 0.62; return { x: l.x - r, y: l.y - r, w: r * 2, h: r * 2 }; }
+  return { x: l.x, y: l.y, w: l.w, h: l.h };
+}
+
+/* ═══════════════════════ 5. 图片载入 ═══════════════════════ */
+const MAXDIM = 2200;
+function setImage(canvasOrImg, label) {
+  let w = canvasOrImg.width, h = canvasOrImg.height;
+  const k = Math.min(1, MAXDIM / Math.max(w, h));
+  const dst = newCanvas(Math.round(w * k), Math.round(h * k));
+  dst.getContext('2d').drawImage(canvasOrImg, 0, 0, dst.width, dst.height);
+  S.base = dst; S.W = dst.width; S.H = dst.height; S.source = label;
+  S.layers = []; S.sel = null; S.badgeNext = 1;
+  S.detect = { lines: [], glyphs: [], done: false };
+  S.maskedLines = new Set();
+  S.hist = []; S.hi = -1;
+  markDirty();
+  $('ss-imginfo').textContent = label + ' · ' + S.W + ' × ' + S.H + ' px' + (k < 1 ? '(已缩到 ' + MAXDIM + 'px 以内)' : '');
+  fitView();
+  runDetect();
+  pushHist();
+  renderAll();
+  $('ss-hint').textContent = '检测框是粉色虚线;点右边列表里的某一行,或直接用「脱敏刷」拖一个框。';
+}
+
+function loadFile(file) {
+  if (!file || !/^image\//.test(file.type)) { $('ss-hint').textContent = '这不是图片文件。'; return; }
+  const url = URL.createObjectURL(file);
+  const img = new Image();
+  img.onload = () => { setImage(img, file.name || '本地图片'); URL.revokeObjectURL(url); };
+  img.onerror = () => { $('ss-hint').textContent = '图片解码失败,换一张试试。'; URL.revokeObjectURL(url); };
+  img.src = url;
+}
+
+/* ═══════════════════════ 6. 检测与脱敏 ═══════════════════════ */
+function runDetect() {
+  if (!S.base) return;
+  const t0 = performance.now();
+  const id = S.base.getContext('2d').getImageData(0, 0, S.W, S.H);
+  const r = E.detectText(id.data, S.W, S.H, { sens: parseFloat($('ss-sens').value), minH: parseInt($('ss-minh').value, 10) });
+  S.detect = { lines: r.lines, glyphs: r.glyphs, done: true };
+  S.maskedLines = new Set();
+  const ms = Math.round(performance.now() - t0);
+  const words = r.lines.reduce((a, l) => a + l.words.length, 0);
+  $('ss-detect-status').textContent = '找到 ' + r.lines.length + ' 行 / ' + words + ' 个词块 · ' + ms + ' ms';
+  document.documentElement.dataset.ssLines = String(r.lines.length);
+  renderLineList();
+}
+
+function medianTextH(rect) {
+  const hits = [];
+  S.detect.lines.forEach((L) => { if (E.rectsIntersect(L, rect)) hits.push(L.gh); });
+  if (!hits.length) return 0;
+  hits.sort((a, b) => a - b);
+  return hits[Math.floor(hits.length / 2)];
+}
+function autoParam(mode, textH) {
+  if (!S.style.autoblock || !textH) return mode === 'blur' ? S.style.sigma : S.style.block;
+  if (mode === 'pixelate') return Math.max(8, Math.round(textH * 0.95));
+  if (mode === 'blur') return Math.max(2, Math.round(textH * 0.8 * 10) / 10);
+  return 0;
+}
+function makeRedact(rect) {
+  const th = medianTextH(rect);
+  const mode = S.style.mode;
+  const l = {
+    id: S.uid++, type: 'redact', mode: mode,
+    x: Math.round(rect.x), y: Math.round(rect.y), w: Math.round(rect.w), h: Math.round(rect.h),
+    block: mode === 'pixelate' ? autoParam('pixelate', th) : S.style.block,
+    sigma: mode === 'blur' ? autoParam('blur', th) : S.style.sigma,
+    color: mode === 'solid' ? (S.style.color === '#ffffff' ? '#080808' : S.style.color) : '#080808',
+    textH: th
+  };
+  return l;
+}
+function linesIn(rect) {
+  const idx = [];
+  S.detect.lines.forEach((L, i) => { if (E.rectsIntersect(L, rect)) idx.push(i); });
+  return idx;
+}
+function maskAll() {
+  if (!S.detect.lines.length) return;
+  S.layers = S.layers.filter((l) => l.type !== 'redact');
+  /* 贴在一起的行框先并成一块,少画几个格子;并记住这块盖住了哪几行 */
+  const rects = E.mergeRects(S.detect.lines.map((L) => ({ x: L.x, y: L.y, w: L.w, h: L.h })), 3);
+  rects.forEach((r) => {
+    const l = makeRedact(r);
+    l.fromLines = linesIn(r);
+    S.layers.push(l);
+  });
+  S.maskedLines = new Set(S.detect.lines.map((_, i) => i));
+  markDirty(); pushHist(); renderAll();
+}
+function clearRedact() {
+  S.layers = S.layers.filter((l) => l.type !== 'redact');
+  S.maskedLines = new Set();
+  markDirty(); pushHist(); renderAll();
+}
+function toggleLine(i) {
+  const L = S.detect.lines[i];
+  if (!L) return;
+  if (S.maskedLines.has(i)) {
+    /* 这一行可能被一块「合并块」盖着;取消时把同一块盖住的行一并放出来 */
+    const owners = S.layers.filter((l) => l.type === 'redact' && (l.fromLines || []).indexOf(i) >= 0);
+    owners.forEach((o) => (o.fromLines || []).forEach((k) => S.maskedLines.delete(k)));
+    S.maskedLines.delete(i);
+    S.layers = S.layers.filter((l) => owners.indexOf(l) < 0);
+  } else {
+    S.maskedLines.add(i);
+    const l = makeRedact({ x: L.x, y: L.y, w: L.w, h: L.h });
+    l.fromLines = [i];
+    S.layers.push(l);
+  }
+  markDirty(); pushHist(); renderAll();
+}
+
+/* ═══════════════════════ 7. 指针交互 ═══════════════════════ */
+let drag = null;
+function toImg(ev) {
+  const r = cv.getBoundingClientRect();
+  const k = S.view.scale || 1;
+  return {
+    x: Math.max(0, Math.min(S.W, (ev.clientX - r.left) / k)),
+    y: Math.max(0, Math.min(S.H, (ev.clientY - r.top) / k))
+  };
+}
+function hitTest(p) {
+  for (let i = S.layers.length - 1; i >= 0; i--) {
+    const l = S.layers[i];
+    if (l.type === 'arrow') {
+      if (E.distToSeg(p.x, p.y, l.x0, l.y0, l.x1, l.y1) <= Math.max(8, l.stroke * 1.5)) return l;
+    } else if (l.type === 'pen') {
+      for (let k = 1; k < l.pts.length; k++) {
+        if (E.distToSeg(p.x, p.y, l.pts[k - 1][0], l.pts[k - 1][1], l.pts[k][0], l.pts[k][1]) <= Math.max(8, l.stroke * 1.5)) return l;
+      }
+    } else {
+      const b = layerBBox(l);
+      if (p.x >= b.x - 4 && p.x <= b.x + b.w + 4 && p.y >= b.y - 4 && p.y <= b.y + b.h + 4) return l;
+    }
+  }
+  return null;
+}
+function handleAt(p) {
+  const sel = S.layers.find((l) => l.id === S.sel);
+  if (!sel) return false;
+  const b = layerBBox(sel);
+  const k = S.view.scale || 1;
+  return Math.abs(p.x - (b.x + b.w)) * k < 9 && Math.abs(p.y - (b.y + b.h)) * k < 9;
+}
+
+cv.addEventListener('pointerdown', (ev) => {
+  if (!S.base) return;
+  cv.setPointerCapture(ev.pointerId);
+  const p = toImg(ev);
+  const tool = S.tool;
+  if (tool === 'select') {
+    if (handleAt(p)) {
+      const sel = S.layers.find((l) => l.id === S.sel);
+      drag = { kind: 'resize', layer: sel, start: p, orig: JSON.parse(JSON.stringify(sel)) };
+      return;
+    }
+    const hit = hitTest(p);
+    S.sel = hit ? hit.id : null;
+    syncStyleFromSel();
+    if (hit) drag = { kind: 'move', layer: hit, start: p, orig: JSON.parse(JSON.stringify(hit)) };
+    renderLayerList(); draw();
+    return;
+  }
+  if (tool === 'text') {
+    const l = { id: S.uid++, type: 'text', x: p.x, y: p.y, text: '说明文字', color: S.style.color, size: S.style.fsize };
+    S.layers.push(l); S.sel = l.id; setTool('select'); pushHist(); renderAll();
+    $('ss-row-text').hidden = false; $('ss-text-input').value = l.text; $('ss-text-input').focus();
+    return;
+  }
+  if (tool === 'badge') {
+    const l = { id: S.uid++, type: 'badge', x: p.x, y: p.y, num: S.badgeNext++, color: S.style.color, size: S.style.fsize };
+    S.layers.push(l); S.sel = l.id; pushHist(); renderAll();
+    return;
+  }
+  if (tool === 'pen') {
+    const l = { id: S.uid++, type: 'pen', pts: [[p.x, p.y]], color: S.style.color, stroke: S.style.stroke };
+    S.layers.push(l); S.sel = l.id;
+    drag = { kind: 'pen', layer: l };
+    return;
+  }
+  drag = { kind: 'create', tool: tool, start: p, preview: { x: p.x, y: p.y, w: 0, h: 0 } };
+});
+
+cv.addEventListener('pointermove', (ev) => {
+  if (!drag || !S.base) return;
+  const p = toImg(ev);
+  if (drag.kind === 'pen') {
+    const last = drag.layer.pts[drag.layer.pts.length - 1];
+    if (Math.hypot(p.x - last[0], p.y - last[1]) > 1.5) drag.layer.pts.push([p.x, p.y]);
+    draw();
+  } else if (drag.kind === 'move') {
+    const dx = p.x - drag.start.x, dy = p.y - drag.start.y;
+    const l = drag.layer, o = drag.orig;
+    if (l.type === 'arrow') { l.x0 = o.x0 + dx; l.y0 = o.y0 + dy; l.x1 = o.x1 + dx; l.y1 = o.y1 + dy; }
+    else if (l.type === 'pen') l.pts = o.pts.map((q) => [q[0] + dx, q[1] + dy]);
+    else { l.x = o.x + dx; l.y = o.y + dy; }
+    if (l.type === 'redact') markDirty();
+    draw();
+  } else if (drag.kind === 'resize') {
+    const l = drag.layer, o = drag.orig;
+    if (l.type === 'arrow') { l.x1 = p.x; l.y1 = p.y; }
+    else if (l.type === 'text' || l.type === 'badge') { l.size = Math.max(10, Math.round(o.size + (p.x - drag.start.x))); }
+    else { l.w = Math.max(4, p.x - o.x); l.h = Math.max(4, p.y - o.y); }
+    if (l.type === 'redact') markDirty();
+    draw();
+  } else if (drag.kind === 'create') {
+    drag.preview = E.normRect(drag.start.x, drag.start.y, p.x, p.y);
+    drag.end = p;
+    draw();
+  }
+});
+
+function endDrag() {
+  if (!drag) return;
+  const d = drag; drag = null;
+  if (d.kind === 'create') {
+    const r = d.preview;
+    if (r.w < 4 || r.h < 4) { draw(); return; }
+    let l = null;
+    if (d.tool === 'redact') l = makeRedact(r);
+    else if (d.tool === 'rect') l = { id: S.uid++, type: 'rect', x: r.x, y: r.y, w: r.w, h: r.h, color: S.style.color, stroke: S.style.stroke };
+    else if (d.tool === 'hl') l = { id: S.uid++, type: 'hl', x: r.x, y: r.y, w: r.w, h: r.h, color: S.style.color };
+    else if (d.tool === 'arrow') l = { id: S.uid++, type: 'arrow', x0: d.start.x, y0: d.start.y, x1: d.end.x, y1: d.end.y, color: S.style.color, stroke: S.style.stroke };
+    if (l) { S.layers.push(l); S.sel = l.id; if (l.type === 'redact') markDirty(); }
+  }
+  if (d.kind === 'pen' && d.layer.pts.length < 2) {
+    S.layers = S.layers.filter((x) => x !== d.layer);
+  }
+  pushHist(); renderAll();
+}
+cv.addEventListener('pointerup', endDrag);
+cv.addEventListener('pointercancel', endDrag);
+cv.addEventListener('dblclick', () => {
+  const sel = S.layers.find((l) => l.id === S.sel);
+  if (sel && sel.type === 'text') { $('ss-row-text').hidden = false; $('ss-text-input').value = sel.text; $('ss-text-input').focus(); }
+});
+
+/* ═══════════════════════ 8. 界面渲染 ═══════════════════════ */
+function renderLineList() {
+  const ul = $('ss-lines');
+  ul.textContent = '';
+  if (!S.detect.lines.length) {
+    const li = document.createElement('li');
+    const d = document.createElement('div');
+    d.className = 'ss-empty';
+    d.textContent = S.detect.done ? '这张图里没找到文字(试试调高灵敏度)' : '还没有检测结果';
+    li.appendChild(d); ul.appendChild(li);
+    return;
+  }
+  S.detect.lines.forEach((L, i) => {
+    const li = document.createElement('li');
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'ss-item';
+    b.dataset.line = String(i);
+    b.setAttribute('aria-pressed', S.maskedLines.has(i) ? 'true' : 'false');
+    const flag = document.createElement('span');
+    flag.className = 'ss-flag';
+    flag.style.background = S.maskedLines.has(i) ? 'var(--green)' : 'var(--pink)';
+    const tag = document.createElement('span');
+    tag.className = 'ss-tag';
+    tag.textContent = 'y' + L.y;
+    const name = document.createElement('span');
+    name.className = 'ss-name';
+    name.textContent = L.words.length + ' 词 · ' + L.w + '×' + L.h + ' · 字高 ' + L.gh + 'px';
+    b.appendChild(flag); b.appendChild(tag); b.appendChild(name);
+    b.addEventListener('click', () => toggleLine(i));
+    li.appendChild(b); ul.appendChild(li);
+  });
+}
+
+const TYPE_NAME = { redact: '脱敏块', rect: '方框', arrow: '箭头', pen: '画笔', text: '文字', badge: '序号', hl: '高亮' };
+function renderLayerList() {
+  const ul = $('ss-layers');
+  ul.textContent = '';
+  $('ss-layer-count').textContent = String(S.layers.length);
+  if (!S.layers.length) {
+    const li = document.createElement('li');
+    const d = document.createElement('div'); d.className = 'ss-empty'; d.textContent = '还没有图层';
+    li.appendChild(d); ul.appendChild(li);
+    return;
+  }
+  S.layers.slice().reverse().forEach((l) => {
+    const li = document.createElement('li');
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'ss-item'; b.dataset.layer = String(l.id);
+    if (l.id === S.sel) b.dataset.sel = '1';
+    const flag = document.createElement('span');
+    flag.className = 'ss-flag';
+    flag.style.background = l.type === 'redact' ? 'var(--ink)' : (l.color || 'var(--mute)');
+    const tag = document.createElement('span'); tag.className = 'ss-tag'; tag.textContent = TYPE_NAME[l.type] || l.type;
+    const name = document.createElement('span'); name.className = 'ss-name';
+    if (l.type === 'redact') name.textContent = (l.mode === 'pixelate' ? '马赛克 ' + l.block + 'px' : l.mode === 'blur' ? '模糊 σ' + l.sigma : '色块') + ' · ' + Math.round(l.w) + '×' + Math.round(l.h);
+    else if (l.type === 'text') name.textContent = l.text;
+    else if (l.type === 'badge') name.textContent = '第 ' + l.num + ' 处';
+    else name.textContent = Math.round(layerBBox(l).w) + '×' + Math.round(layerBBox(l).h);
+    b.appendChild(flag); b.appendChild(tag); b.appendChild(name);
+    b.addEventListener('click', () => { S.sel = l.id; syncStyleFromSel(); renderLayerList(); draw(); });
+    li.appendChild(b); ul.appendChild(li);
+  });
+}
+
+function renderAudit() {
+  const tb = $('ss-audit').querySelector('tbody');
+  tb.textContent = '';
+  const reds = S.layers.filter((l) => l.type === 'redact');
+  const overall = $('ss-audit-overall');
+  if (!reds.length) {
+    overall.dataset.level = 'none';
+    overall.textContent = '还没有脱敏块';
+    document.documentElement.dataset.ssAudit = 'none';
+    return;
+  }
+  let worst = 'safe';
+  const rank = { safe: 0, weak: 1, danger: 2 };
+  const graded = reds.map((l, i) => {
+    const th = l.textH || medianTextH(l);
+    const param = l.mode === 'pixelate' ? l.block : (l.mode === 'blur' ? l.sigma : 0);
+    const g = E.gradeRedaction(l.mode, param, th);
+    if (rank[g.level] > rank[worst]) worst = g.level;
+    l.grade = g.level;
+    return { l: l, i: i, th: th, g: g };
+  });
+  const row = (a, b, level, label, why) => {
+    const tr = document.createElement('tr');
+    const td1 = document.createElement('td'); td1.textContent = a;
+    const td2 = document.createElement('td'); td2.textContent = b;
+    const td3 = document.createElement('td');
+    if (level) {
+      const bd = document.createElement('span');
+      bd.className = 'ss-badge'; bd.dataset.level = level; bd.textContent = label;
+      if (why) bd.title = why;
+      td3.appendChild(bd);
+    }
+    tr.appendChild(td1); tr.appendChild(td2); tr.appendChild(td3);
+    tb.appendChild(tr);
+    return tr;
+  };
+  const desc = (l) => l.mode === 'pixelate' ? '马赛克 ' + l.block + 'px' : (l.mode === 'blur' ? '模糊 σ' + l.sigma : '色块');
+  /* 只列出有问题的块 —— 二十几行清一色的「安全」是噪音,不是信息 */
+  const bad = graded.filter((r) => r.g.level !== 'safe');
+  if (!bad.length) {
+    /* 给出「最紧的那一块」离建议值还剩多少余量 —— 比笼统的最大最小值有用 */
+    let tight = null;
+    graded.forEach((r) => {
+      if (r.l.mode !== 'pixelate') return;
+      const need = Math.max(8, Math.round(Math.max(6, r.th || 0) * 0.9));
+      const margin = r.l.block - need;
+      if (!tight || margin < tight.margin) tight = { margin: margin, block: r.l.block, need: need };
+    });
+    row('共 ' + reds.length + ' 块',
+      tight ? '最紧一块 ' + tight.block + 'px / 建议 ' + tight.need + 'px' : '纯色块覆盖',
+      'safe', '全部达标', '每一块的遮挡尺度都不小于它所覆盖文字的建议值(格子 ≥ 0.9 倍字高)。');
+  } else {
+    bad.slice(0, 6).forEach((r) => {
+      row('#' + (r.i + 1) + ' ' + desc(r.l), r.th ? '字高 ' + Math.round(r.th) + 'px' : '未测到文字', r.g.level, r.g.label, r.g.why);
+    });
+    if (bad.length > 6) row('', '另有 ' + (bad.length - 6) + ' 块同样不达标', '', '');
+    if (graded.length - bad.length > 0) row('', '其余 ' + (graded.length - bad.length) + ' 块达标', 'safe', '安全', '');
+  }
+  overall.dataset.level = worst;
+  overall.textContent = worst === 'safe' ? '全部 ' + reds.length + ' 块都够强' : (worst === 'weak' ? '有遮挡偏弱,建议加大' : '有遮挡太弱,可能被还原');
+  document.documentElement.dataset.ssAudit = worst;
+}
+
+function renderPreflight() {
+  const ul = $('ss-preflight');
+  ul.textContent = '';
+  const add = (level, text) => {
+    const li = document.createElement('li');
+    const d = document.createElement('div');
+    d.className = 'ss-item';
+    const f = document.createElement('span');
+    f.className = 'ss-flag';
+    f.style.background = level === 'safe' ? 'var(--green)' : level === 'danger' ? 'var(--red)' : 'var(--yellow)';
+    const n = document.createElement('span');
+    n.className = 'ss-name'; n.style.whiteSpace = 'normal'; n.textContent = text;
+    d.appendChild(f); d.appendChild(n);
+    li.appendChild(d); ul.appendChild(li);
+  };
+  if (!S.base) { add('warn', '还没有载入图片'); return; }
+  const reds = S.layers.filter((l) => l.type === 'redact');
+  const lines = S.detect.lines.length;
+  const covered = S.detect.lines.filter((L) => reds.some((r) => E.rectsIntersect(L, r))).length;
+  if (!lines) add('warn', '没有检测到文字行,请人工确认画面里是否还有敏感信息');
+  else if (covered === 0) add('danger', '检测到 ' + lines + ' 行文字,一行都没有遮挡');
+  else if (covered < lines) add('warn', lines + ' 行文字里遮住了 ' + covered + ' 行,剩下 ' + (lines - covered) + ' 行仍然可读');
+  else add('safe', lines + ' 行文字全部被遮挡');
+  const weak = reds.filter((l) => l.grade === 'weak' || l.grade === 'danger').length;
+  if (reds.length && weak) add('danger', reds.length + ' 个脱敏块里有 ' + weak + ' 个强度不足');
+  else if (reds.length) add('safe', reds.length + ' 个脱敏块强度都达标');
+  add('safe', '导出为栅格像素,不含图层与 EXIF 元数据');
+}
+
+function renderAll() {
+  fitView();
+  draw();
+  renderLineList();
+  renderLayerList();
+  renderAudit();
+  renderPreflight();
+  drawPreview();
+  syncHistButtons();
+}
+
+/* ═══════════════════════ 9. 导出 ═══════════════════════ */
+function composite(scale) {
+  if (!S.base) return null;
+  if (flatDirty) rebuildFlat();
+  const f = S.frame;
+  const pad = f.bg === 'none' ? 0 : f.pad;
+  const W = Math.round((S.W + pad * 2) * scale), H = Math.round((S.H + pad * 2) * scale);
+  const out = newCanvas(W, H);
+  const c = out.getContext('2d');
+  if (f.bg !== 'none') {
+    if (f.bg === 'light') { c.fillStyle = '#f2f3f5'; c.fillRect(0, 0, W, H); }
+    else if (f.bg === 'ink') { c.fillStyle = '#080808'; c.fillRect(0, 0, W, H); }
+    else {
+      const g = c.createLinearGradient(0, 0, W, H);
+      g.addColorStop(0, '#7a3dff'); g.addColorStop(0.55, '#ed52cb'); g.addColorStop(1, '#ff6b00');
+      c.fillStyle = g; c.fillRect(0, 0, W, H);
+    }
+  }
+  c.save();
+  if (f.bg !== 'none' && f.shadow) {
+    c.shadowColor = 'rgba(8,8,8,.35)';
+    c.shadowBlur = 30 * scale;
+    c.shadowOffsetY = 12 * scale;
+  }
+  const ox = pad * scale, oy = pad * scale;
+  const iw = S.W * scale, ih = S.H * scale;
+  const rad = (f.bg === 'none' ? 0 : f.radius) * scale;
+  rr(c, ox, oy, iw, ih, rad);
+  c.fillStyle = '#fff'; c.fill();
+  c.restore();
+  c.save();
+  rr(c, ox, oy, iw, ih, rad);
+  c.clip();
+  c.drawImage(flat, ox, oy, iw, ih);
+  c.translate(ox, oy);
+  S.layers.forEach((l) => drawLayer(c, l, scale));
+  c.restore();
+  return out;
+}
+function drawPreview() {
+  const pv = $('ss-preview');
+  const out = composite(1);
+  if (!out) return;
+  const maxW = 900;
+  const k = Math.min(1, maxW / out.width);
+  pv.width = Math.round(out.width * k);
+  pv.height = Math.round(out.height * k);
+  const c = pv.getContext('2d');
+  c.clearRect(0, 0, pv.width, pv.height);
+  c.drawImage(out, 0, 0, pv.width, pv.height);
+  $('ss-preview-info').textContent = '导出尺寸 ' + Math.round(out.width * parseFloat($('ss-scale').value)) + ' × ' + Math.round(out.height * parseFloat($('ss-scale').value)) + ' px(预览按 ' + Math.round(k * 100) + '% 显示)';
+}
+function exportBlob(cb) {
+  const scale = parseFloat($('ss-scale').value) || 1;
+  const out = composite(scale);
+  if (!out) return;
+  const fmt = $('ss-fmt').value;
+  const q = parseFloat($('ss-quality').value);
+  out.toBlob((b) => cb(b, out), fmt, fmt === 'image/png' ? undefined : q);
+}
+function download() {
+  exportBlob((b) => {
+    if (!b) { $('ss-export-status').textContent = '导出失败:浏览器不支持这个格式。'; return; }
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(b);
+    a.download = 'shot-' + new Date().toISOString().slice(0, 10) + '.' + ($('ss-fmt').value.split('/')[1].replace('jpeg', 'jpg'));
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    $('ss-export-status').textContent = '已导出 ' + (b.size / 1024).toFixed(1) + ' KB · 脱敏块已烧进像素';
+    document.documentElement.dataset.ssExported = String(b.size);
+  });
+}
+
+/* ═══════════════════════ 10. 模糊还原实验 ═══════════════════════ */
+const LAB = { W: 640, H: 88 };
+function labSource() {
+  const c = newCanvas(LAB.W, LAB.H), x = c.getContext('2d');
+  x.fillStyle = '#ffffff'; x.fillRect(0, 0, LAB.W, LAB.H);
+  const txt = $('ss-lab-text').value;
+  T(x, txt, 24, 58, { size: 40, weight: 600, color: '#101418', mono: true });
+  return c;
+}
+function corr(a, b) {
+  let ma = 0, mb = 0;
+  for (let i = 0; i < a.length; i++) { ma += a[i]; mb += b[i]; }
+  ma /= a.length; mb /= b.length;
+  let sab = 0, sa = 0, sb = 0;
+  for (let i = 0; i < a.length; i++) {
+    const da = a[i] - ma, db = b[i] - mb;
+    sab += da * db; sa += da * da; sb += db * db;
+  }
+  return sab / Math.sqrt(sa * sb + 1e-9);
+}
+function runLab() {
+  const mode = $('ss-lab-mode').querySelector('[aria-pressed="true"]').dataset.mode;
+  const strength = parseFloat($('ss-lab-strength').value);
+  const iters = parseInt($('ss-lab-iters').value, 10);
+  const src = labSource();
+  const sctx = src.getContext('2d');
+  const sid = sctx.getImageData(0, 0, LAB.W, LAB.H);
+  const gray0 = E.toGray(sid.data, LAB.W, LAB.H);
+  $('ss-lab-src').width = LAB.W; $('ss-lab-src').height = LAB.H;
+  $('ss-lab-src').getContext('2d').drawImage(src, 0, 0);
+
+  const hid = new Uint8ClampedArray(sid.data);
+  if (mode === 'blur') E.blurRect(hid, LAB.W, LAB.H, { x: 0, y: 0, w: LAB.W, h: LAB.H }, strength);
+  else E.pixelateRect(hid, LAB.W, LAB.H, { x: 0, y: 0, w: LAB.W, h: LAB.H }, Math.max(2, Math.round(strength * 2.5)));
+  const hidC = $('ss-lab-hid');
+  hidC.width = LAB.W; hidC.height = LAB.H;
+  hidC.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(hid), LAB.W, LAB.H), 0, 0);
+
+  const grayH = E.toGray(hid, LAB.W, LAB.H);
+  const psf = mode === 'blur' ? strength : Math.max(1.2, strength * 0.9);
+  const rec = E.richardsonLucy(grayH, LAB.W, LAB.H, psf, iters);
+  const recData = new Uint8ClampedArray(LAB.W * LAB.H * 4);
+  for (let i = 0; i < LAB.W * LAB.H; i++) {
+    const v = Math.max(0, Math.min(255, rec[i]));
+    recData[i * 4] = v; recData[i * 4 + 1] = v; recData[i * 4 + 2] = v; recData[i * 4 + 3] = 255;
+  }
+  const recC = $('ss-lab-rec');
+  recC.width = LAB.W; recC.height = LAB.H;
+  recC.getContext('2d').putImageData(new ImageData(recData, LAB.W, LAB.H), 0, 0);
+
+  const cHid = corr(gray0, grayH), cRec = corr(gray0, rec);
+  const tb = $('ss-lab-table').querySelector('tbody');
+  tb.textContent = '';
+  const row = (k, v) => {
+    const tr = document.createElement('tr');
+    const a = document.createElement('td'); a.textContent = k;
+    const b = document.createElement('td'); b.textContent = v; b.style.fontFamily = 'var(--mono)';
+    tr.appendChild(a); tr.appendChild(b); tb.appendChild(tr);
+  };
+  /* 误差缩小率:遮挡后离原图还差 (1-cHid),还原之后追回了其中多少 —— 比裸相关系数好读得多 */
+  const closed = (cRec - cHid) / Math.max(1e-6, 1 - cHid);
+  row('遮挡方式', mode === 'blur' ? '高斯模糊 σ=' + strength : '马赛克 ' + Math.max(2, Math.round(strength * 2.5)) + 'px');
+  row('遮挡后 vs 原图', cHid.toFixed(3));
+  row('还原后 vs 原图', cRec.toFixed(3));
+  row('与原图的差距缩小', (closed * 100).toFixed(1) + '%');
+  const v = $('ss-lab-verdict');
+  if (mode === 'blur' && closed > 0.35) {
+    v.dataset.level = 'danger';
+    v.textContent = '模糊被逼回来了:差距缩小 ' + (closed * 100).toFixed(0) + '%';
+  } else if (mode === 'blur') {
+    v.dataset.level = 'weak';
+    v.textContent = '这次只追回 ' + (closed * 100).toFixed(0) + '%,但原始像素仍在图里';
+  } else {
+    v.dataset.level = 'safe';
+    v.textContent = '马赛克:反卷积无效(只动了 ' + (closed * 100).toFixed(0) + '%)';
+  }
+  $('ss-lab-status').textContent = '完成 · ' + iters + ' 次迭代';
+  document.documentElement.dataset.ssLab = JSON.stringify({ mode: mode, hid: +cHid.toFixed(4), rec: +cRec.toFixed(4), closed: +closed.toFixed(4) });
+}
+
+/* ═══════════════════════ 11. 事件绑定 ═══════════════════════ */
+function setTool(t) {
+  S.tool = t;
+  cv.dataset.tool = t;
+  document.querySelectorAll('.ss-tool').forEach((b) => b.setAttribute('aria-pressed', b.dataset.tool === t ? 'true' : 'false'));
+  const tips = {
+    select: '点图形选中,拖动移动,右下角小方块改大小;Delete 删除。',
+    redact: '拖一个框 = 打码那块;格子大小会按框里检测到的字高自动挑。',
+    rect: '拖一个方框圈重点。', arrow: '从说明处拖向目标。', pen: '按住拖动手绘。',
+    text: '点一下放一段文字,在右边「样式 · 文字」里改内容。',
+    badge: '点一下放一个自增序号,用来做步骤标注。', hl: '拖一个半透明色块盖住重点。'
+  };
+  $('ss-hint').textContent = tips[t] || '';
+}
+document.querySelectorAll('.ss-tool').forEach((b) => b.addEventListener('click', () => setTool(b.dataset.tool)));
+
+document.querySelectorAll('.ss-tab').forEach((b) => {
+  b.addEventListener('click', () => {
+    document.querySelectorAll('.ss-tab').forEach((o) => o.setAttribute('aria-selected', o === b ? 'true' : 'false'));
+    ['work', 'export', 'lab', 'doc'].forEach((n) => { $('ss-panel-' + n).hidden = (n !== b.dataset.tab); });
+    if (b.dataset.tab === 'export') drawPreview();
+    if (b.dataset.tab === 'work') { fitView(); draw(); }
+  });
+});
+
+$('ss-sample-order').addEventListener('click', () => setImage(SAMPLES.order(), '示例 · 订单详情'));
+$('ss-sample-term').addEventListener('click', () => setImage(SAMPLES.term(), '示例 · 终端与密钥'));
+$('ss-sample-chat').addEventListener('click', () => setImage(SAMPLES.chat(), '示例 · 聊天记录'));
+$('ss-file').addEventListener('change', (e) => { if (e.target.files && e.target.files[0]) loadFile(e.target.files[0]); });
+
+const drop = $('ss-drop');
+['dragenter', 'dragover'].forEach((n) => drop.addEventListener(n, (e) => { e.preventDefault(); drop.dataset.over = '1'; }));
+['dragleave', 'drop'].forEach((n) => drop.addEventListener(n, (e) => { e.preventDefault(); drop.dataset.over = '0'; }));
+drop.addEventListener('drop', (e) => { const f = e.dataTransfer.files[0]; if (f) loadFile(f); });
+document.addEventListener('paste', (e) => {
+  const items = (e.clipboardData || {}).items || [];
+  for (const it of items) {
+    if (it.type && it.type.indexOf('image') === 0) { loadFile(it.getAsFile()); break; }
+  }
+});
+
+$('ss-detect').addEventListener('click', () => { runDetect(); markDirty(); renderAll(); });
+$('ss-mask-all').addEventListener('click', maskAll);
+$('ss-mask-none').addEventListener('click', clearRedact);
+$('ss-undo').addEventListener('click', undo);
+$('ss-redo').addEventListener('click', redo);
+$('ss-del').addEventListener('click', delSel);
+$('ss-clear').addEventListener('click', () => {
+  S.layers = S.layers.filter((l) => l.type === 'redact');
+  S.sel = null; pushHist(); renderAll();
+});
+$('ss-lay-del').addEventListener('click', delSel);
+$('ss-lay-up').addEventListener('click', () => moveSel(1));
+$('ss-lay-down').addEventListener('click', () => moveSel(-1));
+function delSel() {
+  if (S.sel == null) return;
+  const l = S.layers.find((x) => x.id === S.sel);
+  S.layers = S.layers.filter((x) => x.id !== S.sel);
+  if (l && l.type === 'redact') {
+    markDirty();
+    if (l.fromLine !== undefined) S.maskedLines.delete(l.fromLine);
+  }
+  S.sel = null; pushHist(); renderAll();
+}
+function moveSel(dir) {
+  const i = S.layers.findIndex((x) => x.id === S.sel);
+  if (i < 0) return;
+  const j = i + dir;
+  if (j < 0 || j >= S.layers.length) return;
+  const t = S.layers[i]; S.layers[i] = S.layers[j]; S.layers[j] = t;
+  markDirty(); pushHist(); renderAll();
+}
+
+$('ss-showboxes').addEventListener('change', (e) => { S.view.showBoxes = e.target.checked; draw(); });
+$('ss-zoom').addEventListener('change', (e) => { S.view.zoom = e.target.value; fitView(); draw(); });
+
+function bindRange(id, key, fmt, after) {
+  const el = $(id), out = $(id + '-v');
+  const upd = () => {
+    const v = parseFloat(el.value);
+    if (key in S.style) S.style[key] = v;
+    if (key in S.frame) S.frame[key] = v;
+    out.textContent = fmt(v);
+    if (after) after(v);
+  };
+  el.addEventListener('input', upd);
+  upd();
+}
+bindRange('ss-stroke', 'stroke', (v) => v + 'px', () => applyStyleToSel());
+bindRange('ss-fsize', 'fsize', (v) => v + 'px', () => applyStyleToSel());
+bindRange('ss-block', 'block', (v) => v + 'px', () => applyRedactParams());
+bindRange('ss-sigma', 'sigma', (v) => v.toFixed(1), () => applyRedactParams());
+bindRange('ss-pad', 'pad', (v) => v + 'px', () => { drawPreview(); save(); });
+bindRange('ss-radius', 'radius', (v) => v + 'px', () => { drawPreview(); save(); });
+$('ss-sens').addEventListener('input', (e) => { $('ss-sens-v').textContent = parseFloat(e.target.value).toFixed(2); });
+$('ss-minh').addEventListener('input', (e) => { $('ss-minh-v').textContent = e.target.value + 'px'; });
+$('ss-autoblock').addEventListener('change', (e) => { S.style.autoblock = e.target.checked; save(); });
+$('ss-shadow').addEventListener('change', (e) => { S.frame.shadow = e.target.checked; drawPreview(); save(); });
+
+$('ss-mode').querySelectorAll('button').forEach((b) => b.addEventListener('click', () => {
+  $('ss-mode').querySelectorAll('button').forEach((o) => o.setAttribute('aria-pressed', o === b ? 'true' : 'false'));
+  S.style.mode = b.dataset.mode;
+  $('ss-row-block').hidden = b.dataset.mode !== 'pixelate';
+  $('ss-row-sigma').hidden = b.dataset.mode !== 'blur';
+  applyRedactParams(true);
+  save();
+}));
+$('ss-bg').querySelectorAll('button').forEach((b) => b.addEventListener('click', () => {
+  $('ss-bg').querySelectorAll('button').forEach((o) => o.setAttribute('aria-pressed', o === b ? 'true' : 'false'));
+  S.frame.bg = b.dataset.bg;
+  drawPreview(); save();
+}));
+$('ss-lab-mode').querySelectorAll('button').forEach((b) => b.addEventListener('click', () => {
+  $('ss-lab-mode').querySelectorAll('button').forEach((o) => o.setAttribute('aria-pressed', o === b ? 'true' : 'false'));
+  updateLabLabels();
+}));
+function updateLabLabels() {
+  const mode = $('ss-lab-mode').querySelector('[aria-pressed="true"]').dataset.mode;
+  const s = parseFloat($('ss-lab-strength').value);
+  $('ss-lab-strength-v').textContent = mode === 'blur' ? 'σ ' + s.toFixed(1) : Math.max(2, Math.round(s * 2.5)) + 'px';
+  $('ss-lab-sub2').textContent = mode === 'blur' ? '高斯模糊 σ = ' + s.toFixed(1) : '马赛克格子 ' + Math.max(2, Math.round(s * 2.5)) + 'px';
+}
+$('ss-lab-strength').addEventListener('input', updateLabLabels);
+$('ss-lab-iters').addEventListener('input', (e) => { $('ss-lab-iters-v').textContent = e.target.value; });
+$('ss-lab-run').addEventListener('click', () => {
+  $('ss-lab-status').textContent = '计算中…';
+  setTimeout(runLab, 20);
+});
+$('ss-lab-text').addEventListener('change', () => { $('ss-lab-status').textContent = '内容已换,点「跑一次还原」'; });
+
+$('ss-fmt').addEventListener('change', (e) => {
+  $('ss-row-quality').hidden = e.target.value === 'image/png';
+  drawPreview();
+});
+$('ss-quality').addEventListener('input', (e) => { $('ss-quality-v').textContent = parseFloat(e.target.value).toFixed(2); });
+$('ss-scale').addEventListener('change', drawPreview);
+$('ss-download').addEventListener('click', download);
+$('ss-copy').addEventListener('click', () => {
+  exportBlob((b) => {
+    if (!b || !navigator.clipboard || !window.ClipboardItem) { $('ss-export-status').textContent = '这个浏览器不支持写剪贴板,请用「下载图片」。'; return; }
+    navigator.clipboard.write([new ClipboardItem({ 'image/png': b })])
+      .then(() => { $('ss-export-status').textContent = '已复制到剪贴板'; })
+      .catch(() => { $('ss-export-status').textContent = '剪贴板被浏览器拒绝了,请用「下载图片」。'; });
+  });
+});
+$('ss-save-json').addEventListener('click', () => {
+  const data = JSON.stringify({ tool: 'shot-studio', version: 1, size: [S.W, S.H], layers: S.layers }, null, 2);
+  const b = new Blob([data], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(b); a.download = 'shot-annotations.json';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  $('ss-export-status').textContent = '标注已导出(只有坐标,不含图片)';
+});
+$('ss-load-json').addEventListener('click', () => $('ss-json-file').click());
+$('ss-json-file').addEventListener('change', (e) => {
+  const f = e.target.files && e.target.files[0];
+  if (!f) return;
+  f.text().then((t) => {
+    try {
+      const o = JSON.parse(t);
+      if (!o || !Array.isArray(o.layers)) throw new Error('bad');
+      S.layers = o.layers;
+      S.uid = Math.max(S.uid, ...o.layers.map((l) => (l.id || 0) + 1));
+      markDirty(); pushHist(); renderAll();
+      $('ss-export-status').textContent = '已导入 ' + o.layers.length + ' 个标注图层';
+    } catch (err) {
+      $('ss-export-status').textContent = '这个 JSON 读不了(格式不对)';
+    }
+  });
+});
+
+function applyStyleToSel() {
+  const l = S.layers.find((x) => x.id === S.sel);
+  if (!l) { save(); return; }
+  if ('stroke' in l) l.stroke = S.style.stroke;
+  if (l.type === 'text' || l.type === 'badge') l.size = S.style.fsize;
+  draw(); renderLayerList(); save();
+}
+function applyRedactParams(modeChanged) {
+  const l = S.layers.find((x) => x.id === S.sel);
+  if (l && l.type === 'redact') {
+    if (modeChanged) l.mode = S.style.mode;
+    l.block = S.style.block; l.sigma = S.style.sigma;
+    if (l.mode === 'solid') l.color = S.style.color === '#ffffff' ? '#080808' : S.style.color;
+    markDirty(); renderAll();
+  } else {
+    save();
+  }
+}
+function syncStyleFromSel() {
+  const l = S.layers.find((x) => x.id === S.sel);
+  $('ss-row-text').hidden = !(l && l.type === 'text');
+  if (l && l.type === 'text') $('ss-text-input').value = l.text;
+  if (l && l.type === 'redact') {
+    $('ss-mode').querySelectorAll('button').forEach((o) => o.setAttribute('aria-pressed', o.dataset.mode === l.mode ? 'true' : 'false'));
+    S.style.mode = l.mode;
+    $('ss-row-block').hidden = l.mode !== 'pixelate';
+    $('ss-row-sigma').hidden = l.mode !== 'blur';
+    if (l.mode === 'pixelate') { $('ss-block').value = l.block; $('ss-block-v').textContent = l.block + 'px'; S.style.block = l.block; }
+    if (l.mode === 'blur') { $('ss-sigma').value = l.sigma; $('ss-sigma-v').textContent = (+l.sigma).toFixed(1); S.style.sigma = l.sigma; }
+  }
+}
+$('ss-text-input').addEventListener('input', (e) => {
+  const l = S.layers.find((x) => x.id === S.sel);
+  if (l && l.type === 'text') { l.text = e.target.value; draw(); renderLayerList(); }
+});
+$('ss-text-input').addEventListener('change', pushHist);
+
+const sw = $('ss-colors');
+PALETTE.forEach((hex) => {
+  const b = document.createElement('button');
+  b.type = 'button'; b.className = 'ss-sw'; b.style.background = hex;
+  b.setAttribute('aria-label', '颜色 ' + hex);
+  b.setAttribute('aria-pressed', hex === S.style.color ? 'true' : 'false');
+  b.addEventListener('click', () => {
+    S.style.color = hex;
+    sw.querySelectorAll('.ss-sw').forEach((o) => o.setAttribute('aria-pressed', o === b ? 'true' : 'false'));
+    const l = S.layers.find((x) => x.id === S.sel);
+    if (l && l.type !== 'redact') { l.color = hex; draw(); renderLayerList(); }
+    else if (l && l.type === 'redact' && l.mode === 'solid') { l.color = hex === '#ffffff' ? '#080808' : hex; markDirty(); renderAll(); }
+    save();
+  });
+  sw.appendChild(b);
+});
+
+const KEYS = { v: 'select', m: 'redact', r: 'rect', a: 'arrow', p: 'pen', t: 'text', n: 'badge', h: 'hl' };
+document.addEventListener('keydown', (e) => {
+  const tag = (e.target.tagName || '').toLowerCase();
+  if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+    e.preventDefault();
+    if (e.shiftKey) redo(); else undo();
+    return;
+  }
+  if (e.key === 'Delete' || e.key === 'Backspace') { if (S.sel != null) { e.preventDefault(); delSel(); } return; }
+  const k = e.key.toLowerCase();
+  if (KEYS[k] && !e.ctrlKey && !e.metaKey && !e.altKey) { setTool(KEYS[k]); }
+});
+
+window.addEventListener('resize', () => { if (S.view.zoom === 'fit') { fitView(); draw(); } });
+
+/* 设置持久化(只存参数,绝不存图片) */
+const LSKEY = 'shot-studio-prefs-v1';
+function save() {
+  try {
+    localStorage.setItem(LSKEY, JSON.stringify({ style: S.style, frame: S.frame }));
+  } catch (e) { /* 隐私模式下写不了,忽略 */ }
+}
+function load() {
+  try {
+    const o = JSON.parse(localStorage.getItem(LSKEY) || 'null');
+    if (!o) return;
+    Object.assign(S.style, o.style || {});
+    Object.assign(S.frame, o.frame || {});
+    $('ss-stroke').value = S.style.stroke; $('ss-stroke-v').textContent = S.style.stroke + 'px';
+    $('ss-fsize').value = S.style.fsize; $('ss-fsize-v').textContent = S.style.fsize + 'px';
+    $('ss-block').value = S.style.block; $('ss-block-v').textContent = S.style.block + 'px';
+    $('ss-sigma').value = S.style.sigma; $('ss-sigma-v').textContent = (+S.style.sigma).toFixed(1);
+    $('ss-autoblock').checked = !!S.style.autoblock;
+    $('ss-pad').value = S.frame.pad; $('ss-pad-v').textContent = S.frame.pad + 'px';
+    $('ss-radius').value = S.frame.radius; $('ss-radius-v').textContent = S.frame.radius + 'px';
+    $('ss-shadow').checked = !!S.frame.shadow;
+    $('ss-mode').querySelectorAll('button').forEach((o) => o.setAttribute('aria-pressed', o.dataset.mode === S.style.mode ? 'true' : 'false'));
+    $('ss-row-block').hidden = S.style.mode !== 'pixelate';
+    $('ss-row-sigma').hidden = S.style.mode !== 'blur';
+    $('ss-bg').querySelectorAll('button').forEach((o) => o.setAttribute('aria-pressed', o.dataset.bg === S.frame.bg ? 'true' : 'false'));
+    document.querySelectorAll('.ss-sw').forEach((o) => o.setAttribute('aria-pressed', o.getAttribute('aria-label') === '颜色 ' + S.style.color ? 'true' : 'false'));
+  } catch (e) { /* 坏数据直接忽略 */ }
+}
+
+/* ═══════════════════════ 12. 启动 ═══════════════════════ */
+load();
+updateLabLabels();
+setImage(SAMPLES.order(), '示例 · 订单详情');
+setTool('select');
+window.SS = { E: E, S: S, detect: runDetect, maskAll: maskAll, composite: composite, samples: SAMPLES, setImage: setImage, runLab: runLab, flat: flat, rebuild: rebuildFlat };
+document.documentElement.dataset.ssReady = '1';
+</script>
+</body>
+</html>
