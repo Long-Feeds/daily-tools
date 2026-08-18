@@ -1,0 +1,2965 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>渲染管线工作台 · Raster Studio</title>
+<meta name="description" content="浏览器里手写的软件光栅化渲染器：MVP 变换、齐次裁剪、透视除法、背面剔除、深度缓冲、透视校正插值与着色,每一级都看得见、可拆开。">
+<style>
+[hidden]{display:none!important}
+*{box-sizing:border-box}
+:root{
+  --ps-blue:#0070d1; --ps-blue-p:#0064b7; --ps-blue-a:#004d8d;
+  --ink:#000; --ink-deep:#121314; --ink-el:#181818; --charcoal:#1f2024;
+  --body-light:rgba(0,0,0,.6); --mute:#6b6b6b; --ash:#cccccc;
+  --body-dark:rgba(255,255,255,.7); --mute-dark:rgba(229,229,229,.55); --ash-dark:rgba(229,229,229,.2);
+  --white:#ffffff; --soft:#f3f3f3; --card:#f5f7fa; --hair:#f3f3f3;
+  --warn:#c81b3a;
+  --font:-apple-system,BlinkMacSystemFont,"Helvetica Neue","Segoe UI",Roboto,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+}
+html,body{margin:0;padding:0}
+body{
+  background:var(--white); color:var(--ink); font-family:var(--font);
+  font-size:16px; line-height:1.5; letter-spacing:.1px;
+  -webkit-font-smoothing:antialiased; overflow-x:hidden;
+}
+h1,h2,h3,h4,p,dl,dd,dt,ul,ol,figure{margin:0}
+button,input,select,textarea{font-family:inherit; font-size:inherit; color:inherit}
+a{color:var(--ps-blue-p); text-decoration:none}
+
+/* ---------- 导航 ---------- */
+.rs-nav{background:var(--ink); color:var(--white); height:56px; display:flex; align-items:center; gap:20px; padding:0 24px}
+.rs-back{color:var(--white); font-size:15px; font-weight:500; letter-spacing:.4px; white-space:nowrap}
+.rs-back:hover{color:#53b1ff}
+.rs-mark{display:flex; align-items:baseline; gap:10px; margin-left:auto}
+.rs-mark b{font-weight:600; font-size:16px; letter-spacing:2.4px}
+.rs-mark span{color:var(--mute-dark); font-size:13px}
+.rs-shapes{display:flex; gap:7px; align-items:center}
+.rs-shapes i{width:11px; height:11px; display:block; border:1.5px solid var(--white); opacity:.85}
+.rs-shapes i.rs-s1{border-radius:9999px}
+.rs-shapes i.rs-s2{transform:rotate(45deg)}
+.rs-shapes i.rs-s3{border-radius:1px}
+.rs-shapes i.rs-s4{clip-path:polygon(50% 0,100% 100%,0 100%); border:0; background:var(--white)}
+
+.rs-subnav{background:var(--ink); border-top:1px solid var(--ash-dark); display:flex; gap:4px; padding:0 16px; overflow-x:auto}
+.rs-tab{
+  appearance:none; background:transparent; border:0; color:var(--on-dark,#fff); opacity:.6;
+  height:46px; padding:0 18px; font-size:14px; font-weight:700; letter-spacing:.32px; cursor:pointer;
+  border-bottom:2px solid transparent; white-space:nowrap;
+}
+.rs-tab:hover{opacity:.9}
+.rs-tab[aria-selected="true"]{opacity:1; border-bottom-color:var(--ps-blue)}
+.rs-tab:focus-visible{outline:2px solid var(--ps-blue); outline-offset:-4px}
+
+/* ---------- 分章色带 ---------- */
+.rs-band{padding:56px 24px}
+.rs-band-dark{background:var(--ink); color:var(--white)}
+.rs-band-el{background:var(--ink-deep); color:var(--white)}
+.rs-band-light{background:var(--white); color:var(--ink)}
+.rs-band-soft{background:var(--soft); color:var(--ink)}
+.rs-band-blue{background:var(--ps-blue); color:var(--white)}
+.rs-wrap{max-width:1280px; margin:0 auto}
+.rs-eyebrow{font-size:12px; font-weight:500; letter-spacing:1.6px; color:var(--ps-blue); margin-bottom:12px}
+.rs-band-dark .rs-eyebrow,.rs-band-el .rs-eyebrow{color:#53b1ff}
+.rs-display{font-size:44px; font-weight:300; line-height:1.25; letter-spacing:.1px}
+.rs-h2{font-size:35px; font-weight:300; line-height:1.25}
+.rs-h3{font-size:22px; font-weight:300; line-height:1.25; letter-spacing:.1px}
+.rs-h4{font-size:18px; font-weight:600; line-height:1}
+.rs-lede{font-size:18px; line-height:1.5; color:var(--body-light); max-width:560px; margin-top:16px}
+.rs-band-dark .rs-lede,.rs-band-el .rs-lede,.rs-band-blue .rs-lede{color:var(--body-dark)}
+.rs-band-blue .rs-lede{color:rgba(255,255,255,.85)}
+.rs-note{font-size:14px; line-height:1.5; color:var(--mute)}
+.rs-band-dark .rs-note,.rs-band-el .rs-note{color:var(--mute-dark)}
+
+/* ---------- 英雄区 ---------- */
+.rs-hero{display:grid; grid-template-columns:minmax(0,1.55fr) minmax(300px,1fr); gap:32px; align-items:start}
+.rs-stage{position:relative; background:#000; border-radius:8px; overflow:hidden}
+#rs-canvas,.rs-cv{display:block; width:100%; height:auto; image-rendering:pixelated; background:#05060a}
+#rs-canvas{cursor:grab; touch-action:none}
+#rs-canvas:active{cursor:grabbing}
+#rs-canvas:focus-visible{outline:2px solid var(--ps-blue); outline-offset:-2px}
+.rs-hud{
+  position:absolute; left:12px; top:12px; background:rgba(0,0,0,.62); border:1px solid var(--ash-dark);
+  border-radius:8px; padding:10px 14px; display:flex; gap:18px; font-size:12px; font-weight:500;
+  letter-spacing:0; color:var(--white); font-variant-numeric:tabular-nums; pointer-events:none;
+}
+.rs-hud b{display:block; font-size:15px; font-weight:600}
+.rs-hud span{color:var(--mute-dark)}
+.rs-badge{
+  position:absolute; right:12px; top:12px; background:var(--ps-blue); color:#fff; border-radius:9999px;
+  padding:4px 12px; font-size:12px; font-weight:500; letter-spacing:0;
+}
+.rs-stagehint{
+  position:absolute; left:0; right:0; bottom:0; padding:16px 14px 8px; font-size:12px;
+  color:#e5e5e5; letter-spacing:0; background:linear-gradient(to bottom,rgba(0,0,0,0),rgba(0,0,0,.72) 55%);
+  pointer-events:none;
+}
+
+.rs-statgrid{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:1px; background:var(--ash-dark); border:1px solid var(--ash-dark); border-radius:8px; overflow:hidden; margin-top:24px}
+.rs-statgrid div{background:var(--ink); padding:14px 16px}
+.rs-statgrid dt{font-size:12px; color:var(--mute-dark); letter-spacing:0}
+.rs-statgrid dd{font-size:22px; font-weight:300; font-variant-numeric:tabular-nums; margin-top:2px}
+.rs-band-light .rs-statgrid{background:var(--hair); border-color:var(--hair)}
+.rs-band-light .rs-statgrid div{background:var(--card)}
+.rs-band-light .rs-statgrid dt{color:var(--mute)}
+
+/* ---------- 按钮 / 控件 ---------- */
+.rs-cta{display:flex; flex-wrap:wrap; gap:12px; margin-top:24px}
+.rs-btn{
+  appearance:none; border:0; background:var(--ps-blue); color:#fff; border-radius:9999px;
+  padding:12px 28px; min-height:48px; font-size:16px; font-weight:700; letter-spacing:.45px; cursor:pointer;
+}
+.rs-btn:hover{background:var(--ps-blue-p)}
+.rs-btn:active{background:var(--ps-blue-a)}
+.rs-btn-sec{background:transparent; border:1px solid var(--ash); color:var(--ink)}
+.rs-band-dark .rs-btn-sec,.rs-band-el .rs-btn-sec{border-color:var(--ash-dark); color:#fff}
+.rs-btn-sec:hover{background:rgba(0,112,209,.08)}
+.rs-btn-sm{min-height:40px; padding:8px 20px; font-size:14px; font-weight:700; letter-spacing:.32px}
+.rs-btn:focus-visible,.rs-chip:focus-visible,.rs-tab:focus-visible{outline:2px solid #53b1ff; outline-offset:2px}
+
+.rs-cards{display:grid; grid-template-columns:repeat(auto-fit,minmax(290px,1fr)); gap:24px; margin-top:32px}
+.rs-card{background:var(--card); border-radius:8px; padding:24px}
+.rs-band-dark .rs-card,.rs-band-el .rs-card{background:var(--ink-el)}
+.rs-card h4{margin-bottom:16px}
+.rs-row{display:flex; align-items:center; justify-content:space-between; gap:12px; margin-top:14px}
+.rs-row:first-of-type{margin-top:0}
+.rs-row label,.rs-lbl{font-size:14px; color:var(--body-light); letter-spacing:0}
+.rs-band-dark .rs-row label,.rs-band-el .rs-row label,.rs-band-dark .rs-lbl{color:var(--body-dark)}
+.rs-val{font-size:14px; font-weight:600; font-variant-numeric:tabular-nums; min-width:64px; text-align:right}
+.rs-slider{width:100%; min-width:120px; accent-color:var(--ps-blue); height:22px}
+.rs-row input[type=range]{flex:1 1 130px}
+select,input[type=text],input[type=number]{
+  background:#fff; color:var(--ink); border:1px solid var(--ash); border-radius:4px;
+  padding:10px 12px; min-height:44px; min-width:120px;
+}
+select:focus,input[type=text]:focus,input[type=number]:focus{outline:0; border:2px solid var(--ps-blue)}
+input[type=color]{width:56px; height:44px; padding:2px; border:1px solid var(--ash); border-radius:4px; background:#fff}
+input[type=checkbox]{width:20px; height:20px; accent-color:var(--ps-blue)}
+.rs-chips{display:flex; flex-wrap:wrap; gap:8px}
+.rs-chip{
+  appearance:none; border:1px solid var(--ash); background:transparent; color:inherit; border-radius:9999px;
+  padding:8px 16px; min-height:40px; font-size:14px; font-weight:700; letter-spacing:.32px; cursor:pointer;
+}
+.rs-band-dark .rs-chip,.rs-band-el .rs-chip{border-color:var(--ash-dark)}
+.rs-chip[aria-pressed="true"]{background:var(--ps-blue); border-color:var(--ps-blue); color:#fff}
+.rs-check{display:flex; align-items:center; gap:10px; font-size:14px; color:var(--body-light); cursor:pointer; min-height:32px}
+.rs-check input{flex:0 0 auto}   /* 别让长标签把复选框挤扁 */
+.rs-band-dark .rs-check,.rs-band-el .rs-check{color:var(--body-dark)}
+
+/* ---------- 表格 ---------- */
+.rs-tablewrap{overflow-x:auto; margin-top:16px}
+table.rs-tb{border-collapse:collapse; width:100%; font-size:14px; font-variant-numeric:tabular-nums}
+table.rs-tb th,table.rs-tb td{text-align:right; padding:9px 10px; border-bottom:1px solid var(--hair); white-space:nowrap}
+table.rs-tb th{font-weight:600; font-size:13px; color:var(--mute); letter-spacing:0}
+table.rs-tb th:first-child,table.rs-tb td:first-child{text-align:left}
+.rs-band-dark table.rs-tb th,.rs-band-el table.rs-tb th{color:var(--mute-dark)}
+.rs-band-dark table.rs-tb th,.rs-band-dark table.rs-tb td,.rs-band-el table.rs-tb th,.rs-band-el table.rs-tb td{border-bottom-color:var(--ash-dark)}
+.rs-tb tbody tr:hover td{background:rgba(0,112,209,.06)}
+
+/* 矩阵 */
+.rs-mats{display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:20px; margin-top:24px}
+.rs-mat{background:var(--card); border-radius:8px; padding:18px}
+.rs-mat h5{margin:0 0 4px; font-size:14px; font-weight:600}
+.rs-mat p{font-size:12px; color:var(--mute); margin-bottom:12px}
+.rs-grid4{display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:4px 6px; font-size:13px; font-variant-numeric:tabular-nums}
+.rs-grid4 b{background:#fff; border-radius:4px; padding:6px 4px; text-align:right; font-weight:400}
+.rs-grid4 b.rs-hot{background:rgba(0,112,209,.14); font-weight:600}
+
+/* 阶段计数 */
+.rs-stages{margin-top:24px; display:grid; gap:10px}
+.rs-stagerow{display:grid; grid-template-columns:132px minmax(0,1fr) 108px; gap:12px; align-items:center}
+.rs-stagerow span{font-size:14px; color:var(--body-light)}
+.rs-band-dark .rs-stagerow span,.rs-band-el .rs-stagerow span{color:var(--body-dark)}
+.rs-barwrap{background:var(--soft); border-radius:9999px; height:12px; overflow:hidden}
+.rs-band-dark .rs-barwrap,.rs-band-el .rs-barwrap{background:var(--charcoal)}
+.rs-bar{background:var(--ps-blue); height:100%; border-radius:9999px; transition:width .18s ease}
+.rs-bar.rs-drop{background:var(--warn)}
+.rs-stagerow em{font-style:normal; font-size:14px; font-weight:600; font-variant-numeric:tabular-nums; text-align:right}
+
+/* 双栏 */
+.rs-split{display:grid; grid-template-columns:minmax(0,1fr) minmax(280px,360px); gap:32px; align-items:start; margin-top:32px}
+.rs-split3{display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:20px; margin-top:24px}
+.rs-figure{background:#000; border-radius:8px; overflow:hidden}
+.rs-figure figcaption{padding:10px 14px; font-size:13px; color:var(--mute-dark); letter-spacing:0}
+.rs-band-light .rs-figure{background:var(--card)}
+.rs-band-light .rs-figure figcaption{color:var(--mute)}
+.rs-legend{display:flex; flex-wrap:wrap; gap:16px; margin-top:16px; font-size:13px; color:var(--body-light)}
+.rs-band-dark .rs-legend,.rs-band-el .rs-legend{color:var(--body-dark)}
+.rs-legend span{display:flex; align-items:center; gap:7px}
+.rs-swatch{width:14px; height:14px; border-radius:3px; display:inline-block}
+
+.rs-callout{border-left:3px solid var(--ps-blue); padding:4px 0 4px 16px; margin-top:20px; font-size:15px; color:var(--body-light)}
+.rs-band-dark .rs-callout,.rs-band-el .rs-callout{color:var(--body-dark)}
+.rs-warn{color:var(--warn); font-weight:600}
+.rs-good{color:#0a7f4f; font-weight:600}
+.rs-band-dark .rs-good,.rs-band-el .rs-good{color:#4ade9b}
+
+.rs-scenes{display:grid; gap:8px; margin-top:14px; max-height:190px; overflow-y:auto}
+.rs-scene{display:flex; align-items:center; gap:10px; background:#fff; border-radius:4px; padding:8px 12px; font-size:14px}
+.rs-scene b{font-weight:600; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.rs-scene button{
+  appearance:none; border:0; background:transparent; color:var(--ps-blue-p); font-size:13px; font-weight:700;
+  cursor:pointer; padding:8px 14px; min-height:40px; min-width:58px; border-radius:9999px; flex:0 0 auto;
+}
+.rs-scene button:hover{background:rgba(0,112,209,.1)}
+.rs-scene button.rs-del{color:var(--warn)}
+
+/* 页脚 */
+.rs-foot{padding:48px 24px}
+.rs-footgrid{display:grid; grid-template-columns:minmax(0,1.4fr) repeat(auto-fit,minmax(160px,1fr)); gap:24px}
+.rs-foot h3{font-size:28px; font-weight:300; letter-spacing:.1px}
+.rs-foot p,.rs-foot li{font-size:14px; line-height:1.6; color:rgba(255,255,255,.82)}
+.rs-foot ul{list-style:none; padding:0}
+.rs-foot h5{font-size:13px; font-weight:600; margin:0 0 8px}
+.rs-fine{margin-top:32px; padding-top:16px; border-top:1px solid rgba(255,255,255,.28); font-size:12px; color:rgba(255,255,255,.75)}
+
+@media (max-width:980px){
+  .rs-hero{grid-template-columns:minmax(0,1fr)}
+  .rs-split{grid-template-columns:minmax(0,1fr)}
+  .rs-display{font-size:32px}
+  .rs-h2{font-size:26px}
+  .rs-band{padding:40px 20px}
+}
+@media (max-width:560px){
+  .rs-nav{padding:0 16px; gap:12px}
+  .rs-mark span{display:none}
+  .rs-display{font-size:28px}
+  .rs-band{padding:32px 16px}
+  .rs-statgrid{grid-template-columns:minmax(0,1fr)}
+  .rs-hud{gap:10px; padding:8px 10px; font-size:11px}
+  .rs-hud b{font-size:13px}
+  .rs-hud > div:nth-child(4){display:none}   /* 窄屏下让出位置，别和右上角标撞在一起 */
+  .rs-badge{font-size:11px; padding:3px 9px}
+}
+</style>
+</head>
+<body>
+<header class="rs-nav">
+  <a class="rs-back" href="../../">← 返回工具集</a>
+  <div class="rs-shapes" aria-hidden="true"><i class="rs-s1"></i><i class="rs-s2"></i><i class="rs-s3"></i><i class="rs-s4"></i></div>
+  <div class="rs-mark"><b>RASTER STUDIO</b><span>渲染管线工作台</span></div>
+</header>
+
+<nav class="rs-subnav" role="tablist" aria-label="面板">
+  <button class="rs-tab" id="rs-tab-view" role="tab" aria-selected="true" aria-controls="rs-p-view">渲染台</button>
+  <button class="rs-tab" id="rs-tab-pipe" role="tab" aria-selected="false" aria-controls="rs-p-pipe">管线剖面</button>
+  <button class="rs-tab" id="rs-tab-clip" role="tab" aria-selected="false" aria-controls="rs-p-clip">齐次裁剪</button>
+  <button class="rs-tab" id="rs-tab-depth" role="tab" aria-selected="false" aria-controls="rs-p-depth">深度与插值</button>
+  <button class="rs-tab" id="rs-tab-raster" role="tab" aria-selected="false" aria-controls="rs-p-raster">光栅规则</button>
+</nav>
+
+<main>
+<!-- ============ 渲染台 ============ -->
+<section id="rs-p-view" role="tabpanel" aria-labelledby="rs-tab-view">
+  <div class="rs-band rs-band-dark">
+    <div class="rs-wrap">
+      <div class="rs-hero">
+        <div>
+          <div class="rs-stage">
+            <canvas id="rs-canvas" width="480" height="320" tabindex="0" aria-label="渲染结果画布，可拖动旋转、滚轮缩放"></canvas>
+            <div class="rs-hud">
+              <div><span>三角形</span><b id="rs-st-tris">—</b></div>
+              <div><span>片元</span><b id="rs-st-frag">—</b></div>
+              <div><span>写入像素</span><b id="rs-st-drawn">—</b></div>
+              <div><span>耗时</span><b id="rs-st-ms">—</b></div>
+            </div>
+            <div class="rs-badge" id="rs-badge-res">480 × 320</div>
+            <div class="rs-stagehint">拖动旋转 · 滚轮缩放 · 点击画面选中一个三角形 · 方向键微调</div>
+          </div>
+          <div class="rs-legend">
+            <span>零依赖：矩阵、裁剪、光栅、着色全部页内手写</span>
+            <span>零上传：所有计算在你的浏览器里完成</span>
+          </div>
+        </div>
+        <div>
+          <div class="rs-eyebrow">软件光栅化渲染器</div>
+          <h1 class="rs-display">把三角形<br>变成像素的每一步</h1>
+          <p class="rs-lede">这不是 WebGL —— 没有显卡参与，连一条 <span style="color:#fff">gl.</span> 调用都没有。顶点变换、齐次裁剪、透视除法、背面剔除、深度测试、透视校正插值、Blinn-Phong 着色，全部是这一页里手写的 JavaScript，逐像素填进一块 <span style="color:#fff">ImageData</span>。</p>
+          <dl class="rs-statgrid">
+            <div><dt>输入三角形</dt><dd id="rs-st-in">—</dd></div>
+            <div><dt>背面剔除</dt><dd id="rs-st-cull">—</dd></div>
+            <div><dt>被视锥裁剪</dt><dd id="rs-st-clipped">—</dd></div>
+            <div><dt>深度测试丢弃</dt><dd id="rs-st-zfail">—</dd></div>
+          </dl>
+          <div class="rs-cta">
+            <button class="rs-btn" id="rs-save">保存这个场景</button>
+            <button class="rs-btn rs-btn-sec" id="rs-reset">重置视角</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="rs-band rs-band-light">
+    <div class="rs-wrap">
+      <div class="rs-eyebrow">控制台</div>
+      <h2 class="rs-h2">改一个开关，看管线怎么变</h2>
+      <div class="rs-cards">
+        <div class="rs-card">
+          <h4 class="rs-h4">模型</h4>
+          <div class="rs-chips" id="rs-models"></div>
+          <div class="rs-row" style="margin-top:16px">
+            <label for="rs-seg">细分</label>
+            <select id="rs-seg">
+              <option value="0">低（省算力）</option>
+              <option value="1" selected>中</option>
+              <option value="2">高（更多三角形）</option>
+            </select>
+          </div>
+          <label class="rs-check" style="margin-top:12px"><input type="checkbox" id="rs-floor" checked><span>显示地板（透视校正最好看的地方）</span></label>
+          <label class="rs-check"><input type="checkbox" id="rs-spin"><span>自动旋转</span></label>
+        </div>
+
+        <div class="rs-card">
+          <h4 class="rs-h4">着色方式</h4>
+          <div class="rs-chips" id="rs-modes"></div>
+          <div class="rs-row" style="margin-top:16px">
+            <label for="rs-tex">纹理</label>
+            <select id="rs-tex">
+              <option value="grid">细网格</option>
+              <option value="checker">棋盘格</option>
+              <option value="uvgrid">UV 方格</option>
+              <option value="brick">砖墙</option>
+            </select>
+          </div>
+          <label class="rs-check"><input type="checkbox" id="rs-bilinear" checked><span>双线性过滤（关掉就是最近邻）</span></label>
+          <label class="rs-check"><input type="checkbox" id="rs-wire"><span>叠加线框</span></label>
+        </div>
+
+        <div class="rs-card">
+          <h4 class="rs-h4">相机</h4>
+          <div class="rs-row"><label for="rs-fov">视野角</label><input class="rs-slider" type="range" id="rs-fov" min="15" max="110" step="1" value="50"><b class="rs-val" id="rs-fov-v">50°</b></div>
+          <div class="rs-row"><label for="rs-dist">距离</label><input class="rs-slider" type="range" id="rs-dist" min="1.6" max="14" step="0.1" value="5.2"><b class="rs-val" id="rs-dist-v">5.2</b></div>
+          <div class="rs-row"><label for="rs-near">近平面</label><input class="rs-slider" type="range" id="rs-near" min="0.05" max="4" step="0.05" value="0.5"><b class="rs-val" id="rs-near-v">0.50</b></div>
+          <div class="rs-row"><label for="rs-far">远平面</label><input class="rs-slider" type="range" id="rs-far" min="6" max="120" step="1" value="30"><b class="rs-val" id="rs-far-v">30</b></div>
+        </div>
+
+        <div class="rs-card">
+          <h4 class="rs-h4">光照与材质</h4>
+          <div class="rs-row"><label for="rs-lyaw">光源方位</label><input class="rs-slider" type="range" id="rs-lyaw" min="-3.14" max="3.14" step="0.02" value="0.9"><b class="rs-val" id="rs-lyaw-v">0.90</b></div>
+          <div class="rs-row"><label for="rs-lelev">光源高度</label><input class="rs-slider" type="range" id="rs-lelev" min="-0.4" max="1.5" step="0.02" value="0.75"><b class="rs-val" id="rs-lelev-v">0.75</b></div>
+          <div class="rs-row"><label for="rs-amb">环境光</label><input class="rs-slider" type="range" id="rs-amb" min="0" max="0.8" step="0.01" value="0.16"><b class="rs-val" id="rs-amb-v">0.16</b></div>
+          <div class="rs-row"><label for="rs-spec">高光强度</label><input class="rs-slider" type="range" id="rs-spec" min="0" max="1.4" step="0.02" value="0.55"><b class="rs-val" id="rs-spec-v">0.55</b></div>
+          <div class="rs-row"><label for="rs-shin">光泽度</label><input class="rs-slider" type="range" id="rs-shin" min="2" max="180" step="1" value="42"><b class="rs-val" id="rs-shin-v">42</b></div>
+          <div class="rs-row"><label for="rs-color">材质色</label><input type="color" id="rs-color" value="#f5f7fa"></div>
+        </div>
+
+        <div class="rs-card">
+          <h4 class="rs-h4">管线开关</h4>
+          <div class="rs-row"><label for="rs-cull">面剔除</label>
+            <select id="rs-cull"><option value="back" selected>剔除背面</option><option value="front">剔除正面</option><option value="none">不剔除</option></select>
+          </div>
+          <label class="rs-check"><input type="checkbox" id="rs-depth" checked><span>深度测试（z-buffer）</span></label>
+          <label class="rs-check"><input type="checkbox" id="rs-painter"><span>改用画家算法（按深度排序，不用 z-buffer）</span></label>
+          <label class="rs-check"><input type="checkbox" id="rs-pc" checked><span>透视校正插值</span></label>
+          <div class="rs-row" style="margin-top:14px"><label for="rs-res">分辨率</label>
+            <select id="rs-res"><option value="240x160">240 × 160</option><option value="360x240">360 × 240</option><option value="480x320" selected>480 × 320</option><option value="640x424">640 × 424</option></select>
+          </div>
+          <div class="rs-row"><label for="rs-ss">超采样</label>
+            <select id="rs-ss"><option value="1" selected>关（锯齿毕露）</option><option value="2">2 × 2</option><option value="3">3 × 3</option></select>
+          </div>
+        </div>
+
+        <div class="rs-card">
+          <h4 class="rs-h4">场景库</h4>
+          <p class="rs-note">保存在本地浏览器里，下次打开还在。</p>
+          <div class="rs-row" style="margin-top:14px">
+            <input type="text" id="rs-name" placeholder="场景名称" style="flex:1 1 140px" aria-label="场景名称">
+            <button class="rs-btn rs-btn-sm" id="rs-save2">保存</button>
+          </div>
+          <div class="rs-scenes" id="rs-scenelist"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 管线剖面 ============ -->
+<section id="rs-p-pipe" role="tabpanel" aria-labelledby="rs-tab-pipe" hidden>
+  <div class="rs-band rs-band-el">
+    <div class="rs-wrap">
+      <div class="rs-eyebrow">一个三角形的一生</div>
+      <h2 class="rs-h2">从模型坐标到屏幕像素，六次换乘</h2>
+      <p class="rs-lede">在渲染台里点画面任意一处，就选中了那一像素归属的三角形。下面这张表是它三个顶点在每一级坐标系里的真实数值 —— 注意 <span style="color:#fff">clip.w</span> 恰好等于该顶点的视距，透视除法就是拿它来除。</p>
+      <div class="rs-split">
+        <div>
+          <div class="rs-figure">
+            <canvas class="rs-cv" id="rs-pipe-cv" width="560" height="370" aria-label="选中三角形在画面中的位置"></canvas>
+            <figcaption id="rs-pipe-cap">当前选中的三角形以蓝色描边标出</figcaption>
+          </div>
+          <div class="rs-tablewrap">
+            <table class="rs-tb" id="rs-pipe-tb">
+              <thead><tr><th>阶段</th><th>顶点 0</th><th>顶点 1</th><th>顶点 2</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+        <div>
+          <h3 class="rs-h3">本帧的漏斗</h3>
+          <div class="rs-stages" id="rs-stagebars"></div>
+          <div class="rs-callout" id="rs-pipe-note">每一级都在丢东西：视锥外的整块丢掉，背对相机的一半丢掉，被挡住的片元在深度测试里丢掉。真正写进帧缓冲的，只是最初三角形的一小部分。</div>
+          <div class="rs-cta"><button class="rs-btn rs-btn-sec rs-btn-sm" id="rs-pick-auto">自动选中屏幕中心的三角形</button></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="rs-band rs-band-light">
+    <div class="rs-wrap">
+      <div class="rs-eyebrow">矩阵</div>
+      <h2 class="rs-h2">四个 4 × 4，把世界折进一个立方体</h2>
+      <p class="rs-lede">行主序展示，列向量约定 <span style="color:#000">v′ = M v</span>。改相机参数，这些数字会当场变。</p>
+      <div class="rs-mats" id="rs-matgrid"></div>
+      <div class="rs-tablewrap">
+        <table class="rs-tb" id="rs-proj-tb">
+          <thead><tr><th>投影矩阵在做什么</th><th>数值</th><th>说明</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 齐次裁剪 ============ -->
+<section id="rs-p-clip" role="tabpanel" aria-labelledby="rs-tab-clip" hidden>
+  <div class="rs-band rs-band-dark">
+    <div class="rs-wrap">
+      <div class="rs-eyebrow">Sutherland–Hodgman</div>
+      <h2 class="rs-h2">跨过近平面的三角形，会被切成多边形</h2>
+      <p class="rs-lede">左边是俯视图（视空间的 x–z 平面），拖动三个顶点试试把三角形推到相机背后 —— 右边的顶点表会实时显示裁剪产生了哪些新顶点，以及它们的重心坐标。</p>
+      <div class="rs-split">
+        <figure class="rs-figure">
+          <canvas class="rs-cv" id="rs-clip-cv" width="620" height="420" aria-label="视锥俯视图，可拖动三角形顶点"></canvas>
+          <figcaption>俯视图：相机在左，视锥向右张开。拖动 A / B / C 三个点。</figcaption>
+        </figure>
+        <div>
+          <h3 class="rs-h3">裁剪结果</h3>
+          <div class="rs-statgrid" style="margin-top:16px">
+            <div><dt>输入顶点</dt><dd>3</dd></div>
+            <div><dt>输出顶点</dt><dd id="rs-clip-n">—</dd></div>
+          </div>
+          <div class="rs-tablewrap">
+            <table class="rs-tb" id="rs-clip-tb">
+              <thead><tr><th>顶点</th><th>视距 w</th><th>ndc.x</th><th>重心坐标</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <p class="rs-note" id="rs-clip-note" style="margin-top:12px"></p>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="rs-band rs-band-light">
+    <div class="rs-wrap">
+      <div class="rs-eyebrow">六个平面</div>
+      <h2 class="rs-h2">关掉一个平面会发生什么</h2>
+      <p class="rs-lede">裁剪判据在齐次坐标里只是六个不等式。把它们逐个关掉试试：只关近平面往往看不出差别（w &lt; 0 的顶点同样过不了侧向那两条不等式），六个一起关掉，1/w 才会把相机背后的几何翻到画面上、当场撕开 —— 这就是「忘了裁剪」的事故现场。</p>
+      <div class="rs-split3">
+        <div>
+          <div class="rs-chips" id="rs-planes" style="margin-bottom:16px"></div>
+          <label class="rs-check"><input type="checkbox" id="rs-clip-all" checked><span>全部打开</span></label>
+          <div class="rs-tablewrap">
+            <table class="rs-tb" id="rs-plane-tb">
+              <thead><tr><th>平面</th><th>不等式</th><th>状态</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+        <figure class="rs-figure" style="grid-column:span 2">
+          <canvas class="rs-cv" id="rs-clip-scene" width="560" height="330" aria-label="按当前裁剪开关渲染的场景"></canvas>
+          <figcaption id="rs-clip-cap">近距离贴着地板的相机：近裁剪一关就穿帮</figcaption>
+        </figure>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 深度与插值 ============ -->
+<section id="rs-p-depth" role="tabpanel" aria-labelledby="rs-tab-depth" hidden>
+  <div class="rs-band rs-band-el">
+    <div class="rs-wrap">
+      <div class="rs-eyebrow">透视校正</div>
+      <h2 class="rs-h2">PS1 的地板为什么会扭</h2>
+      <p class="rs-lede">屏幕空间里线性插值纹理坐标是错的：正确做法是先插值 u/w 与 1/w，再相除。下面三张图用同一台相机渲染同一块地板 —— 第三张是与「射线打到地板」的解析解逐像素比出来的误差。</p>
+      <div class="rs-split3">
+        <figure class="rs-figure"><canvas class="rs-cv" id="rs-d-pc" width="280" height="200"></canvas><figcaption>透视校正（正确）</figcaption></figure>
+        <figure class="rs-figure"><canvas class="rs-cv" id="rs-d-aff" width="280" height="200"></canvas><figcaption>仿射插值（PS1 式）</figcaption></figure>
+        <figure class="rs-figure"><canvas class="rs-cv" id="rs-d-err" width="280" height="200"></canvas><figcaption>仿射的误差热力图</figcaption></figure>
+      </div>
+      <div class="rs-legend">
+        <span><i class="rs-swatch" style="background:rgb(20,150,220)"></i>误差 0</span>
+        <span><i class="rs-swatch" style="background:rgb(140,90,140)"></i>四分之一个格子</span>
+        <span><i class="rs-swatch" style="background:rgb(255,30,60)"></i>半个格子（最大可能值）</span>
+      </div>
+      <div class="rs-split" style="margin-top:24px">
+        <div>
+          <div class="rs-tablewrap">
+            <table class="rs-tb" id="rs-d-tb">
+              <thead><tr><th>插值方式</th><th>最大 u 误差</th><th>平均 u 误差</th><th>结论</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <p class="rs-note" style="margin-top:12px">误差 = 与「相机射线 ∩ 地板平面」解析解之差，单位是一个纹理周期。</p>
+        </div>
+        <div class="rs-card">
+          <h4 class="rs-h4">地板俯角</h4>
+          <div class="rs-row"><label for="rs-d-pitch">相机俯角</label><input class="rs-slider" type="range" id="rs-d-pitch" min="0.06" max="1.3" step="0.02" value="0.24"><b class="rs-val" id="rs-d-pitch-v">0.24</b></div>
+          <p class="rs-note">越贴近地平线，同一个三角形横跨的深度范围越大，仿射插值错得越离谱。</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="rs-band rs-band-light">
+    <div class="rs-wrap">
+      <div class="rs-eyebrow">深度缓冲</div>
+      <h2 class="rs-h2">near 定得太小，远处就会闪</h2>
+      <p class="rs-lede">深度缓冲存的是 1/z 分布的 ndc 深度，精度几乎全砸在近处。把 near 从 0.05 抬到 0.5，远处能分辨的最小深度差会小两个数量级 —— 曲线和读数都在下面。</p>
+      <div class="rs-split">
+        <figure class="rs-figure">
+          <canvas class="rs-cv" id="rs-z-chart" width="640" height="330" aria-label="深度分辨率随距离变化的曲线"></canvas>
+          <figcaption>24 位深度缓冲：各视距处可分辨的最小深度差（双对数）</figcaption>
+        </figure>
+        <div class="rs-card">
+          <h4 class="rs-h4">参数</h4>
+          <div class="rs-row"><label for="rs-z-near">近平面</label><input class="rs-slider" type="range" id="rs-z-near" min="0.01" max="2" step="0.01" value="0.05"><b class="rs-val" id="rs-z-near-v">0.05</b></div>
+          <div class="rs-row"><label for="rs-z-far">远平面</label><input class="rs-slider" type="range" id="rs-z-far" min="20" max="2000" step="10" value="1000"><b class="rs-val" id="rs-z-far-v">1000</b></div>
+          <div class="rs-row"><label for="rs-z-bits">深度位数</label><select id="rs-z-bits"><option value="16">16 位</option><option value="24" selected>24 位</option><option value="32">32 位</option></select></div>
+          <div class="rs-tablewrap">
+            <table class="rs-tb" id="rs-z-tb">
+              <thead><tr><th>视距</th><th>可分辨深度差</th><th>已用掉的深度值</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <div class="rs-split3" style="margin-top:32px">
+        <figure class="rs-figure"><canvas class="rs-cv" id="rs-zf" width="280" height="200"></canvas><figcaption id="rs-zf-cap">两片几乎共面的四边形：z-fighting</figcaption></figure>
+        <figure class="rs-figure"><canvas class="rs-cv" id="rs-pa-z" width="280" height="200"></canvas><figcaption>深度缓冲：互相穿插也正确</figcaption></figure>
+        <figure class="rs-figure"><canvas class="rs-cv" id="rs-pa-p" width="280" height="200"></canvas><figcaption>画家算法：整块盖错</figcaption></figure>
+      </div>
+      <div class="rs-row" style="max-width:520px; margin-top:20px">
+        <label for="rs-zf-delta">两片的间距</label>
+        <input class="rs-slider" type="range" id="rs-zf-delta" min="0" max="40" step="1" value="4">
+        <b class="rs-val" id="rs-zf-delta-v">3.0 × 10⁻⁶</b>
+      </div>
+      <p class="rs-note" id="rs-pa-note" style="margin-top:12px"></p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 光栅规则 ============ -->
+<section id="rs-p-raster" role="tabpanel" aria-labelledby="rs-tab-raster" hidden>
+  <div class="rs-band rs-band-light">
+    <div class="rs-wrap">
+      <div class="rs-eyebrow">左上填充规则</div>
+      <h2 class="rs-h2">像素中心正好压在边上，算谁的</h2>
+      <p class="rs-lede">放大到能看见每个像素中心。三条边函数的符号决定覆盖，而落在边线上（边函数恰为 0）的像素必须有个说法 —— 否则相邻三角形要么把它画两遍（半透明处会露馅），要么谁都不画（留下缝隙）。</p>
+      <div class="rs-split">
+        <figure class="rs-figure">
+          <canvas class="rs-cv" id="rs-r-cv" width="700" height="460" aria-label="像素级光栅化网格，可拖动三角形顶点"></canvas>
+          <figcaption>拖动 A / B / C 改三角形；点格子看该像素的三条边函数值</figcaption>
+        </figure>
+        <div>
+          <div class="rs-card">
+            <h4 class="rs-h4">规则</h4>
+            <label class="rs-check"><input type="checkbox" id="rs-r-rule" checked><span>启用左上规则</span></label>
+            <label class="rs-check"><input type="checkbox" id="rs-r-pair" checked><span>画出共享边的另一个三角形</span></label>
+            <label class="rs-check"><input type="checkbox" id="rs-r-centers" checked><span>显示像素中心</span></label>
+            <div class="rs-statgrid" style="margin-top:16px">
+              <div><dt>三角形 1 覆盖</dt><dd id="rs-r-c1">—</dd></div>
+              <div><dt>三角形 2 覆盖</dt><dd id="rs-r-c2">—</dd></div>
+              <div><dt>被画两次</dt><dd id="rs-r-dup">—</dd></div>
+              <div><dt>缝隙</dt><dd id="rs-r-gap">—</dd></div>
+            </div>
+            <p class="rs-note" id="rs-r-note" style="margin-top:14px"></p>
+          </div>
+          <div class="rs-card" style="margin-top:24px">
+            <h4 class="rs-h4">选中像素</h4>
+            <div class="rs-tablewrap">
+              <table class="rs-tb" id="rs-r-tb">
+                <thead><tr><th>量</th><th>值</th><th>判定</th></tr></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="rs-legend">
+        <span><i class="rs-swatch" style="background:#0070d1"></i>三角形 1 覆盖</span>
+        <span><i class="rs-swatch" style="background:#d53b00"></i>三角形 2 覆盖</span>
+        <span><i class="rs-swatch" style="background:#c81b3a"></i>被画两次</span>
+        <span><i class="rs-swatch" style="background:#ffce21"></i>选中像素</span>
+      </div>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer class="rs-band rs-band-blue rs-foot">
+  <div class="rs-wrap">
+    <div class="rs-footgrid">
+      <div>
+        <h3>RASTER STUDIO</h3>
+        <p style="margin-top:12px; max-width:460px">一页纸的软件渲染器。写它是为了把「图形学第一课」的每个抽象名词 —— 齐次坐标、视锥裁剪、重心插值、深度缓冲 —— 变成可以拖动、可以关掉、能立刻看见后果的东西。</p>
+      </div>
+      <div>
+        <h5>管线</h5>
+        <ul>
+          <li>模型 → 世界 → 视图</li>
+          <li>投影 → 齐次裁剪</li>
+          <li>透视除法 → 视口</li>
+          <li>背面剔除 → 光栅化</li>
+          <li>深度测试 → 着色</li>
+        </ul>
+      </div>
+      <div>
+        <h5>可验证的地方</h5>
+        <ul>
+          <li>矩阵与 numpy 对拍</li>
+          <li>裁剪与蒙特卡洛面积对拍</li>
+          <li>覆盖与重心判据对拍</li>
+          <li>透视校正与解析解对拍</li>
+        </ul>
+      </div>
+      <div>
+        <h5>本站</h5>
+        <ul>
+          <li><a href="../../" style="color:#fff">返回工具集首页</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="rs-fine">每日工具集 · 2026-08-18 · 全部计算在本地浏览器完成，不上传任何数据。</div>
+  </div>
+</footer>
+
+<script>
+/* Raster Studio 引擎:手写软件光栅化渲染管线(零依赖,可在 node 与浏览器中运行)
+   行主序 4x4 矩阵 m[r*4+c];列向量约定 v' = M v。
+   坐标系:右手系,相机看向 -Z,NDC 为 OpenGL 约定 [-1,1]^3。 */
+var RS = (function () {
+  'use strict';
+
+  // ===================== 向量 =====================
+  function v3(x, y, z) { return [x, y, z]; }
+  function add3(a, b) { return [a[0] + b[0], a[1] + b[1], a[2] + b[2]]; }
+  function sub3(a, b) { return [a[0] - b[0], a[1] - b[1], a[2] - b[2]]; }
+  function scale3(a, s) { return [a[0] * s, a[1] * s, a[2] * s]; }
+  function dot3(a, b) { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; }
+  function cross3(a, b) {
+    return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  }
+  function len3(a) { return Math.sqrt(dot3(a, a)); }
+  function norm3(a) { var l = len3(a); return l > 1e-12 ? [a[0] / l, a[1] / l, a[2] / l] : [0, 0, 0]; }
+
+  // ===================== 4x4 矩阵 =====================
+  function matId() { return [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]; }
+
+  function matMul(a, b) {
+    var o = new Array(16);
+    for (var r = 0; r < 4; r++) {
+      for (var c = 0; c < 4; c++) {
+        var s = 0;
+        for (var k = 0; k < 4; k++) s += a[r * 4 + k] * b[k * 4 + c];
+        o[r * 4 + c] = s;
+      }
+    }
+    return o;
+  }
+  function matMulAll(list) {
+    var m = list[0];
+    for (var i = 1; i < list.length; i++) m = matMul(m, list[i]);
+    return m;
+  }
+  function matT(m) {
+    var o = new Array(16);
+    for (var r = 0; r < 4; r++) for (var c = 0; c < 4; c++) o[c * 4 + r] = m[r * 4 + c];
+    return o;
+  }
+  function matApply(m, v) {
+    return [
+      m[0] * v[0] + m[1] * v[1] + m[2] * v[2] + m[3] * v[3],
+      m[4] * v[0] + m[5] * v[1] + m[6] * v[2] + m[7] * v[3],
+      m[8] * v[0] + m[9] * v[1] + m[10] * v[2] + m[11] * v[3],
+      m[12] * v[0] + m[13] * v[1] + m[14] * v[2] + m[15] * v[3]
+    ];
+  }
+  function xformPoint(m, p) {
+    var r = matApply(m, [p[0], p[1], p[2], 1]);
+    return [r[0], r[1], r[2]];
+  }
+  function xformDir(m, p) {
+    var r = matApply(m, [p[0], p[1], p[2], 0]);
+    return [r[0], r[1], r[2]];
+  }
+
+  function matInv(m) {
+    var inv = new Array(16);
+    inv[0] = m[5] * m[10] * m[15] - m[5] * m[11] * m[14] - m[9] * m[6] * m[15] + m[9] * m[7] * m[14] + m[13] * m[6] * m[11] - m[13] * m[7] * m[10];
+    inv[4] = -m[4] * m[10] * m[15] + m[4] * m[11] * m[14] + m[8] * m[6] * m[15] - m[8] * m[7] * m[14] - m[12] * m[6] * m[11] + m[12] * m[7] * m[10];
+    inv[8] = m[4] * m[9] * m[15] - m[4] * m[11] * m[13] - m[8] * m[5] * m[15] + m[8] * m[7] * m[13] + m[12] * m[5] * m[11] - m[12] * m[7] * m[9];
+    inv[12] = -m[4] * m[9] * m[14] + m[4] * m[10] * m[13] + m[8] * m[5] * m[14] - m[8] * m[6] * m[13] - m[12] * m[5] * m[10] + m[12] * m[6] * m[9];
+    inv[1] = -m[1] * m[10] * m[15] + m[1] * m[11] * m[14] + m[9] * m[2] * m[15] - m[9] * m[3] * m[14] - m[13] * m[2] * m[11] + m[13] * m[3] * m[10];
+    inv[5] = m[0] * m[10] * m[15] - m[0] * m[11] * m[14] - m[8] * m[2] * m[15] + m[8] * m[3] * m[14] + m[12] * m[2] * m[11] - m[12] * m[3] * m[10];
+    inv[9] = -m[0] * m[9] * m[15] + m[0] * m[11] * m[13] + m[8] * m[1] * m[15] - m[8] * m[3] * m[13] - m[12] * m[1] * m[11] + m[12] * m[3] * m[9];
+    inv[13] = m[0] * m[9] * m[14] - m[0] * m[10] * m[13] - m[8] * m[1] * m[14] + m[8] * m[2] * m[13] + m[12] * m[1] * m[10] - m[12] * m[2] * m[9];
+    inv[2] = m[1] * m[6] * m[15] - m[1] * m[7] * m[14] - m[5] * m[2] * m[15] + m[5] * m[3] * m[14] + m[13] * m[2] * m[7] - m[13] * m[3] * m[6];
+    inv[6] = -m[0] * m[6] * m[15] + m[0] * m[7] * m[14] + m[4] * m[2] * m[15] - m[4] * m[3] * m[14] - m[12] * m[2] * m[7] + m[12] * m[3] * m[6];
+    inv[10] = m[0] * m[5] * m[15] - m[0] * m[7] * m[13] - m[4] * m[1] * m[15] + m[4] * m[3] * m[13] + m[12] * m[1] * m[7] - m[12] * m[3] * m[5];
+    inv[14] = -m[0] * m[5] * m[14] + m[0] * m[6] * m[13] + m[4] * m[1] * m[14] - m[4] * m[2] * m[13] - m[12] * m[1] * m[6] + m[12] * m[2] * m[5];
+    inv[3] = -m[1] * m[6] * m[11] + m[1] * m[7] * m[10] + m[5] * m[2] * m[11] - m[5] * m[3] * m[10] - m[9] * m[2] * m[7] + m[9] * m[3] * m[6];
+    inv[7] = m[0] * m[6] * m[11] - m[0] * m[7] * m[10] - m[4] * m[2] * m[11] + m[4] * m[3] * m[10] + m[8] * m[2] * m[7] - m[8] * m[3] * m[6];
+    inv[11] = -m[0] * m[5] * m[11] + m[0] * m[7] * m[9] + m[4] * m[1] * m[11] - m[4] * m[3] * m[9] - m[8] * m[1] * m[7] + m[8] * m[3] * m[5];
+    inv[15] = m[0] * m[5] * m[10] - m[0] * m[6] * m[9] - m[4] * m[1] * m[10] + m[4] * m[2] * m[9] + m[8] * m[1] * m[6] - m[8] * m[2] * m[5];
+    var det = m[0] * inv[0] + m[1] * inv[4] + m[2] * inv[8] + m[3] * inv[12];
+    if (Math.abs(det) < 1e-18) return null;
+    var d = 1 / det, o = new Array(16);
+    for (var i = 0; i < 16; i++) o[i] = inv[i] * d;
+    return o;
+  }
+
+  function matTranslate(x, y, z) { return [1, 0, 0, x, 0, 1, 0, y, 0, 0, 1, z, 0, 0, 0, 1]; }
+  function matScale(x, y, z) { return [x, 0, 0, 0, 0, y, 0, 0, 0, 0, z, 0, 0, 0, 0, 1]; }
+  function matRotX(a) {
+    var c = Math.cos(a), s = Math.sin(a);
+    return [1, 0, 0, 0, 0, c, -s, 0, 0, s, c, 0, 0, 0, 0, 1];
+  }
+  function matRotY(a) {
+    var c = Math.cos(a), s = Math.sin(a);
+    return [c, 0, s, 0, 0, 1, 0, 0, -s, 0, c, 0, 0, 0, 0, 1];
+  }
+  function matRotZ(a) {
+    var c = Math.cos(a), s = Math.sin(a);
+    return [c, -s, 0, 0, s, c, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+  }
+
+  // 透视投影(OpenGL 约定):z=-near -> ndc.z=-1, z=-far -> ndc.z=+1
+  function matPerspective(fovyDeg, aspect, near, far) {
+    var f = 1 / Math.tan((fovyDeg * Math.PI / 180) / 2);
+    return [
+      f / aspect, 0, 0, 0,
+      0, f, 0, 0,
+      0, 0, (far + near) / (near - far), (2 * far * near) / (near - far),
+      0, 0, -1, 0
+    ];
+  }
+  function matOrtho(l, r, b, t, n, f) {
+    return [
+      2 / (r - l), 0, 0, -(r + l) / (r - l),
+      0, 2 / (t - b), 0, -(t + b) / (t - b),
+      0, 0, -2 / (f - n), -(f + n) / (f - n),
+      0, 0, 0, 1
+    ];
+  }
+  function matLookAt(eye, target, up) {
+    var z = norm3(sub3(eye, target));
+    var x = norm3(cross3(up, z));
+    var y = cross3(z, x);
+    return [
+      x[0], x[1], x[2], -dot3(x, eye),
+      y[0], y[1], y[2], -dot3(y, eye),
+      z[0], z[1], z[2], -dot3(z, eye),
+      0, 0, 0, 1
+    ];
+  }
+  // NDC -> 屏幕像素(y 轴翻转,左上为原点)
+  function matViewport(w, h) {
+    return [w / 2, 0, 0, w / 2, 0, -h / 2, 0, h / 2, 0, 0, 1, 0, 0, 0, 0, 1];
+  }
+  // 法线矩阵:模型矩阵左上 3x3 的逆转置(返回 9 元行主序)
+  function mat3Normal(model) {
+    var a = model[0], b = model[1], c = model[2];
+    var d = model[4], e = model[5], f = model[6];
+    var g = model[8], h = model[9], i = model[10];
+    var A = e * i - f * h, B = -(d * i - f * g), C = d * h - e * g;
+    var det = a * A + b * B + c * C;
+    if (Math.abs(det) < 1e-18) return [1, 0, 0, 0, 1, 0, 0, 0, 1];
+    var id = 1 / det;
+    // inv = adj/det;normal = (inv)^T
+    var inv = [
+      A * id, (c * h - b * i) * id, (b * f - c * e) * id,
+      B * id, (a * i - c * g) * id, (c * d - a * f) * id,
+      C * id, (b * g - a * h) * id, (a * e - b * d) * id
+    ];
+    return [inv[0], inv[3], inv[6], inv[1], inv[4], inv[7], inv[2], inv[5], inv[8]];
+  }
+  function mat3Apply(m, v) {
+    return [
+      m[0] * v[0] + m[1] * v[1] + m[2] * v[2],
+      m[3] * v[0] + m[4] * v[1] + m[5] * v[2],
+      m[6] * v[0] + m[7] * v[1] + m[8] * v[2]
+    ];
+  }
+
+  // ===================== 网格 =====================
+  function makeMesh(name, pos, nrm, uv, idx) {
+    return {
+      name: name,
+      pos: Float32Array.from(pos), nrm: Float32Array.from(nrm),
+      uv: Float32Array.from(uv), idx: Uint32Array.from(idx),
+      vertexCount: pos.length / 3, triCount: idx.length / 3
+    };
+  }
+
+  function meshCube(s) {
+    s = s || 1;
+    var faces = [
+      { n: [0, 0, 1], u: [1, 0, 0], v: [0, 1, 0] },
+      { n: [0, 0, -1], u: [-1, 0, 0], v: [0, 1, 0] },
+      { n: [1, 0, 0], u: [0, 0, -1], v: [0, 1, 0] },
+      { n: [-1, 0, 0], u: [0, 0, 1], v: [0, 1, 0] },
+      { n: [0, 1, 0], u: [1, 0, 0], v: [0, 0, -1] },
+      { n: [0, -1, 0], u: [1, 0, 0], v: [0, 0, 1] }
+    ];
+    var pos = [], nrm = [], uv = [], idx = [];
+    for (var f = 0; f < faces.length; f++) {
+      var F = faces[f], base = pos.length / 3;
+      var corners = [[-1, -1], [1, -1], [1, 1], [-1, 1]];
+      for (var k = 0; k < 4; k++) {
+        var a = corners[k][0], b = corners[k][1];
+        pos.push(
+          (F.n[0] + a * F.u[0] + b * F.v[0]) * s,
+          (F.n[1] + a * F.u[1] + b * F.v[1]) * s,
+          (F.n[2] + a * F.u[2] + b * F.v[2]) * s
+        );
+        nrm.push(F.n[0], F.n[1], F.n[2]);
+        uv.push((a + 1) / 2, (1 - b) / 2);
+      }
+      idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
+    }
+    return makeMesh('立方体', pos, nrm, uv, idx);
+  }
+
+  function meshSphere(r, su, sv) {
+    r = r || 1; su = su || 32; sv = sv || 20;
+    var pos = [], nrm = [], uv = [], idx = [];
+    for (var j = 0; j <= sv; j++) {
+      var phi = Math.PI * j / sv;
+      for (var i = 0; i <= su; i++) {
+        var th = 2 * Math.PI * i / su;
+        var x = Math.sin(phi) * Math.cos(th), y = Math.cos(phi), z = Math.sin(phi) * Math.sin(th);
+        pos.push(x * r, y * r, z * r); nrm.push(x, y, z); uv.push(i / su, j / sv);
+      }
+    }
+    // 绕序须使 (v0->v1) x (v0->v2) 指向球外:此处 i 方向 x j 方向 = 外法线
+    for (var jj = 0; jj < sv; jj++) {
+      for (var ii = 0; ii < su; ii++) {
+        var a = jj * (su + 1) + ii, b = a + su + 1;
+        idx.push(a, a + 1, b, a + 1, b + 1, b);
+      }
+    }
+    return makeMesh('球体', pos, nrm, uv, idx);
+  }
+
+  function meshTorus(R, r, su, sv) {
+    R = R || 1; r = r || 0.38; su = su || 40; sv = sv || 20;
+    var pos = [], nrm = [], uv = [], idx = [];
+    for (var j = 0; j <= sv; j++) {
+      var v = 2 * Math.PI * j / sv;
+      for (var i = 0; i <= su; i++) {
+        var u = 2 * Math.PI * i / su;
+        var cu = Math.cos(u), sux = Math.sin(u), cv = Math.cos(v), sv2 = Math.sin(v);
+        pos.push((R + r * cv) * cu, r * sv2, (R + r * cv) * sux);
+        nrm.push(cv * cu, sv2, cv * sux);
+        uv.push(i / su * 3, j / sv);
+      }
+    }
+    // 此处 j 方向(管截面)x i 方向(主圆)= 外法线,故绕序为 a -> b -> a+1
+    for (var jj = 0; jj < sv; jj++) {
+      for (var ii = 0; ii < su; ii++) {
+        var a = jj * (su + 1) + ii, b = a + su + 1;
+        idx.push(a, b, a + 1, a + 1, b, b + 1);
+      }
+    }
+    return makeMesh('圆环面', pos, nrm, uv, idx);
+  }
+
+  // 环面纽结:沿参数曲线用平行移动标架扫出管子
+  function meshTorusKnot(p, q, tubeR, segU, segV) {
+    p = p || 2; q = q || 3; tubeR = tubeR || 0.26; segU = segU || 128; segV = segV || 12;
+    function curve(t) {
+      var r = Math.cos(q * t) + 2;
+      return [r * Math.cos(p * t) * 0.55, -Math.sin(q * t) * 0.55, r * Math.sin(p * t) * 0.55];
+    }
+    var pts = [], tans = [];
+    for (var i = 0; i < segU; i++) {
+      var t = 2 * Math.PI * i / segU;
+      pts.push(curve(t));
+      tans.push(norm3(sub3(curve(t + 0.001), curve(t - 0.001))));
+    }
+    // 平行移动标架,避免 Frenet 标架在拐点处翻转
+    var normals = [], binormals = [];
+    var n0 = norm3(cross3(tans[0], Math.abs(tans[0][1]) < 0.9 ? [0, 1, 0] : [1, 0, 0]));
+    normals[0] = n0; binormals[0] = norm3(cross3(tans[0], n0));
+    for (var i2 = 1; i2 < segU; i2++) {
+      var prev = normals[i2 - 1];
+      var proj = sub3(prev, scale3(tans[i2], dot3(prev, tans[i2])));
+      normals[i2] = norm3(proj);
+      binormals[i2] = norm3(cross3(tans[i2], normals[i2]));
+    }
+    var pos = [], nrm = [], uv = [], idx = [];
+    for (var i3 = 0; i3 <= segU; i3++) {
+      var k = i3 % segU;
+      for (var j = 0; j <= segV; j++) {
+        var a = 2 * Math.PI * j / segV;
+        var dir = add3(scale3(normals[k], Math.cos(a)), scale3(binormals[k], Math.sin(a)));
+        var P = add3(pts[k], scale3(dir, tubeR));
+        pos.push(P[0], P[1], P[2]); nrm.push(dir[0], dir[1], dir[2]);
+        uv.push(i3 / segU * 6, j / segV);
+      }
+    }
+    for (var i4 = 0; i4 < segU; i4++) {
+      for (var j2 = 0; j2 < segV; j2++) {
+        var A = i4 * (segV + 1) + j2, B = A + segV + 1;   // A+1 = 管截面下一点,B = 曲线下一站
+        idx.push(A, A + 1, B, A + 1, B + 1, B);           // (管向 x 曲线向)= 外法线
+      }
+    }
+    return makeMesh('环面纽结', pos, nrm, uv, idx);
+  }
+
+  function meshCylinder(r, h, seg) {
+    r = r || 0.75; h = h || 1.6; seg = seg || 32;
+    var pos = [], nrm = [], uv = [], idx = [];
+    for (var i = 0; i <= seg; i++) {
+      var t = 2 * Math.PI * i / seg, c = Math.cos(t), s = Math.sin(t);
+      pos.push(r * c, h / 2, r * s); nrm.push(c, 0, s); uv.push(i / seg * 2, 0);
+      pos.push(r * c, -h / 2, r * s); nrm.push(c, 0, s); uv.push(i / seg * 2, 1);
+    }
+    for (var i2 = 0; i2 < seg; i2++) {
+      var a = i2 * 2;                                     // a=本角上, a+1=本角下, a+2=下一角上
+      idx.push(a, a + 2, a + 1, a + 2, a + 3, a + 1);     // 侧面外法线朝外
+    }
+    for (var cap = 0; cap < 2; cap++) {
+      var y = cap === 0 ? h / 2 : -h / 2, ny = cap === 0 ? 1 : -1;
+      var center = pos.length / 3;
+      pos.push(0, y, 0); nrm.push(0, ny, 0); uv.push(0.5, 0.5);
+      for (var i3 = 0; i3 <= seg; i3++) {
+        var t2 = 2 * Math.PI * i3 / seg;
+        pos.push(r * Math.cos(t2), y, r * Math.sin(t2));
+        nrm.push(0, ny, 0);
+        uv.push(0.5 + 0.5 * Math.cos(t2), 0.5 + 0.5 * Math.sin(t2));
+      }
+      for (var i4 = 0; i4 < seg; i4++) {
+        if (cap === 0) idx.push(center, center + 1 + i4 + 1, center + 1 + i4);
+        else idx.push(center, center + 1 + i4, center + 1 + i4 + 1);
+      }
+    }
+    return makeMesh('圆柱', pos, nrm, uv, idx);
+  }
+
+  function meshPlane(size, segs, uvScale) {
+    size = size || 6; segs = segs || 1; uvScale = uvScale === undefined ? 6 : uvScale;
+    var pos = [], nrm = [], uv = [], idx = [];
+    for (var j = 0; j <= segs; j++) {
+      for (var i = 0; i <= segs; i++) {
+        var x = (i / segs - 0.5) * size, z = (j / segs - 0.5) * size;
+        pos.push(x, 0, z); nrm.push(0, 1, 0);
+        uv.push(i / segs * uvScale, j / segs * uvScale);
+      }
+    }
+    for (var j2 = 0; j2 < segs; j2++) {
+      for (var i2 = 0; i2 < segs; i2++) {
+        var a = j2 * (segs + 1) + i2, b = a + segs + 1;
+        idx.push(a, b, a + 1, a + 1, b, b + 1);
+      }
+    }
+    return makeMesh('平面', pos, nrm, uv, idx);
+  }
+
+  // ===================== 纹理 =====================
+  function makeTexture(kind, size) {
+    size = size || 128;
+    var data = new Uint8Array(size * size * 4);
+    function put(x, y, r, g, b) {
+      var o = (y * size + x) * 4;
+      data[o] = r; data[o + 1] = g; data[o + 2] = b; data[o + 3] = 255;
+    }
+    for (var y = 0; y < size; y++) {
+      for (var x = 0; x < size; x++) {
+        var u = x / size, v = y / size;
+        if (kind === 'checker') {
+          var c = ((x >> 4) + (y >> 4)) & 1;
+          if (c) put(x, y, 240, 242, 246); else put(x, y, 26, 30, 38);
+        } else if (kind === 'uvgrid') {
+          var gx = Math.floor(u * 8), gy = Math.floor(v * 8);
+          var edge = (x % 16 < 2) || (y % 16 < 2);
+          var q = (gx + gy) & 1;
+          var r = q ? 0x00 : 0x0e, g = q ? 0x70 : 0x2b, b = q ? 0xd1 : 0x52;
+          // 用亮度梯度标出 u/v 方向:u 增大更亮,v 增大更暖
+          r = Math.min(255, r + u * 120); g = Math.min(255, g + u * 60); b = Math.min(255, b + (1 - v) * 90);
+          if (edge) put(x, y, 255, 255, 255); else put(x, y, r | 0, g | 0, b | 0);
+        } else if (kind === 'brick') {
+          var row = Math.floor(v * 8);
+          var off = (row & 1) ? 0.5 : 0;
+          var bu = (u * 4 + off) % 1, bv = (v * 8) % 1;
+          if (bu < 0.04 || bv < 0.08) put(x, y, 216, 214, 206);
+          else {
+            var shade = 150 + ((row * 7 + Math.floor(bu * 10)) % 5) * 8;
+            put(x, y, shade, Math.floor(shade * 0.42), Math.floor(shade * 0.34));
+          }
+        } else { // grid 细线
+          var line = (x % 32 === 0) || (y % 32 === 0);
+          if (line) put(x, y, 0, 112, 209); else put(x, y, 245, 247, 250);
+        }
+      }
+    }
+    return { w: size, h: size, data: data, kind: kind };
+  }
+
+  function texel(tex, x, y) {
+    x = ((x % tex.w) + tex.w) % tex.w;
+    y = ((y % tex.h) + tex.h) % tex.h;
+    var o = (y * tex.w + x) * 4;
+    return [tex.data[o], tex.data[o + 1], tex.data[o + 2]];
+  }
+  function sampleTex(tex, u, v, bilinear, out) {
+    if (!bilinear) {
+      var xi = Math.floor(u * tex.w), yi = Math.floor(v * tex.h);
+      var t = texel(tex, xi, yi);
+      out[0] = t[0]; out[1] = t[1]; out[2] = t[2];
+      return out;
+    }
+    var fx = u * tex.w - 0.5, fy = v * tex.h - 0.5;
+    var x0 = Math.floor(fx), y0 = Math.floor(fy);
+    var ax = fx - x0, ay = fy - y0;
+    var c00 = texel(tex, x0, y0), c10 = texel(tex, x0 + 1, y0);
+    var c01 = texel(tex, x0, y0 + 1), c11 = texel(tex, x0 + 1, y0 + 1);
+    for (var i = 0; i < 3; i++) {
+      var top = c00[i] * (1 - ax) + c10[i] * ax;
+      var bot = c01[i] * (1 - ax) + c11[i] * ax;
+      out[i] = top * (1 - ay) + bot * ay;
+    }
+    return out;
+  }
+
+  // ===================== 裁剪 =====================
+  // 齐次裁剪空间的 6 个平面:内侧判定 dot(plane, clip) >= 0
+  var FRUSTUM_PLANES = [
+    { name: '左 x >= -w', p: [1, 0, 0, 1] },
+    { name: '右 x <= w', p: [-1, 0, 0, 1] },
+    { name: '下 y >= -w', p: [0, 1, 0, 1] },
+    { name: '上 y <= w', p: [0, -1, 0, 1] },
+    { name: '近 z >= -w', p: [0, 0, 1, 1] },
+    { name: '远 z <= w', p: [0, 0, -1, 1] }
+  ];
+
+  function planeDist(plane, c) {
+    return plane[0] * c[0] + plane[1] * c[1] + plane[2] * c[2] + plane[3] * c[3];
+  }
+
+  function lerpVert(a, b, t) {
+    var o = { c: [0, 0, 0, 0], w: [0, 0, 0], n: [0, 0, 0], uv: [0, 0], b: [0, 0, 0] };
+    for (var i = 0; i < 4; i++) o.c[i] = a.c[i] + (b.c[i] - a.c[i]) * t;
+    for (var j = 0; j < 3; j++) {
+      o.w[j] = a.w[j] + (b.w[j] - a.w[j]) * t;
+      o.n[j] = a.n[j] + (b.n[j] - a.n[j]) * t;
+      o.b[j] = a.b[j] + (b.b[j] - a.b[j]) * t;
+    }
+    o.uv[0] = a.uv[0] + (b.uv[0] - a.uv[0]) * t;
+    o.uv[1] = a.uv[1] + (b.uv[1] - a.uv[1]) * t;
+    return o;
+  }
+
+  // Sutherland-Hodgman:对凸多边形逐平面裁剪
+  function clipPolygonAgainstPlane(poly, plane) {
+    var out = [];
+    for (var i = 0; i < poly.length; i++) {
+      var cur = poly[i], nxt = poly[(i + 1) % poly.length];
+      var dc = planeDist(plane, cur.c), dn = planeDist(plane, nxt.c);
+      var inC = dc >= 0, inN = dn >= 0;
+      if (inC) out.push(cur);
+      if (inC !== inN) {
+        var t = dc / (dc - dn);
+        out.push(lerpVert(cur, nxt, t));
+      }
+    }
+    return out;
+  }
+  function clipPolygon(poly, planes) {
+    var p = poly;
+    for (var i = 0; i < planes.length && p.length; i++) {
+      p = clipPolygonAgainstPlane(p, planes[i]);
+    }
+    return p;
+  }
+
+  // ===================== 帧缓冲 =====================
+  function makeFB(w, h, ss) {
+    ss = ss || 1;
+    var sw = w * ss, sh = h * ss;
+    return {
+      w: w, h: h, ss: ss, sw: sw, sh: sh,
+      color: new Uint8ClampedArray(sw * sh * 4),
+      depth: new Float32Array(sw * sh),
+      owner: new Int32Array(sw * sh),
+      overdraw: new Uint16Array(sw * sh)
+    };
+  }
+  function clearFB(fb, bg) {
+    var c = fb.color;
+    for (var i = 0; i < c.length; i += 4) {
+      c[i] = bg[0]; c[i + 1] = bg[1]; c[i + 2] = bg[2]; c[i + 3] = 255;
+    }
+    fb.depth.fill(Infinity);
+    fb.owner.fill(-1);
+    fb.overdraw.fill(0);
+  }
+  // 超采样解析:ss x ss 盒式平均
+  function resolveFB(fb, out) {
+    var ss = fb.ss, w = fb.w, h = fb.h, src = fb.color;
+    var dst = out || new Uint8ClampedArray(w * h * 4);
+    if (ss === 1) { dst.set(src); return dst; }
+    var inv = 1 / (ss * ss);
+    for (var y = 0; y < h; y++) {
+      for (var x = 0; x < w; x++) {
+        var r = 0, g = 0, b = 0;
+        for (var dy = 0; dy < ss; dy++) {
+          var row = (y * ss + dy) * fb.sw;
+          for (var dx = 0; dx < ss; dx++) {
+            var o = (row + x * ss + dx) * 4;
+            r += src[o]; g += src[o + 1]; b += src[o + 2];
+          }
+        }
+        var q = (y * w + x) * 4;
+        dst[q] = r * inv; dst[q + 1] = g * inv; dst[q + 2] = b * inv; dst[q + 3] = 255;
+      }
+    }
+    return dst;
+  }
+
+  // ===================== 光栅化 =====================
+  function edgeFn(ax, ay, bx, by, px, py) {
+    return (bx - ax) * (py - ay) - (by - ay) * (px - ax);
+  }
+  // 左上填充规则:边为「左边」或「上边」时,落在边上的像素归本三角形。
+  // 约定:屏幕 y 向下、三角形已归一化成「内部边函数为正」的绕序,
+  // 此时左边 = 在屏幕上向上走(dy < 0),上边 = 水平向右走(dy = 0 且 dx > 0)。
+  function isTopLeft(ax, ay, bx, by) {
+    var dx = bx - ax, dy = by - ay;
+    return (dy < 0) || (dy === 0 && dx > 0);
+  }
+
+  // 覆盖测试:返回被覆盖的像素(供光栅规则面板与水密性测试使用)
+  function rasterCoverage(v0, v1, v2, w, h, opt) {
+    opt = opt || {};
+    var useTopLeft = opt.topLeft !== false;
+    var area = edgeFn(v0[0], v0[1], v1[0], v1[1], v2[0], v2[1]);
+    var res = { area: area, pixels: [], backface: false };
+    if (area === 0) return res;
+    var a = [v0, v1, v2];
+    if (area < 0) { a = [v0, v2, v1]; area = -area; res.backface = true; }
+    var minX = Math.max(0, Math.floor(Math.min(a[0][0], a[1][0], a[2][0])));
+    var maxX = Math.min(w - 1, Math.ceil(Math.max(a[0][0], a[1][0], a[2][0])));
+    var minY = Math.max(0, Math.floor(Math.min(a[0][1], a[1][1], a[2][1])));
+    var maxY = Math.min(h - 1, Math.ceil(Math.max(a[0][1], a[1][1], a[2][1])));
+    var tl = [
+      isTopLeft(a[1][0], a[1][1], a[2][0], a[2][1]),
+      isTopLeft(a[2][0], a[2][1], a[0][0], a[0][1]),
+      isTopLeft(a[0][0], a[0][1], a[1][0], a[1][1])
+    ];
+    res.topLeft = tl;
+    for (var y = minY; y <= maxY; y++) {
+      for (var x = minX; x <= maxX; x++) {
+        var px = x + 0.5, py = y + 0.5;
+        var w0 = edgeFn(a[1][0], a[1][1], a[2][0], a[2][1], px, py);
+        var w1 = edgeFn(a[2][0], a[2][1], a[0][0], a[0][1], px, py);
+        var w2 = edgeFn(a[0][0], a[0][1], a[1][0], a[1][1], px, py);
+        var in0 = useTopLeft ? (w0 > 0 || (w0 === 0 && tl[0])) : w0 >= 0;
+        var in1 = useTopLeft ? (w1 > 0 || (w1 === 0 && tl[1])) : w1 >= 0;
+        var in2 = useTopLeft ? (w2 > 0 || (w2 === 0 && tl[2])) : w2 >= 0;
+        if (in0 && in1 && in2) {
+          res.pixels.push({ x: x, y: y, l: [w0 / area, w1 / area, w2 / area], e: [w0, w1, w2] });
+        }
+      }
+    }
+    return res;
+  }
+
+  // ===================== 场景与渲染 =====================
+  function defaultCamera() {
+    return { yaw: 0.72, pitch: 0.42, dist: 5.2, target: [0, 0, 0], fov: 50, near: 0.5, far: 30 };
+  }
+  function cameraEye(cam) {
+    var cp = Math.cos(cam.pitch), sp = Math.sin(cam.pitch);
+    return [
+      cam.target[0] + cam.dist * cp * Math.sin(cam.yaw),
+      cam.target[1] + cam.dist * sp,
+      cam.target[2] + cam.dist * cp * Math.cos(cam.yaw)
+    ];
+  }
+  function cameraMatrices(cam, w, h) {
+    var eye = cameraEye(cam);
+    var view = matLookAt(eye, cam.target, [0, 1, 0]);
+    var proj = matPerspective(cam.fov, w / h, cam.near, cam.far);
+    return { eye: eye, view: view, proj: proj, vp: matViewport(w, h) };
+  }
+
+  function defaultLight() {
+    return { yaw: 0.9, elev: 0.75, ambient: 0.16, diffuse: 0.85, specular: 0.55, shininess: 42, color: [255, 255, 255] };
+  }
+  function lightDir(L) {
+    var ce = Math.cos(L.elev);
+    return norm3([ce * Math.sin(L.yaw), Math.sin(L.elev), ce * Math.cos(L.yaw)]);
+  }
+
+  // 几何阶段:把一个物体的三角形变换 + 裁剪 + 剔除,输出屏幕空间三角形
+  function geometryStage(obj, mats, opts, stats, objIdx) {
+    var mesh = obj.mesh;
+    var model = obj.model;
+    var mvp = matMulAll([mats.proj, mats.view, model]);
+    var nm = mat3Normal(model);
+    var nv = mesh.vertexCount;
+    var clip = new Float64Array(nv * 4), world = new Float64Array(nv * 3), wn = new Float64Array(nv * 3);
+    var outMask = new Uint8Array(nv);
+    var planes = [];
+    for (var pi = 0; pi < 6; pi++) if (!opts.clipOff || !opts.clipOff[pi]) planes.push(FRUSTUM_PLANES[pi].p);
+    for (var i = 0; i < nv; i++) {
+      var px = mesh.pos[i * 3], py = mesh.pos[i * 3 + 1], pz = mesh.pos[i * 3 + 2];
+      var c = matApply(mvp, [px, py, pz, 1]);
+      clip[i * 4] = c[0]; clip[i * 4 + 1] = c[1]; clip[i * 4 + 2] = c[2]; clip[i * 4 + 3] = c[3];
+      var wp = xformPoint(model, [px, py, pz]);
+      world[i * 3] = wp[0]; world[i * 3 + 1] = wp[1]; world[i * 3 + 2] = wp[2];
+      var n = mat3Apply(nm, [mesh.nrm[i * 3], mesh.nrm[i * 3 + 1], mesh.nrm[i * 3 + 2]]);
+      var nl = Math.sqrt(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]) || 1;
+      wn[i * 3] = n[0] / nl; wn[i * 3 + 1] = n[1] / nl; wn[i * 3 + 2] = n[2] / nl;
+      var mask = 0;
+      for (var k = 0; k < planes.length; k++) {
+        if (planeDist(planes[k], [c[0], c[1], c[2], c[3]]) < 0) mask |= (1 << k);
+      }
+      outMask[i] = mask;
+    }
+    stats.vertices += nv;
+
+    var tris = [];
+    var vp = mats.vp;
+    for (var t = 0; t < mesh.triCount; t++) {
+      var i0 = mesh.idx[t * 3], i1 = mesh.idx[t * 3 + 1], i2 = mesh.idx[t * 3 + 2];
+      stats.trisIn++;
+      if (outMask[i0] & outMask[i1] & outMask[i2]) { stats.trisClippedOut++; continue; } // 完全在同一平面外
+      var poly = [i0, i1, i2].map(function (ix, slot) {
+        var b = [0, 0, 0]; b[slot] = 1;
+        return {
+          c: [clip[ix * 4], clip[ix * 4 + 1], clip[ix * 4 + 2], clip[ix * 4 + 3]],
+          w: [world[ix * 3], world[ix * 3 + 1], world[ix * 3 + 2]],
+          n: [wn[ix * 3], wn[ix * 3 + 1], wn[ix * 3 + 2]],
+          uv: [mesh.uv[ix * 2], mesh.uv[ix * 2 + 1]],
+          b: b
+        };
+      });
+      var needClip = (outMask[i0] | outMask[i1] | outMask[i2]) !== 0;
+      if (needClip) {
+        poly = clipPolygon(poly, planes);
+        if (poly.length < 3) { stats.trisClippedOut++; continue; }
+        stats.trisClipped++;
+      }
+      // 透视除法 + 视口变换
+      var scr = [];
+      var ok = true;
+      for (var v = 0; v < poly.length; v++) {
+        var P = poly[v];
+        // 近裁剪打开时 w 恒为正;关掉近裁剪后 w 可能为负 —— 此时照常做透视除法,
+        // 好让「不裁剪会发生什么」的经典穿透伪影真的显示出来(w 太接近 0 才放弃)。
+        if (Math.abs(P.c[3]) < 1e-6) { ok = false; break; }
+        var iw = 1 / P.c[3];
+        var nx = P.c[0] * iw, ny = P.c[1] * iw, nz = P.c[2] * iw;
+        var sxy = matApply(vp, [nx, ny, nz, 1]);
+        scr.push({ x: sxy[0], y: sxy[1], z: nz, iw: iw, w: P.w, n: P.n, uv: P.uv, b: P.b, ndc: [nx, ny, nz] });
+      }
+      if (!ok) { stats.trisClippedOut++; continue; }
+      // 扇形三角化:n 边形出 n-2 个三角形,多出来的记进 fanExtra,守恒式才配得平
+      stats.fanExtra += scr.length - 3;
+      for (var f = 1; f + 1 < scr.length; f++) {
+        var A = scr[0], B = scr[f], C = scr[f + 1];
+        var area = edgeFn(A.x, A.y, B.x, B.y, C.x, C.y);
+        if (area === 0) { stats.trisDegenerate++; continue; }
+        var front = area < 0; // 屏幕 y 向下 -> 逆时针(右手正面)对应负面积
+        if (opts.cull === 'back' && !front) { stats.trisCulled++; continue; }
+        if (opts.cull === 'front' && front) { stats.trisCulled++; continue; }
+        tris.push({ v: [A, B, C], area: area, front: front, obj: obj, srcTri: t, objIdx: objIdx || 0 });
+        stats.trisRaster++;
+      }
+    }
+    return tris;
+  }
+
+  function shadeSurface(opts, mat, pos, nrmIn, uv, eye, tex) {
+    var L = opts.light;
+    var ld = lightDir(L);
+    var n = nrmIn;
+    var nl = Math.sqrt(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]) || 1;
+    n = [n[0] / nl, n[1] / nl, n[2] / nl];
+    var vdir = norm3(sub3(eye, pos));
+    if (dot3(n, vdir) < 0 && opts.twoSided !== false) n = [-n[0], -n[1], -n[2]];
+    var base = mat.color;
+    if (tex && opts.textured) {
+      var s = [0, 0, 0];
+      sampleTex(tex, uv[0] - Math.floor(uv[0]), uv[1] - Math.floor(uv[1]), opts.bilinear, s);
+      base = [base[0] * s[0] / 255, base[1] * s[1] / 255, base[2] * s[2] / 255];
+    }
+    var ndl = Math.max(0, dot3(n, ld));
+    var spec = 0;
+    if (ndl > 0 && L.specular > 0) {
+      var hv = norm3(add3(ld, vdir));
+      spec = Math.pow(Math.max(0, dot3(n, hv)), L.shininess) * L.specular * mat.spec;
+    }
+    var k = L.ambient + L.diffuse * ndl;
+    return [
+      base[0] * k + L.color[0] * spec,
+      base[1] * k + L.color[1] * spec,
+      base[2] * k + L.color[2] * spec
+    ];
+  }
+
+  function rasterTriangle(fb, tri, opts, mats, stats, triId) {
+    var v = tri.v;
+    var area = tri.area;
+    var a = v;
+    if (area < 0) { a = [v[0], v[2], v[1]]; area = -area; } // 统一成正面积绕序
+    var A = a[0], B = a[1], C = a[2];
+    var W = fb.sw, H = fb.sh;
+    var minX = Math.max(0, Math.floor(Math.min(A.x, B.x, C.x)));
+    var maxX = Math.min(W - 1, Math.ceil(Math.max(A.x, B.x, C.x)));
+    var minY = Math.max(0, Math.floor(Math.min(A.y, B.y, C.y)));
+    var maxY = Math.min(H - 1, Math.ceil(Math.max(A.y, B.y, C.y)));
+    if (maxX < minX || maxY < minY) return;
+    var tl0 = isTopLeft(B.x, B.y, C.x, C.y);
+    var tl1 = isTopLeft(C.x, C.y, A.x, A.y);
+    var tl2 = isTopLeft(A.x, A.y, B.x, B.y);
+    var mode = opts.mode;
+    var mat = tri.obj.material;
+    var tex = tri.obj.texture;
+    var eye = mats.eye;
+    var pc = opts.perspectiveCorrect !== false;
+    var samp = [0, 0, 0];
+    // Gouraud:先在三个顶点着色
+    var gc = null;
+    if (mode === 'gouraud') {
+      gc = [
+        shadeSurface(opts, mat, A.w, A.n, A.uv, eye, tex),
+        shadeSurface(opts, mat, B.w, B.n, B.uv, eye, tex),
+        shadeSurface(opts, mat, C.w, C.n, C.uv, eye, tex)
+      ];
+    }
+    var flatC = null;
+    if (mode === 'flat') {
+      var fn = cross3(sub3(B.w, A.w), sub3(C.w, A.w));
+      var cen = [(A.w[0] + B.w[0] + C.w[0]) / 3, (A.w[1] + B.w[1] + C.w[1]) / 3, (A.w[2] + B.w[2] + C.w[2]) / 3];
+      var cuv = [(A.uv[0] + B.uv[0] + C.uv[0]) / 3, (A.uv[1] + B.uv[1] + C.uv[1]) / 3];
+      flatC = shadeSurface(opts, mat, cen, fn, cuv, eye, tex);
+    }
+    for (var y = minY; y <= maxY; y++) {
+      for (var x = minX; x <= maxX; x++) {
+        var px = x + 0.5, py = y + 0.5;
+        var w0 = edgeFn(B.x, B.y, C.x, C.y, px, py);
+        var w1 = edgeFn(C.x, C.y, A.x, A.y, px, py);
+        var w2 = edgeFn(A.x, A.y, B.x, B.y, px, py);
+        if (!(w0 > 0 || (w0 === 0 && tl0))) continue;
+        if (!(w1 > 0 || (w1 === 0 && tl1))) continue;
+        if (!(w2 > 0 || (w2 === 0 && tl2))) continue;
+        var l0 = w0 / area, l1 = w1 / area, l2 = w2 / area;
+        stats.frag++;
+        var z = l0 * A.z + l1 * B.z + l2 * C.z;
+        var o = y * W + x;
+        if (opts.depthTest !== false) {
+          if (z >= fb.depth[o]) { stats.depthFail++; continue; }
+        }
+        // 透视校正权重
+        var p0 = l0, p1 = l1, p2 = l2;
+        if (pc) {
+          var iw = l0 * A.iw + l1 * B.iw + l2 * C.iw;
+          p0 = l0 * A.iw / iw; p1 = l1 * B.iw / iw; p2 = l2 * C.iw / iw;
+        }
+        var r, g, b;
+        if (mode === 'depth') {
+          var t = (z + 1) / 2;
+          var near = opts.depthGamma ? Math.pow(1 - t, 0.55) : 1 - t;
+          r = g = b = 30 + near * 220;
+        } else if (mode === 'normal') {
+          var nx = p0 * A.n[0] + p1 * B.n[0] + p2 * C.n[0];
+          var ny = p0 * A.n[1] + p1 * B.n[1] + p2 * C.n[1];
+          var nz = p0 * A.n[2] + p1 * B.n[2] + p2 * C.n[2];
+          var ln = Math.sqrt(nx * nx + ny * ny + nz * nz) || 1;
+          r = (nx / ln * 0.5 + 0.5) * 255; g = (ny / ln * 0.5 + 0.5) * 255; b = (nz / ln * 0.5 + 0.5) * 255;
+        } else if (mode === 'uv') {
+          var uu = p0 * A.uv[0] + p1 * B.uv[0] + p2 * C.uv[0];
+          var vv = p0 * A.uv[1] + p1 * B.uv[1] + p2 * C.uv[1];
+          r = (uu - Math.floor(uu)) * 255; g = (vv - Math.floor(vv)) * 255; b = 60;
+        } else if (mode === 'bary') {
+          var b0 = p0 * A.b[0] + p1 * B.b[0] + p2 * C.b[0];
+          var b1 = p0 * A.b[1] + p1 * B.b[1] + p2 * C.b[1];
+          var b2 = p0 * A.b[2] + p1 * B.b[2] + p2 * C.b[2];
+          r = b0 * 255; g = b1 * 255; b = b2 * 255;
+        } else if (mode === 'wire') {
+          r = 16; g = 18; b = 24;
+        } else if (mode === 'flat') {
+          r = flatC[0]; g = flatC[1]; b = flatC[2];
+        } else if (mode === 'gouraud') {
+          r = p0 * gc[0][0] + p1 * gc[1][0] + p2 * gc[2][0];
+          g = p0 * gc[0][1] + p1 * gc[1][1] + p2 * gc[2][1];
+          b = p0 * gc[0][2] + p1 * gc[1][2] + p2 * gc[2][2];
+        } else { // phong / textured
+          var wx = p0 * A.w[0] + p1 * B.w[0] + p2 * C.w[0];
+          var wy = p0 * A.w[1] + p1 * B.w[1] + p2 * C.w[1];
+          var wz = p0 * A.w[2] + p1 * B.w[2] + p2 * C.w[2];
+          var pnx = p0 * A.n[0] + p1 * B.n[0] + p2 * C.n[0];
+          var pny = p0 * A.n[1] + p1 * B.n[1] + p2 * C.n[1];
+          var pnz = p0 * A.n[2] + p1 * B.n[2] + p2 * C.n[2];
+          var tu = p0 * A.uv[0] + p1 * B.uv[0] + p2 * C.uv[0];
+          var tv = p0 * A.uv[1] + p1 * B.uv[1] + p2 * C.uv[1];
+          var col = shadeSurface(opts, mat, [wx, wy, wz], [pnx, pny, pnz], [tu, tv], eye, tex);
+          r = col[0]; g = col[1]; b = col[2];
+        }
+        var q = o * 4;
+        fb.color[q] = r; fb.color[q + 1] = g; fb.color[q + 2] = b; fb.color[q + 3] = 255;
+        if (opts.depthWrite !== false) fb.depth[o] = z;
+        fb.owner[o] = triId;
+        fb.overdraw[o]++;
+        stats.drawn++;
+      }
+    }
+  }
+
+  function drawLine3(fb, x0, y0, z0, x1, y1, z1, rgb, bias) {
+    var W = fb.sw, H = fb.sh;
+    var dx = x1 - x0, dy = y1 - y0;
+    var steps = Math.max(Math.abs(dx), Math.abs(dy));
+    if (steps < 1) steps = 1;
+    steps = Math.min(steps, 4096);
+    for (var i = 0; i <= steps; i++) {
+      var t = i / steps;
+      var x = Math.round(x0 + dx * t), y = Math.round(y0 + dy * t);
+      if (x < 0 || y < 0 || x >= W || y >= H) continue;
+      var z = z0 + (z1 - z0) * t;
+      var o = y * W + x;
+      if (z - (bias || 0.0015) > fb.depth[o]) continue;
+      var q = o * 4;
+      fb.color[q] = rgb[0]; fb.color[q + 1] = rgb[1]; fb.color[q + 2] = rgb[2]; fb.color[q + 3] = 255;
+    }
+  }
+
+  function renderScene(fb, scene, cam, opts) {
+    opts = opts || {};
+    if (!opts.light) opts.light = defaultLight();
+    var t0 = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+    var stats = {
+      vertices: 0, trisIn: 0, trisClipped: 0, trisClippedOut: 0, trisCulled: 0,
+      trisDegenerate: 0, trisRaster: 0, fanExtra: 0, frag: 0, drawn: 0, depthFail: 0, ms: 0, objects: scene.length
+    };
+    clearFB(fb, opts.bg || [8, 9, 12]);
+    var mats = cameraMatrices(cam, fb.sw, fb.sh);
+    var all = [];
+    for (var i = 0; i < scene.length; i++) {
+      if (scene[i].hidden) continue;
+      all = all.concat(geometryStage(scene[i], mats, opts, stats, i));
+    }
+    if (opts.painter) {
+      // 画家算法:按三角形中心的 NDC 深度从远到近排序,不用深度缓冲
+      all.sort(function (p, q) {
+        var zp = (p.v[0].z + p.v[1].z + p.v[2].z) / 3;
+        var zq = (q.v[0].z + q.v[1].z + q.v[2].z) / 3;
+        return zq - zp;
+      });
+    }
+    var o2 = Object.assign({}, opts);
+    if (opts.painter) { o2.depthTest = false; o2.depthWrite = false; }
+    for (var t = 0; t < all.length; t++) rasterTriangle(fb, all[t], o2, mats, stats, t);
+    if (opts.wire || opts.mode === 'wire') {
+      var wc = opts.wireColor || [0, 112, 209];
+      for (var k = 0; k < all.length; k++) {
+        var v = all[k].v;
+        for (var e = 0; e < 3; e++) {
+          var p = v[e], q = v[(e + 1) % 3];
+          drawLine3(fb, p.x, p.y, p.z, q.x, q.y, q.z, wc, 0.002);
+        }
+      }
+    }
+    stats.ms = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - t0;
+    stats.tris = all.length;
+    fb.triList = opts.keepTris ? all : null;   // 供拾取与管线剖面使用
+    return stats;
+  }
+
+  // ===================== 解析真值(用于校验透视校正) =====================
+  // 相机射线与 y=0 平面求交,得到该像素处地板的精确 uv
+  function groundTruthFloorUV(cam, W, H, px, py, size, uvScale) {
+    var mats = cameraMatrices(cam, W, H);
+    var invVP = matInv(matMulAll([mats.proj, mats.view]));
+    var ndcX = (px + 0.5) / W * 2 - 1;
+    var ndcY = 1 - (py + 0.5) / H * 2;
+    var pNear = matApply(invVP, [ndcX, ndcY, -1, 1]);
+    var pFar = matApply(invVP, [ndcX, ndcY, 1, 1]);
+    var a = [pNear[0] / pNear[3], pNear[1] / pNear[3], pNear[2] / pNear[3]];
+    var b = [pFar[0] / pFar[3], pFar[1] / pFar[3], pFar[2] / pFar[3]];
+    var dir = sub3(b, a);
+    if (Math.abs(dir[1]) < 1e-9) return null;
+    var t = -a[1] / dir[1];
+    if (t < 0 || t > 1) return null;
+    var hit = add3(a, scale3(dir, t));
+    var u = (hit[0] / size + 0.5) * uvScale;
+    var v = (hit[2] / size + 0.5) * uvScale;
+    return { u: u, v: v, hit: hit, t: t };
+  }
+
+  // 深度缓冲精度:给定 near/far 与位数,某个视距处可分辨的最小深度差
+  // 深度缓冲精度:clip.z = A*z_view + B, clip.w = -z_view,
+  // 故视距 d(正数)对应 z_ndc = -A + B/d,反解 d = B/(z_ndc + A)。
+  function ndcDepthOfDist(near, far, d) {
+    var A = (far + near) / (near - far), B = (2 * far * near) / (near - far);
+    return -A + B / d;
+  }
+  function distOfNdcDepth(near, far, z) {
+    var A = (far + near) / (near - far), B = (2 * far * near) / (near - far);
+    return B / (z + A);
+  }
+  // 给定 near/far 与深度位数,某个视距处可分辨的最小深度差
+  function depthResolution(near, far, dist, bits) {
+    var levels = Math.pow(2, bits || 24);
+    var step = 2 / levels;                     // ndc 一个量化步
+    var z0 = ndcDepthOfDist(near, far, dist);
+    var z1 = Math.min(1, z0 + step);
+    return Math.abs(distOfNdcDepth(near, far, z1) - dist);
+  }
+
+  return {
+    v3: v3, add3: add3, sub3: sub3, scale3: scale3, dot3: dot3, cross3: cross3, len3: len3, norm3: norm3,
+    matId: matId, matMul: matMul, matMulAll: matMulAll, matT: matT, matInv: matInv, matApply: matApply,
+    xformPoint: xformPoint, xformDir: xformDir,
+    matTranslate: matTranslate, matScale: matScale, matRotX: matRotX, matRotY: matRotY, matRotZ: matRotZ,
+    matPerspective: matPerspective, matOrtho: matOrtho, matLookAt: matLookAt, matViewport: matViewport,
+    mat3Normal: mat3Normal, mat3Apply: mat3Apply,
+    meshCube: meshCube, meshSphere: meshSphere, meshTorus: meshTorus, meshTorusKnot: meshTorusKnot,
+    meshCylinder: meshCylinder, meshPlane: meshPlane, makeMesh: makeMesh,
+    makeTexture: makeTexture, sampleTex: sampleTex, texel: texel,
+    FRUSTUM_PLANES: FRUSTUM_PLANES, planeDist: planeDist, clipPolygon: clipPolygon,
+    clipPolygonAgainstPlane: clipPolygonAgainstPlane, lerpVert: lerpVert,
+    makeFB: makeFB, clearFB: clearFB, resolveFB: resolveFB,
+    edgeFn: edgeFn, isTopLeft: isTopLeft, rasterCoverage: rasterCoverage,
+    defaultCamera: defaultCamera, cameraEye: cameraEye, cameraMatrices: cameraMatrices,
+    defaultLight: defaultLight, lightDir: lightDir, shadeSurface: shadeSurface,
+    geometryStage: geometryStage, rasterTriangle: rasterTriangle, drawLine3: drawLine3, renderScene: renderScene,
+    groundTruthFloorUV: groundTruthFloorUV, depthResolution: depthResolution,
+    ndcDepthOfDist: ndcDepthOfDist, distOfNdcDepth: distOfNdcDepth
+  };
+})();
+
+</script>
+<script>
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+  var TAU = Math.PI * 2;
+
+  // ============ 画布文字避让器 ============
+  // 本站规矩:canvas 上每一段文字都必须走它 —— 包括坐标轴刻度。
+  function makePlacer(ctx, W, H) {
+    var boxes = [];
+    var P = {
+      drawn: 0, dropped: 0, texts: [],
+      reset: function () { boxes = []; P.drawn = 0; P.dropped = 0; P.texts = []; },
+      reserve: function (x, y, w, h) { boxes.push({ x: x, y: y, w: w, h: h }); },
+      hits: function (b) {
+        if (b.x < 0 || b.y < 0 || b.x + b.w > W || b.y + b.h > H) return true;
+        for (var i = 0; i < boxes.length; i++) {
+          var o = boxes[i];
+          if (b.x < o.x + o.w && b.x + b.w > o.x && b.y < o.y + o.h && b.y + b.h > o.y) return true;
+        }
+        return false;
+      },
+      // offs:候选退让位 [dx,dy];第一顺位应落在数据的空侧
+      text: function (str, x, y, opt) {
+        opt = opt || {};
+        ctx.save();
+        ctx.font = opt.font || '11px ' + FONT;
+        ctx.textBaseline = 'middle';
+        var w = ctx.measureText(str).width, h = opt.h || 13;
+        var offs = opt.offs || [[0, 0]];
+        var align = opt.align || 'left';
+        for (var i = 0; i < offs.length; i++) {
+          var ox = x + offs[i][0], oy = y + offs[i][1];
+          var bx = align === 'center' ? ox - w / 2 : (align === 'right' ? ox - w : ox);
+          var box = { x: bx - 2, y: oy - h / 2, w: w + 4, h: h };
+          if (!P.hits(box)) {
+            if (opt.under) {
+              ctx.fillStyle = opt.under;
+              ctx.fillRect(box.x, box.y, box.w, box.h);
+            }
+            ctx.fillStyle = opt.color || '#fff';
+            ctx.textAlign = align;
+            ctx.fillText(str, ox, oy);
+            boxes.push(box);
+            P.drawn++;
+            P.texts.push(str);   // 记下「真的画出来了哪几条」,供测试按条目断言
+            ctx.restore();
+            return true;
+          }
+        }
+        P.dropped++;
+        ctx.restore();
+        return false;
+      }
+    };
+    return P;
+  }
+  var FONT = '-apple-system,BlinkMacSystemFont,"Helvetica Neue","PingFang SC",sans-serif';
+  window.__RSDBG = { placers: {} };
+
+  // ============ 状态 ============
+  var MODELS = [
+    { id: 'knot', name: '环面纽结' }, { id: 'sphere', name: '球体' }, { id: 'torus', name: '圆环面' },
+    { id: 'cube', name: '立方体' }, { id: 'cyl', name: '圆柱' }
+  ];
+  var MODES = [
+    { id: 'texture', name: '纹理' }, { id: 'phong', name: 'Phong' }, { id: 'gouraud', name: 'Gouraud' },
+    { id: 'flat', name: '平坦' }, { id: 'wire', name: '线框' }, { id: 'normal', name: '法线' },
+    { id: 'depth', name: '深度' }, { id: 'uv', name: 'UV' }, { id: 'bary', name: '重心坐标' }
+  ];
+  var S = {
+    model: 'knot', seg: 1, floor: true, spin: false,
+    mode: 'texture', tex: 'grid', bilinear: true, wire: false,
+    fov: 50, dist: 5.2, near: 0.5, far: 30, yaw: 0.72, pitch: 0.42,
+    lyaw: 0.9, lelev: 0.75, amb: 0.16, spec: 0.55, shin: 42, color: '#f5f7fa',
+    cull: 'back', depth: true, painter: false, pc: true, res: '480x320', ss: 1
+  };
+  var KEY = 'raster-studio-v1';
+  var texCache = {};
+  function tex(kind) {
+    if (!texCache[kind]) texCache[kind] = RS.makeTexture(kind, 128);
+    return texCache[kind];
+  }
+  function hex2rgb(h) {
+    return [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+  }
+
+  var meshCache = {};
+  function mesh(id, seg) {
+    var k = id + ':' + seg;
+    if (meshCache[k]) return meshCache[k];
+    var m;
+    var lo = seg === 0, hi = seg === 2;
+    if (id === 'sphere') m = RS.meshSphere(1.15, lo ? 16 : hi ? 64 : 32, lo ? 10 : hi ? 40 : 20);
+    else if (id === 'torus') m = RS.meshTorus(1.05, 0.42, lo ? 20 : hi ? 80 : 40, lo ? 10 : hi ? 40 : 20);
+    else if (id === 'cube') m = RS.meshCube(0.95);
+    else if (id === 'cyl') m = RS.meshCylinder(0.8, 1.8, lo ? 12 : hi ? 64 : 32);
+    else m = RS.meshTorusKnot(2, 3, 0.26, lo ? 64 : hi ? 260 : 140, lo ? 7 : hi ? 20 : 12);
+    meshCache[k] = m;
+    return m;
+  }
+
+  function scene() {
+    var objs = [{
+      mesh: mesh(S.model, S.seg),
+      model: RS.matTranslate(0, S.floor ? 0.35 : 0, 0),
+      material: { color: hex2rgb(S.color), spec: 1 },
+      texture: tex(S.tex)
+    }];
+    if (S.floor) {
+      objs.push({
+        mesh: floorMesh(),
+        model: RS.matTranslate(0, -1.35, 0),
+        material: { color: [214, 218, 226], spec: 0.35 },
+        texture: tex('checker')
+      });
+    }
+    return objs;
+  }
+  var _floor = null;
+  function floorMesh() {
+    if (!_floor) _floor = RS.meshPlane(14, 2, 7);
+    return _floor;
+  }
+  function camera() {
+    return { yaw: S.yaw, pitch: S.pitch, dist: S.dist, target: [0, 0, 0], fov: S.fov, near: S.near, far: S.far };
+  }
+  function light() {
+    var L = RS.defaultLight();
+    L.yaw = S.lyaw; L.elev = S.lelev; L.ambient = S.amb; L.specular = S.spec; L.shininess = S.shin;
+    L.diffuse = 0.86;
+    return L;
+  }
+  function opts(extra) {
+    var o = {
+      mode: S.mode, cull: S.cull, depthTest: S.depth, painter: S.painter,
+      perspectiveCorrect: S.pc, wire: S.wire, textured: S.mode === 'texture',
+      bilinear: S.bilinear, light: light(), bg: [8, 9, 12], keepTris: true, depthGamma: true
+    };
+    if (extra) for (var k in extra) o[k] = extra[k];
+    return o;
+  }
+
+  // ============ 主画布 ============
+  var cvMain = $('rs-canvas');
+  var ctxMain = cvMain.getContext('2d', { alpha: false });
+  var fbMain = null, imgMain = null, lastStats = null, lastFb = null;
+  var picked = { tri: -1, obj: 0, srcTri: -1 };
+
+  function ensureFb() {
+    var parts = S.res.split('x');
+    var w = parseInt(parts[0], 10), h = parseInt(parts[1], 10);
+    if (!fbMain || fbMain.w !== w || fbMain.h !== h || fbMain.ss !== S.ss) {
+      fbMain = RS.makeFB(w, h, S.ss);
+      imgMain = ctxMain.createImageData(w, h);
+      cvMain.width = w; cvMain.height = h;
+    }
+    return fbMain;
+  }
+
+  var fpsHist = [];
+  function renderMain() {
+    var fb = ensureFb();
+    var st = RS.renderScene(fb, scene(), camera(), opts());
+    var px = RS.resolveFB(fb);
+    imgMain.data.set(px);
+    ctxMain.putImageData(imgMain, 0, 0);
+    lastStats = st; lastFb = fb;
+    fpsHist.push(st.ms);
+    if (fpsHist.length > 12) fpsHist.shift();
+    $('rs-st-tris').textContent = fmt(st.trisRaster);
+    $('rs-st-frag').textContent = fmt(st.frag);
+    $('rs-st-drawn').textContent = fmt(st.drawn);
+    $('rs-st-ms').textContent = st.ms.toFixed(1) + ' ms';
+    $('rs-st-in').textContent = fmt(st.trisIn);
+    $('rs-st-cull').textContent = fmt(st.trisCulled);
+    $('rs-st-clipped').textContent = fmt(st.trisClipped + st.trisClippedOut);
+    $('rs-st-zfail').textContent = fmt(st.depthFail);
+    $('rs-badge-res').textContent = fb.w + ' × ' + fb.h + (S.ss > 1 ? ' · ' + S.ss + '×' + S.ss + ' 超采样' : '');
+    document.documentElement.dataset.rsFrame = String((parseInt(document.documentElement.dataset.rsFrame || '0', 10) + 1));
+    if (activeTab === 'pipe') drawPipe();
+    return st;
+  }
+  function fmt(n) {
+    if (n === undefined || n === null) return '—';
+    return String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  }
+
+  var pending = false;
+  function schedule() {
+    if (pending) return;
+    pending = true;
+    requestAnimationFrame(function () { pending = false; renderMain(); });
+  }
+
+  // 交互:拖动旋转 / 滚轮缩放 / 点击选三角形 / 方向键
+  var drag = null;
+  cvMain.addEventListener('pointerdown', function (e) {
+    cvMain.setPointerCapture(e.pointerId);
+    drag = { x: e.clientX, y: e.clientY, moved: false };
+  });
+  cvMain.addEventListener('pointermove', function (e) {
+    if (!drag) return;
+    var dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+    if (Math.abs(dx) + Math.abs(dy) > 2) drag.moved = true;
+    S.yaw -= dx * 0.008;
+    S.pitch = Math.max(-1.45, Math.min(1.45, S.pitch + dy * 0.006));
+    drag.x = e.clientX; drag.y = e.clientY;
+    schedule();
+  });
+  cvMain.addEventListener('pointerup', function (e) {
+    if (drag && !drag.moved) pickAt(e);
+    drag = null;
+    save();
+  });
+  cvMain.addEventListener('wheel', function (e) {
+    e.preventDefault();
+    S.dist = Math.max(1.6, Math.min(14, S.dist * (1 + (e.deltaY > 0 ? 0.09 : -0.09))));
+    $('rs-dist').value = S.dist; $('rs-dist-v').textContent = S.dist.toFixed(1);
+    schedule();
+  }, { passive: false });
+  cvMain.addEventListener('keydown', function (e) {
+    var k = e.key, step = 0.09;
+    if (k === 'ArrowLeft') S.yaw -= step;
+    else if (k === 'ArrowRight') S.yaw += step;
+    else if (k === 'ArrowUp') S.pitch = Math.min(1.45, S.pitch + step);
+    else if (k === 'ArrowDown') S.pitch = Math.max(-1.45, S.pitch - step);
+    else if (k === '+' || k === '=') S.dist = Math.max(1.6, S.dist - 0.3);
+    else if (k === '-') S.dist = Math.min(14, S.dist + 0.3);
+    else return;
+    e.preventDefault();
+    schedule();
+  });
+
+  function pickAt(e) {
+    if (!lastFb) return;
+    var r = cvMain.getBoundingClientRect();
+    var x = Math.floor((e.clientX - r.left) / r.width * lastFb.w) * lastFb.ss;
+    var y = Math.floor((e.clientY - r.top) / r.height * lastFb.h) * lastFb.ss;
+    if (x < 0 || y < 0 || x >= lastFb.sw || y >= lastFb.sh) return;
+    var id = lastFb.owner[y * lastFb.sw + x];
+    setPick(id);
+  }
+  function setPick(id) {
+    if (id === undefined || id < 0 || !lastFb || !lastFb.triList || !lastFb.triList[id]) {
+      picked = { tri: -1, obj: 0, srcTri: -1 };
+    } else {
+      var t = lastFb.triList[id];
+      picked = { tri: id, obj: t.objIdx, srcTri: t.srcTri };
+    }
+    if (activeTab === 'pipe') drawPipe();
+  }
+  function pickCenter() {
+    if (!lastFb) return;
+    var cx = Math.floor(lastFb.sw / 2), cy = Math.floor(lastFb.sh / 2);
+    var best = -1, fallback = -1;
+    // 从画面中心向外找,优先选主模型上的三角形(地板三角形往往横跨整屏,不适合当范例)
+    for (var r = 0; r < Math.min(lastFb.sw, lastFb.sh) / 2 && best < 0; r += 2) {
+      for (var a = 0; a < 16 && best < 0; a++) {
+        var x = Math.round(cx + Math.cos(a / 16 * TAU) * r), y = Math.round(cy + Math.sin(a / 16 * TAU) * r);
+        if (x < 0 || y < 0 || x >= lastFb.sw || y >= lastFb.sh) continue;
+        var id = lastFb.owner[y * lastFb.sw + x];
+        if (id < 0) continue;
+        if (fallback < 0) fallback = id;
+        var t = lastFb.triList && lastFb.triList[id];
+        if (t && t.objIdx === 0) best = id;
+      }
+    }
+    setPick(best >= 0 ? best : fallback);
+  }
+
+  // ============ 控件绑定 ============
+  function chips(host, list, get, set) {
+    host.innerHTML = '';
+    list.forEach(function (it) {
+      var b = document.createElement('button');
+      b.className = 'rs-chip';
+      b.type = 'button';
+      b.textContent = it.name;
+      b.dataset.id = it.id;
+      b.setAttribute('aria-pressed', String(get() === it.id));
+      b.addEventListener('click', function () {
+        set(it.id);
+        Array.prototype.forEach.call(host.children, function (c) {
+          c.setAttribute('aria-pressed', String(c.dataset.id === it.id));
+        });
+      });
+      host.appendChild(b);
+    });
+  }
+  chips($('rs-models'), MODELS, function () { return S.model; }, function (v) { S.model = v; setPick(-1); schedule(); save(); });
+  chips($('rs-modes'), MODES, function () { return S.mode; }, function (v) { S.mode = v; schedule(); save(); });
+
+  function bindRange(id, key, fmtFn, after) {
+    var el = $(id), out = $(id + '-v');
+    el.value = S[key];
+    if (out) out.textContent = fmtFn(S[key]);
+    el.addEventListener('input', function () {
+      S[key] = parseFloat(el.value);
+      if (out) out.textContent = fmtFn(S[key]);
+      if (after) after();
+      schedule();
+      save();
+    });
+  }
+  bindRange('rs-fov', 'fov', function (v) { return v.toFixed(0) + '°'; });
+  bindRange('rs-dist', 'dist', function (v) { return v.toFixed(1); });
+  bindRange('rs-near', 'near', function (v) { return v.toFixed(2); });
+  bindRange('rs-far', 'far', function (v) { return v.toFixed(0); });
+  bindRange('rs-lyaw', 'lyaw', function (v) { return v.toFixed(2); });
+  bindRange('rs-lelev', 'lelev', function (v) { return v.toFixed(2); });
+  bindRange('rs-amb', 'amb', function (v) { return v.toFixed(2); });
+  bindRange('rs-spec', 'spec', function (v) { return v.toFixed(2); });
+  bindRange('rs-shin', 'shin', function (v) { return v.toFixed(0); });
+
+  function bindCheck(id, key, after) {
+    var el = $(id);
+    el.checked = !!S[key];
+    el.addEventListener('change', function () { S[key] = el.checked; if (after) after(); schedule(); save(); });
+  }
+  bindCheck('rs-floor', 'floor');
+  bindCheck('rs-bilinear', 'bilinear');
+  bindCheck('rs-wire', 'wire');
+  bindCheck('rs-depth', 'depth');
+  bindCheck('rs-painter', 'painter');
+  bindCheck('rs-pc', 'pc');
+  bindCheck('rs-spin', 'spin', function () { if (S.spin) spinLoop(); });
+
+  function bindSelect(id, key, cast) {
+    var el = $(id);
+    el.value = String(S[key]);
+    el.addEventListener('change', function () { S[key] = cast ? cast(el.value) : el.value; schedule(); save(); });
+  }
+  bindSelect('rs-tex', 'tex');
+  bindSelect('rs-cull', 'cull');
+  bindSelect('rs-res', 'res');
+  bindSelect('rs-ss', 'ss', function (v) { return parseInt(v, 10); });
+  bindSelect('rs-seg', 'seg', function (v) { return parseInt(v, 10); });
+  $('rs-color').addEventListener('input', function () { S.color = $('rs-color').value; schedule(); save(); });
+  $('rs-reset').addEventListener('click', function () {
+    S.yaw = 0.72; S.pitch = 0.42; S.dist = 5.2; S.fov = 50;
+    $('rs-dist').value = 5.2; $('rs-dist-v').textContent = '5.2';
+    $('rs-fov').value = 50; $('rs-fov-v').textContent = '50°';
+    schedule(); save();
+  });
+  $('rs-pick-auto').addEventListener('click', function () { pickCenter(); });
+
+  function spinLoop() {
+    if (!S.spin) return;
+    S.yaw += 0.012;
+    renderMain();
+    requestAnimationFrame(spinLoop);
+  }
+
+  // ============ 场景库 ============
+  function store() {
+    try { return JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (e) { return {}; }
+  }
+  function save() {
+    try {
+      var db = store();
+      db.last = S;
+      localStorage.setItem(KEY, JSON.stringify(db));
+    } catch (e) { /* 隐私模式下忽略 */ }
+  }
+  function saveScene() {
+    var name = ($('rs-name').value || '').trim() || (MODELS.filter(function (m) { return m.id === S.model; })[0].name + ' · ' + new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }));
+    var db = store();
+    db.scenes = db.scenes || [];
+    db.scenes.unshift({ name: name, state: JSON.parse(JSON.stringify(S)) });
+    db.scenes = db.scenes.slice(0, 20);
+    localStorage.setItem(KEY, JSON.stringify(db));
+    $('rs-name').value = '';
+    renderScenes();
+  }
+  $('rs-save').addEventListener('click', saveScene);
+  $('rs-save2').addEventListener('click', saveScene);
+  function renderScenes() {
+    var db = store(), list = db.scenes || [], host = $('rs-scenelist');
+    host.innerHTML = '';
+    if (!list.length) {
+      var p = document.createElement('p');
+      p.className = 'rs-note';
+      p.textContent = '还没有保存的场景。';
+      host.appendChild(p);
+      return;
+    }
+    list.forEach(function (sc, i) {
+      var row = document.createElement('div');
+      row.className = 'rs-scene';
+      var b = document.createElement('b');
+      b.textContent = sc.name;
+      var load = document.createElement('button');
+      load.type = 'button'; load.textContent = '载入';
+      load.addEventListener('click', function () { applyState(sc.state); });
+      var del = document.createElement('button');
+      del.type = 'button'; del.textContent = '删除'; del.className = 'rs-del';
+      del.addEventListener('click', function () {
+        var d = store(); d.scenes.splice(i, 1); localStorage.setItem(KEY, JSON.stringify(d)); renderScenes();
+      });
+      row.appendChild(b); row.appendChild(load); row.appendChild(del);
+      host.appendChild(row);
+    });
+  }
+  function applyState(st) {
+    for (var k in st) if (S.hasOwnProperty(k)) S[k] = st[k];
+    syncControls();
+    setPick(-1);
+    schedule();
+    save();
+  }
+  function syncControls() {
+    ['fov', 'dist', 'near', 'far', 'lyaw', 'lelev', 'amb', 'spec', 'shin'].forEach(function (k) {
+      var el = $('rs-' + k), out = $('rs-' + k + '-v');
+      if (!el) return;
+      el.value = S[k];
+      if (out) {
+        out.textContent = (k === 'fov') ? S[k].toFixed(0) + '°'
+          : (k === 'far' || k === 'shin') ? S[k].toFixed(0) : S[k].toFixed(2);
+      }
+    });
+    ['floor', 'bilinear', 'wire', 'depth', 'painter', 'pc', 'spin'].forEach(function (k) {
+      var el = $('rs-' + k); if (el) el.checked = !!S[k];
+    });
+    $('rs-tex').value = S.tex; $('rs-cull').value = S.cull; $('rs-res').value = S.res;
+    $('rs-ss').value = String(S.ss); $('rs-seg').value = String(S.seg); $('rs-color').value = S.color;
+    Array.prototype.forEach.call($('rs-models').children, function (c) { c.setAttribute('aria-pressed', String(c.dataset.id === S.model)); });
+    Array.prototype.forEach.call($('rs-modes').children, function (c) { c.setAttribute('aria-pressed', String(c.dataset.id === S.mode)); });
+  }
+
+  // ============ 面板 2:管线剖面 ============
+  var cvPipe = $('rs-pipe-cv'), ctxPipe = cvPipe.getContext('2d');
+  var pipePlacer = makePlacer(ctxPipe, cvPipe.width, cvPipe.height);
+  window.__RSDBG.placers.pipe = pipePlacer;
+
+  function stageName(i) {
+    return ['模型坐标', '世界坐标', '视图坐标', '裁剪坐标 (x,y,z)', '裁剪坐标 w', 'NDC', '屏幕坐标 (x,y)'][i];
+  }
+  function num(v, d) { return (v >= 0 ? '' : '−') + Math.abs(v).toFixed(d === undefined ? 2 : d); }
+  function v3s(v, d) { return num(v[0], d) + ', ' + num(v[1], d) + ', ' + num(v[2], d); }
+
+  function drawPipe() {
+    // 小画布:重画当前场景并描出选中的三角形
+    var fb = RS.makeFB(cvPipe.width, cvPipe.height, 1);
+    var st = RS.renderScene(fb, scene(), camera(), opts({ keepTris: true, wire: false }));
+    var img = ctxPipe.createImageData(fb.w, fb.h);
+    img.data.set(RS.resolveFB(fb));
+    ctxPipe.putImageData(img, 0, 0);
+    pipePlacer.reset();
+
+    var objs = scene();
+    var tri = null;
+    if (picked.srcTri >= 0 && fb.triList) {
+      for (var i = 0; i < fb.triList.length; i++) {
+        if (fb.triList[i].srcTri === picked.srcTri && fb.triList[i].objIdx === picked.obj) { tri = fb.triList[i]; break; }
+      }
+    }
+    var tb = $('rs-pipe-tb').querySelector('tbody');
+    tb.innerHTML = '';
+    if (!tri) {
+      $('rs-pipe-cap').textContent = '在渲染台里点一下画面，或按下面的按钮自动选中屏幕中心的三角形。';
+      drawStageBars(lastStats || st);
+      return;
+    }
+    // 主视图里只画一个定位圈 —— 高细分下单个三角形往往只有十来像素，
+    // 三个标号根本挤不下，所以顶点标号一律放进右上角的放大镜。
+    var xs = tri.v.map(function (v) { return v.x; }), ys = tri.v.map(function (v) { return v.y; });
+    var bw = Math.max.apply(null, xs) - Math.min.apply(null, xs);
+    var bh = Math.max.apply(null, ys) - Math.min.apply(null, ys);
+    // 取包围盒中心而不是重心：细长三角形的重心偏在一侧，按重心放大会把一个顶点甩出放大镜
+    var cxT = (Math.max.apply(null, xs) + Math.min.apply(null, xs)) / 2;
+    var cyT = (Math.max.apply(null, ys) + Math.min.apply(null, ys)) / 2;
+    var IW = 176, IH = 148, IX = cvPipe.width - IW - 10, IY = 10;
+    ctxPipe.save();
+    ctxPipe.strokeStyle = '#0070d1';
+    ctxPipe.lineWidth = 2;
+    ctxPipe.beginPath();
+    ctxPipe.arc(cxT, cyT, Math.max(13, Math.max(bw, bh) * 0.8), 0, TAU);
+    ctxPipe.stroke();
+    ctxPipe.setLineDash([4, 4]);
+    ctxPipe.lineWidth = 1;
+    ctxPipe.beginPath();
+    ctxPipe.moveTo(cxT, cyT);
+    ctxPipe.lineTo(IX + IW / 2, IY + IH);
+    ctxPipe.stroke();
+    ctxPipe.setLineDash([]);
+    // 放大镜：把画布上那一小块像素原样放大搬过来，于是能看见这个三角形真正落在哪些像素上
+    var zoom = Math.max(2, Math.min(26, (IW - 40) / Math.max(6, Math.max(bw, bh))));
+    var sw = IW / zoom, sh = IH / zoom;
+    ctxPipe.imageSmoothingEnabled = false;
+    ctxPipe.fillStyle = '#05060a';
+    ctxPipe.fillRect(IX, IY, IW, IH);
+    ctxPipe.drawImage(cvPipe, cxT - sw / 2, cyT - sh / 2, sw, sh, IX, IY, IW, IH);
+    ctxPipe.beginPath();
+    ctxPipe.rect(IX, IY, IW, IH);
+    ctxPipe.clip();
+    ctxPipe.strokeStyle = 'rgba(229,229,229,.35)';
+    ctxPipe.lineWidth = 1;
+    ctxPipe.strokeRect(IX + 0.5, IY + 0.5, IW - 1, IH - 1);
+    function zx(v) { return IX + IW / 2 + (v.x - cxT) * zoom; }
+    function zy(v) { return IY + IH / 2 + (v.y - cyT) * zoom; }
+    ctxPipe.strokeStyle = '#0070d1';
+    ctxPipe.lineWidth = 2;
+    ctxPipe.beginPath();
+    ctxPipe.moveTo(zx(tri.v[0]), zy(tri.v[0]));
+    ctxPipe.lineTo(zx(tri.v[1]), zy(tri.v[1]));
+    ctxPipe.lineTo(zx(tri.v[2]), zy(tri.v[2]));
+    ctxPipe.closePath();
+    ctxPipe.stroke();
+    for (var k = 0; k < 3; k++) {
+      ctxPipe.fillStyle = '#ffce21';
+      ctxPipe.beginPath();
+      ctxPipe.arc(zx(tri.v[k]), zy(tri.v[k]), 3.4, 0, TAU);
+      ctxPipe.fill();
+      pipePlacer.reserve(zx(tri.v[k]) - 5, zy(tri.v[k]) - 5, 10, 10);
+    }
+    ctxPipe.restore();
+    for (var k2 = 0; k2 < 3; k2++) {
+      pipePlacer.text('v' + k2, zx(tri.v[k2]), zy(tri.v[k2]), {
+        offs: [[9, -11], [-22, -11], [9, 13], [-22, 13], [16, 0], [-30, 0], [0, -20], [0, 20]],
+        color: '#fff', under: 'rgba(0,0,0,.72)', font: '11px ' + FONT
+      });
+    }
+    pipePlacer.text('放大 ' + zoom.toFixed(0) + ' 倍', IX + 8, IY + IH - 10, { color: 'rgba(229,229,229,.85)', under: 'rgba(0,0,0,.7)', offs: [[0, 0], [0, -16], [0, -32], [0, -48], [70, 0], [70, -16]] });
+    $('rs-pipe-cap').textContent = '选中第 ' + picked.srcTri + ' 号三角形（' + (picked.obj === 0 ? '主模型' : '地板') + '），蓝色描边';
+
+    // 逐级坐标表
+    var obj = objs[picked.obj];
+    var m = obj.mesh, idx = picked.srcTri * 3;
+    var mats = RS.cameraMatrices(camera(), fb.w, fb.h);
+    var rows = [[], [], [], [], [], [], []];
+    for (var j = 0; j < 3; j++) {
+      var ix = m.idx[idx + j];
+      var p = [m.pos[ix * 3], m.pos[ix * 3 + 1], m.pos[ix * 3 + 2]];
+      var wpos = RS.xformPoint(obj.model, p);
+      var vpos = RS.xformPoint(mats.view, wpos);
+      var c = RS.matApply(RS.matMulAll([mats.proj, mats.view, obj.model]), [p[0], p[1], p[2], 1]);
+      var ndc = [c[0] / c[3], c[1] / c[3], c[2] / c[3]];
+      var scr = RS.matApply(mats.vp, [ndc[0], ndc[1], ndc[2], 1]);
+      rows[0].push(v3s(p));
+      rows[1].push(v3s(wpos));
+      rows[2].push(v3s(vpos));
+      rows[3].push(v3s([c[0], c[1], c[2]]));
+      rows[4].push(num(c[3], 3));
+      rows[5].push(v3s(ndc, 3));
+      rows[6].push(num(scr[0], 1) + ', ' + num(scr[1], 1));
+    }
+    for (var r = 0; r < rows.length; r++) {
+      var tr = document.createElement('tr');
+      var th = document.createElement('th');
+      th.textContent = stageName(r);
+      th.style.textAlign = 'left';
+      tr.appendChild(th);
+      for (var q = 0; q < 3; q++) {
+        var td = document.createElement('td');
+        td.textContent = rows[r][q];
+        tr.appendChild(td);
+      }
+      tb.appendChild(tr);
+    }
+    var area = RS.edgeFn(tri.v[0].x, tri.v[0].y, tri.v[1].x, tri.v[1].y, tri.v[2].x, tri.v[2].y);
+    var extra = document.createElement('tr');
+    extra.innerHTML = '<th style="text-align:left">屏幕面积 · 朝向</th><td colspan="3" style="text-align:left">' +
+      Math.abs(area / 2).toFixed(1) + ' 像素² · ' + (area < 0 ? '正面（逆时针）' : '背面（顺时针）') + '</td>';
+    tb.appendChild(extra);
+    drawStageBars(st);
+  }
+
+  function drawStageBars(st) {
+    var host = $('rs-stagebars');
+    var rows = [
+      { k: '顶点变换', v: st.vertices, drop: false },
+      { k: '输入三角形', v: st.trisIn, drop: false },
+      { k: '视锥外丢弃', v: st.trisClippedOut, drop: true },
+      { k: '被裁剪重组', v: st.trisClipped, drop: false },
+      { k: '背面剔除', v: st.trisCulled, drop: true },
+      { k: '进入光栅', v: st.trisRaster, drop: false },
+      { k: '覆盖片元', v: st.frag, drop: false },
+      { k: '深度测试丢弃', v: st.depthFail, drop: true },
+      { k: '写入帧缓冲', v: st.drawn, drop: false }
+    ];
+    var max = 0;
+    rows.forEach(function (r) { max = Math.max(max, r.v); });
+    host.innerHTML = '';
+    rows.forEach(function (r) {
+      var div = document.createElement('div');
+      div.className = 'rs-stagerow';
+      var s = document.createElement('span');
+      s.textContent = r.k;
+      var w = document.createElement('div');
+      w.className = 'rs-barwrap';
+      var b = document.createElement('div');
+      b.className = 'rs-bar' + (r.drop ? ' rs-drop' : '');
+      b.style.width = (max ? Math.max(1.5, r.v / max * 100) : 0) + '%';
+      w.appendChild(b);
+      var em = document.createElement('em');
+      em.textContent = fmt(r.v);
+      div.appendChild(s); div.appendChild(w); div.appendChild(em);
+      host.appendChild(div);
+    });
+  }
+
+  function drawMats() {
+    var mats = RS.cameraMatrices(camera(), fbMain ? fbMain.w : 480, fbMain ? fbMain.h : 320);
+    var model = RS.matTranslate(0, S.floor ? 0.35 : 0, 0);
+    var mvp = RS.matMulAll([mats.proj, mats.view, model]);
+    var defs = [
+      { n: 'M · 模型矩阵', d: '模型坐标 → 世界坐标', m: model },
+      { n: 'V · 视图矩阵', d: '世界坐标 → 相机坐标', m: mats.view },
+      { n: 'P · 投影矩阵', d: '相机坐标 → 裁剪坐标', m: mats.proj },
+      { n: 'MVP · 合成', d: '一次乘法走完三级', m: mvp }
+    ];
+    var host = $('rs-matgrid');
+    host.innerHTML = '';
+    defs.forEach(function (d) {
+      var box = document.createElement('div');
+      box.className = 'rs-mat';
+      var h = document.createElement('h5');
+      h.textContent = d.n;
+      var p = document.createElement('p');
+      p.textContent = d.d;
+      var g = document.createElement('div');
+      g.className = 'rs-grid4';
+      for (var i = 0; i < 16; i++) {
+        var b = document.createElement('b');
+        var val = d.m[i];
+        b.textContent = Math.abs(val) < 1e-9 ? '0' : (Math.abs(val) >= 1000 ? val.toExponential(1) : val.toFixed(2));
+        if (Math.abs(val) > 1e-9) b.className = 'rs-hot';
+        g.appendChild(b);
+      }
+      box.appendChild(h); box.appendChild(p); box.appendChild(g);
+      host.appendChild(box);
+    });
+    var f = 1 / Math.tan((S.fov * Math.PI / 180) / 2);
+    var aspect = (fbMain ? fbMain.w / fbMain.h : 1.5);
+    var rows = [
+      ['焦距因子 f = 1 / tan(fov/2)', f.toFixed(4), '视野角 ' + S.fov + '° → 决定 P[0][0] 与 P[1][1]'],
+      ['宽高比修正 f / aspect', (f / aspect).toFixed(4), '画布 ' + (fbMain ? fbMain.w + ' × ' + fbMain.h : '') + '，横向压缩量'],
+      ['P[2][2] = (far+near)/(near−far)', ((S.far + S.near) / (S.near - S.far)).toFixed(4), '把 z 压进 [−1, 1]'],
+      ['P[2][3] = 2·far·near/(near−far)', ((2 * S.far * S.near) / (S.near - S.far)).toFixed(4), '与上一行一起构成 1/z 分布'],
+      ['P[3][2] = −1', '−1', '把 −z(视距)搬进 w，透视除法才有得除'],
+      ['近平面处 ndc.z', RS.ndcDepthOfDist(S.near, S.far, S.near).toFixed(4), '恒为 −1'],
+      ['视距 ' + (S.near * 10).toFixed(1) + ' 处 ndc.z', RS.ndcDepthOfDist(S.near, S.far, S.near * 10).toFixed(4), '只走了十分之一路程，深度值已经用掉大半']
+    ];
+    var tb = $('rs-proj-tb').querySelector('tbody');
+    tb.innerHTML = '';
+    rows.forEach(function (r) {
+      var tr = document.createElement('tr');
+      tr.innerHTML = '<td style="text-align:left">' + r[0] + '</td><td>' + r[1] + '</td><td style="text-align:left">' + r[2] + '</td>';
+      tb.appendChild(tr);
+    });
+  }
+
+  // ============ 面板 3:齐次裁剪 ============
+  var cvClip = $('rs-clip-cv'), ctxClip = cvClip.getContext('2d');
+  var clipPlacer = makePlacer(ctxClip, cvClip.width, cvClip.height);
+  window.__RSDBG.placers.clip = clipPlacer;
+  var clipTri = [[0.05, -0.4], [2.1, -5.4], [-2.4, -7.4]];   // 视空间 (x, z)
+  var clipPlanesOn = [true, true, true, true, true, true];
+  var clipCam = { fov: 40, aspect: 1.2, near: 1.2, far: 9 };
+  var clipDrag = -1;
+  // 让整个视锥恰好装进画布:横向按视距、纵向按最远处的半宽定标
+  function clipScale() {
+    var half = Math.tan(clipCam.fov * Math.PI / 360) * clipCam.aspect;
+    return Math.min((cvClip.width - 76) / clipCam.far, (cvClip.height / 2 - 26) / (half * clipCam.far));
+  }
+  function clipToCanvas(x, z) {
+    // 相机在左侧,-z 向右
+    var k = clipScale();
+    return [42 + (-z) * k, cvClip.height / 2 - x * k];
+  }
+  function canvasToClip(px, py) {
+    var k = clipScale();
+    return [(cvClip.height / 2 - py) / k, -(px - 42) / k];
+  }
+  function drawClip() {
+    var W = cvClip.width, H = cvClip.height;
+    ctxClip.save();
+    ctxClip.fillStyle = '#000';
+    ctxClip.fillRect(0, 0, W, H);
+    clipPlacer.reset();
+    var P = RS.matPerspective(clipCam.fov, clipCam.aspect, clipCam.near, clipCam.far);
+    // 视锥(俯视):在 x-z 平面上,x 的半宽 = |z| · tan(fov/2) · aspect
+    var half = Math.tan(clipCam.fov * Math.PI / 360) * clipCam.aspect;
+    ctxClip.fillStyle = 'rgba(0,112,209,.13)';
+    ctxClip.beginPath();
+    var a = clipToCanvas(-half * clipCam.near, -clipCam.near);
+    var b = clipToCanvas(-half * clipCam.far, -clipCam.far);
+    var c = clipToCanvas(half * clipCam.far, -clipCam.far);
+    var d = clipToCanvas(half * clipCam.near, -clipCam.near);
+    ctxClip.moveTo(a[0], a[1]); ctxClip.lineTo(b[0], b[1]); ctxClip.lineTo(c[0], c[1]); ctxClip.lineTo(d[0], d[1]);
+    ctxClip.closePath();
+    ctxClip.fill();
+    ctxClip.strokeStyle = 'rgba(0,112,209,.85)';
+    ctxClip.lineWidth = 1.5;
+    ctxClip.stroke();
+    // 近 / 远平面
+    ctxClip.setLineDash([5, 4]);
+    ctxClip.strokeStyle = '#53b1ff';
+    ctxClip.beginPath(); ctxClip.moveTo(a[0], a[1]); ctxClip.lineTo(d[0], d[1]); ctxClip.stroke();
+    ctxClip.beginPath(); ctxClip.moveTo(b[0], b[1]); ctxClip.lineTo(c[0], c[1]); ctxClip.stroke();
+    ctxClip.setLineDash([]);
+    // 相机
+    var eye = clipToCanvas(0, 0);
+    ctxClip.fillStyle = '#fff';
+    ctxClip.beginPath(); ctxClip.arc(eye[0], eye[1], 5, 0, TAU); ctxClip.fill();
+    clipPlacer.reserve(eye[0] - 8, eye[1] - 8, 16, 16);
+    clipPlacer.reserve(0, 0, 1, 1);
+
+    // 原三角形
+    ctxClip.strokeStyle = 'rgba(229,229,229,.5)';
+    ctxClip.lineWidth = 1.2;
+    ctxClip.setLineDash([4, 3]);
+    ctxClip.beginPath();
+    clipTri.forEach(function (p, i) {
+      var q = clipToCanvas(p[0], p[1]);
+      if (i === 0) ctxClip.moveTo(q[0], q[1]); else ctxClip.lineTo(q[0], q[1]);
+    });
+    ctxClip.closePath();
+    ctxClip.stroke();
+    ctxClip.setLineDash([]);
+
+    // 裁剪
+    var poly = clipTri.map(function (p, i) {
+      var bary = [0, 0, 0]; bary[i] = 1;
+      var cc = RS.matApply(P, [p[0], 0, p[1], 1]);
+      return { c: cc, w: [p[0], 0, p[1]], n: [0, 1, 0], uv: [0, 0], b: bary };
+    });
+    var planes = [];
+    RS.FRUSTUM_PLANES.forEach(function (pl, i) { if (clipPlanesOn[i]) planes.push(pl.p); });
+    var out = RS.clipPolygon(poly, planes);
+    // 裁剪后的多边形(把裁剪坐标还原到视空间:x = ndc.x · |z| · tan · aspect)
+    if (out.length >= 3) {
+      ctxClip.fillStyle = 'rgba(0,112,209,.42)';
+      ctxClip.strokeStyle = '#0070d1';
+      ctxClip.lineWidth = 2;
+      ctxClip.beginPath();
+      out.forEach(function (v, i) {
+        var z = -v.c[3], x = v.c[0] / v.c[3] * (-z) * half;
+        var q = clipToCanvas(x, z);
+        if (i === 0) ctxClip.moveTo(q[0], q[1]); else ctxClip.lineTo(q[0], q[1]);
+      });
+      ctxClip.closePath();
+      ctxClip.fill();
+      ctxClip.stroke();
+      out.forEach(function (v) {
+        var z = -v.c[3], x = v.c[0] / v.c[3] * (-z) * half;
+        var q = clipToCanvas(x, z);
+        var isNew = v.b.filter(function (t) { return t > 0.999; }).length === 0;
+        ctxClip.fillStyle = isNew ? '#ffce21' : '#fff';
+        ctxClip.beginPath(); ctxClip.arc(q[0], q[1], isNew ? 4.5 : 3.5, 0, TAU); ctxClip.fill();
+        clipPlacer.reserve(q[0] - 6, q[1] - 6, 12, 12);
+      });
+    }
+    // 顶点手柄
+    clipTri.forEach(function (p, i) {
+      var q = clipToCanvas(p[0], p[1]);
+      ctxClip.strokeStyle = '#fff';
+      ctxClip.lineWidth = 2;
+      ctxClip.beginPath(); ctxClip.arc(q[0], q[1], 8, 0, TAU); ctxClip.stroke();
+      clipPlacer.reserve(q[0] - 10, q[1] - 10, 20, 20);
+    });
+    // 文字:全部走避让器
+    clipPlacer.text('相机', eye[0], eye[1], { offs: [[10, 0], [10, 16], [-30, 0]], color: '#fff', under: 'rgba(0,0,0,.7)' });
+    clipPlacer.text('近平面 ' + clipCam.near.toFixed(1), (a[0] + d[0]) / 2, (a[1] + d[1]) / 2, {
+      offs: [[6, -14], [6, 14], [6, -30], [6, 30], [6, -46], [6, 46], [-66, -14], [-66, 14], [-66, -30], [-66, 30]],
+      color: '#53b1ff', under: 'rgba(0,0,0,.72)'
+    });
+    clipPlacer.text('远平面 ' + clipCam.far.toFixed(1), (b[0] + c[0]) / 2, (b[1] + c[1]) / 2, {
+      offs: [[-72, -14], [-72, 14], [-72, -30], [-72, 30], [-72, -46], [-72, 46], [6, -14], [6, 14]],
+      color: '#53b1ff', under: 'rgba(0,0,0,.72)'
+    });
+    ['A', 'B', 'C'].forEach(function (nm, i) {
+      var q = clipToCanvas(clipTri[i][0], clipTri[i][1]);
+      clipPlacer.text(nm, q[0], q[1], {
+        offs: [[13, -13], [-22, -13], [13, 15], [-22, 15], [20, 0], [-30, 0], [0, -22], [0, 22]],
+        color: '#ffce21', under: 'rgba(0,0,0,.72)', font: '13px ' + FONT
+      });
+    });
+    ctxClip.restore();
+
+    // 表格
+    var tb = $('rs-clip-tb').querySelector('tbody');
+    tb.innerHTML = '';
+    $('rs-clip-n').textContent = String(out.length);
+    out.forEach(function (v, i) {
+      var isNew = v.b.filter(function (t) { return t > 0.999; }).length === 0;
+      var tr = document.createElement('tr');
+      tr.innerHTML = '<td style="text-align:left">' + (isNew ? '新 ' + (i + 1) + ' <span style="color:#ffce21">●</span>' : ['A', 'B', 'C'][v.b.indexOf(1)] || ('原 ' + (i + 1))) +
+        '</td><td>' + v.c[3].toFixed(2) + '</td><td>' + (v.c[0] / v.c[3]).toFixed(3) +
+        '</td><td>' + v.b.map(function (t) { return t.toFixed(2); }).join(' / ') + '</td>';
+      tb.appendChild(tr);
+    });
+    var newCount = out.filter(function (v) { return v.b.filter(function (t) { return t > 0.999; }).length === 0; }).length;
+    $('rs-clip-note').textContent = out.length === 0
+      ? '整个三角形都在视锥之外，一个片元也不会产生。'
+      : '裁剪把 3 个顶点变成 ' + out.length + ' 个，其中 ' + newCount + ' 个是插值出来的新顶点；新顶点的属性（重心坐标、uv、法线）按 t = d₀ / (d₀ − d₁) 线性插值得到。';
+    var ptb = $('rs-plane-tb').querySelector('tbody');
+    ptb.innerHTML = '';
+    var ineq = ['x ≥ −w', 'x ≤ w', 'y ≥ −w', 'y ≤ w', 'z ≥ −w', 'z ≤ w'];
+    RS.FRUSTUM_PLANES.forEach(function (pl, i) {
+      var tr = document.createElement('tr');
+      tr.innerHTML = '<td style="text-align:left">' + pl.name.split(' ')[0] + '</td><td>' + ineq[i] + '</td><td>' +
+        (clipPlanesOn[i] ? '<span class="rs-good">开</span>' : '<span class="rs-warn">关</span>') + '</td>';
+      ptb.appendChild(tr);
+    });
+    drawClipScene();
+  }
+
+  var cvClipScene = $('rs-clip-scene'), ctxClipScene = cvClipScene.getContext('2d');
+  function drawClipScene() {
+    var fb = RS.makeFB(cvClipScene.width, cvClipScene.height, 1);
+    var off = [];
+    for (var i = 0; i < 6; i++) off.push(!clipPlanesOn[i]);
+    var cam = { yaw: 0.5, pitch: 0.14, dist: 2.1, target: [0, 0.1, 0], fov: 70, near: 0.35, far: 26 };
+    var objs = [
+      { mesh: mesh('knot', 0), model: RS.matTranslate(0, 0.4, 0), material: { color: hex2rgb(S.color), spec: 1 }, texture: tex('grid') },
+      { mesh: floorMesh(), model: RS.matTranslate(0, -1.1, 0), material: { color: [214, 218, 226], spec: 0.3 }, texture: tex('checker') }
+    ];
+    RS.renderScene(fb, objs, cam, opts({ clipOff: off, keepTris: false, mode: 'texture', textured: true, wire: false, painter: false, depthTest: true }));
+    var img = ctxClipScene.createImageData(fb.w, fb.h);
+    img.data.set(RS.resolveFB(fb));
+    ctxClipScene.putImageData(img, 0, 0);
+    var allOn = clipPlanesOn.every(function (v) { return v; });
+    var allOff = clipPlanesOn.every(function (v) { return !v; });
+    // 实测：只关近平面几乎看不出差别，因为 w < 0 的顶点同样过不了侧向平面那两条不等式；
+    // 六个全关才会让 1/w 把相机背后的几何翻上来（本机测到 24394 个像素不同）。
+    $('rs-clip-cap').textContent = allOn
+      ? '六个平面全开：该看见的都看见，看不见的一个片元都不浪费。'
+      : allOff
+        ? '六个全关：相机背后的顶点 w < 0，被 1/w 一除翻到画面另一侧，几何当场撕开。'
+        : (!clipPlanesOn[4]
+          ? '只关近平面往往看不出差别：w < 0 的顶点同样过不了「x ≥ −w」这类侧向不等式，照样被挡下。想看穿帮，把六个一起关掉。'
+          : '关掉侧向平面通常看不出差别 —— 它们省的是算力，不是正确性（片元最终会被视口裁掉）。');
+  }
+
+  cvClip.addEventListener('pointerdown', function (e) {
+    var r = cvClip.getBoundingClientRect();
+    var px = (e.clientX - r.left) * cvClip.width / r.width, py = (e.clientY - r.top) * cvClip.height / r.height;
+    var best = -1, bd = 26;
+    clipTri.forEach(function (p, i) {
+      var q = clipToCanvas(p[0], p[1]);
+      var d = Math.hypot(q[0] - px, q[1] - py);
+      if (d < bd) { bd = d; best = i; }
+    });
+    clipDrag = best;
+    if (best >= 0) cvClip.setPointerCapture(e.pointerId);
+  });
+  cvClip.addEventListener('pointermove', function (e) {
+    if (clipDrag < 0) return;
+    var r = cvClip.getBoundingClientRect();
+    var px = (e.clientX - r.left) * cvClip.width / r.width, py = (e.clientY - r.top) * cvClip.height / r.height;
+    var v = canvasToClip(px, py);
+    var k = clipScale();
+    var xLim = (cvClip.height / 2 - 16) / k, zLim = (cvClip.width - 58) / k;
+    clipTri[clipDrag] = [
+      Math.max(-xLim, Math.min(xLim, v[0])),
+      Math.max(-zLim, Math.min(0.5, v[1]))
+    ];
+    drawClip();
+  });
+  cvClip.addEventListener('pointerup', function () { clipDrag = -1; });
+
+  (function buildPlaneChips() {
+    var host = $('rs-planes');
+    RS.FRUSTUM_PLANES.forEach(function (pl, i) {
+      var b = document.createElement('button');
+      b.className = 'rs-chip';
+      b.type = 'button';
+      b.dataset.plane = String(i);
+      b.textContent = pl.name.split(' ')[0] + '平面';
+      b.setAttribute('aria-pressed', 'true');
+      b.addEventListener('click', function () {
+        clipPlanesOn[i] = !clipPlanesOn[i];
+        b.setAttribute('aria-pressed', String(clipPlanesOn[i]));
+        $('rs-clip-all').checked = clipPlanesOn.every(function (v) { return v; });
+        drawClip();
+      });
+      host.appendChild(b);
+    });
+    $('rs-clip-all').addEventListener('change', function () {
+      var on = $('rs-clip-all').checked;
+      for (var i = 0; i < 6; i++) clipPlanesOn[i] = on;
+      Array.prototype.forEach.call(host.children, function (c) { c.setAttribute('aria-pressed', String(on)); });
+      drawClip();
+    });
+  })();
+
+  // ============ 面板 4:深度与插值 ============
+  var dPitch = 0.24;
+  function floorScene() {
+    return [{
+      mesh: RS.meshPlane(9, 1, 5),
+      model: RS.matId(),
+      material: { color: [255, 255, 255], spec: 0 },
+      texture: tex('checker')
+    }];
+  }
+  function dCam() {
+    return { yaw: 0, pitch: dPitch, dist: 3.2, target: [0, 0, 0], fov: 58, near: 0.3, far: 60 };
+  }
+  function drawInterp() {
+    var W = 280, H = 200;
+    var cam = dCam();
+    var res = {};
+    ['pc', 'aff'].forEach(function (kind) {
+      var fb = RS.makeFB(W, H, 1);
+      RS.renderScene(fb, floorScene(), cam, {
+        mode: 'texture', textured: true, bilinear: true, cull: 'none',
+        light: Object.assign(RS.defaultLight(), { ambient: 1, diffuse: 0, specular: 0 }),
+        perspectiveCorrect: kind === 'pc', bg: [8, 9, 12]
+      });
+      res[kind] = fb;
+      var cv = $(kind === 'pc' ? 'rs-d-pc' : 'rs-d-aff');
+      var ctx = cv.getContext('2d');
+      var img = ctx.createImageData(W, H);
+      img.data.set(RS.resolveFB(fb));
+      ctx.putImageData(img, 0, 0);
+    });
+    // 误差:与射线-平面解析解逐像素比较(用 uv 模式取出插值出来的 u)
+    var uvfb = {};
+    ['pc', 'aff'].forEach(function (kind) {
+      var fb = RS.makeFB(W, H, 1);
+      RS.renderScene(fb, floorScene(), cam, {
+        mode: 'uv', cull: 'none', light: RS.defaultLight(),
+        perspectiveCorrect: kind === 'pc', bg: [0, 0, 0]
+      });
+      uvfb[kind] = fb;
+    });
+    var cv = $('rs-d-err'), ctx = cv.getContext('2d');
+    var img = ctx.createImageData(W, H);
+    var stat = { pc: { max: 0, sum: 0, n: 0 }, aff: { max: 0, sum: 0, n: 0 } };
+    for (var y = 0; y < H; y++) {
+      for (var x = 0; x < W; x++) {
+        var o = (y * W + x) * 4;
+        var drawn = uvfb.pc.color[o + 2] === 60;
+        var gt = drawn ? RS.groundTruthFloorUV(cam, W, H, x, y, 9, 5) : null;
+        var e = 0;
+        if (gt) {
+          var gu = gt.u - Math.floor(gt.u);
+          ['pc', 'aff'].forEach(function (kind) {
+            var u = uvfb[kind].color[o] / 255;
+            var d = Math.abs(u - gu);
+            d = Math.min(d, 1 - d);
+            stat[kind].max = Math.max(stat[kind].max, d);
+            stat[kind].sum += d; stat[kind].n++;
+            if (kind === 'aff') e = d;
+          });
+        }
+        var t = Math.min(1, e / 0.5);
+        img.data[o] = drawn ? 20 + t * 235 : 8;
+        img.data[o + 1] = drawn ? 30 + (1 - t) * 120 : 9;
+        img.data[o + 2] = drawn ? 60 + (1 - t) * 160 : 12;
+        img.data[o + 3] = 255;
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+    var tb = $('rs-d-tb').querySelector('tbody');
+    tb.innerHTML = '';
+    [['透视校正', 'pc'], ['仿射（屏幕空间线性）', 'aff']].forEach(function (r) {
+      var s = stat[r[1]];
+      var tr = document.createElement('tr');
+      var verdict = r[1] === 'pc'
+        ? '<span class="rs-good">与解析解一致</span>'
+        : '<span class="rs-warn">最多偏了 ' + (s.max * 100).toFixed(0) + '% 个格子</span>';
+      tr.innerHTML = '<td style="text-align:left">' + r[0] + '</td><td id="rs-d-' + r[1] + '-max">' + s.max.toFixed(4) +
+        '</td><td>' + (s.n ? (s.sum / s.n).toFixed(4) : '—') + '</td><td style="text-align:left">' + verdict + '</td>';
+      tb.appendChild(tr);
+    });
+    document.documentElement.dataset.rsErrPc = stat.pc.max.toFixed(4);
+    document.documentElement.dataset.rsErrAff = stat.aff.max.toFixed(4);
+  }
+
+  var zNear = 0.05, zFar = 1000, zBits = 24;
+  function drawZChart() {
+    var cv = $('rs-z-chart'), ctx = cv.getContext('2d'), W = cv.width, H = cv.height;
+    var P = window.__RSDBG.placers.zchart || (window.__RSDBG.placers.zchart = makePlacer(ctx, W, H));
+    P.reset();
+    ctx.save();
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, W, H);
+    var padL = 66, padR = 16, padT = 22, padB = 42;
+    var x0 = padL, x1 = W - padR, y0 = padT, y1 = H - padB;
+    var dMin = zNear, dMax = zFar;
+    var vals = [];
+    var lo = Infinity, hi = 0;
+    for (var i = 0; i <= 160; i++) {
+      var d = dMin * Math.pow(dMax / dMin, i / 160);
+      var r = RS.depthResolution(zNear, zFar, d, zBits);
+      vals.push([d, r]);
+      if (r > 0) { lo = Math.min(lo, r); hi = Math.max(hi, r); }
+    }
+    function X(d) { return x0 + Math.log(d / dMin) / Math.log(dMax / dMin) * (x1 - x0); }
+    function Y(r) { return y1 - Math.log(r / lo) / Math.log(hi / lo) * (y1 - y0); }
+    // 网格 + 刻度(所有文字走避让器)
+    ctx.strokeStyle = 'rgba(229,229,229,.18)';
+    ctx.lineWidth = 1;
+    P.reserve(0, 0, W, padT - 4);
+    var decade = Math.pow(10, Math.floor(Math.log10(dMin)));
+    for (var d2 = decade; d2 <= dMax; d2 *= 10) {
+      if (d2 < dMin) continue;
+      var px = X(d2);
+      ctx.beginPath(); ctx.moveTo(px, y0); ctx.lineTo(px, y1); ctx.stroke();
+      P.text(d2 >= 1 ? String(d2) : String(d2), px, y1 + 14, { align: 'center', color: 'rgba(229,229,229,.7)' });
+    }
+    var dec2 = Math.pow(10, Math.floor(Math.log10(lo)));
+    for (var r2 = dec2; r2 <= hi; r2 *= 10) {
+      if (r2 < lo) continue;
+      var py = Y(r2);
+      ctx.beginPath(); ctx.moveTo(x0, py); ctx.lineTo(x1, py); ctx.stroke();
+      P.text(supExp(r2), x0 - 8, py, { align: 'right', color: 'rgba(229,229,229,.7)' });
+    }
+    // 曲线
+    ctx.strokeStyle = '#0070d1';
+    ctx.lineWidth = 2.4;
+    ctx.beginPath();
+    vals.forEach(function (v, i) {
+      var px = X(v[0]), py = Y(v[1]);
+      if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+    });
+    ctx.stroke();
+    // 对照:near 抬高十倍
+    var alt = [];
+    var altNear = Math.min(zNear * 10, zFar / 4);
+    for (var j = 0; j <= 160; j++) {
+      var dd = altNear * Math.pow(dMax / altNear, j / 160);
+      alt.push([dd, RS.depthResolution(altNear, zFar, dd, zBits)]);
+    }
+    ctx.strokeStyle = 'rgba(255,206,33,.9)';
+    ctx.setLineDash([6, 4]);
+    ctx.lineWidth = 1.8;
+    ctx.beginPath();
+    alt.forEach(function (v, i) {
+      var px = X(Math.max(dMin, v[0])), py = Y(Math.max(lo, Math.min(hi, v[1])));
+      if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+    });
+    ctx.stroke();
+    ctx.setLineDash([]);
+    // 标注:单调递增曲线,标注落在左上的空侧
+    var markD = Math.min(zFar / 10, Math.max(zNear * 40, 10));
+    var markR = RS.depthResolution(zNear, zFar, markD, zBits);
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.arc(X(markD), Y(markR), 3.5, 0, TAU); ctx.fill();
+    P.reserve(X(markD) - 5, Y(markR) - 5, 10, 10);
+    P.text('视距 ' + markD.toFixed(0) + ' 处约 ' + fmtSci(markR), X(markD), Y(markR), {
+      offs: [[-10, -18], [-10, -34], [-10, -50], [12, 18], [12, 34]], align: 'right', color: '#fff', under: 'rgba(0,0,0,.82)'
+    });
+    // 图例放在曲线的空侧:曲线自左下走向右上,左上角是空的
+    P.text('near = ' + zNear.toFixed(2), x0 + 8, y0 + 10, { align: 'left', color: '#53b1ff', under: 'rgba(0,0,0,.8)' });
+    P.text('对照 near = ' + altNear.toFixed(2), x0 + 8, y0 + 26, { align: 'left', color: '#ffce21', under: 'rgba(0,0,0,.8)' });
+    P.text('视距（横轴）', (x0 + x1) / 2, y1 + 30, { align: 'center', color: 'rgba(229,229,229,.7)', offs: [[0, 0], [0, 6], [-160, 0], [160, 0]] });
+    ctx.restore();
+
+    var tb = $('rs-z-tb').querySelector('tbody');
+    tb.innerHTML = '';
+    [1, 10, 100, 500].forEach(function (d) {
+      if (d < zNear || d > zFar) return;
+      var r = RS.depthResolution(zNear, zFar, d, zBits);
+      var used = (RS.ndcDepthOfDist(zNear, zFar, d) + 1) / 2;
+      var tr = document.createElement('tr');
+      tr.innerHTML = '<td style="text-align:left">' + d + '</td><td>' + fmtSci(r) + '</td><td>' + (used * 100).toFixed(2) + '%</td>';
+      tb.appendChild(tr);
+    });
+  }
+  function sup(n) {
+    return String(n).replace(/-/g, '⁻').replace(/\d/g, function (c) { return '⁰¹²³⁴⁵⁶⁷⁸⁹'[+c]; });
+  }
+  function supExp(v) {
+    var e = Math.round(Math.log10(v));
+    return Math.abs(v - Math.pow(10, e)) < Math.pow(10, e) * 1e-6 ? '10' + sup(e) : v.toPrecision(2);
+  }
+  function fmtSci(v) {
+    if (v >= 0.01) return v.toFixed(3);
+    return v.toExponential(1).replace('e-', ' × 10⁻').replace(/⁻(\d+)/, function (m, p) {
+      return '⁻' + p.replace(/\d/g, function (c) { return '⁰¹²³⁴⁵⁶⁷⁸⁹'[+c]; });
+    });
+  }
+
+  var zfDelta = 4;
+  function drawZFight() {
+    var W = 280, H = 200;
+    var delta = zfDelta * 7.5e-7;
+    $('rs-zf-delta-v').textContent = delta === 0 ? '0' : fmtSci(delta);
+    var quad = RS.makeMesh('q', [-1.4, -1, 0, 1.4, -1, 0, 1.4, 1, 0, -1.4, 1, 0], [0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1], [0, 0, 1, 0, 1, 1, 0, 1], [0, 1, 2, 0, 2, 3]);
+    var flat = Object.assign(RS.defaultLight(), { ambient: 1, diffuse: 0, specular: 0 });
+    var camZ = { yaw: 0.5, pitch: 0.5, dist: 6, target: [0, 0, 0], fov: 45, near: 0.05, far: 900 };
+    var fb = RS.makeFB(W, H, 1);
+    RS.renderScene(fb, [
+      { mesh: quad, model: RS.matMulAll([RS.matRotX(-1.1), RS.matScale(2, 2, 1)]), material: { color: [0, 112, 209], spec: 0 }, texture: null },
+      { mesh: quad, model: RS.matMulAll([RS.matTranslate(0, 0, delta), RS.matRotX(-1.1), RS.matScale(2, 2, 1)]), material: { color: [245, 247, 250], spec: 0 }, texture: null }
+    ], camZ, { mode: 'flat', cull: 'none', light: flat, bg: [8, 9, 12] });
+    var cv = $('rs-zf'), ctx = cv.getContext('2d');
+    var img = ctx.createImageData(W, H);
+    img.data.set(RS.resolveFB(fb));
+    ctx.putImageData(img, 0, 0);
+    // 统计条纹:相邻像素颜色反复横跳的比例
+    var flips = 0, tot = 0;
+    for (var y = 0; y < H; y++) {
+      for (var x = 1; x < W; x++) {
+        var o = (y * W + x) * 4, p = (y * W + x - 1) * 4;
+        var a = fb.color[o], b = fb.color[p];
+        if ((a === 8 && fb.color[o + 1] === 9) || (b === 8 && fb.color[p + 1] === 9)) continue;
+        tot++;
+        if (Math.abs(a - b) > 100) flips++;
+      }
+    }
+    var ds = delta === 0 ? '0' : fmtSci(delta);
+    $('rs-zf-cap').textContent = tot === 0 ? '两片几乎共面的四边形' :
+      (flips / tot > 0.02
+        ? '间距 ' + ds + '：两片的深度落进同一个可分辨档位，' + (flips / tot * 100).toFixed(1) + '% 的相邻像素在两片之间反复横跳'
+        : '间距 ' + ds + '：已经拉开到深度缓冲分得清了，白片稳定压住蓝片');
+    document.documentElement.dataset.rsZfFlip = (tot ? (flips / tot).toFixed(4) : '0');
+  }
+
+  function drawPainter() {
+    var W = 280, H = 200;
+    var quad = RS.makeMesh('q', [-1.2, -1.2, 0, 1.2, -1.2, 0, 1.2, 1.2, 0, -1.2, 1.2, 0], [0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1], [0, 0, 1, 0, 1, 1, 0, 1], [0, 1, 2, 0, 2, 3]);
+    var flat = Object.assign(RS.defaultLight(), { ambient: 0.55, diffuse: 0.5, specular: 0 });
+    var objs = [
+      { mesh: quad, model: RS.matRotY(0.62), material: { color: [213, 59, 0], spec: 0 }, texture: null },
+      { mesh: quad, model: RS.matRotY(-0.62), material: { color: [0, 112, 209], spec: 0 }, texture: null }
+    ];
+    var camP = { yaw: 0.1, pitch: 0.18, dist: 4.2, target: [0, 0, 0], fov: 45, near: 0.5, far: 30 };
+    var out = {};
+    [['rs-pa-z', false], ['rs-pa-p', true]].forEach(function (pair) {
+      var fb = RS.makeFB(W, H, 2);
+      RS.renderScene(fb, objs, camP, { mode: 'flat', cull: 'none', light: flat, painter: pair[1], bg: [8, 9, 12] });
+      var cv = $(pair[0]), ctx = cv.getContext('2d');
+      var img = ctx.createImageData(W, H);
+      var px = RS.resolveFB(fb);
+      img.data.set(px);
+      ctx.putImageData(img, 0, 0);
+      out[pair[0]] = px;
+    });
+    var diff = 0;
+    var A = out['rs-pa-z'], B = out['rs-pa-p'];
+    for (var i = 0; i < A.length; i += 4) if (Math.abs(A[i] - B[i]) > 40) diff++;
+    $('rs-pa-note').textContent = '两片互相穿插的四边形：画家算法要么整片盖住对方、要么被对方整片盖住 —— 本例中有 ' +
+      fmt(diff) + ' 个像素（约 ' + (diff / (W * H) * 100).toFixed(1) + '%）画错了。深度缓冲是逐像素比较，所以穿插处的交线是对的。';
+    document.documentElement.dataset.rsPainterDiff = String(diff);
+  }
+
+  bindRangeSimple('rs-d-pitch', function (v) { dPitch = v; $('rs-d-pitch-v').textContent = v.toFixed(2); drawInterp(); });
+  bindRangeSimple('rs-z-near', function (v) { zNear = v; $('rs-z-near-v').textContent = v.toFixed(2); drawZChart(); });
+  bindRangeSimple('rs-z-far', function (v) { zFar = v; $('rs-z-far-v').textContent = v.toFixed(0); drawZChart(); });
+  bindRangeSimple('rs-zf-delta', function (v) { zfDelta = v; drawZFight(); });
+  $('rs-z-bits').addEventListener('change', function () { zBits = parseInt($('rs-z-bits').value, 10); drawZChart(); });
+  function bindRangeSimple(id, fn) {
+    var el = $(id);
+    el.addEventListener('input', function () { fn(parseFloat(el.value)); });
+  }
+
+  // ============ 面板 5:光栅规则 ============
+  var cvR = $('rs-r-cv'), ctxR = cvR.getContext('2d');
+  var rPlacer = makePlacer(ctxR, cvR.width, cvR.height);
+  window.__RSDBG.placers.raster = rPlacer;
+  var GW = 24, GH = 16, CELL = 27, OX = 38, OY = 24;
+  // 默认让共享边 A—C 落在 x = 8.5 的竖线上:该列的像素中心恰好压在边上,
+  // 正是左上规则唯一起作用的场合(关掉规则就会被两个三角形各画一遍)。
+  var rTri = [[8.5, 1.5], [2.4, 4.2], [8.5, 13.5]];
+  var rPair = [];
+  var rDrag = -1, rSel = null;
+  var rRule = true, rShowPair = true, rCenters = true;
+
+  function updatePair() {
+    // 与 A-C 共享边的第二个三角形
+    rPair = [rTri[0], rTri[2], [rTri[0][0] + rTri[2][0] - rTri[1][0], rTri[0][1] + rTri[2][1] - rTri[1][1]]];
+  }
+  function gx(x) { return OX + x * CELL; }
+  function gy(y) { return OY + y * CELL; }
+
+  function drawRaster() {
+    updatePair();
+    var W = cvR.width, H = cvR.height;
+    ctxR.save();
+    ctxR.fillStyle = '#ffffff';
+    ctxR.fillRect(0, 0, W, H);
+    rPlacer.reset();
+    var c1 = RS.rasterCoverage(rTri[0], rTri[1], rTri[2], GW, GH, { topLeft: rRule });
+    var c2 = rShowPair ? RS.rasterCoverage(rPair[0], rPair[1], rPair[2], GW, GH, { topLeft: rRule }) : { pixels: [] };
+    var m1 = new Set(c1.pixels.map(function (p) { return p.y * GW + p.x; }));
+    var m2 = new Set(c2.pixels.map(function (p) { return p.y * GW + p.x; }));
+    var dup = 0;
+    m2.forEach(function (k) { if (m1.has(k)) dup++; });
+    // 覆盖格
+    c1.pixels.forEach(function (p) {
+      ctxR.fillStyle = m2.has(p.y * GW + p.x) ? '#c81b3a' : 'rgba(0,112,209,.85)';
+      ctxR.fillRect(gx(p.x), gy(p.y), CELL, CELL);
+    });
+    c2.pixels.forEach(function (p) {
+      if (m1.has(p.y * GW + p.x)) return;
+      ctxR.fillStyle = 'rgba(213,59,0,.8)';
+      ctxR.fillRect(gx(p.x), gy(p.y), CELL, CELL);
+    });
+    // 网格
+    ctxR.strokeStyle = 'rgba(0,0,0,.14)';
+    ctxR.lineWidth = 1;
+    for (var x = 0; x <= GW; x++) {
+      ctxR.beginPath(); ctxR.moveTo(gx(x) + .5, gy(0)); ctxR.lineTo(gx(x) + .5, gy(GH)); ctxR.stroke();
+    }
+    for (var y = 0; y <= GH; y++) {
+      ctxR.beginPath(); ctxR.moveTo(gx(0), gy(y) + .5); ctxR.lineTo(gx(GW), gy(y) + .5); ctxR.stroke();
+    }
+    // 像素中心
+    if (rCenters) {
+      ctxR.fillStyle = 'rgba(0,0,0,.34)';
+      for (var yy = 0; yy < GH; yy++) {
+        for (var xx = 0; xx < GW; xx++) {
+          ctxR.beginPath();
+          ctxR.arc(gx(xx + 0.5), gy(yy + 0.5), 1.6, 0, TAU);
+          ctxR.fill();
+        }
+      }
+    }
+    // 选中格
+    if (rSel) {
+      ctxR.fillStyle = 'rgba(255,206,33,.55)';
+      ctxR.fillRect(gx(rSel.x), gy(rSel.y), CELL, CELL);
+      ctxR.strokeStyle = '#f5a623';
+      ctxR.lineWidth = 2;
+      ctxR.strokeRect(gx(rSel.x) + 1, gy(rSel.y) + 1, CELL - 2, CELL - 2);
+    }
+    // 三角形
+    function poly(t, color, dash) {
+      ctxR.save();
+      ctxR.strokeStyle = color;
+      ctxR.lineWidth = 2;
+      if (dash) ctxR.setLineDash([5, 4]);
+      ctxR.beginPath();
+      t.forEach(function (p, i) {
+        if (i === 0) ctxR.moveTo(gx(p[0]), gy(p[1])); else ctxR.lineTo(gx(p[0]), gy(p[1]));
+      });
+      ctxR.closePath();
+      ctxR.stroke();
+      ctxR.restore();
+    }
+    if (rShowPair) poly(rPair, '#d53b00', true);
+    poly(rTri, '#00306b', false);
+    // 顶点手柄
+    ['A', 'B', 'C'].forEach(function (nm, i) {
+      var p = rTri[i];
+      ctxR.fillStyle = '#ffffff';
+      ctxR.strokeStyle = '#00306b';
+      ctxR.lineWidth = 2.5;
+      ctxR.beginPath(); ctxR.arc(gx(p[0]), gy(p[1]), 8, 0, TAU); ctxR.fill(); ctxR.stroke();
+      rPlacer.reserve(gx(p[0]) - 10, gy(p[1]) - 10, 20, 20);
+    });
+    // 坐标轴刻度也走避让器
+    for (var xt = 0; xt < GW; xt += 2) {
+      rPlacer.text(String(xt), gx(xt + 0.5), OY - 10, { align: 'center', color: 'rgba(0,0,0,.55)' });
+    }
+    for (var yt = 0; yt < GH; yt += 2) {
+      rPlacer.text(String(yt), OX - 8, gy(yt + 0.5), { align: 'right', color: 'rgba(0,0,0,.55)' });
+    }
+    ['A', 'B', 'C'].forEach(function (nm, i) {
+      var p = rTri[i];
+      rPlacer.text(nm, gx(p[0]), gy(p[1]), {
+        offs: [[14, -14], [-22, -14], [14, 16], [-22, 16]], color: '#00306b', under: 'rgba(255,255,255,.9)', font: '13px ' + FONT
+      });
+    });
+    ctxR.restore();
+
+    $('rs-r-c1').textContent = String(c1.pixels.length);
+    $('rs-r-c2').textContent = rShowPair ? String(c2.pixels.length) : '—';
+    $('rs-r-dup').textContent = rShowPair ? String(dup) : '—';
+    // 缝隙:落在两个三角形并集(即整个平行四边形)内、却没被任何一个覆盖的像素
+    var gaps = 0;
+    if (rShowPair) {
+      var quad = [rTri[1], rTri[0], rPair[2], rTri[2]];
+      for (var y2 = 0; y2 < GH; y2++) {
+        for (var x2 = 0; x2 < GW; x2++) {
+          var px = x2 + 0.5, py = y2 + 0.5;
+          // 只统计「严格在平行四边形内部」的像素:压在外边界上的像素本来就该由填充规则裁定,
+          // 把它算成缝隙会得到假阳性(实测会多报 1 个)。
+          var inside = true, sign = 0;
+          for (var e = 0; e < 4; e++) {
+            var a = quad[e], b = quad[(e + 1) % 4];
+            var s = RS.edgeFn(a[0], a[1], b[0], b[1], px, py);
+            if (Math.abs(s) < 1e-9) { inside = false; break; }
+            if (sign === 0) sign = s > 0 ? 1 : -1;
+            else if ((s > 0 ? 1 : -1) !== sign) { inside = false; break; }
+          }
+          if (inside && !m1.has(y2 * GW + x2) && !m2.has(y2 * GW + x2)) gaps++;
+        }
+      }
+    }
+    $('rs-r-gap').textContent = rShowPair ? String(gaps) : '—';
+    $('rs-r-note').textContent = !rShowPair ? '打开「共享边的另一个三角形」看重叠与缝隙的统计。'
+      : (rRule
+        ? (dup === 0 && gaps === 0
+          ? '左上规则生效：共享边上的像素恰好归一侧，不重不漏。'
+          : '当前姿态下重叠 ' + dup + ' 个、缝隙 ' + gaps + ' 个 —— 顶点落在非半整数位置时，边上通常没有像素中心。')
+        : '规则已关闭：边函数为 0 的像素被两个三角形同时接受，重叠 ' + dup + ' 个。把顶点拖到整数坐标（比如 x = 8）最容易复现。');
+    document.documentElement.dataset.rsRdup = String(dup);
+    document.documentElement.dataset.rsRgap = String(gaps);
+
+    // 选中像素读数
+    var tb = $('rs-r-tb').querySelector('tbody');
+    tb.innerHTML = '';
+    if (!rSel) {
+      var tr0 = document.createElement('tr');
+      tr0.innerHTML = '<td style="text-align:left" colspan="3">点一个格子看它的三条边函数值</td>';
+      tb.appendChild(tr0);
+    } else {
+      var px2 = rSel.x + 0.5, py2 = rSel.y + 0.5;
+      var t = rTri;
+      var area = RS.edgeFn(t[0][0], t[0][1], t[1][0], t[1][1], t[2][0], t[2][1]);
+      var a2 = area < 0 ? [t[0], t[2], t[1]] : t;
+      var ea = RS.edgeFn(a2[1][0], a2[1][1], a2[2][0], a2[2][1], px2, py2);
+      var eb = RS.edgeFn(a2[2][0], a2[2][1], a2[0][0], a2[0][1], px2, py2);
+      var ec = RS.edgeFn(a2[0][0], a2[0][1], a2[1][0], a2[1][1], px2, py2);
+      var absArea = Math.abs(area);
+      var names = ['边 BC 的边函数', '边 CA 的边函数', '边 AB 的边函数'];
+      var tlv = [RS.isTopLeft(a2[1][0], a2[1][1], a2[2][0], a2[2][1]), RS.isTopLeft(a2[2][0], a2[2][1], a2[0][0], a2[0][1]), RS.isTopLeft(a2[0][0], a2[0][1], a2[1][0], a2[1][1])];
+      [ea, eb, ec].forEach(function (v, i) {
+        var verdict = v > 0 ? '<span class="rs-good">内侧</span>'
+          : (v < 0 ? '<span class="rs-warn">外侧</span>'
+            : (tlv[i] ? '<span class="rs-good">边上 · 左上边 → 收</span>' : '<span class="rs-warn">边上 · 非左上边 → 弃</span>'));
+        var tr = document.createElement('tr');
+        tr.innerHTML = '<td style="text-align:left">' + names[i] + '</td><td>' + v.toFixed(3) + '</td><td style="text-align:left">' + verdict + '</td>';
+        tb.appendChild(tr);
+      });
+      var covered = m1.has(rSel.y * GW + rSel.x);
+      var tr2 = document.createElement('tr');
+      tr2.innerHTML = '<td style="text-align:left">重心坐标</td><td colspan="2" style="text-align:left">' +
+        (ea / absArea).toFixed(3) + ' / ' + (eb / absArea).toFixed(3) + ' / ' + (ec / absArea).toFixed(3) + '</td>';
+      tb.appendChild(tr2);
+      var tr3 = document.createElement('tr');
+      tr3.innerHTML = '<td style="text-align:left">是否被三角形 1 覆盖</td><td colspan="2" style="text-align:left">' +
+        (covered ? '<span class="rs-good">是</span>' : '<span class="rs-warn">否</span>') + '</td>';
+      tb.appendChild(tr3);
+    }
+  }
+
+  function rPos(e) {
+    var r = cvR.getBoundingClientRect();
+    return [(e.clientX - r.left) * cvR.width / r.width, (e.clientY - r.top) * cvR.height / r.height];
+  }
+  cvR.addEventListener('pointerdown', function (e) {
+    var p = rPos(e);
+    var best = -1, bd = 22;
+    rTri.forEach(function (t, i) {
+      var d = Math.hypot(gx(t[0]) - p[0], gy(t[1]) - p[1]);
+      if (d < bd) { bd = d; best = i; }
+    });
+    rDrag = best;
+    if (best >= 0) { cvR.setPointerCapture(e.pointerId); return; }
+    var cx = Math.floor((p[0] - OX) / CELL), cy = Math.floor((p[1] - OY) / CELL);
+    rSel = (cx >= 0 && cy >= 0 && cx < GW && cy < GH) ? { x: cx, y: cy } : null;
+    drawRaster();
+  });
+  cvR.addEventListener('pointermove', function (e) {
+    if (rDrag < 0) return;
+    var p = rPos(e);
+    rTri[rDrag] = [
+      Math.max(0.2, Math.min(GW - 0.2, (p[0] - OX) / CELL)),
+      Math.max(0.2, Math.min(GH - 0.2, (p[1] - OY) / CELL))
+    ];
+    drawRaster();
+  });
+  cvR.addEventListener('pointerup', function () { rDrag = -1; });
+  $('rs-r-rule').addEventListener('change', function () { rRule = $('rs-r-rule').checked; drawRaster(); });
+  $('rs-r-pair').addEventListener('change', function () { rShowPair = $('rs-r-pair').checked; drawRaster(); });
+  $('rs-r-centers').addEventListener('change', function () { rCenters = $('rs-r-centers').checked; drawRaster(); });
+
+  // ============ 标签页 ============
+  var activeTab = 'view';
+  var TABS = ['view', 'pipe', 'clip', 'depth', 'raster'];
+  function setTab(name) {
+    activeTab = name;
+    TABS.forEach(function (t) {
+      $('rs-tab-' + t).setAttribute('aria-selected', String(t === name));
+      $('rs-p-' + t).hidden = (t !== name);
+    });
+    document.documentElement.dataset.rsTab = name;
+    if (name === 'pipe') { drawPipe(); drawMats(); }
+    else if (name === 'clip') drawClip();
+    else if (name === 'depth') { drawInterp(); drawZChart(); drawZFight(); drawPainter(); }
+    else if (name === 'raster') drawRaster();
+  }
+  TABS.forEach(function (t) {
+    $('rs-tab-' + t).addEventListener('click', function () { setTab(t); });
+    $('rs-tab-' + t).addEventListener('keydown', function (e) {
+      var i = TABS.indexOf(t);
+      if (e.key === 'ArrowRight') { e.preventDefault(); $('rs-tab-' + TABS[(i + 1) % TABS.length]).focus(); setTab(TABS[(i + 1) % TABS.length]); }
+      if (e.key === 'ArrowLeft') { e.preventDefault(); $('rs-tab-' + TABS[(i + 4) % TABS.length]).focus(); setTab(TABS[(i + 4) % TABS.length]); }
+    });
+  });
+
+  // ============ 启动 ============
+  (function init() {
+    var db = store();
+    if (db.last) for (var k in db.last) if (S.hasOwnProperty(k)) S[k] = db.last[k];
+    syncControls();
+    renderScenes();
+    renderMain();
+    pickCenter();
+    if (S.spin) spinLoop();
+    window.addEventListener('resize', function () { if (activeTab === 'raster') drawRaster(); });
+    document.documentElement.dataset.rsReady = '1';
+  })();
+
+  window.RSAPP = {
+    S: S, RS: RS, setTab: setTab, render: renderMain, stats: function () { return lastStats; },
+    fb: function () { return lastFb; }, picked: function () { return picked; },
+    pickCenter: pickCenter, setPick: setPick,
+    clipTri: clipTri, clipPlanesOn: clipPlanesOn, drawClip: drawClip,
+    rTri: rTri, drawRaster: drawRaster, coverage: function () {
+      updatePair();
+      return {
+        t1: RS.rasterCoverage(rTri[0], rTri[1], rTri[2], GW, GH, { topLeft: rRule }).pixels.length,
+        t2: RS.rasterCoverage(rPair[0], rPair[1], rPair[2], GW, GH, { topLeft: rRule }).pixels.length
+      };
+    },
+    setRTri: function (i, x, y) { rTri[i] = [x, y]; drawRaster(); },
+    applyState: applyState, save: save, drawInterp: drawInterp, drawZChart: drawZChart
+  };
+})();
+</script>
+</body>
+</html>
