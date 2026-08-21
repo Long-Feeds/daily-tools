@@ -175,11 +175,17 @@ export default async function ({ page, toolURL, screenshot, assert }) {
   ok(fenNow.startsWith('rnbqkbnr/pppppppp/8/8/4P3'), '「下一手」重新走到 e4');
 
   // 2.5 引擎真的会应招(深度 2,人机对弈)
-  await page.selectOption('#cs-level', '2');
+  // reset first, *then* raise the level: switching to level 2 while black is to move
+  // starts a search on the old position, and that search was still running when the
+  // board got reset -- the wait below then burned its whole timeout (flaky 3 runs in 4)
   await page.click('#cs-new');
+  await page.waitForFunction(() => window.CSUI.state.moves.length === 0, null, { polling: 150, timeout: 10000 });
+  await page.selectOption('#cs-level', '2');
+  await page.waitForFunction(() => !window.CSUI.state.thinking, null, { polling: 150, timeout: 10000 });
   await sq('e2').click();
   await sq('e4').click();
-  await page.waitForFunction(() => document.querySelectorAll('#cs-movelist .cs-mv').length === 2, null, { timeout: 20000 });
+  await page.waitForFunction(() => document.querySelectorAll('#cs-movelist .cs-mv').length >= 1, null, { polling: 150, timeout: 10000 });
+  await page.waitForFunction(() => document.querySelectorAll('#cs-movelist .cs-mv').length === 2, null, { polling: 150, timeout: 20000 });
   const engineReply = await page.evaluate(() => window.CSUI.state.moves[1]);
   ok(!!engineReply && engineReply.uci.length >= 4, `引擎回了一手合法着法:${engineReply && engineReply.san}`);
   const replyLegal = await page.evaluate((uci) => {
