@@ -1,0 +1,3202 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>字幕工作台 · Subtitle Studio</title>
+<meta name="description" content="纯前端字幕工作台:SRT / WebVTT / ASS / LRC / MicroDVD / SBV 互转,按音频波形自动对轴,按播出规范体检并一键修复。文件不上传。">
+<style>
+/* Guard first: this page writes hundreds of lines of fresh CSS, and any
+   `display:` rule that lands after the UA sheet would beat [hidden]. */
+[hidden]{display:none!important}
+
+/* ============ Linear design language ============================
+   canvas #010102 · four-step surface ladder · hairline borders ·
+   lavender #5e6ad2 used only for brand / focus / primary CTA.       */
+:root{
+  --ss-canvas:#010102; --ss-s1:#0f1011; --ss-s2:#141516; --ss-s3:#18191a; --ss-s4:#191a1b;
+  --ss-line:#23252a; --ss-line-strong:#34343a; --ss-line-3:#3e3e44;
+  --ss-ink:#f7f8f8; --ss-ink-muted:#d0d6e0; --ss-ink-subtle:#8a8f98; --ss-ink-tertiary:#62666d;
+  --ss-accent:#5e6ad2; --ss-accent-hover:#828fff; --ss-accent-focus:#5e69d1;
+  --ss-ok:#27a644; --ss-warn:#d2a24c; --ss-bad:#d25e5e; --ss-info:#5a8fd2;
+  --ss-r-xs:4px; --ss-r-sm:6px; --ss-r-md:8px; --ss-r-lg:12px; --ss-r-xl:16px;
+  --ss-font:"Inter","SF Pro Display",-apple-system,BlinkMacSystemFont,system-ui,"Segoe UI",Roboto,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  --ss-mono:ui-monospace,"SF Mono",Menlo,"JetBrains Mono",Consolas,monospace;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0; background:var(--ss-canvas); color:var(--ss-ink);
+  font-family:var(--ss-font); font-size:16px; line-height:1.5; letter-spacing:-0.05px;
+  font-feature-settings:"cv11","ss01"; -webkit-font-smoothing:antialiased;
+}
+a{color:inherit}
+::selection{background:rgba(94,106,210,.35)}
+
+.ss-wrap{max-width:1280px;margin:0 auto;padding:20px 24px 72px}
+
+/* ---- top nav ---- */
+.ss-nav{display:flex;align-items:center;gap:16px;height:56px}
+.ss-back{
+  display:inline-flex;align-items:center;gap:6px;text-decoration:none;
+  color:var(--ss-ink-subtle);font-size:14px;font-weight:500;
+  padding:8px 12px;border-radius:var(--ss-r-md);transition:color .15s,background .15s;
+}
+.ss-back:hover{color:var(--ss-ink);background:var(--ss-s1)}
+.ss-mark{margin-left:auto;display:flex;align-items:center;gap:8px;color:var(--ss-ink-subtle);font-size:13px;letter-spacing:.4px;font-weight:500}
+.ss-dot{width:8px;height:8px;border-radius:9999px;background:var(--ss-accent)}
+
+/* ---- hero ---- */
+.ss-hero{padding:24px 0 32px;border-bottom:1px solid var(--ss-line);margin-bottom:24px}
+.ss-eyebrow{font-size:13px;font-weight:500;letter-spacing:.4px;color:var(--ss-accent);margin:0 0 12px}
+.ss-h1{
+  font-size:40px;font-weight:600;line-height:1.15;letter-spacing:-1px;margin:0 0 12px;
+}
+.ss-lede{font-size:18px;line-height:1.5;letter-spacing:-.1px;color:var(--ss-ink-subtle);margin:0;max-width:62ch}
+
+/* ---- toolbar ---- */
+.ss-bar{
+  display:flex;flex-wrap:wrap;align-items:center;gap:8px;
+  padding:12px;background:var(--ss-s1);border:1px solid var(--ss-line);
+  border-radius:var(--ss-r-lg);margin-bottom:16px;
+}
+.ss-bar-sep{width:1px;height:24px;background:var(--ss-line-strong);margin:0 4px}
+.ss-spacer{flex:1 1 auto}
+
+/* ---- buttons ---- */
+.ss-btn{
+  font-family:inherit;font-size:14px;font-weight:500;line-height:1.2;letter-spacing:0;
+  padding:9px 14px;border-radius:var(--ss-r-md);cursor:pointer;
+  background:var(--ss-s2);color:var(--ss-ink);border:1px solid var(--ss-line-strong);
+  transition:background .15s,border-color .15s,color .15s;
+  display:inline-flex;align-items:center;justify-content:center;gap:6px;white-space:nowrap;
+  min-width:56px;min-height:36px;
+}
+.ss-btn:hover:not(:disabled){background:var(--ss-s3);border-color:var(--ss-line-3)}
+.ss-btn:disabled{color:var(--ss-ink-tertiary);cursor:not-allowed;opacity:.6}
+.ss-btn-primary{background:var(--ss-accent);border-color:var(--ss-accent);color:#fff}
+.ss-btn-primary:hover:not(:disabled){background:var(--ss-accent-hover);border-color:var(--ss-accent-hover)}
+.ss-btn-ghost{background:transparent;border-color:transparent;color:var(--ss-ink-subtle)}
+.ss-btn-ghost:hover:not(:disabled){background:var(--ss-s1);color:var(--ss-ink)}
+.ss-btn-sm{padding:6px 10px;font-size:13px}
+.ss-btn:focus-visible,.ss-input:focus-visible,.ss-select:focus-visible,.ss-tab:focus-visible,
+.ss-back:focus-visible,.ss-check:focus-visible,textarea:focus-visible{
+  outline:2px solid rgba(94,105,209,.75);outline-offset:1px;
+}
+
+/* file inputs are wrapped in a label so the button styling is ours */
+.ss-file{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+.ss-file-label{cursor:pointer}
+
+/* ---- inputs ---- */
+.ss-input,.ss-select{
+  font-family:inherit;font-size:14px;color:var(--ss-ink);
+  background:var(--ss-s2);border:1px solid var(--ss-line-strong);
+  border-radius:var(--ss-r-md);padding:8px 10px;min-width:104px;min-height:36px;
+}
+.ss-select{cursor:pointer}
+.ss-input:focus,.ss-select:focus{border-color:var(--ss-accent-focus);background:var(--ss-s1)}
+.ss-input-mono{font-family:var(--ss-mono);font-size:13px;letter-spacing:0}
+.ss-input-num{width:112px}
+textarea.ss-input{width:100%;min-height:120px;resize:vertical;font-family:var(--ss-mono);font-size:13px;line-height:1.6}
+
+/* ---- badges ---- */
+.ss-badge{
+  display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border-radius:9999px;
+  background:var(--ss-s2);border:1px solid var(--ss-line);color:var(--ss-ink-muted);
+  font-size:12px;line-height:1.4;white-space:nowrap;
+}
+.ss-badge b{color:var(--ss-ink);font-weight:600}
+.ss-badge-accent{border-color:rgba(94,106,210,.5);color:#b9c0ff}
+.ss-badge-ok{border-color:rgba(39,166,68,.45);color:#7cd28f}
+.ss-badge-warn{border-color:rgba(210,162,76,.45);color:#e0bd7d}
+.ss-badge-bad{border-color:rgba(210,94,94,.45);color:#eb9a9a}
+
+/* ---- layout ---- */
+.ss-grid{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(340px,1fr);gap:16px;align-items:start}
+.ss-card{
+  background:var(--ss-s1);border:1px solid var(--ss-line);border-radius:var(--ss-r-lg);
+  padding:16px;position:relative;
+}
+.ss-card::before{
+  content:"";position:absolute;inset:0 0 auto;height:1px;border-radius:var(--ss-r-lg) var(--ss-r-lg) 0 0;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.07),transparent);pointer-events:none;
+}
+.ss-card+.ss-card{margin-top:16px}
+.ss-card-head{display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap}
+.ss-card-title{font-size:15px;font-weight:600;letter-spacing:-.2px;margin:0}
+.ss-card-note{font-size:12px;color:var(--ss-ink-tertiary);margin:0}
+
+/* ---- timeline ---- */
+.ss-tl-wrap{position:relative;background:var(--ss-canvas);border:1px solid var(--ss-line);border-radius:var(--ss-r-md);overflow:hidden}
+#ss-timeline{display:block;width:100%;height:212px;cursor:grab;touch-action:none}
+#ss-timeline.ss-dragging{cursor:grabbing}
+.ss-tl-controls{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+
+/* ---- video ---- */
+.ss-video-wrap{position:relative;background:#000;border-radius:var(--ss-r-md);overflow:hidden;aspect-ratio:16/9;max-height:340px;margin:0 auto}
+#ss-video{display:block;width:100%;height:100%;object-fit:contain;background:#000}
+/* An audio file in a <video> element renders as a lone control bar floating in a
+   16:9 void — collapse the frame so it reads as a player, not a broken video. */
+.ss-video-wrap.ss-audio-only{aspect-ratio:auto;height:auto;background:var(--ss-s2)}
+.ss-video-wrap.ss-audio-only #ss-video{height:46px}
+.ss-video-sub{
+  position:absolute;left:6%;right:6%;bottom:7%;text-align:center;pointer-events:none;
+  font-size:clamp(14px,2.2vw,22px);line-height:1.35;font-weight:600;color:#fff;
+  text-shadow:0 2px 4px rgba(0,0,0,.9),0 0 14px rgba(0,0,0,.8);white-space:pre-wrap;
+}
+.ss-video-sub.ss-top{bottom:auto;top:7%}
+
+/* ---- cue table ---- */
+.ss-table-scroll{max-height:392px;overflow:auto;border:1px solid var(--ss-line);border-radius:var(--ss-r-md)}
+table.ss-table{width:100%;border-collapse:collapse;font-size:13px}
+.ss-table thead th{
+  position:sticky;top:0;z-index:2;background:var(--ss-s3);color:var(--ss-ink-subtle);
+  font-weight:500;font-size:12px;letter-spacing:.2px;text-align:left;
+  padding:8px 10px;border-bottom:1px solid var(--ss-line-strong);white-space:nowrap;
+}
+.ss-table td{padding:6px 10px;border-bottom:1px solid var(--ss-line);vertical-align:top}
+.ss-table tbody tr:hover{background:var(--ss-s2)}
+.ss-table tbody tr.ss-sel{background:rgba(94,106,210,.14)}
+.ss-idx{color:var(--ss-ink-tertiary);font-family:var(--ss-mono);font-size:12px;width:44px}
+.ss-tc{font-family:var(--ss-mono);font-size:12px;color:var(--ss-ink-muted);white-space:nowrap}
+.ss-tc-input{
+  font-family:var(--ss-mono);font-size:12px;background:transparent;border:1px solid transparent;
+  color:var(--ss-ink-muted);border-radius:var(--ss-r-xs);padding:2px 4px;width:104px;min-height:22px;
+}
+.ss-tc-input:hover{border-color:var(--ss-line-strong)}
+.ss-tc-input:focus{border-color:var(--ss-accent-focus);background:var(--ss-s2);color:var(--ss-ink);outline:none}
+.ss-cue-text{
+  width:100%;min-height:22px;background:transparent;border:1px solid transparent;color:var(--ss-ink);
+  font-family:inherit;font-size:13px;line-height:1.45;border-radius:var(--ss-r-xs);padding:2px 6px;
+  resize:none;overflow:hidden;
+}
+.ss-cue-text:hover{border-color:var(--ss-line-strong)}
+.ss-cue-text:focus{border-color:var(--ss-accent-focus);background:var(--ss-s2);outline:none}
+.ss-cps{font-family:var(--ss-mono);font-size:11px;color:var(--ss-ink-tertiary);white-space:nowrap;text-align:right}
+.ss-cps-warn{color:var(--ss-warn)}
+.ss-cps-bad{color:var(--ss-bad)}
+.ss-flags{display:flex;gap:3px;flex-wrap:wrap;max-width:76px}
+.ss-flag{
+  display:inline-block;font-size:10px;line-height:1.5;padding:1px 5px;border-radius:var(--ss-r-xs);
+  background:var(--ss-s3);color:var(--ss-ink-subtle);border:1px solid var(--ss-line-strong);white-space:nowrap;
+}
+.ss-flag-high{color:#eb9a9a;border-color:rgba(210,94,94,.45)}
+.ss-flag-mid{color:#e0bd7d;border-color:rgba(210,162,76,.45)}
+.ss-flag-low{color:#9ab6dd;border-color:rgba(90,143,210,.4)}
+
+/* ---- tabs ---- */
+.ss-tabs{display:flex;gap:4px;padding:4px;background:var(--ss-canvas);border:1px solid var(--ss-line);border-radius:9999px;margin-bottom:16px;overflow-x:auto}
+.ss-tab{
+  font-family:inherit;font-size:14px;font-weight:500;line-height:1.2;
+  padding:7px 15px;border-radius:9999px;border:1px solid transparent;cursor:pointer;
+  background:transparent;color:var(--ss-ink-subtle);white-space:nowrap;min-height:34px;
+}
+.ss-tab:hover{color:var(--ss-ink-muted)}
+.ss-tab.ss-tab-on{background:var(--ss-s2);color:var(--ss-ink);border-color:var(--ss-line)}
+
+/* ---- panel bits ---- */
+.ss-field{display:flex;flex-direction:column;gap:6px;min-width:0}
+.ss-label{font-size:12px;color:var(--ss-ink-subtle);letter-spacing:.2px}
+.ss-row-fields{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
+.ss-section{padding:14px 0;border-bottom:1px solid var(--ss-line)}
+.ss-section:last-child{border-bottom:none;padding-bottom:0}
+.ss-section:first-child{padding-top:0}
+.ss-section-title{font-size:13px;font-weight:600;letter-spacing:-.1px;margin:0 0 4px;color:var(--ss-ink)}
+.ss-section-desc{font-size:12px;color:var(--ss-ink-tertiary);margin:0 0 10px;line-height:1.5}
+.ss-hint{font-size:12px;color:var(--ss-ink-tertiary);line-height:1.55;margin:8px 0 0}
+.ss-mono-out{
+  font-family:var(--ss-mono);font-size:12px;line-height:1.6;color:var(--ss-ink-muted);
+  background:var(--ss-canvas);border:1px solid var(--ss-line);border-radius:var(--ss-r-md);
+  padding:10px 12px;margin:10px 0 0;overflow-x:auto;white-space:pre;
+}
+.ss-check{
+  display:flex;align-items:flex-start;gap:8px;padding:7px 9px;border-radius:var(--ss-r-sm);
+  cursor:pointer;border:1px solid transparent;
+}
+.ss-check:hover{background:var(--ss-s2)}
+.ss-check input{margin:2px 0 0;width:18px;height:18px;accent-color:var(--ss-accent);flex:none}
+.ss-check-body{min-width:0}
+.ss-check-title{font-size:13px;color:var(--ss-ink)}
+.ss-check-desc{font-size:11px;color:var(--ss-ink-tertiary);line-height:1.45}
+
+/* ---- issue list ---- */
+.ss-issues{list-style:none;margin:10px 0 0;padding:0;max-height:290px;overflow:auto}
+.ss-issue{
+  display:flex;gap:10px;align-items:baseline;padding:7px 10px;border-radius:var(--ss-r-sm);
+  border:1px solid var(--ss-line);background:var(--ss-s2);margin-bottom:6px;cursor:pointer;
+  font-size:12px;line-height:1.45;
+}
+.ss-issue:hover{border-color:var(--ss-line-3);background:var(--ss-s3)}
+.ss-issue-i{font-family:var(--ss-mono);color:var(--ss-ink-tertiary);flex:none}
+.ss-issue-label{font-weight:600;flex:none}
+.ss-issue-high .ss-issue-label{color:#eb9a9a}
+.ss-issue-mid .ss-issue-label{color:#e0bd7d}
+.ss-issue-low .ss-issue-label{color:#9ab6dd}
+.ss-issue-text{color:var(--ss-ink-subtle);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.ss-empty{color:var(--ss-ink-tertiary);font-size:13px;padding:14px 0;text-align:center}
+
+/* ---- stats strip ---- */
+.ss-stats{display:flex;gap:8px;flex-wrap:wrap}
+.ss-stat{
+  background:var(--ss-s2);border:1px solid var(--ss-line);border-radius:var(--ss-r-md);
+  padding:8px 12px;min-width:92px;flex:1 1 92px;
+}
+.ss-stat-k{font-size:11px;color:var(--ss-ink-tertiary);letter-spacing:.2px}
+.ss-stat-v{font-size:17px;font-weight:600;letter-spacing:-.3px;font-variant-numeric:tabular-nums}
+
+/* ---- legend ---- */
+.ss-legend{display:flex;gap:12px;flex-wrap:wrap;font-size:11px;color:var(--ss-ink-tertiary);margin-top:8px}
+.ss-legend span{display:inline-flex;align-items:center;gap:5px}
+.ss-swatch{width:10px;height:10px;border-radius:2px;flex:none}
+
+/* ---- toast ---- */
+.ss-toast{
+  position:fixed;left:50%;bottom:24px;transform:translateX(-50%);
+  background:var(--ss-s3);border:1px solid var(--ss-line-strong);color:var(--ss-ink);
+  padding:10px 16px;border-radius:var(--ss-r-md);font-size:13px;z-index:50;
+  box-shadow:0 8px 30px rgba(0,0,0,.6);max-width:min(560px,88vw);
+}
+.ss-err-note{color:#eb9a9a;font-size:12px;line-height:1.5;margin-top:8px}
+
+/* ---- footer ---- */
+.ss-foot{margin-top:32px;padding-top:24px;border-top:1px solid var(--ss-line);color:var(--ss-ink-tertiary);font-size:12px;line-height:1.7}
+.ss-foot b{color:var(--ss-ink-subtle);font-weight:500}
+
+/* ---- responsive ---- */
+@media (max-width:1080px){
+  .ss-grid{grid-template-columns:minmax(0,1fr)}
+  .ss-h1{font-size:32px;letter-spacing:-.8px}
+}
+@media (max-width:640px){
+  .ss-wrap{padding:12px 14px 56px}
+  .ss-h1{font-size:26px;letter-spacing:-.6px}
+  .ss-lede{font-size:15px}
+  .ss-card{padding:12px}
+  .ss-table-scroll{max-height:320px}
+  .ss-input-num{width:96px}
+  .ss-flags{max-width:60px}
+  #ss-timeline{height:180px}
+}
+</style>
+</head>
+<body>
+<div class="ss-wrap">
+  <nav class="ss-nav">
+    <a class="ss-back" href="../../">← 返回工具集</a>
+    <span class="ss-mark"><i class="ss-dot"></i>Subtitle Studio</span>
+  </nav>
+
+  <header class="ss-hero">
+    <p class="ss-eyebrow">字幕工作台</p>
+    <h1 class="ss-h1">把对不上的字幕，拉回到画面上</h1>
+    <p class="ss-lede">六种字幕格式互转、按音频波形自动对轴、按播出规范体检并一键修复。字幕和视频都不上传，全部在你自己的浏览器里算完。</p>
+  </header>
+
+  <div class="ss-bar">
+    <label class="ss-btn ss-btn-primary ss-file-label" for="ss-file">导入字幕文件
+      <input id="ss-file" class="ss-file" type="file" accept=".srt,.vtt,.ass,.ssa,.sub,.lrc,.sbv,.txt,text/plain">
+    </label>
+    <label class="ss-btn ss-file-label" for="ss-media">载入音频 / 视频
+      <input id="ss-media" class="ss-file" type="file" accept="audio/*,video/*">
+    </label>
+    <button id="ss-sample" class="ss-btn" type="button">载入示例</button>
+    <span class="ss-bar-sep" aria-hidden="true"></span>
+    <span class="ss-badge" id="ss-fmt-badge">格式 <b>—</b></span>
+    <span class="ss-badge" id="ss-enc-badge">编码 <b>—</b></span>
+    <span class="ss-badge" id="ss-qc-badge">体检 <b>—</b></span>
+    <span class="ss-spacer"></span>
+    <button id="ss-undo" class="ss-btn ss-btn-sm" type="button" disabled>撤销</button>
+    <button id="ss-redo" class="ss-btn ss-btn-sm" type="button" disabled>重做</button>
+  </div>
+
+  <div class="ss-grid">
+    <!-- ================= left column ================= -->
+    <div>
+      <section class="ss-card" id="ss-video-card" hidden>
+        <div class="ss-card-head">
+          <h2 class="ss-card-title">画面预览</h2>
+          <p class="ss-card-note" id="ss-media-name">—</p>
+          <span class="ss-spacer"></span>
+          <button id="ss-video-close" class="ss-btn ss-btn-sm ss-btn-ghost" type="button">移除媒体</button>
+        </div>
+        <div class="ss-video-wrap">
+          <video id="ss-video" controls playsinline preload="metadata"></video>
+          <div class="ss-video-sub" id="ss-overlay"></div>
+        </div>
+      </section>
+
+      <section class="ss-card">
+        <div class="ss-card-head">
+          <h2 class="ss-card-title">时间轴</h2>
+          <p class="ss-card-note" id="ss-tl-range">—</p>
+          <span class="ss-spacer"></span>
+          <div class="ss-tl-controls">
+            <button id="ss-zoom-out" class="ss-btn ss-btn-sm" type="button">缩小</button>
+            <button id="ss-zoom-in" class="ss-btn ss-btn-sm" type="button">放大</button>
+            <button id="ss-zoom-fit" class="ss-btn ss-btn-sm" type="button">全览</button>
+          </div>
+        </div>
+        <div class="ss-tl-wrap">
+          <canvas id="ss-timeline" width="1200" height="424" role="img"
+                  aria-label="字幕时间轴与音频波形"></canvas>
+        </div>
+        <div class="ss-legend">
+          <span><i class="ss-swatch" style="background:#5e6ad2"></i>字幕块（颜色越暖 = 语速越快）</span>
+          <span><i class="ss-swatch" style="background:#2f6b3c"></i>检测到的人声</span>
+          <span><i class="ss-swatch" style="background:#4a4d55"></i>音频波形</span>
+          <span><i class="ss-swatch" style="background:#d25e5e"></i>体检问题</span>
+        </div>
+        <div class="ss-stats" style="margin-top:12px">
+          <div class="ss-stat"><div class="ss-stat-k">条数</div><div class="ss-stat-v" id="ss-st-count">0</div></div>
+          <div class="ss-stat"><div class="ss-stat-k">跨度</div><div class="ss-stat-v" id="ss-st-span">—</div></div>
+          <div class="ss-stat"><div class="ss-stat-k">总字数</div><div class="ss-stat-v" id="ss-st-chars">0</div></div>
+          <div class="ss-stat"><div class="ss-stat-k">平均语速</div><div class="ss-stat-v" id="ss-st-cps">—</div></div>
+          <div class="ss-stat"><div class="ss-stat-k">问题</div><div class="ss-stat-v" id="ss-st-issues">0</div></div>
+        </div>
+      </section>
+
+      <section class="ss-card">
+        <div class="ss-card-head">
+          <h2 class="ss-card-title">字幕条目</h2>
+          <p class="ss-card-note" id="ss-table-note">时间码可直接改，文字可直接编辑</p>
+          <span class="ss-spacer"></span>
+          <input id="ss-filter" class="ss-input" type="search" placeholder="搜索文字…" aria-label="搜索字幕文字">
+        </div>
+        <div class="ss-table-scroll" id="ss-table-scroll">
+          <table class="ss-table">
+            <thead>
+              <tr>
+                <th scope="col">#</th>
+                <th scope="col">开始</th>
+                <th scope="col">结束</th>
+                <th scope="col">文字</th>
+                <th scope="col">字/秒</th>
+                <th scope="col">体检</th>
+              </tr>
+            </thead>
+            <tbody id="ss-tbody"></tbody>
+          </table>
+        </div>
+        <p class="ss-hint" id="ss-more-note" hidden></p>
+      </section>
+    </div>
+
+    <!-- ================= right column ================= -->
+    <div>
+      <div class="ss-tabs" role="tablist" aria-label="工具面板">
+        <button class="ss-tab ss-tab-on" type="button" role="tab" data-tab="import" id="ss-tabbtn-import" aria-selected="true">导入</button>
+        <button class="ss-tab" type="button" role="tab" data-tab="sync" id="ss-tabbtn-sync" aria-selected="false">同步</button>
+        <button class="ss-tab" type="button" role="tab" data-tab="qc" id="ss-tabbtn-qc" aria-selected="false">体检</button>
+        <button class="ss-tab" type="button" role="tab" data-tab="merge" id="ss-tabbtn-merge" aria-selected="false">双语</button>
+        <button class="ss-tab" type="button" role="tab" data-tab="export" id="ss-tabbtn-export" aria-selected="false">导出</button>
+      </div>
+
+      <!-- ---- import ---- -->
+      <section class="ss-card" id="ss-panel-import" role="tabpanel" aria-labelledby="ss-tabbtn-import">
+        <div class="ss-section">
+          <h3 class="ss-section-title">粘贴字幕</h3>
+          <p class="ss-section-desc">SRT / WebVTT / ASS / LRC / MicroDVD / SBV 都能直接贴进来，格式自动识别。</p>
+          <textarea id="ss-paste" class="ss-input" spellcheck="false" aria-label="粘贴字幕文本"
+                    placeholder="1&#10;00:00:01,000 --> 00:00:03,200&#10;贴进来就行"></textarea>
+          <div class="ss-row-fields" style="margin-top:10px">
+            <button id="ss-load-paste" class="ss-btn ss-btn-primary" type="button">解析这段文本</button>
+            <div class="ss-field">
+              <label class="ss-label" for="ss-force-fmt">按格式解析</label>
+              <select id="ss-force-fmt" class="ss-select">
+                <option value="">自动识别</option>
+                <option value="srt">SubRip (.srt)</option>
+                <option value="vtt">WebVTT (.vtt)</option>
+                <option value="ass">ASS / SSA</option>
+                <option value="lrc">LRC 歌词</option>
+                <option value="microdvd">MicroDVD (.sub)</option>
+                <option value="sbv">SBV / YouTube</option>
+              </select>
+            </div>
+            <div class="ss-field">
+              <label class="ss-label" for="ss-src-fps">MicroDVD 帧率</label>
+              <select id="ss-src-fps" class="ss-select">
+                <option value="23.976023976023978">23.976 fps</option>
+                <option value="24">24 fps</option>
+                <option value="25">25 fps</option>
+                <option value="29.97002997002997">29.97 fps</option>
+                <option value="30">30 fps</option>
+              </select>
+            </div>
+          </div>
+          <p class="ss-hint" id="ss-parse-note">MicroDVD 文件本身不含帧率，选错帧率整条时间轴都会偏。</p>
+        </div>
+        <div class="ss-section">
+          <h3 class="ss-section-title">解析报告</h3>
+          <p class="ss-section-desc">编码嗅探结果与被跳过的行都列在这里。</p>
+          <div class="ss-mono-out" id="ss-warnings">还没有载入任何字幕。</div>
+        </div>
+      </section>
+
+      <!-- ---- sync ---- -->
+      <section class="ss-card" id="ss-panel-sync" role="tabpanel" aria-labelledby="ss-tabbtn-sync" hidden>
+        <div class="ss-section">
+          <h3 class="ss-section-title">整体平移</h3>
+          <p class="ss-section-desc">字幕早了就填负数，晚了填正数。只影响勾选的条目，未勾选则全体平移。</p>
+          <div class="ss-row-fields">
+            <div class="ss-field">
+              <label class="ss-label" for="ss-shift-ms">偏移（毫秒）</label>
+              <input id="ss-shift-ms" class="ss-input ss-input-num ss-input-mono" type="number" step="100" value="0">
+            </div>
+            <button id="ss-shift-minus" class="ss-btn" type="button">− 0.5 秒</button>
+            <button id="ss-shift-plus" class="ss-btn" type="button">+ 0.5 秒</button>
+            <button id="ss-shift-apply" class="ss-btn ss-btn-primary" type="button">应用平移</button>
+          </div>
+        </div>
+
+        <div class="ss-section">
+          <h3 class="ss-section-title">两点线性对齐</h3>
+          <p class="ss-section-desc">字幕越往后越偏，说明帧率不同，平移救不了。找第一句和最后一句在画面里的真实时间，填进来即可整体拉伸。</p>
+          <div class="ss-row-fields">
+            <div class="ss-field">
+              <label class="ss-label" for="ss-a1">第一句 · 现在</label>
+              <input id="ss-a1" class="ss-input ss-input-mono" value="00:00:00,000">
+            </div>
+            <div class="ss-field">
+              <label class="ss-label" for="ss-b1">第一句 · 应该是</label>
+              <input id="ss-b1" class="ss-input ss-input-mono" value="00:00:00,000">
+            </div>
+          </div>
+          <div class="ss-row-fields" style="margin-top:8px">
+            <div class="ss-field">
+              <label class="ss-label" for="ss-a2">最后一句 · 现在</label>
+              <input id="ss-a2" class="ss-input ss-input-mono" value="00:00:00,000">
+            </div>
+            <div class="ss-field">
+              <label class="ss-label" for="ss-b2">最后一句 · 应该是</label>
+              <input id="ss-b2" class="ss-input ss-input-mono" value="00:00:00,000">
+            </div>
+          </div>
+          <div class="ss-row-fields" style="margin-top:10px">
+            <button id="ss-linear-fill" class="ss-btn" type="button">填入首尾现值</button>
+            <button id="ss-linear-apply" class="ss-btn ss-btn-primary" type="button">应用拉伸</button>
+          </div>
+          <div class="ss-mono-out" id="ss-linear-info">倍率 1.000000 · 偏移 0 ms</div>
+        </div>
+
+        <div class="ss-section">
+          <h3 class="ss-section-title">帧率转换</h3>
+          <p class="ss-section-desc">同一部片的 23.976 版字幕配到 25 fps 的片源上，每分钟会漂 2.5 秒。</p>
+          <div class="ss-row-fields">
+            <div class="ss-field">
+              <label class="ss-label" for="ss-fps-from">原帧率</label>
+              <select id="ss-fps-from" class="ss-select">
+                <option value="23.976023976023978">23.976</option>
+                <option value="24">24</option>
+                <option value="25" selected>25</option>
+                <option value="29.97002997002997">29.97</option>
+                <option value="30">30</option>
+              </select>
+            </div>
+            <div class="ss-field">
+              <label class="ss-label" for="ss-fps-to">目标帧率</label>
+              <select id="ss-fps-to" class="ss-select">
+                <option value="23.976023976023978" selected>23.976</option>
+                <option value="24">24</option>
+                <option value="25">25</option>
+                <option value="29.97002997002997">29.97</option>
+                <option value="30">30</option>
+              </select>
+            </div>
+            <button id="ss-fps-apply" class="ss-btn ss-btn-primary" type="button">应用转换</button>
+          </div>
+        </div>
+
+        <div class="ss-section">
+          <h3 class="ss-section-title">按音频自动对轴</h3>
+          <p class="ss-section-desc">载入这一集的音频或视频，工具会算出每 10 毫秒的响度、判出哪几段有人在说话，再把字幕整条滑过去找与人声重合得最好的位置。</p>
+          <div class="ss-row-fields">
+            <button id="ss-autosync-run" class="ss-btn ss-btn-primary" type="button" disabled>开始分析</button>
+            <label class="ss-check" for="ss-autosync-fps" style="margin:0">
+              <input id="ss-autosync-fps" type="checkbox">
+              <span class="ss-check-body"><span class="ss-check-title">同时试帧率</span>
+              <span class="ss-check-desc">连 23.976 ↔ 25 这类拉伸一起找</span></span>
+            </label>
+          </div>
+          <div class="ss-mono-out" id="ss-autosync-result">先在上方载入音频或视频文件。</div>
+          <div class="ss-row-fields" style="margin-top:10px">
+            <button id="ss-autosync-apply" class="ss-btn" type="button" disabled>应用这个结果</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ---- qc ---- -->
+      <section class="ss-card" id="ss-panel-qc" role="tabpanel" aria-labelledby="ss-tabbtn-qc" hidden>
+        <div class="ss-section">
+          <h3 class="ss-section-title">规范</h3>
+          <p class="ss-section-desc">默认按 Netflix 的中英文时间轴规范取值，可以自己改。</p>
+          <div class="ss-row-fields">
+            <div class="ss-field">
+              <label class="ss-label" for="ss-preset">语言预设</label>
+              <select id="ss-preset" class="ss-select">
+                <option value="cjk">中文 / 日文 / 韩文</option>
+                <option value="latin">英文 / 拉丁语系</option>
+              </select>
+            </div>
+            <div class="ss-field">
+              <label class="ss-label" for="ss-rule-cps">语速上限（字/秒）</label>
+              <input id="ss-rule-cps" class="ss-input ss-input-num ss-input-mono" type="number" min="1" max="60" step="0.5">
+            </div>
+          </div>
+          <div class="ss-row-fields" style="margin-top:8px">
+            <div class="ss-field">
+              <label class="ss-label" for="ss-rule-mindur">最短时长（ms）</label>
+              <input id="ss-rule-mindur" class="ss-input ss-input-num ss-input-mono" type="number" min="0" step="1">
+            </div>
+            <div class="ss-field">
+              <label class="ss-label" for="ss-rule-maxdur">最长时长（ms）</label>
+              <input id="ss-rule-maxdur" class="ss-input ss-input-num ss-input-mono" type="number" min="0" step="1">
+            </div>
+          </div>
+          <div class="ss-row-fields" style="margin-top:8px">
+            <div class="ss-field">
+              <label class="ss-label" for="ss-rule-gap">最小间隔（ms）</label>
+              <input id="ss-rule-gap" class="ss-input ss-input-num ss-input-mono" type="number" min="0" step="1">
+            </div>
+            <div class="ss-field">
+              <label class="ss-label" for="ss-rule-linelen">单行字数</label>
+              <input id="ss-rule-linelen" class="ss-input ss-input-num ss-input-mono" type="number" min="1" step="1">
+            </div>
+            <div class="ss-field">
+              <label class="ss-label" for="ss-rule-linecount">最多行数</label>
+              <input id="ss-rule-linecount" class="ss-input ss-input-num ss-input-mono" type="number" min="1" max="6" step="1">
+            </div>
+          </div>
+        </div>
+
+        <div class="ss-section">
+          <h3 class="ss-section-title">体检结果</h3>
+          <p class="ss-section-desc" id="ss-issue-summary">还没有载入字幕。</p>
+          <ul class="ss-issues" id="ss-issues"></ul>
+        </div>
+
+        <div class="ss-section">
+          <h3 class="ss-section-title">一键修复</h3>
+          <p class="ss-section-desc">勾上要修的项，再点应用。改动可以撤销。</p>
+          <div id="ss-fix-list"></div>
+          <div class="ss-row-fields" style="margin-top:10px">
+            <button id="ss-fix-all" class="ss-btn ss-btn-sm" type="button">全选</button>
+            <button id="ss-fix-none" class="ss-btn ss-btn-sm" type="button">全不选</button>
+            <button id="ss-fix-apply" class="ss-btn ss-btn-primary" type="button">应用修复</button>
+          </div>
+          <div class="ss-mono-out" id="ss-fix-result" hidden></div>
+        </div>
+      </section>
+
+      <!-- ---- merge ---- -->
+      <section class="ss-card" id="ss-panel-merge" role="tabpanel" aria-labelledby="ss-tabbtn-merge" hidden>
+        <div class="ss-section">
+          <h3 class="ss-section-title">双语字幕合并</h3>
+          <p class="ss-section-desc">把第二条轨（比如英文）按时间重叠贴到当前字幕的每一条上，得到一份双语字幕。</p>
+          <label class="ss-btn ss-file-label" for="ss-second-file" style="margin-bottom:10px">导入第二条字幕
+            <input id="ss-second-file" class="ss-file" type="file" accept=".srt,.vtt,.ass,.ssa,.sub,.lrc,.sbv,.txt,text/plain">
+          </label>
+          <textarea id="ss-second" class="ss-input" spellcheck="false" aria-label="第二条字幕文本"
+                    placeholder="也可以直接把第二条字幕贴在这里"></textarea>
+          <div class="ss-row-fields" style="margin-top:10px">
+            <div class="ss-field">
+              <label class="ss-label" for="ss-merge-pos">第二语言放在</label>
+              <select id="ss-merge-pos" class="ss-select">
+                <option value="below">下面一行</option>
+                <option value="above">上面一行</option>
+              </select>
+            </div>
+            <div class="ss-field">
+              <label class="ss-label" for="ss-merge-ratio">最小重叠比例</label>
+              <input id="ss-merge-ratio" class="ss-input ss-input-num ss-input-mono" type="number" min="0" max="1" step="0.05" value="0.2">
+            </div>
+            <button id="ss-merge-apply" class="ss-btn ss-btn-primary" type="button">合并</button>
+          </div>
+          <div class="ss-mono-out" id="ss-merge-info">还没有第二条字幕。</div>
+        </div>
+      </section>
+
+      <!-- ---- export ---- -->
+      <section class="ss-card" id="ss-panel-export" role="tabpanel" aria-labelledby="ss-tabbtn-export" hidden>
+        <div class="ss-section">
+          <h3 class="ss-section-title">导出</h3>
+          <p class="ss-section-desc">换格式只是换一层外壳，时间与文字都按当前编辑结果重新写。</p>
+          <div class="ss-row-fields">
+            <div class="ss-field">
+              <label class="ss-label" for="ss-export-fmt">目标格式</label>
+              <select id="ss-export-fmt" class="ss-select"></select>
+            </div>
+            <div class="ss-field">
+              <label class="ss-label" for="ss-export-fps">MicroDVD 帧率</label>
+              <select id="ss-export-fps" class="ss-select">
+                <option value="23.976023976023978">23.976 fps</option>
+                <option value="24">24 fps</option>
+                <option value="25">25 fps</option>
+                <option value="29.97002997002997">29.97 fps</option>
+                <option value="30">30 fps</option>
+              </select>
+            </div>
+          </div>
+          <div class="ss-row-fields" style="margin-top:10px">
+            <button id="ss-download" class="ss-btn ss-btn-primary" type="button">下载文件</button>
+            <button id="ss-copy" class="ss-btn" type="button">复制全文</button>
+            <span class="ss-badge" id="ss-export-size">—</span>
+          </div>
+          <p class="ss-hint" id="ss-export-lossy"></p>
+          <div class="ss-mono-out" id="ss-export-preview" style="max-height:300px;overflow:auto">—</div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <footer class="ss-foot">
+    <p><b>怎么判对错：</b>六个解析器与打印器先用 ffmpeg 当标尺校过 —— 随机生成的字幕逐格式互转、与 ffmpeg 的输出逐条比对；本机能找到的 53 份真实字幕（25973 条，大多是 YouTube 自动字幕）解析结果与 ffmpeg 逐条一致；自动对轴用合成音频验过已知偏移。</p>
+    <p><b>都在本地：</b>字幕文本、音频与视频都只在这个页面里读，没有任何上传；编辑状态存在浏览器 localStorage,关掉再打开还在。</p>
+    <p><b>已知边界：</b>ASS 的字体 / 颜色 / 特效在转成 SRT 时会丢（SubRip 没有样式）；LRC 只保留单行歌词；MicroDVD 是按帧计时的，导出时选错帧率会整体偏移。</p>
+  </footer>
+</div>
+<script>
+/* ENGINE-BEGIN */
+/* ===== Subtitle Studio engine — part 1: time codes ===== */
+/* All internal times are integer milliseconds. */
+
+const TC = {};
+
+function pad(n, w) { let s = String(Math.abs(n)); while (s.length < w) s = '0' + s; return s; }
+
+/* HH:MM:SS,mmm (SubRip). Hours may exceed two digits. */
+TC.fmtSrt = function (ms) {
+  const neg = ms < 0; ms = Math.abs(Math.round(ms));
+  const h = Math.floor(ms / 3600000), m = Math.floor(ms / 60000) % 60,
+        s = Math.floor(ms / 1000) % 60, f = ms % 1000;
+  return (neg ? '-' : '') + pad(h, 2) + ':' + pad(m, 2) + ':' + pad(s, 2) + ',' + pad(f, 3);
+};
+
+/* WebVTT: MM:SS.mmm when < 1h, else HH:MM:SS.mmm (ffmpeg's webvtt muxer style). */
+TC.fmtVtt = function (ms, forceHours) {
+  const neg = ms < 0; ms = Math.abs(Math.round(ms));
+  const h = Math.floor(ms / 3600000), m = Math.floor(ms / 60000) % 60,
+        s = Math.floor(ms / 1000) % 60, f = ms % 1000;
+  const tail = pad(m, 2) + ':' + pad(s, 2) + '.' + pad(f, 3);
+  return (neg ? '-' : '') + (h > 0 || forceHours ? pad(h, 2) + ':' : '') + tail;
+};
+
+/* SBV (YouTube): H:MM:SS.mmm */
+TC.fmtSbv = function (ms) {
+  const neg = ms < 0; ms = Math.abs(Math.round(ms));
+  const h = Math.floor(ms / 3600000), m = Math.floor(ms / 60000) % 60,
+        s = Math.floor(ms / 1000) % 60, f = ms % 1000;
+  return (neg ? '-' : '') + h + ':' + pad(m, 2) + ':' + pad(s, 2) + '.' + pad(f, 3);
+};
+
+/* ASS/SSA: H:MM:SS.cc (centiseconds, truncated toward zero like libass writers). */
+TC.fmtAss = function (ms) {
+  let cs = Math.round(ms / 10);
+  if (cs < 0) cs = 0;
+  const h = Math.floor(cs / 360000), m = Math.floor(cs / 6000) % 60,
+        s = Math.floor(cs / 100) % 60, c = cs % 100;
+  return h + ':' + pad(m, 2) + ':' + pad(s, 2) + '.' + pad(c, 2);
+};
+
+/* LRC: [MM:SS.cc] — minutes accumulate past 60. */
+TC.fmtLrc = function (ms) {
+  let cs = Math.round(ms / 10); if (cs < 0) cs = 0;
+  const m = Math.floor(cs / 6000), s = Math.floor(cs / 100) % 60, c = cs % 100;
+  return pad(m, 2) + ':' + pad(s, 2) + '.' + pad(c, 2);
+};
+
+/* Frame <-> ms for frame-based formats (MicroDVD).
+   The 1e-6 nudge keeps exact halves (frame 12 at 24000/1001 = 500.5 ms) rounding
+   up the way ffmpeg's rational arithmetic does — plain float division lands on
+   500.49999999999994 and would round down. */
+TC.msToFrame = function (ms, fps) { return Math.round(ms * fps / 1000); };
+TC.frameToMs = function (fr, fps) { return Math.round(fr * 1000 / fps + 1e-6); };
+
+/* Decimal frame rates in file headers are shorthand for the NTSC rationals;
+   players treat "23.976" as exactly 24000/1001, so snap before doing maths. */
+TC.NTSC_RATES = [[24000 / 1001, 23.976], [30000 / 1001, 29.97], [60000 / 1001, 59.94], [48000 / 1001, 47.952]];
+TC.snapFps = function (fps) {
+  for (const pair of TC.NTSC_RATES) if (Math.abs(fps - pair[1]) < 0.002 || Math.abs(fps - pair[0]) < 0.002) return pair[0];
+  return fps;
+};
+
+/* Lenient timestamp reader: accepts H:MM:SS.mmm / HH:MM:SS,mmm / MM:SS.mmm /
+   SS.mmm, with ',' or '.' or ':' as the fractional separator, 1-3 fraction digits. */
+TC.parseTime = function (str) {
+  if (str == null) return null;
+  const t = String(str).trim();
+  const m = t.match(/^(-)?(?:(\d+):)?(?:(\d{1,3}):)?(\d{1,3})(?:[.,:](\d{1,3}))?$/);
+  if (!m) return null;
+  const sign = m[1] ? -1 : 1;
+  let h = 0, mi = 0, s = 0;
+  if (m[2] != null && m[3] != null) { h = +m[2]; mi = +m[3]; s = +m[4]; }
+  else if (m[3] != null) { mi = +m[3]; s = +m[4]; }
+  else if (m[2] != null) { mi = +m[2]; s = +m[4]; }
+  else { s = +m[4]; }
+  let frac = 0;
+  if (m[5] != null) { const d = m[5]; frac = d.length === 1 ? +d * 100 : d.length === 2 ? +d * 10 : +d; }
+  return sign * (h * 3600000 + mi * 60000 + s * 1000 + frac);
+};
+
+/* ===== part 2: parsers (SRT / WebVTT / ASS-SSA / LRC / MicroDVD / SBV) ===== */
+
+const NBSP = '\u00a0';
+
+function stripBom(s) { return s.charCodeAt(0) === 0xfeff ? s.slice(1) : s; }
+function normNewlines(s) { return stripBom(String(s)).replace(/\r\n?/g, '\n'); }
+
+function newDoc(format) {
+  return {
+    format: format, fps: 25, cues: [], warnings: [],
+    lrcTags: [], ass: null, vttHeader: null,
+  };
+}
+
+function newCue(start, end, text) {
+  return { start: start, end: end, text: text, an: 0, actor: '', style: '', layer: 0 };
+}
+
+/* --- shared inline-tag helpers ------------------------------------------- */
+
+/* Pull a leading/embedded {\anN} out of SRT/VTT-ish text. */
+function extractAn(text) {
+  let an = 0;
+  const out = text.replace(/\{\\an?([1-9])\}/g, function (_m, d) {
+    const v = +d;
+    an = an || v;
+    return '';
+  });
+  return { text: out, an: an };
+}
+
+/* WebVTT cue payloads are HTML-escaped: "&amp;" must come back as "&" (YouTube
+   auto-captions are full of them) and "&nbsp;" as a real non-breaking space. */
+const NAMED_ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: NBSP, lrm: '\u200e', rlm: '\u200f' };
+function decodeEntities(t) {
+  if (t.indexOf('&') < 0) return t;
+  return t.replace(/&(#x?[0-9a-fA-F]+|[a-zA-Z]+);/g, function (m, body) {
+    if (body[0] === '#') {
+      const code = body[1] === 'x' || body[1] === 'X' ? parseInt(body.slice(2), 16) : parseInt(body.slice(1), 10);
+      if (!isFinite(code) || code <= 0 || code > 0x10ffff) return m;
+      try { return String.fromCodePoint(code); } catch (e) { return m; }
+    }
+    const v = NAMED_ENTITIES[body.toLowerCase()];
+    return v == null ? m : v;
+  });
+}
+
+/* SSA legacy alignment (1,2,3 bottom / 5,6,7 top / 9,10,11 middle) -> ASS an. */
+function ssaAlignToAn(v) {
+  const map = { 1: 1, 2: 2, 3: 3, 5: 7, 6: 8, 7: 9, 9: 4, 10: 5, 11: 6 };
+  return map[v] || 0;
+}
+
+/* --- SubRip -------------------------------------------------------------- */
+
+const RE_ARROW = /^(.*?)[ \t]*-{1,3}>[ \t]*([^ \t]+)(.*)$/;
+
+function parseSrt(src) {
+  const doc = newDoc('srt');
+  const lines = normNewlines(src).split('\n');
+  let i = 0;
+  while (i < lines.length) {
+    while (i < lines.length && lines[i].trim() === '') i++;
+    if (i >= lines.length) break;
+    // optional numeric index line
+    let idxLine = -1;
+    if (/^\d+$/.test(lines[i].trim()) && i + 1 < lines.length && lines[i + 1].indexOf('>') >= 0) {
+      idxLine = i; i++;
+    }
+    const tl = lines[i];
+    const m = tl && tl.match(RE_ARROW);
+    if (!m) {
+      doc.warnings.push('第 ' + (i + 1) + ' 行不是时间码,已跳过:' + (tl || '').slice(0, 40));
+      i++;
+      continue;
+    }
+    const start = TC.parseTime(m[1].trim()), end = TC.parseTime(m[2].trim());
+    if (start == null || end == null) {
+      doc.warnings.push('第 ' + (i + 1) + ' 行时间码无法解析,已跳过');
+      i++; continue;
+    }
+    i++;
+    const buf = [];
+    while (i < lines.length && lines[i].trim() !== '') {
+      // a new "index + timecode" pair terminates the block even without a blank line
+      if (/^\d+$/.test(lines[i].trim()) && i + 1 < lines.length && RE_ARROW.test(lines[i + 1])) break;
+      buf.push(lines[i]); i++;
+    }
+    let text = buf.join('\n');
+    let an = 0;
+    // SubRip coordinates (X1:... Y2:...) map to a rough 3x3 alignment, like ffmpeg.
+    const coord = (m[3] || '').match(/X1:\s*(\d+)/);
+    if (coord) an = 5;
+    const ex = extractAn(text);
+    text = ex.text; an = ex.an || an;
+    const c = newCue(start, end, cleanText(text));
+    c.an = an;
+    if (idxLine >= 0) c.srcIndex = +lines[idxLine].trim();
+    doc.cues.push(c);
+  }
+  return finishDoc(doc);
+}
+
+/* --- WebVTT -------------------------------------------------------------- */
+
+function parseVtt(src) {
+  const doc = newDoc('vtt');
+  const raw = normNewlines(src);
+  const lines = raw.split('\n');
+  let i = 0;
+  if (/^WEBVTT/.test(lines[0] || '')) { doc.vttHeader = lines[0]; i = 1; }
+  while (i < lines.length) {
+    while (i < lines.length && lines[i].trim() === '') i++;
+    if (i >= lines.length) break;
+    const head = lines[i].trim();
+    if (/^NOTE\b/.test(head) || /^STYLE$/.test(head) || /^REGION$/.test(head)) {
+      i++;
+      while (i < lines.length && lines[i].trim() !== '') i++;
+      continue;
+    }
+    let cueId = null;
+    if (head.indexOf('>') < 0) { cueId = head; i++; }
+    if (i >= lines.length) break;
+    const m = (lines[i] || '').match(RE_ARROW);
+    if (!m) {
+      doc.warnings.push('第 ' + (i + 1) + ' 行不是 WebVTT 时间码,已跳过');
+      i++; continue;
+    }
+    const start = TC.parseTime(m[1].trim()), end = TC.parseTime(m[2].trim());
+    if (start == null || end == null) { doc.warnings.push('第 ' + (i + 1) + ' 行时间码无法解析'); i++; continue; }
+    const settings = (m[3] || '').trim();
+    i++;
+    const buf = [];
+    while (i < lines.length && lines[i].trim() !== '') { buf.push(lines[i]); i++; }
+    let text = buf.join('\n');
+    let actor = '';
+    text = text.replace(/<v(?:\.[^\s>]+)*\s+([^>]*)>/g, function (_m, who) { actor = who.trim(); return ''; });
+    text = text.replace(/<\/v>/g, '');
+    text = text.replace(/<(?:\d+:)?\d{1,2}:\d{2}\.\d{1,3}>/g, ''); // karaoke timestamps
+    text = text.replace(/<c[^>]*>|<\/c>|<ruby>|<\/ruby>|<rt>|<\/rt>|<lang[^>]*>|<\/lang>/g, '');
+    text = decodeEntities(text);
+    const ex = extractAn(text);
+    const c = newCue(start, end, cleanText(ex.text));
+    c.an = ex.an;
+    c.actor = actor;
+    if (cueId) c.cueId = cueId;
+    if (settings) c.vttSettings = settings;
+    doc.cues.push(c);
+  }
+  return finishDoc(doc);
+}
+
+/* --- ASS / SSA ----------------------------------------------------------- */
+
+function splitFields(line, n) {
+  // Split on commas, but the last field keeps every remaining comma.
+  const out = [];
+  let rest = line;
+  for (let k = 0; k < n - 1; k++) {
+    const p = rest.indexOf(',');
+    if (p < 0) { out.push(rest); rest = ''; }
+    else { out.push(rest.slice(0, p)); rest = rest.slice(p + 1); }
+  }
+  out.push(rest);
+  return out;
+}
+
+function assTextToPlain(t) {
+  let an = 0;
+  let out = '';
+  let i = 0;
+  while (i < t.length) {
+    const ch = t[i];
+    if (ch === '{') {
+      const close = t.indexOf('}', i);
+      if (close < 0) { out += t.slice(i); break; }
+      const block = t.slice(i + 1, close);
+      // alignment
+      let mm = block.match(/\\an([1-9])/);
+      if (mm) an = an || +mm[1];
+      else { mm = block.match(/\\a(\d{1,2})/); if (mm) an = an || ssaAlignToAn(+mm[1]); }
+      // inline style toggles, in the order they appear
+      const re = /\\([ibu])([01])/g;
+      let sm;
+      while ((sm = re.exec(block))) out += (sm[2] === '1' ? '<' : '</') + sm[1] + '>';
+      i = close + 1;
+      continue;
+    }
+    if (ch === '\\' && i + 1 < t.length) {
+      const nx = t[i + 1];
+      if (nx === 'N' || nx === 'n') { out += '\n'; i += 2; continue; }
+      if (nx === 'h') { out += NBSP; i += 2; continue; }
+    }
+    out += ch; i++;
+  }
+  return { text: out, an: an };
+}
+
+function parseAss(src) {
+  const doc = newDoc('ass');
+  doc.ass = { info: [], styleSection: '[V4+ Styles]', styleFormat: null, styles: [], eventFormat: null, wrapStyle: null };
+  const lines = normNewlines(src).split('\n');
+  let section = '';
+  let evFmt = ['Layer', 'Start', 'End', 'Style', 'Name', 'MarginL', 'MarginR', 'MarginV', 'Effect', 'Text'];
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const t = line.trim();
+    if (t === '' ) continue;
+    if (t[0] === '[' && t[t.length - 1] === ']') { section = t.toLowerCase(); if (/styles/.test(section)) doc.ass.styleSection = t; continue; }
+    if (t[0] === ';') continue;
+    const colon = t.indexOf(':');
+    if (colon < 0) continue;
+    const key = t.slice(0, colon).trim();
+    const val = t.slice(colon + 1).trim();
+    if (section.indexOf('script info') >= 0) { doc.ass.info.push(key + ': ' + val); continue; }
+    if (section.indexOf('styles') >= 0) {
+      if (/^Format$/i.test(key)) doc.ass.styleFormat = val;
+      else if (/^Style$/i.test(key)) doc.ass.styles.push(val);
+      continue;
+    }
+    if (section.indexOf('events') >= 0) {
+      if (/^Format$/i.test(key)) {
+        evFmt = val.split(',').map(function (x) { return x.trim(); });
+        doc.ass.eventFormat = val;
+        continue;
+      }
+      if (/^Dialogue$/i.test(key) || /^Comment$/i.test(key)) {
+        if (/^Comment$/i.test(key)) continue;
+        const parts = splitFields(val, evFmt.length);
+        const get = function (name) { const k = evFmt.indexOf(name); return k < 0 ? '' : (parts[k] || '').trim(); };
+        const rawText = (function () { const k = evFmt.indexOf('Text'); return k < 0 ? '' : (parts[k] == null ? '' : parts[k]); })();
+        const start = TC.parseTime(get('Start')), end = TC.parseTime(get('End'));
+        if (start == null || end == null) { doc.warnings.push('第 ' + (i + 1) + ' 行 Dialogue 时间码无法解析'); continue; }
+        const conv = assTextToPlain(rawText);
+        const c = newCue(start, end, cleanText(conv.text));
+        c.an = conv.an;
+        c.style = get('Style');
+        c.actor = get('Name');
+        c.layer = +(get('Layer') || 0) || 0;
+        c.marginL = get('MarginL'); c.marginR = get('MarginR'); c.marginV = get('MarginV');
+        c.effect = get('Effect');
+        doc.cues.push(c);
+      }
+    }
+  }
+  return finishDoc(doc);
+}
+
+/* --- MicroDVD ------------------------------------------------------------ */
+
+function microdvdControls(t) {
+  let an = 0, pre = '', post = '';
+  const text = t.replace(/\{([a-zA-Z]):([^}]*)\}/g, function (_m, k, v) {
+    if (k === 'y' || k === 'Y') {
+      const s = String(v);
+      if (s.indexOf('i') >= 0) { pre += '<i>'; post = '</i>' + post; }
+      if (s.indexOf('b') >= 0) { pre += '<b>'; post = '</b>' + post; }
+      if (s.indexOf('u') >= 0) { pre += '<u>'; post = '</u>' + post; }
+    }
+    return '';
+  });
+  return { text: pre + text + post, an: an };
+}
+
+function parseMicroDvd(src, fps) {
+  const doc = newDoc('microdvd');
+  // MicroDVD carries no frame rate of its own; 24000/1001 is what ffmpeg and the
+  // desktop players assume when the file has no {1}{1}fps header.
+  doc.fps = TC.snapFps(fps || 24000 / 1001);
+  const lines = normNewlines(src).split('\n');
+  let first = true;
+  for (let i = 0; i < lines.length; i++) {
+    const t = lines[i].trim();
+    if (t === '') continue;
+    const m = t.match(/^\{(-?\d+)\}\{(-?\d+)\}(.*)$/);
+    if (!m) { doc.warnings.push('第 ' + (i + 1) + ' 行不是 MicroDVD 格式,已跳过'); continue; }
+    const sf = +m[1], ef = +m[2];
+    let body = m[3];
+    if (first) {
+      first = false;
+      const fm = body.trim().match(/^(\d{1,3}(?:[.,]\d+)?)$/);
+      if (fm && sf <= 1 && ef <= 1) { doc.fps = TC.snapFps(parseFloat(fm[1].replace(',', '.'))); continue; }
+    }
+    const parts = body.split('|').map(function (x) { return microdvdControls(x); });
+    const text = parts.map(function (p) { return p.text; }).join('\n');
+    const c = newCue(TC.frameToMs(sf, doc.fps), TC.frameToMs(ef, doc.fps), cleanText(text));
+    doc.cues.push(c);
+  }
+  return finishDoc(doc);
+}
+
+/* --- LRC ----------------------------------------------------------------- */
+
+function parseLrc(src) {
+  const doc = newDoc('lrc');
+  const lines = normNewlines(src).split('\n');
+  const items = [];
+  let offset = 0;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (line.trim() === '') continue;
+    const tagOnly = line.trim().match(/^\[([a-zA-Z#]+):([^\]]*)\]$/);
+    if (tagOnly) {
+      const k = tagOnly[1].toLowerCase();
+      if (k === 'offset') { offset = parseInt(tagOnly[2], 10) || 0; }
+      doc.lrcTags.push(tagOnly[1] + ':' + tagOnly[2]);
+      continue;
+    }
+    const stamps = [];
+    let rest = line;
+    let m;
+    const re = /^\[(\d{1,4}:\d{1,2}(?:[.:]\d{1,3})?)\]/;
+    while ((m = rest.match(re))) {
+      const ms = TC.parseTime(m[1]);
+      if (ms == null) break;
+      stamps.push(ms);
+      rest = rest.slice(m[0].length);
+    }
+    if (!stamps.length) {
+      if (/^\[/.test(line.trim())) doc.lrcTags.push(line.trim().replace(/^\[|\]$/g, ''));
+      else doc.warnings.push('第 ' + (i + 1) + ' 行没有时间标签,已跳过');
+      continue;
+    }
+    const body = rest.replace(/<\d{1,3}:\d{1,2}(?:[.:]\d{1,3})?>/g, '').trim();
+    for (let k = 0; k < stamps.length; k++) items.push({ t: stamps[k] - offset, text: body });
+  }
+  items.sort(function (a, b) { return a.t - b.t; });
+  for (let i = 0; i < items.length; i++) {
+    // A bare "[mm:ss.xx]" with no words is a terminator, not a lyric: it ends the
+    // previous line and has no duration of its own (ffmpeg agrees).
+    const isLast = i + 1 >= items.length;
+    const end = !isLast ? items[i + 1].t : (items[i].text.trim() === '' ? items[i].t : items[i].t + 4000);
+    doc.cues.push(newCue(items[i].t, end, cleanText(items[i].text)));
+  }
+  return finishDoc(doc);
+}
+
+/* --- SBV (YouTube) ------------------------------------------------------- */
+
+function parseSbv(src) {
+  const doc = newDoc('sbv');
+  const lines = normNewlines(src).split('\n');
+  let i = 0;
+  while (i < lines.length) {
+    while (i < lines.length && lines[i].trim() === '') i++;
+    if (i >= lines.length) break;
+    const m = lines[i].match(/^\s*([\d:.,]+)\s*,\s*([\d:.,]+)\s*$/);
+    if (!m) { doc.warnings.push('第 ' + (i + 1) + ' 行不是 SBV 时间码,已跳过'); i++; continue; }
+    const start = TC.parseTime(m[1]), end = TC.parseTime(m[2]);
+    i++;
+    const buf = [];
+    while (i < lines.length && lines[i].trim() !== '') { buf.push(lines[i]); i++; }
+    if (start == null || end == null) { doc.warnings.push('时间码无法解析,已跳过一条'); continue; }
+    const text = buf.join('\n').replace(/\[br\]/g, '\n');
+    doc.cues.push(newCue(start, end, cleanText(text)));
+  }
+  return finishDoc(doc);
+}
+
+/* --- shared tail --------------------------------------------------------- */
+
+function cleanText(t) {
+  let out = '';
+  for (let i = 0; i < t.length; i++) {
+    const code = t.charCodeAt(i);
+    if (code === 10) { out += '\n'; continue; }
+    if (code < 32 || code === 127) continue; // drop stray control bytes
+    out += t[i];
+  }
+  return out.replace(/[ \t]+$/gm, '').replace(/^\n+|\n+$/g, '');
+}
+
+function finishDoc(doc) {
+  doc.cues.sort(function (a, b) { return a.start - b.start || a.end - b.end; });
+  for (let i = 0; i < doc.cues.length; i++) doc.cues[i].id = i + 1;
+  return doc;
+}
+
+/* --- format detection ---------------------------------------------------- */
+
+function detectFormat(src) {
+  const s = normNewlines(src).slice(0, 8000);
+  if (/^WEBVTT/.test(s.trim())) return 'vtt';
+  if (/^\s*\[Script Info\]/i.test(s) || /^\s*Dialogue:\s/im.test(s) || /\[V4\+? Styles\]/i.test(s)) return 'ass';
+  if (/^\s*\{-?\d+\}\{-?\d+\}/m.test(s)) return 'microdvd';
+  if (/-{1,3}>/.test(s) && /\d{1,3}:\d{2}:\d{2}[.,]\d{1,3}/.test(s)) return 'srt';
+  if (/^\s*\d{1,2}:\d{2}:\d{2}[.,]\d{1,3}\s*,\s*\d{1,2}:\d{2}:\d{2}/m.test(s)) return 'sbv';
+  if (/^\s*\[\d{1,3}:\d{2}(?:[.:]\d{1,3})?\]/m.test(s)) return 'lrc';
+  if (/-{1,3}>/.test(s)) return 'srt';
+  return 'srt';
+}
+
+function parseAny(src, opts) {
+  opts = opts || {};
+  const fmt = opts.format || detectFormat(src);
+  if (fmt === 'vtt') return parseVtt(src);
+  if (fmt === 'ass') return parseAss(src);
+  if (fmt === 'microdvd') return parseMicroDvd(src, opts.fps);
+  if (fmt === 'lrc') return parseLrc(src);
+  if (fmt === 'sbv') return parseSbv(src);
+  return parseSrt(src);
+}
+
+/* ===== part 3: printers ===== */
+
+const DEFAULT_ASS_STYLE_FORMAT =
+  'Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, ' +
+  'Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, ' +
+  'MarginL, MarginR, MarginV, Encoding';
+const DEFAULT_ASS_STYLE = 'Default,Arial,16,&Hffffff,&Hffffff,&H0,&H0,0,0,0,0,100,100,0,0,1,1,0,2,10,10,10,1';
+const DEFAULT_ASS_EVENT_FORMAT = 'Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text';
+
+function anPrefix(an) { return an ? '{\\an' + an + '}' : ''; }
+
+function printSrt(doc) {
+  const out = [];
+  for (let i = 0; i < doc.cues.length; i++) {
+    const c = doc.cues[i];
+    out.push(String(i + 1));
+    out.push(TC.fmtSrt(c.start) + ' --> ' + TC.fmtSrt(c.end));
+    out.push(anPrefix(c.an) + c.text);
+    out.push('');
+  }
+  return out.join('\n');
+}
+
+/* WebVTT payloads are HTML-escaped; the three inline tags we actually emit are
+   re-opened afterwards so they stay live markup rather than literal text. */
+function escapeVtt(t) {
+  return t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/&lt;(\/?[ibu])&gt;/g, '<$1>');
+}
+
+function printVtt(doc) {
+  const out = ['WEBVTT', ''];
+  for (let i = 0; i < doc.cues.length; i++) {
+    const c = doc.cues[i];
+    if (c.cueId) out.push(c.cueId);
+    out.push(TC.fmtVtt(c.start) + ' --> ' + TC.fmtVtt(c.end) + (c.vttSettings ? ' ' + c.vttSettings : ''));
+    const body = (c.actor ? '<v ' + c.actor + '>' : '') + anPrefix(c.an) + escapeVtt(c.text);
+    out.push(body);
+    out.push('');
+  }
+  return out.join('\n');
+}
+
+function plainToAssText(text) {
+  let t = text
+    .replace(/<i>/g, '{\\i1}').replace(/<\/i>/g, '{\\i0}')
+    .replace(/<b>/g, '{\\b1}').replace(/<\/b>/g, '{\\b0}')
+    .replace(/<u>/g, '{\\u1}').replace(/<\/u>/g, '{\\u0}');
+  let out = '';
+  for (let i = 0; i < t.length; i++) {
+    const ch = t[i];
+    if (ch === '\n') { out += '\\N'; continue; }
+    if (ch === NBSP) { out += '\\h'; continue; }
+    out += ch;
+  }
+  return out;
+}
+
+function printAss(doc) {
+  const a = doc.ass || {};
+  const info = (a.info && a.info.length) ? a.info.slice() : ['ScriptType: v4.00+', 'PlayResX: 384', 'PlayResY: 288', 'ScaledBorderAndShadow: yes'];
+  const styleSection = a.styleSection || '[V4+ Styles]';
+  const styleFormat = a.styleFormat || DEFAULT_ASS_STYLE_FORMAT;
+  const styles = (a.styles && a.styles.length) ? a.styles : [DEFAULT_ASS_STYLE];
+  const evFormat = a.eventFormat || DEFAULT_ASS_EVENT_FORMAT;
+  const evFields = evFormat.split(',').map(function (x) { return x.trim(); });
+  const out = ['[Script Info]'];
+  for (let i = 0; i < info.length; i++) out.push(info[i]);
+  out.push('');
+  out.push(styleSection);
+  out.push('Format: ' + styleFormat);
+  for (let i = 0; i < styles.length; i++) out.push('Style: ' + styles[i]);
+  out.push('');
+  out.push('[Events]');
+  out.push('Format: ' + evFormat);
+  for (let i = 0; i < doc.cues.length; i++) {
+    const c = doc.cues[i];
+    const vals = evFields.map(function (f) {
+      switch (f) {
+        case 'Layer': case 'Marked': return String(c.layer || 0);
+        case 'Start': return TC.fmtAss(c.start);
+        case 'End': return TC.fmtAss(c.end);
+        case 'Style': return c.style || 'Default';
+        case 'Name': return c.actor || '';
+        case 'MarginL': return c.marginL || '0';
+        case 'MarginR': return c.marginR || '0';
+        case 'MarginV': return c.marginV || '0';
+        case 'Effect': return c.effect || '';
+        case 'Text': return anPrefix(c.an) + plainToAssText(c.text);
+        default: return '';
+      }
+    });
+    out.push('Dialogue: ' + vals.join(','));
+  }
+  out.push('');
+  return out.join('\n');
+}
+
+function printLrc(doc) {
+  const out = [];
+  for (let i = 0; i < doc.lrcTags.length; i++) out.push('[' + doc.lrcTags[i] + ']');
+  if (doc.lrcTags.length) out.push('');
+  for (let i = 0; i < doc.cues.length; i++) {
+    const c = doc.cues[i];
+    const body = stripInline(c.text).split('\n').join(' ');
+    out.push('[' + TC.fmtLrc(c.start) + ']' + body);
+    const next = doc.cues[i + 1];
+    if (!next || next.start > c.end + 1) out.push('[' + TC.fmtLrc(c.end) + ']');
+  }
+  return out.join('\n') + '\n';
+}
+
+function printMicroDvd(doc, fps) {
+  fps = fps || doc.fps || 25;
+  // ffmpeg's MicroDVD reader parses the header with "%6f" — at most six
+  // characters — so "23.976023976" would silently become 23.976 and a longer
+  // header can even fail its probe. Three decimals is what every player writes.
+  const out = ['{1}{1}' + (fps % 1 === 0 ? String(fps) : fps.toFixed(3))];
+  for (let i = 0; i < doc.cues.length; i++) {
+    const c = doc.cues[i];
+    let body = c.text;
+    let ctrl = '';
+    if (/^<i>[\s\S]*<\/i>$/.test(body.replace(/\n/g, ' ')) ) { ctrl = '{y:i}'; }
+    body = stripInline(body).split('\n').join('|');
+    out.push('{' + TC.msToFrame(c.start, fps) + '}{' + TC.msToFrame(c.end, fps) + '}' + ctrl + body);
+  }
+  return out.join('\n') + '\n';
+}
+
+function printSbv(doc) {
+  const out = [];
+  for (let i = 0; i < doc.cues.length; i++) {
+    const c = doc.cues[i];
+    out.push(TC.fmtSbv(c.start) + ',' + TC.fmtSbv(c.end));
+    out.push(stripInline(c.text));
+    out.push('');
+  }
+  return out.join('\n');
+}
+
+/* Plain-text export: one block per cue, no timing. */
+function printTxt(doc) {
+  const out = [];
+  for (let i = 0; i < doc.cues.length; i++) out.push(stripInline(doc.cues[i].text).split('\n').join(' '));
+  return out.join('\n') + '\n';
+}
+
+function stripInline(t) { return t.replace(/<\/?[ibu]>/g, ''); }
+
+const FORMATS = [
+  { id: 'srt', name: 'SubRip (.srt)', ext: 'srt', mime: 'text/plain' },
+  { id: 'vtt', name: 'WebVTT (.vtt)', ext: 'vtt', mime: 'text/vtt' },
+  { id: 'ass', name: 'ASS / SSA (.ass)', ext: 'ass', mime: 'text/plain' },
+  { id: 'lrc', name: 'LRC 歌词 (.lrc)', ext: 'lrc', mime: 'text/plain' },
+  { id: 'microdvd', name: 'MicroDVD (.sub)', ext: 'sub', mime: 'text/plain' },
+  { id: 'sbv', name: 'SBV / YouTube (.sbv)', ext: 'sbv', mime: 'text/plain' },
+  { id: 'txt', name: '纯文本 (.txt)', ext: 'txt', mime: 'text/plain' },
+];
+
+function printAny(doc, format, opts) {
+  opts = opts || {};
+  switch (format) {
+    case 'vtt': return printVtt(doc);
+    case 'ass': return printAss(doc);
+    case 'lrc': return printLrc(doc);
+    case 'microdvd': return printMicroDvd(doc, opts.fps);
+    case 'sbv': return printSbv(doc);
+    case 'txt': return printTxt(doc);
+    default: return printSrt(doc);
+  }
+}
+
+/* ===== part 4: timing ops, QC engine, auto-fixes, bilingual merge ===== */
+
+function cloneCue(c) {
+  const o = {};
+  for (const k in c) if (Object.prototype.hasOwnProperty.call(c, k)) o[k] = c[k];
+  return o;
+}
+function cloneDoc(doc) {
+  const d = {};
+  for (const k in doc) if (Object.prototype.hasOwnProperty.call(doc, k)) d[k] = doc[k];
+  d.cues = doc.cues.map(cloneCue);
+  d.warnings = (doc.warnings || []).slice();
+  d.lrcTags = (doc.lrcTags || []).slice();
+  if (doc.ass) {
+    d.ass = { info: doc.ass.info.slice(), styleSection: doc.ass.styleSection, styleFormat: doc.ass.styleFormat,
+              styles: doc.ass.styles.slice(), eventFormat: doc.ass.eventFormat };
+  }
+  return d;
+}
+
+function inRange(i, sel) { return !sel || sel.length === 0 || sel.indexOf(i) >= 0; }
+
+/* Shift every (or selected) cue by `ms`; times never go below zero. */
+function shiftDoc(doc, ms, sel) {
+  const d = cloneDoc(doc);
+  for (let i = 0; i < d.cues.length; i++) {
+    if (!inRange(i, sel)) continue;
+    const c = d.cues[i];
+    c.start = Math.max(0, c.start + ms);
+    c.end = Math.max(c.start, c.end + ms);
+  }
+  return reindex(d);
+}
+
+/* t' = factor * t + offset */
+function affineDoc(doc, factor, offset, sel) {
+  const d = cloneDoc(doc);
+  for (let i = 0; i < d.cues.length; i++) {
+    if (!inRange(i, sel)) continue;
+    const c = d.cues[i];
+    c.start = Math.max(0, Math.round(c.start * factor + offset));
+    c.end = Math.max(c.start, Math.round(c.end * factor + offset));
+  }
+  return reindex(d);
+}
+
+/* Two anchor points: source a1 should land on b1, a2 on b2. */
+function linearSync(doc, a1, b1, a2, b2) {
+  if (a2 === a1) return { doc: cloneDoc(doc), factor: 1, offset: b1 - a1, ok: false };
+  const factor = (b2 - b1) / (a2 - a1);
+  const offset = b1 - factor * a1;
+  return { doc: affineDoc(doc, factor, offset), factor: factor, offset: offset, ok: true };
+}
+
+/* Frame-rate conversion: a file authored at `from` fps played at `to` fps. */
+function fpsConvert(doc, from, to) {
+  if (!from || !to) return cloneDoc(doc);
+  return affineDoc(doc, from / to, 0);
+}
+
+/* Snap all times onto exact frame boundaries. */
+function snapToFrames(doc, fps) {
+  const d = cloneDoc(doc);
+  for (const c of d.cues) {
+    c.start = TC.frameToMs(TC.msToFrame(c.start, fps), fps);
+    c.end = TC.frameToMs(TC.msToFrame(c.end, fps), fps);
+  }
+  return reindex(d);
+}
+
+function reindex(d) {
+  d.cues.sort(function (a, b) { return a.start - b.start || a.end - b.end; });
+  for (let i = 0; i < d.cues.length; i++) d.cues[i].id = i + 1;
+  return d;
+}
+
+/* --- reading-speed metrics ------------------------------------------------ */
+
+function visibleText(t) { return stripInline(t).replace(/\{[^}]*\}/g, ''); }
+
+/* Counted characters for CPS: line breaks excluded, everything else counts. */
+function charCount(t) {
+  const v = visibleText(t).replace(/\n/g, '');
+  return Array.from(v).length;
+}
+function isCjk(ch) {
+  const c = ch.codePointAt(0);
+  return (c >= 0x2e80 && c <= 0x9fff) || (c >= 0xf900 && c <= 0xfaff) ||
+         (c >= 0xff00 && c <= 0xffef) || (c >= 0x3000 && c <= 0x303f) ||
+         (c >= 0x20000 && c <= 0x2ebef);
+}
+function cjkRatio(t) {
+  const arr = Array.from(visibleText(t).replace(/\s/g, ''));
+  if (!arr.length) return 0;
+  let n = 0;
+  for (const ch of arr) if (isCjk(ch)) n++;
+  return n / arr.length;
+}
+function cueCps(c) {
+  const dur = (c.end - c.start) / 1000;
+  if (dur <= 0) return Infinity;
+  return charCount(c.text) / dur;
+}
+
+const RULE_PRESETS = {
+  cjk: { name: '中文 / 日文 / 韩文', cps: 9, minDur: 833, maxDur: 7000, gap: 84, lineLen: 16, lineCount: 2 },
+  latin: { name: '英文 / 拉丁语系', cps: 20, minDur: 833, maxDur: 7000, gap: 84, lineLen: 42, lineCount: 2 },
+};
+
+function defaultRulesFor(doc) {
+  let cjk = 0;
+  for (const c of doc.cues) if (cjkRatio(c.text) > 0.3) cjk++;
+  const base = cjk * 2 > doc.cues.length ? RULE_PRESETS.cjk : RULE_PRESETS.latin;
+  const r = {};
+  for (const k in base) r[k] = base[k];
+  r.preset = base === RULE_PRESETS.cjk ? 'cjk' : 'latin';
+  return r;
+}
+
+const ISSUE_META = {
+  reversed: { label: '时间倒挂', sev: 'high', hint: '结束时间不晚于开始时间' },
+  overlap: { label: '重叠', sev: 'high', hint: '与下一条在时间上重叠' },
+  empty: { label: '空白', sev: 'high', hint: '没有可见文字' },
+  cps: { label: '语速过快', sev: 'mid', hint: '每秒字数超过阈值,观众读不完' },
+  minDur: { label: '时长过短', sev: 'mid', hint: '停留时间低于下限' },
+  maxDur: { label: '时长过长', sev: 'low', hint: '停留时间超过上限' },
+  gap: { label: '间隔过小', sev: 'low', hint: '与下一条之间几乎没有间隙,会闪烁' },
+  lineLen: { label: '单行过长', sev: 'mid', hint: '一行字数超过阈值' },
+  lineCount: { label: '行数过多', sev: 'mid', hint: '超过允许的行数' },
+  dupe: { label: '重复', sev: 'low', hint: '与相邻一条文字完全相同' },
+  hi: { label: '听障标记', sev: 'low', hint: '含 [音乐] / (笑声) 一类描述性标记' },
+  spacing: { label: '排版', sev: 'low', hint: '首尾空白 / 中文之间夹空格 / 连续空格' },
+};
+
+function checkDoc(doc, rules) {
+  const issues = [];
+  const cues = doc.cues;
+  for (let i = 0; i < cues.length; i++) {
+    const c = cues[i];
+    const next = cues[i + 1];
+    const vis = visibleText(c.text).trim();
+    const add = function (type, detail) { issues.push({ i: i, type: type, detail: detail }); };
+    if (c.end <= c.start) add('reversed', TC.fmtSrt(c.start) + ' → ' + TC.fmtSrt(c.end));
+    if (!vis.length) add('empty', '');
+    if (next && c.end > next.start) add('overlap', '超出 ' + (c.end - next.start) + ' ms');
+    if (next && c.end <= next.start && next.start - c.end < rules.gap) add('gap', (next.start - c.end) + ' ms');
+    if (c.end > c.start) {
+      const dur = c.end - c.start;
+      if (dur < rules.minDur) add('minDur', dur + ' ms');
+      if (dur > rules.maxDur) add('maxDur', (dur / 1000).toFixed(1) + ' s');
+      const cps = cueCps(c);
+      if (isFinite(cps) && cps > rules.cps) add('cps', cps.toFixed(1) + ' 字/秒');
+    }
+    const lines = visibleText(c.text).split('\n');
+    if (lines.length > rules.lineCount) add('lineCount', lines.length + ' 行');
+    for (const ln of lines) {
+      if (Array.from(ln).length > rules.lineLen) { add('lineLen', Array.from(ln).length + ' 字'); break; }
+    }
+    if (i > 0 && vis && visibleText(cues[i - 1].text).trim() === vis) add('dupe', '');
+    if (/\[[^\]]*\]|\([^)]*\)|^[A-Z一-鿿]{1,12}[:：]\s|[♪♫]/.test(vis)) {
+      if (/\[[^\]]*\]|[♪♫]|^[A-Z]{2,12}[:：]/.test(vis)) add('hi', '');
+    }
+    if (/^\s|\s$/.test(c.text) || /  +/.test(vis) || hasCjkSpaceGap(vis)) add('spacing', '');
+  }
+  return issues;
+}
+
+function hasCjkSpaceGap(t) {
+  const a = Array.from(t);
+  for (let i = 1; i < a.length - 1; i++) {
+    if (a[i] === ' ' && isCjk(a[i - 1]) && isCjk(a[i + 1])) return true;
+  }
+  return false;
+}
+
+function summarizeIssues(issues) {
+  const by = {};
+  for (const it of issues) by[it.type] = (by[it.type] || 0) + 1;
+  return by;
+}
+
+/* --- auto fixes ----------------------------------------------------------- */
+
+const FIXES = [
+  { id: 'reversed', label: '修正时间倒挂', desc: '结束 ≤ 开始的条目,按最短时长补齐' },
+  { id: 'overlap', label: '消除重叠', desc: '把上一条的结束时间收到下一条开始之前' },
+  { id: 'minDur', label: '补足最短时长', desc: '在不撞上下一条的前提下延长停留' },
+  { id: 'maxDur', label: '收敛超长时长', desc: '超过上限的条目截断到上限' },
+  { id: 'gap', label: '规整间隔', desc: '间隔小于阈值时收紧上一条,留出标准间隙' },
+  { id: 'empty', label: '删除空白条', desc: '没有可见文字的条目直接移除' },
+  { id: 'dupe', label: '合并重复条', desc: '相邻且文字完全相同的条目并成一条' },
+  { id: 'hi', label: '去除听障标记', desc: '删掉 [音乐]、(笑声)、♪ 与说话人前缀' },
+  { id: 'spacing', label: '规整排版', desc: '去首尾空白、压缩连续空格、删掉中文之间的空格' },
+  { id: 'lineCount', label: '重排换行', desc: '按标点与长度把文字重新排成不超过上限的行' },
+];
+
+function applyFixes(doc, rules, ids) {
+  let d = cloneDoc(doc);
+  const on = function (x) { return ids.indexOf(x) >= 0; };
+  const changed = {};
+  const bump = function (k) { changed[k] = (changed[k] || 0) + 1; };
+
+  if (on('hi')) {
+    for (const c of d.cues) {
+      let t = c.text;
+      const before = t;
+      t = t.replace(/\[[^\]\n]*\]/g, '');
+      t = t.replace(/[♪♫][^\n♪♫]*[♪♫]/g, '');
+      t = t.replace(/[♪♫]/g, '');
+      t = t.replace(/\([^)\n]*\)/g, function (m) { return /[a-z一-鿿]/.test(m) && m.length <= 20 ? '' : m; });
+      t = t.replace(/^[ \t]*[A-Z][A-Z .'-]{1,14}[:：][ \t]*/gm, '');
+      t = t.split('\n').map(function (x) { return x.replace(/^[ \t]+|[ \t]+$/g, ''); }).join('\n').replace(/\n{2,}/g, '\n');
+      t = t.replace(/^\n+|\n+$/g, '');
+      if (t !== before) { c.text = t; bump('hi'); }
+    }
+  }
+  if (on('spacing')) {
+    for (const c of d.cues) {
+      const before = c.text;
+      let t = c.text.split('\n').map(function (ln) {
+        let s = ln.replace(/[ \t]+/g, ' ').replace(/^ | $/g, '');
+        const a = Array.from(s); const out = [];
+        for (let i = 0; i < a.length; i++) {
+          if (a[i] === ' ' && i > 0 && i < a.length - 1 && isCjk(a[i - 1]) && isCjk(a[i + 1])) continue;
+          out.push(a[i]);
+        }
+        return out.join('');
+      }).join('\n');
+      t = t.replace(/^\n+|\n+$/g, '');
+      if (t !== before) { c.text = t; bump('spacing'); }
+    }
+  }
+  if (on('empty')) {
+    const before = d.cues.length;
+    d.cues = d.cues.filter(function (c) { return visibleText(c.text).trim().length > 0; });
+    if (d.cues.length !== before) changed.empty = before - d.cues.length;
+  }
+  if (on('dupe')) {
+    const out = [];
+    for (const c of d.cues) {
+      const prev = out[out.length - 1];
+      if (prev && visibleText(prev.text).trim() === visibleText(c.text).trim() &&
+          c.start - prev.end <= Math.max(rules.gap * 4, 500)) {
+        prev.end = Math.max(prev.end, c.end); bump('dupe'); continue;
+      }
+      out.push(c);
+    }
+    d.cues = out;
+  }
+  if (on('lineCount')) {
+    for (const c of d.cues) {
+      const before = c.text;
+      const t = rewrap(c.text, rules.lineLen, rules.lineCount);
+      if (t !== before) { c.text = t; bump('lineCount'); }
+    }
+  }
+  if (on('reversed')) {
+    for (const c of d.cues) if (c.end <= c.start) { c.end = c.start + rules.minDur; bump('reversed'); }
+  }
+  if (on('maxDur')) {
+    for (const c of d.cues) if (c.end - c.start > rules.maxDur) { c.end = c.start + rules.maxDur; bump('maxDur'); }
+  }
+  if (on('minDur')) {
+    for (let i = 0; i < d.cues.length; i++) {
+      const c = d.cues[i], next = d.cues[i + 1];
+      if (c.end - c.start >= rules.minDur) continue;
+      let want = c.start + rules.minDur;
+      if (next) want = Math.min(want, Math.max(c.end, next.start - rules.gap));
+      if (want > c.end) { c.end = want; bump('minDur'); }
+    }
+  }
+  if (on('overlap')) {
+    for (let i = 0; i < d.cues.length - 1; i++) {
+      const c = d.cues[i], next = d.cues[i + 1];
+      if (c.end > next.start) {
+        c.end = Math.max(c.start + 1, next.start - rules.gap);
+        bump('overlap');
+      }
+    }
+  }
+  if (on('gap')) {
+    for (let i = 0; i < d.cues.length - 1; i++) {
+      const c = d.cues[i], next = d.cues[i + 1];
+      const g = next.start - c.end;
+      if (g >= 0 && g < rules.gap) { c.end = Math.max(c.start + 1, next.start - rules.gap); bump('gap'); }
+    }
+  }
+  return { doc: reindex(d), changed: changed };
+}
+
+/* Re-wrap a cue body into at most `maxLines` lines of at most `maxLen` chars,
+   preferring to break after punctuation and keeping the lines balanced. */
+function rewrap(text, maxLen, maxLines) {
+  const flat = visibleText(text).split('\n').map(function (s) { return s.trim(); }).filter(Boolean).join(' ')
+    .replace(/  +/g, ' ');
+  const arr = Array.from(flat);
+  if (arr.length <= maxLen) return flat;
+  const lines = [];
+  let rest = arr;
+  while (rest.length && lines.length < maxLines - 1) {
+    const cut = findBreak(rest, maxLen, Math.ceil(rest.length / Math.max(1, maxLines - lines.length)));
+    lines.push(rest.slice(0, cut).join('').replace(/ $/, ''));
+    rest = rest.slice(cut);
+    while (rest.length && rest[0] === ' ') rest = rest.slice(1);
+  }
+  lines.push(rest.join(''));
+  return lines.filter(function (x) { return x.length; }).join('\n');
+}
+
+function findBreak(arr, maxLen, ideal) {
+  const limit = Math.min(maxLen, arr.length - 1);
+  const target = Math.min(Math.max(1, ideal), limit);
+  const punct = '。！？；，、.!?;,:：)）」』】—…';
+  let best = -1, bestScore = -1;
+  for (let i = 1; i <= limit; i++) {
+    const ch = arr[i - 1];
+    let score = 0;
+    if (punct.indexOf(ch) >= 0) score = 3;
+    else if (arr[i] === ' ') score = 2;
+    else if (isCjk(ch)) score = 1;
+    if (score === 0) continue;
+    const penalty = Math.abs(i - target) / Math.max(1, limit);
+    const s = score - penalty * 2;
+    if (s > bestScore) { bestScore = s; best = i; }
+  }
+  return best > 0 ? best : target;
+}
+
+/* --- bilingual merge ------------------------------------------------------ */
+
+function overlapMs(a, b) { return Math.max(0, Math.min(a.end, b.end) - Math.max(a.start, b.start)); }
+
+function mergeBilingual(primary, secondary, opts) {
+  opts = opts || {};
+  const minRatio = opts.minRatio == null ? 0.2 : opts.minRatio;
+  const secondOnTop = !!opts.secondOnTop;
+  const d = cloneDoc(primary);
+  let matched = 0;
+  let bi = 0;
+  const B = secondary.cues;
+  for (const c of d.cues) {
+    while (bi > 0 && B[bi - 1] && B[bi - 1].end > c.start) bi--;
+    while (B[bi] && B[bi].end <= c.start) bi++;
+    let best = null, bestOv = 0;
+    for (let k = bi; k < B.length && B[k].start < c.end; k++) {
+      const ov = overlapMs(c, B[k]);
+      if (ov > bestOv) { bestOv = ov; best = B[k]; }
+    }
+    const span = Math.max(1, c.end - c.start);
+    if (best && bestOv / span >= minRatio) {
+      const other = visibleText(best.text).split('\n').map(function (s) { return s.trim(); }).filter(Boolean).join(' ');
+      const mine = c.text;
+      if (other) {
+        c.text = secondOnTop ? other + '\n' + mine : mine + '\n' + other;
+        matched++;
+      }
+    }
+  }
+  return { doc: reindex(d), matched: matched, total: d.cues.length };
+}
+
+/* --- stats ---------------------------------------------------------------- */
+
+function docStats(doc) {
+  const n = doc.cues.length;
+  let chars = 0, dur = 0, maxCps = 0, minStart = Infinity, maxEnd = 0;
+  for (const c of doc.cues) {
+    chars += charCount(c.text);
+    dur += Math.max(0, c.end - c.start);
+    const cps = cueCps(c);
+    if (isFinite(cps) && cps > maxCps) maxCps = cps;
+    if (c.start < minStart) minStart = c.start;
+    if (c.end > maxEnd) maxEnd = c.end;
+  }
+  return {
+    count: n, chars: chars, onScreenMs: dur, spanMs: n ? maxEnd - Math.min(minStart, maxEnd) : 0,
+    firstMs: n ? minStart : 0, lastMs: maxEnd,
+    avgCps: dur > 0 ? chars / (dur / 1000) : 0, maxCps: maxCps,
+    cjk: n ? doc.cues.reduce(function (a, c) { return a + (cjkRatio(c.text) > 0.3 ? 1 : 0); }, 0) / n : 0,
+  };
+}
+
+/* ===== part 5: audio decode, speech detection, automatic sync ===== */
+
+/* --- RIFF/WAVE decoder (no Web Audio needed for .wav) --------------------- */
+
+function decodeWav(buf) {
+  const dv = new DataView(buf);
+  const u8 = new Uint8Array(buf);
+  const tag = function (o) { return String.fromCharCode(u8[o], u8[o + 1], u8[o + 2], u8[o + 3]); };
+  if (buf.byteLength < 12 || tag(0) !== 'RIFF' || tag(8) !== 'WAVE') throw new Error('不是 WAV 文件');
+  let p = 12, fmt = null, dataOff = -1, dataLen = 0;
+  while (p + 8 <= buf.byteLength) {
+    const id = tag(p);
+    const size = dv.getUint32(p + 4, true);
+    const body = p + 8;
+    if (id === 'fmt ') {
+      let code = dv.getUint16(body, true);
+      const channels = dv.getUint16(body + 2, true);
+      const sampleRate = dv.getUint32(body + 4, true);
+      const bits = dv.getUint16(body + 14, true);
+      if (code === 0xfffe && size >= 40) code = dv.getUint16(body + 24, true);
+      fmt = { code: code, channels: channels, sampleRate: sampleRate, bits: bits };
+    } else if (id === 'data') {
+      dataOff = body;
+      dataLen = Math.min(size, buf.byteLength - body);
+    }
+    p = body + size + (size & 1);
+  }
+  if (!fmt || dataOff < 0) throw new Error('WAV 缺少 fmt 或 data 块');
+  if (fmt.code !== 1 && fmt.code !== 3) throw new Error('只支持 PCM / IEEE float 的 WAV(当前编码 ' + fmt.code + ')');
+  const bytes = fmt.bits >> 3;
+  const frames = Math.floor(dataLen / (bytes * fmt.channels));
+  return { sampleRate: fmt.sampleRate, channels: fmt.channels, bits: fmt.bits, float: fmt.code === 3,
+           dataOffset: dataOff, frames: frames, buffer: buf,
+           durationMs: Math.round(frames / fmt.sampleRate * 1000) };
+}
+
+/* Per-frame RMS envelope straight off the WAV bytes — never materialises the
+   whole PCM array, so a two-hour file stays cheap. */
+function wavEnvelope(wav, fps) {
+  fps = fps || 100;
+  const dv = new DataView(wav.buffer);
+  const bytes = wav.bits >> 3;
+  const stride = bytes * wav.channels;
+  const hop = wav.sampleRate / fps;
+  const nFrames = Math.max(1, Math.floor(wav.frames / hop));
+  const env = new Float32Array(nFrames);
+  let base = wav.dataOffset;
+  const readSample = function (off) {
+    if (wav.float) return wav.bits === 32 ? dv.getFloat32(off, true) : dv.getFloat64(off, true);
+    if (wav.bits === 8) return (dv.getUint8(off) - 128) / 128;
+    if (wav.bits === 16) return dv.getInt16(off, true) / 32768;
+    if (wav.bits === 24) {
+      const a = dv.getUint8(off), b = dv.getUint8(off + 1), c = dv.getInt8(off + 2);
+      return ((c << 16) | (b << 8) | a) / 8388608;
+    }
+    if (wav.bits === 32) return dv.getInt32(off, true) / 2147483648;
+    return 0;
+  };
+  // 64 samples per 10 ms frame is plenty for an RMS envelope and keeps a
+  // two-hour file from turning into 300 million DataView reads.
+  const skip = Math.max(1, Math.floor(hop / 64));
+  for (let f = 0; f < nFrames; f++) {
+    const s0 = Math.floor(f * hop), s1 = Math.min(wav.frames, Math.floor((f + 1) * hop));
+    let acc = 0, n = 0;
+    for (let s = s0; s < s1; s += skip) {
+      const off = base + s * stride;
+      let v = 0;
+      for (let ch = 0; ch < wav.channels; ch++) v += readSample(off + ch * bytes);
+      v /= wav.channels;
+      acc += v * v; n++;
+    }
+    env[f] = n ? Math.sqrt(acc / n) : 0;
+  }
+  return { fps: fps, rms: env, durationMs: Math.round(wav.frames / wav.sampleRate * 1000) };
+}
+
+/* Same envelope, from a Web Audio AudioBuffer (mp3 / m4a / mp4 / ogg …). */
+function bufferEnvelope(audioBuffer, fps) {
+  fps = fps || 100;
+  const sr = audioBuffer.sampleRate;
+  const chans = [];
+  for (let c = 0; c < audioBuffer.numberOfChannels; c++) chans.push(audioBuffer.getChannelData(c));
+  const hop = sr / fps;
+  const total = audioBuffer.length;
+  const nFrames = Math.max(1, Math.floor(total / hop));
+  const env = new Float32Array(nFrames);
+  const skip = Math.max(1, Math.floor(hop / 64));
+  for (let f = 0; f < nFrames; f++) {
+    const s0 = Math.floor(f * hop), s1 = Math.min(total, Math.floor((f + 1) * hop));
+    let acc = 0, n = 0;
+    for (let s = s0; s < s1; s += skip) {
+      let v = 0;
+      for (let c = 0; c < chans.length; c++) v += chans[c][s];
+      v /= chans.length;
+      acc += v * v; n++;
+    }
+    env[f] = n ? Math.sqrt(acc / n) : 0;
+  }
+  return { fps: fps, rms: env, durationMs: Math.round(total / sr * 1000) };
+}
+
+/* --- energy VAD ----------------------------------------------------------- */
+
+function percentile(sorted, p) {
+  if (!sorted.length) return 0;
+  const i = Math.min(sorted.length - 1, Math.max(0, Math.round((sorted.length - 1) * p)));
+  return sorted[i];
+}
+
+/* Adaptive threshold between the noise floor and the loud percentile, then a
+   hangover pass that fills short gaps and drops isolated blips. */
+function detectSpeech(env, opts) {
+  opts = opts || {};
+  const rms = env.rms, n = rms.length;
+  const db = new Float32Array(n);
+  for (let i = 0; i < n; i++) db[i] = 20 * Math.log10(rms[i] + 1e-8);
+  const sorted = Array.prototype.slice.call(db).sort(function (a, b) { return a - b; });
+  const floorDb = percentile(sorted, 0.10);
+  const loudDb = percentile(sorted, 0.95);
+  const frac = opts.sensitivity == null ? 0.35 : opts.sensitivity;
+  let thr = floorDb + (loudDb - floorDb) * frac;
+  if (loudDb - floorDb < 6) thr = loudDb - 3; // near-flat signal: still split something
+  const on = new Uint8Array(n);
+  for (let i = 0; i < n; i++) on[i] = db[i] > thr ? 1 : 0;
+  const fillGap = Math.round((opts.fillGapMs == null ? 200 : opts.fillGapMs) / 1000 * env.fps);
+  const minRun = Math.round((opts.minRunMs == null ? 80 : opts.minRunMs) / 1000 * env.fps);
+  // close short silences
+  let i = 0;
+  while (i < n) {
+    if (on[i]) { i++; continue; }
+    let j = i; while (j < n && !on[j]) j++;
+    if (i > 0 && j < n && j - i <= fillGap) for (let k = i; k < j; k++) on[k] = 1;
+    i = j;
+  }
+  // drop short bursts
+  i = 0;
+  while (i < n) {
+    if (!on[i]) { i++; continue; }
+    let j = i; while (j < n && on[j]) j++;
+    if (j - i < minRun) for (let k = i; k < j; k++) on[k] = 0;
+    i = j;
+  }
+  let voiced = 0;
+  for (let k = 0; k < n; k++) voiced += on[k];
+  return { fps: env.fps, on: on, thresholdDb: thr, floorDb: floorDb, loudDb: loudDb,
+           voicedFrames: voiced, frames: n, durationMs: env.durationMs, rms: rms };
+}
+
+/* --- automatic offset search --------------------------------------------- */
+
+/* Signed prefix sums of (2*speech - 1): summing over a subtitle interval
+   rewards frames with speech and penalises frames without it, which makes the
+   correlation peak far sharper than a plain overlap count. */
+function speechPrefix(sp) {
+  const n = sp.on.length;
+  const pos = new Int32Array(n + 1);
+  const sig = new Int32Array(n + 1);
+  for (let i = 0; i < n; i++) {
+    pos[i + 1] = pos[i] + sp.on[i];
+    sig[i + 1] = sig[i] + (sp.on[i] ? 1 : -1);
+  }
+  return { pos: pos, sig: sig, n: n };
+}
+
+const FPS_RATIOS = [
+  { label: '不变', v: 1 },
+  { label: '23.976 → 25', v: (24000 / 1001) / 25 },
+  { label: '25 → 23.976', v: 25 / (24000 / 1001) },
+  { label: '23.976 → 24', v: (24000 / 1001) / 24 },
+  { label: '24 → 23.976', v: 24 / (24000 / 1001) },
+  { label: '24 → 25', v: 24 / 25 },
+  { label: '25 → 24', v: 25 / 24 },
+  { label: '29.97 → 30', v: (30000 / 1001) / 30 },
+  { label: '30 → 29.97', v: 30 / (30000 / 1001) },
+];
+
+function scoreOffset(intervals, pre, lag, ratio) {
+  let s = 0;
+  const n = pre.n;
+  for (let k = 0; k < intervals.length; k += 2) {
+    let a = Math.round(intervals[k] * ratio) + lag;
+    let b = Math.round(intervals[k + 1] * ratio) + lag;
+    if (b <= 0 || a >= n) continue;
+    if (a < 0) a = 0;
+    if (b > n) b = n;
+    if (b > a) s += pre.sig[b] - pre.sig[a];
+  }
+  return s;
+}
+
+function coverageAt(intervals, pre, lag, ratio) {
+  let hit = 0, tot = 0;
+  const n = pre.n;
+  for (let k = 0; k < intervals.length; k += 2) {
+    let a = Math.round(intervals[k] * ratio) + lag;
+    let b = Math.round(intervals[k + 1] * ratio) + lag;
+    tot += Math.max(0, b - a);
+    if (b <= 0 || a >= n) continue;
+    if (a < 0) a = 0;
+    if (b > n) b = n;
+    if (b > a) hit += pre.pos[b] - pre.pos[a];
+  }
+  return tot > 0 ? hit / tot : 0;
+}
+
+/* Returns the offset (ms) that should be ADDED to the subtitles so they line
+   up with the detected speech, optionally also picking a frame-rate ratio. */
+function autoSync(cues, sp, opts) {
+  opts = opts || {};
+  const fps = sp.fps;
+  const maxLagMs = opts.maxLagMs == null ? 120000 : opts.maxLagMs;
+  const maxLag = Math.round(maxLagMs / 1000 * fps);
+  // Subtitle blocks are seconds wide, so the score curve is smooth at the 10 ms
+  // scale: scan coarsely, then refine around the winner at full resolution.
+  const step = Math.max(1, opts.step || Math.round(fps / 20));
+  const pre = speechPrefix(sp);
+  const intervals = [];
+  for (const c of cues) {
+    if (c.end <= c.start) continue;
+    intervals.push(Math.round(c.start / 1000 * fps), Math.round(c.end / 1000 * fps));
+  }
+  if (!intervals.length || pre.n === 0) return null;
+  const ratios = opts.tryFps ? FPS_RATIOS : [FPS_RATIOS[0]];
+  let best = null;
+  const perRatio = [];
+  for (const r of ratios) {
+    let bs = -Infinity, bl = 0;
+    for (let lag = -maxLag; lag <= maxLag; lag += step) {
+      const s = scoreOffset(intervals, pre, lag, r.v);
+      if (s > bs) { bs = s; bl = lag; }
+    }
+    if (step > 1) {
+      for (let lag = bl - step; lag <= bl + step; lag++) {
+        const s = scoreOffset(intervals, pre, lag, r.v);
+        if (s > bs) { bs = s; bl = lag; }
+      }
+    }
+    const rec = { ratio: r.v, label: r.label, score: bs, lag: bl,
+                  offsetMs: Math.round(bl / fps * 1000),
+                  coverage: coverageAt(intervals, pre, bl, r.v) };
+    perRatio.push(rec);
+    if (!best || rec.score > best.score) best = rec;
+  }
+  // confidence: peak height against the spread of scores away from the peak
+  const around = [];
+  for (let lag = -maxLag; lag <= maxLag; lag += Math.max(1, Math.round(fps / 2))) {
+    around.push(scoreOffset(intervals, pre, lag, best.ratio));
+  }
+  around.sort(function (a, b) { return b - a; });
+  const median = around[Math.floor(around.length / 2)] || 0;
+  const spread = Math.max(1, Math.abs(around[0] - median));
+  const runnerUp = (function () {
+    let m = -Infinity;
+    const guard = Math.max(2, Math.round(fps * 0.5));
+    for (let lag = -maxLag; lag <= maxLag; lag += step) {
+      if (Math.abs(lag - best.lag) <= guard) continue;
+      const s = scoreOffset(intervals, pre, lag, best.ratio);
+      if (s > m) m = s;
+    }
+    return m;
+  })();
+  const conf = best.score <= 0 ? 0 : Math.max(0, Math.min(1, (best.score - runnerUp) / spread));
+  return {
+    offsetMs: best.offsetMs, ratio: best.ratio, ratioLabel: best.label,
+    score: best.score, coverage: best.coverage, confidence: conf,
+    runnerUp: runnerUp, perRatio: perRatio, fps: fps,
+  };
+}
+
+/* --- text encoding sniffing ---------------------------------------------- */
+
+const ENCODING_CANDIDATES = ['utf-8', 'gb18030', 'big5', 'shift_jis', 'euc-kr', 'windows-1252'];
+
+function scoreDecoded(s) {
+  let bad = 0, cjk = 0, ascii = 0, other = 0;
+  for (const ch of s) {
+    const c = ch.codePointAt(0);
+    if (c === 0xfffd) { bad += 1; continue; }
+    if (c < 128) { ascii++; continue; }
+    if ((c >= 0x3000 && c <= 0x9fff) || (c >= 0xac00 && c <= 0xd7af) ||
+        (c >= 0xf900 && c <= 0xfaff) || (c >= 0xff00 && c <= 0xffef)) { cjk++; continue; }
+    if (c >= 0xe000 && c <= 0xf8ff) { bad += 1; continue; }   // private use = almost surely wrong
+    other++;
+  }
+  return ascii * 0.2 + cjk * 1.0 - bad * 12 - other * 1.5;
+}
+
+function sniffEncoding(bytes) {
+  const u8 = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+  if (u8.length >= 3 && u8[0] === 0xef && u8[1] === 0xbb && u8[2] === 0xbf) return { encoding: 'utf-8', bom: true, confident: true };
+  if (u8.length >= 2 && u8[0] === 0xff && u8[1] === 0xfe) return { encoding: 'utf-16le', bom: true, confident: true };
+  if (u8.length >= 2 && u8[0] === 0xfe && u8[1] === 0xff) return { encoding: 'utf-16be', bom: true, confident: true };
+  let best = null;
+  const tried = [];
+  for (const enc of ENCODING_CANDIDATES) {
+    let text;
+    try { text = new TextDecoder(enc, { fatal: false }).decode(u8); } catch (e) { continue; }
+    if (enc === 'utf-8') {
+      try { new TextDecoder('utf-8', { fatal: true }).decode(u8); return { encoding: 'utf-8', bom: false, confident: true, tried: tried }; }
+      catch (e) { tried.push({ enc: enc, score: -Infinity }); continue; }
+    }
+    const sc = scoreDecoded(text);
+    tried.push({ enc: enc, score: sc });
+    if (!best || sc > best.score) best = { encoding: enc, score: sc };
+  }
+  tried.sort(function (a, b) { return b.score - a.score; });
+  return { encoding: best ? best.encoding : 'utf-8', bom: false, confident: false, tried: tried };
+}
+
+/* ===== engine surface ===== */
+const SUBTITLE_ENGINE = {
+  TC, parseAny, parseSrt, parseVtt, parseAss, parseLrc, parseMicroDvd, parseSbv, detectFormat,
+  printAny, printSrt, printVtt, printAss, printLrc, printMicroDvd, printSbv, printTxt, FORMATS,
+  cloneDoc, shiftDoc, affineDoc, linearSync, fpsConvert, snapToFrames, reindex,
+  checkDoc, applyFixes, FIXES, ISSUE_META, RULE_PRESETS, defaultRulesFor, summarizeIssues,
+  mergeBilingual, docStats, cueCps, charCount, cjkRatio, visibleText, rewrap, stripInline,
+  decodeWav, wavEnvelope, bufferEnvelope, detectSpeech, autoSync, FPS_RATIOS, sniffEncoding,
+};
+if (typeof window !== 'undefined') window.SS = SUBTITLE_ENGINE;
+/* ENGINE-END */
+
+/* ===== Subtitle Studio — application layer ===== */
+(function () {
+  const $ = function (id) { return document.getElementById(id); };
+  const E = SUBTITLE_ENGINE;
+  const STORE_KEY = 'ss.subtitle-studio.v1';
+
+  const app = {
+    doc: null, rules: null, issues: [], issuesByCue: new Map(),
+    undo: [], redo: [], selected: new Set(),
+    view: { t0: 0, t1: 60000 },
+    media: null, speech: null, autosync: null,
+    renderLimit: 200, filter: '', tab: 'import', playhead: null,
+  };
+  window.ssApp = app;
+
+  /* ---------------- helpers ---------------- */
+
+  function toast(msg, ms) {
+    const old = document.querySelector('.ss-toast');
+    if (old) old.remove();
+    const el = document.createElement('div');
+    el.className = 'ss-toast';
+    el.setAttribute('role', 'status');
+    el.textContent = msg;
+    document.body.appendChild(el);
+    setTimeout(function () { if (el.parentNode) el.remove(); }, ms || 2600);
+  }
+
+  function fmtDur(ms) {
+    if (!isFinite(ms)) return '—';
+    const s = Math.round(ms / 1000);
+    const h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60, ss = s % 60;
+    return (h ? h + ' 时 ' : '') + (h || m ? m + ' 分 ' : '') + ss + ' 秒';
+  }
+  function fmtBytes(n) {
+    if (n < 1024) return n + ' B';
+    if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+    return (n / 1024 / 1024).toFixed(2) + ' MB';
+  }
+  function escapeHtml(s) {
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+  /* Only <i>/<b>/<u> survive into the video overlay; everything else is escaped. */
+  function overlayHtml(text) {
+    return escapeHtml(text).replace(/&lt;(\/?[ibu])&gt;/g, '<$1>').replace(/\n/g, '<br>');
+  }
+
+  /* ---------------- document lifecycle ---------------- */
+
+  function setDoc(doc, opts) {
+    opts = opts || {};
+    if (app.doc && opts.push !== false) {
+      app.undo.push(E.cloneDoc(app.doc));
+      if (app.undo.length > 40) app.undo.shift();
+      app.redo.length = 0;
+    }
+    app.doc = doc;
+    if (!app.rules || opts.resetRules) app.rules = E.defaultRulesFor(doc);
+    app.selected.clear();
+    recompute();
+    if (opts.fit !== false) fitView();
+    renderAll();
+    save();
+  }
+
+  function recompute() {
+    if (!app.doc) { app.issues = []; app.issuesByCue = new Map(); return; }
+    app.issues = E.checkDoc(app.doc, app.rules);
+    const m = new Map();
+    for (const it of app.issues) {
+      if (!m.has(it.i)) m.set(it.i, []);
+      m.get(it.i).push(it);
+    }
+    app.issuesByCue = m;
+  }
+
+  function pushUndo() { if (app.doc) { app.undo.push(E.cloneDoc(app.doc)); if (app.undo.length > 40) app.undo.shift(); app.redo.length = 0; } }
+
+  function fitView() {
+    const cues = app.doc ? app.doc.cues : [];
+    let hi = 60000;
+    if (cues.length) hi = cues[cues.length - 1].end;
+    if (app.media && app.media.durationMs) hi = Math.max(hi, app.media.durationMs);
+    app.view.t0 = 0;
+    app.view.t1 = Math.max(5000, hi * 1.02);
+  }
+
+  function save() {
+    try {
+      if (!app.doc) return;
+      const payload = { srt: E.printSrt(app.doc), rules: app.rules, fmt: $('ss-export-fmt').value, at: Date.now() };
+      const s = JSON.stringify(payload);
+      if (s.length < 2200000) localStorage.setItem(STORE_KEY, s);
+    } catch (e) { /* private mode or quota — editing still works */ }
+  }
+
+  function restore() {
+    try {
+      const raw = localStorage.getItem(STORE_KEY);
+      if (!raw) return false;
+      const p = JSON.parse(raw);
+      if (!p || !p.srt) return false;
+      const doc = E.parseSrt(p.srt);
+      if (!doc.cues.length) return false;
+      app.rules = p.rules || E.defaultRulesFor(doc);
+      setDoc(doc, { push: false });
+      rulesToInputs();
+      if (p.fmt) $('ss-export-fmt').value = p.fmt;
+      setBadge('ss-fmt-badge', '格式', '上次编辑', '');
+      return true;
+    } catch (e) { return false; }
+  }
+
+  /* ---------------- badges & stats ---------------- */
+
+  function setBadge(id, key, val, cls) {
+    const el = $(id);
+    el.className = 'ss-badge' + (cls ? ' ' + cls : '');
+    el.textContent = key + ' ';
+    const b = document.createElement('b');
+    b.textContent = val;
+    el.appendChild(b);
+  }
+
+  function renderStats() {
+    const d = app.doc;
+    if (!d) return;
+    const st = E.docStats(d);
+    $('ss-st-count').textContent = String(st.count);
+    $('ss-st-span').textContent = st.count ? fmtDur(st.lastMs) : '—';
+    $('ss-st-chars').textContent = String(st.chars);
+    $('ss-st-cps').textContent = st.avgCps ? st.avgCps.toFixed(1) : '—';
+    $('ss-st-issues').textContent = String(app.issues.length);
+    const high = app.issues.filter(function (i) { return E.ISSUE_META[i.type].sev === 'high'; }).length;
+    setBadge('ss-qc-badge', '体检', app.issues.length ? app.issues.length + ' 项' + (high ? ' · 严重 ' + high : '') : '全部通过',
+      app.issues.length === 0 ? 'ss-badge-ok' : high ? 'ss-badge-bad' : 'ss-badge-warn');
+    $('ss-tl-range').textContent = E.TC.fmtSrt(app.view.t0).slice(0, 8) + ' – ' + E.TC.fmtSrt(app.view.t1).slice(0, 8);
+  }
+
+  /* ---------------- canvas timeline ---------------- */
+
+  /* Every fillText on this canvas goes through the placer: it keeps a list of
+     occupied rectangles, walks a list of fallback offsets, refuses to draw
+     outside the canvas, and counts what it had to give up (asserted in tests). */
+  function makePlacer(ctx, w, h) {
+    const boxes = [];
+    const drawn = [];
+    let dropped = 0;
+    function overlaps(r) {
+      for (const b of boxes) {
+        if (r.x1 < b.x2 && r.x2 > b.x1 && r.y1 < b.y2 && r.y2 > b.y1) return true;
+      }
+      return false;
+    }
+    return {
+      reserve: function (x1, y1, x2, y2) { boxes.push({ x1: x1, y1: y1, x2: x2, y2: y2 }); },
+      boxes: boxes,
+      get dropped() { return dropped; },
+      get drawn() { return drawn; },
+      /* opts: {font, color, align:'center'|'left'|'right', offsets:[[dx,dy]…], bg:'#rgb', pad} */
+      text: function (str, x, y, opts) {
+        opts = opts || {};
+        ctx.font = opts.font || '11px ' + MONO;
+        const wpx = ctx.measureText(str).width;
+        const hpx = opts.size || 11;
+        const pad = opts.pad == null ? 2 : opts.pad;
+        const offsets = opts.offsets || [[0, 0]];
+        for (const off of offsets) {
+          const cx = x + off[0], cy = y + off[1];
+          let x1 = cx;
+          if (opts.align === 'center') x1 = cx - wpx / 2;
+          else if (opts.align === 'right') x1 = cx - wpx;
+          const r = { x1: x1 - pad, y1: cy - hpx, x2: x1 + wpx + pad, y2: cy + 3 };
+          if (r.x1 < 0 || r.x2 > w || r.y1 < 0 || r.y2 > h) continue;
+          if (overlaps(r)) continue;
+          if (opts.bg) {
+            ctx.fillStyle = opts.bg;
+            ctx.fillRect(r.x1, r.y1, r.x2 - r.x1, r.y2 - r.y1);
+          }
+          ctx.fillStyle = opts.color || '#8a8f98';
+          ctx.textAlign = 'left';
+          ctx.textBaseline = 'alphabetic';
+          ctx.fillText(str, x1, cy);
+          boxes.push(r);
+          drawn.push({ str: str, x: x1, y: cy, kind: opts.kind || '' });
+          return true;
+        }
+        dropped++;
+        return false;
+      },
+    };
+  }
+
+  const MONO = 'ui-monospace, "SF Mono", Menlo, monospace';
+  const SANS = '"Inter", "SF Pro Display", -apple-system, system-ui, sans-serif';
+
+  const LANES = { ruler: [0, 20], wave: [22, 104], speech: [106, 122], cue: [126, 186], issue: [190, 202] };
+
+  function tickStep(spanMs, px) {
+    const want = spanMs / Math.max(1, px / 90);
+    const steps = [100, 200, 500, 1000, 2000, 5000, 10000, 15000, 30000, 60000, 120000, 300000, 600000, 900000, 1800000, 3600000];
+    for (const s of steps) if (s >= want) return s;
+    return 3600000;
+  }
+
+  function drawTimeline() {
+    const cv = $('ss-timeline');
+    const cssW = cv.clientWidth || 900, cssH = 212;
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    if (cv.width !== Math.round(cssW * dpr) || cv.height !== Math.round(cssH * dpr)) {
+      cv.width = Math.round(cssW * dpr); cv.height = Math.round(cssH * dpr);
+    }
+    const ctx = cv.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, cssW, cssH);
+    ctx.fillStyle = '#010102';
+    ctx.fillRect(0, 0, cssW, cssH);
+
+    const p = makePlacer(ctx, cssW, cssH);
+    window.ssPlacer = p;
+    const t0 = app.view.t0, t1 = app.view.t1, span = Math.max(1, t1 - t0);
+    const X = function (t) { return (t - t0) / span * cssW; };
+
+    /* --- ruler --- */
+    const step = tickStep(span, cssW);
+    ctx.strokeStyle = '#23252a';
+    ctx.lineWidth = 1;
+    const first = Math.ceil(t0 / step) * step;
+    for (let t = first; t <= t1; t += step) {
+      const x = Math.round(X(t)) + 0.5;
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, LANES.ruler[1]); ctx.stroke();
+      const lbl = step >= 60000 ? E.TC.fmtSrt(t).slice(0, 8) : E.TC.fmtSrt(t).slice(3, 8) + (step < 1000 ? E.TC.fmtSrt(t).slice(8, 12) : '');
+      p.text(lbl, x + 4, 14, { color: '#62666d', font: '10px ' + MONO, kind: 'tick' });
+    }
+    ctx.strokeStyle = '#34343a';
+    ctx.beginPath(); ctx.moveTo(0, LANES.ruler[1] + 0.5); ctx.lineTo(cssW, LANES.ruler[1] + 0.5); ctx.stroke();
+
+    /* --- waveform + detected speech --- */
+    const media = app.media;
+    if (media && media.env) {
+      const env = media.env, n = env.rms.length, fps = env.fps;
+      const wy0 = LANES.wave[0], wy1 = LANES.wave[1], mid = (wy0 + wy1) / 2, half = (wy1 - wy0) / 2 - 2;
+      let peak = 0;
+      for (let i = 0; i < n; i++) if (env.rms[i] > peak) peak = env.rms[i];
+      peak = peak || 1;
+      ctx.fillStyle = '#4a4d55';
+      for (let px = 0; px < cssW; px++) {
+        const a = Math.floor((t0 + px / cssW * span) / 1000 * fps);
+        const b = Math.floor((t0 + (px + 1) / cssW * span) / 1000 * fps);
+        let mx = 0;
+        for (let i = Math.max(0, a); i < Math.min(n, Math.max(a + 1, b)); i++) if (env.rms[i] > mx) mx = env.rms[i];
+        if (mx <= 0) continue;
+        const hh = Math.max(1, mx / peak * half);
+        ctx.fillRect(px, mid - hh, 1, hh * 2);
+      }
+      if (app.speech) {
+        const on = app.speech.on;
+        ctx.fillStyle = '#2f6b3c';
+        let i = 0;
+        while (i < on.length) {
+          if (!on[i]) { i++; continue; }
+          let j = i; while (j < on.length && on[j]) j++;
+          const xa = X(i / fps * 1000), xb = X(j / fps * 1000);
+          if (xb >= 0 && xa <= cssW) ctx.fillRect(Math.max(0, xa), LANES.speech[0], Math.max(1, Math.min(cssW, xb) - Math.max(0, xa)), LANES.speech[1] - LANES.speech[0]);
+          i = j;
+        }
+      }
+    } else {
+      ctx.fillStyle = '#18191a';
+      ctx.fillRect(0, LANES.wave[0], cssW, LANES.wave[1] - LANES.wave[0]);
+      p.text('载入音频或视频后，这里显示波形与检测到的人声', cssW / 2, (LANES.wave[0] + LANES.wave[1]) / 2 + 4,
+        { align: 'center', color: '#3e3e44', font: '12px ' + SANS, kind: 'placeholder' });
+    }
+
+    /* --- cue blocks --- */
+    const cues = app.doc ? app.doc.cues : [];
+    const cy0 = LANES.cue[0], cy1 = LANES.cue[1];
+    const labels = [];
+    for (let i = 0; i < cues.length; i++) {
+      const c = cues[i];
+      if (c.end < t0 || c.start > t1) continue;
+      const xa = X(c.start), xb = X(c.end);
+      const w = Math.max(2, xb - xa);
+      const cps = E.cueCps(c);
+      let col = '#5e6ad2';
+      if (isFinite(cps) && app.rules) {
+        if (cps > app.rules.cps * 1.35) col = '#d25e5e';
+        else if (cps > app.rules.cps) col = '#d2a24c';
+      }
+      const sel = app.selected.has(i);
+      ctx.fillStyle = sel ? '#828fff' : col;
+      ctx.globalAlpha = sel ? 1 : 0.86;
+      ctx.fillRect(xa, cy0, w, cy1 - cy0);
+      ctx.globalAlpha = 1;
+      if (sel) { ctx.strokeStyle = '#f7f8f8'; ctx.lineWidth = 1; ctx.strokeRect(Math.round(xa) + 0.5, cy0 + 0.5, Math.round(w) - 1, cy1 - cy0 - 1); }
+      labels.push({ i: i, x: xa + w / 2, w: w });
+    }
+    // Index labels go last so the placer sees every earlier label. A number is
+    // only drawn when it actually fits inside its own block — a label spilling
+    // onto the canvas would be dark-on-dark and unreadable.
+    ctx.font = '600 11px ' + SANS;
+    for (const l of labels) {
+      const str = String(l.i + 1);
+      if (ctx.measureText(str).width + 8 > l.w) continue;
+      p.text(str, l.x, cy0 + 16, { align: 'center', color: '#0b0b0d', font: '600 11px ' + SANS, kind: 'cue', pad: 3 });
+    }
+
+    /* --- issue markers --- */
+    const iy = LANES.issue[0];
+    ctx.fillStyle = '#d25e5e';
+    for (const [i, list] of app.issuesByCue) {
+      const c = cues[i];
+      if (!c || c.end < t0 || c.start > t1) continue;
+      const high = list.some(function (x) { return E.ISSUE_META[x.type].sev === 'high'; });
+      ctx.fillStyle = high ? '#d25e5e' : '#d2a24c';
+      const x = X((c.start + c.end) / 2);
+      ctx.beginPath();
+      ctx.arc(x, iy + 5, 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    /* --- playhead --- */
+    if (app.playhead != null && app.playhead >= t0 && app.playhead <= t1) {
+      const x = Math.round(X(app.playhead)) + 0.5;
+      ctx.strokeStyle = '#f7f8f8';
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, cssH); ctx.stroke();
+      p.text(E.TC.fmtSrt(app.playhead).slice(3, 12), x + 5, cssH - 4,
+        { color: '#f7f8f8', font: '10px ' + MONO, bg: 'rgba(1,1,2,.85)', kind: 'playhead', offsets: [[0, 0], [-70, 0]] });
+    }
+
+    if (!cues.length) {
+      p.text('还没有字幕 —— 导入一个文件，或在右边贴一段文本', cssW / 2, (cy0 + cy1) / 2 + 4,
+        { align: 'center', color: '#62666d', font: '13px ' + SANS, kind: 'placeholder' });
+    }
+  }
+
+  /* ---------------- cue table ---------------- */
+
+  function filteredIdx() {
+    const cues = app.doc ? app.doc.cues : [];
+    const f = app.filter.trim().toLowerCase();
+    const out = [];
+    for (let i = 0; i < cues.length; i++) {
+      if (!f || cues[i].text.toLowerCase().indexOf(f) >= 0) out.push(i);
+    }
+    return out;
+  }
+
+  function renderTable() {
+    const tb = $('ss-tbody');
+    const idx = filteredIdx();
+    const show = idx.slice(0, app.renderLimit);
+    const frag = document.createDocumentFragment();
+    for (const i of show) frag.appendChild(rowFor(i));
+    tb.textContent = '';
+    tb.appendChild(frag);
+    const note = $('ss-more-note');
+    if (idx.length > show.length) {
+      note.hidden = false;
+      note.textContent = '已显示 ' + show.length + ' / ' + idx.length + ' 条，继续向下滚动会加载更多。';
+    } else {
+      note.hidden = true;
+    }
+    $('ss-table-note').textContent = app.doc && app.doc.cues.length
+      ? '共 ' + app.doc.cues.length + ' 条' + (app.filter ? ',筛出 ' + idx.length + ' 条' : '') + ' · 时间码与文字都可直接编辑'
+      : '时间码可直接改，文字可直接编辑';
+  }
+
+  function rowFor(i) {
+    const c = app.doc.cues[i];
+    const tr = document.createElement('tr');
+    tr.className = 'ss-row' + (app.selected.has(i) ? ' ss-sel' : '');
+    tr.dataset.i = String(i);
+
+    const tdI = document.createElement('td');
+    tdI.className = 'ss-idx';
+    tdI.textContent = String(i + 1);
+    tr.appendChild(tdI);
+
+    for (const which of ['start', 'end']) {
+      const td = document.createElement('td');
+      const inp = document.createElement('input');
+      inp.className = 'ss-tc-input ss-tc-' + which;
+      inp.value = E.TC.fmtSrt(c[which]);
+      inp.setAttribute('aria-label', (which === 'start' ? '第 ' : '第 ') + (i + 1) + ' 条' + (which === 'start' ? '开始' : '结束') + '时间');
+      inp.addEventListener('change', function () { onTimeEdit(i, which, inp); });
+      td.appendChild(inp);
+      tr.appendChild(td);
+    }
+
+    const tdT = document.createElement('td');
+    const ta = document.createElement('textarea');
+    ta.className = 'ss-cue-text';
+    ta.rows = Math.min(4, c.text.split('\n').length);
+    ta.value = c.text;
+    ta.spellcheck = false;
+    ta.setAttribute('aria-label', '第 ' + (i + 1) + ' 条文字');
+    ta.addEventListener('input', function () { onTextEdit(i, ta.value); ta.rows = Math.min(4, ta.value.split('\n').length); });
+    tdT.appendChild(ta);
+    tr.appendChild(tdT);
+
+    const tdC = document.createElement('td');
+    const cps = E.cueCps(c);
+    tdC.className = 'ss-cps' + (!isFinite(cps) || (app.rules && cps > app.rules.cps * 1.35) ? ' ss-cps-bad'
+      : (app.rules && cps > app.rules.cps) ? ' ss-cps-warn' : '');
+    tdC.textContent = isFinite(cps) ? cps.toFixed(1) : '∞';
+    tr.appendChild(tdC);
+
+    const tdF = document.createElement('td');
+    const box = document.createElement('div');
+    box.className = 'ss-flags';
+    const list = app.issuesByCue.get(i) || [];
+    const seen = {};
+    for (const it of list) {
+      if (seen[it.type]) continue;
+      seen[it.type] = 1;
+      const meta = E.ISSUE_META[it.type];
+      const s = document.createElement('span');
+      s.className = 'ss-flag ss-flag-' + meta.sev;
+      s.textContent = meta.label;
+      s.title = meta.hint + (it.detail ? ' · ' + it.detail : '');
+      box.appendChild(s);
+    }
+    tdF.appendChild(box);
+    tr.appendChild(tdF);
+
+    tr.addEventListener('click', function (ev) {
+      if (ev.target.tagName === 'INPUT' || ev.target.tagName === 'TEXTAREA') return;
+      selectCue(i, ev.shiftKey || ev.metaKey || ev.ctrlKey);
+    });
+    return tr;
+  }
+
+  function onTimeEdit(i, which, inp) {
+    const ms = E.TC.parseTime(inp.value);
+    const c = app.doc.cues[i];
+    if (ms == null || ms < 0) {
+      inp.value = E.TC.fmtSrt(c[which]);
+      toast('时间码看不懂：' + inp.value + ' —— 用 00:00:01,500 这样的写法');
+      return;
+    }
+    pushUndo();
+    c[which] = ms;
+    if (c.end < c.start) c.end = c.start;
+    // Re-sort straight away: every export and every re-import orders cues by
+    // start time, so a table that kept the old order would disagree with the
+    // file the user is about to download.
+    E.reindex(app.doc);
+    app.selected.clear();
+    app.selected.add(app.doc.cues.indexOf(c));
+    recompute();
+    renderAll();
+    save();
+  }
+
+  let textTimer = null;
+  function onTextEdit(i, val) {
+    app.doc.cues[i].text = val;
+    clearTimeout(textTimer);
+    textTimer = setTimeout(function () {
+      recompute();
+      drawTimeline();
+      renderStats();
+      renderIssues();
+      renderExport();
+      save();
+    }, 220);
+  }
+
+  function selectCue(i, additive) {
+    if (!additive) app.selected.clear();
+    if (app.selected.has(i)) app.selected.delete(i); else app.selected.add(i);
+    for (const tr of document.querySelectorAll('.ss-row')) {
+      tr.classList.toggle('ss-sel', app.selected.has(+tr.dataset.i));
+    }
+    drawTimeline();
+  }
+
+  function revealCue(i) {
+    if (i >= app.renderLimit) { app.renderLimit = Math.ceil((i + 40) / 200) * 200; renderTable(); }
+    app.selected.clear(); app.selected.add(i);
+    for (const tr of document.querySelectorAll('.ss-row')) tr.classList.toggle('ss-sel', app.selected.has(+tr.dataset.i));
+    const row = document.querySelector('.ss-row[data-i="' + i + '"]');
+    if (row) row.scrollIntoView({ block: 'center' });
+    const c = app.doc.cues[i];
+    if (c) {
+      const span = app.view.t1 - app.view.t0;
+      if (c.start < app.view.t0 || c.end > app.view.t1) {
+        const mid = (c.start + c.end) / 2;
+        app.view.t0 = Math.max(0, mid - span / 2);
+        app.view.t1 = app.view.t0 + span;
+      }
+    }
+    drawTimeline();
+  }
+
+  /* ---------------- issues & fixes ---------------- */
+
+  function renderIssues() {
+    const ul = $('ss-issues');
+    ul.textContent = '';
+    const sum = $('ss-issue-summary');
+    if (!app.doc) { sum.textContent = '还没有载入字幕。'; return; }
+    if (!app.issues.length) {
+      sum.textContent = '按当前规范，' + app.doc.cues.length + ' 条字幕全部通过。';
+      const li = document.createElement('li');
+      li.className = 'ss-empty';
+      li.textContent = '没有发现问题';
+      ul.appendChild(li);
+      return;
+    }
+    const by = E.summarizeIssues(app.issues);
+    const parts = Object.keys(by).sort(function (a, b) { return by[b] - by[a]; })
+      .map(function (k) { return E.ISSUE_META[k].label + ' ' + by[k]; });
+    sum.textContent = '共 ' + app.issues.length + ' 项：' + parts.join(' · ');
+    const order = { high: 0, mid: 1, low: 2 };
+    const sorted = app.issues.slice().sort(function (a, b) {
+      return order[E.ISSUE_META[a.type].sev] - order[E.ISSUE_META[b.type].sev] || a.i - b.i;
+    }).slice(0, 300);
+    for (const it of sorted) {
+      const meta = E.ISSUE_META[it.type];
+      const li = document.createElement('li');
+      li.className = 'ss-issue ss-issue-' + meta.sev;
+      li.tabIndex = 0;
+      li.dataset.i = String(it.i);
+      li.dataset.type = it.type;
+      const a = document.createElement('span'); a.className = 'ss-issue-i'; a.textContent = '#' + (it.i + 1);
+      const b = document.createElement('span'); b.className = 'ss-issue-label'; b.textContent = meta.label;
+      const c = document.createElement('span'); c.className = 'ss-issue-text';
+      const cue = app.doc.cues[it.i];
+      c.textContent = (it.detail ? it.detail + ' · ' : '') + (cue ? E.visibleText(cue.text).split('\n').join(' ') : '');
+      li.appendChild(a); li.appendChild(b); li.appendChild(c);
+      li.addEventListener('click', function () { revealCue(it.i); });
+      li.addEventListener('keydown', function (ev) { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); revealCue(it.i); } });
+      ul.appendChild(li);
+    }
+  }
+
+  function buildFixList() {
+    const box = $('ss-fix-list');
+    box.textContent = '';
+    for (const f of E.FIXES) {
+      const label = document.createElement('label');
+      label.className = 'ss-check';
+      label.setAttribute('for', 'ss-fix-' + f.id);
+      const inp = document.createElement('input');
+      inp.type = 'checkbox';
+      inp.id = 'ss-fix-' + f.id;
+      inp.dataset.fix = f.id;
+      inp.checked = ['reversed', 'overlap', 'minDur', 'gap', 'empty', 'spacing'].indexOf(f.id) >= 0;
+      const body = document.createElement('span');
+      body.className = 'ss-check-body';
+      const t = document.createElement('span'); t.className = 'ss-check-title'; t.textContent = f.label;
+      const d = document.createElement('span'); d.className = 'ss-check-desc'; d.textContent = f.desc;
+      body.appendChild(t); body.appendChild(document.createElement('br')); body.appendChild(d);
+      label.appendChild(inp); label.appendChild(body);
+      box.appendChild(label);
+    }
+  }
+
+  function applyFixes() {
+    if (!app.doc) { toast('先载入字幕'); return; }
+    const ids = Array.prototype.slice.call(document.querySelectorAll('#ss-fix-list input:checked'))
+      .map(function (x) { return x.dataset.fix; });
+    if (!ids.length) { toast('先勾选要修的项'); return; }
+    const before = app.issues.length;
+    const r = E.applyFixes(app.doc, app.rules, ids);
+    setDoc(r.doc, { fit: false });
+    const lines = Object.keys(r.changed).map(function (k) {
+      const f = E.FIXES.filter(function (x) { return x.id === k; })[0];
+      return (f ? f.label : k) + ' ×' + r.changed[k];
+    });
+    const out = $('ss-fix-result');
+    out.hidden = false;
+    out.textContent = lines.length
+      ? lines.join('\n') + '\n体检项 ' + before + ' → ' + app.issues.length
+      : '没有需要改的地方（体检项 ' + app.issues.length + '）';
+  }
+
+  /* ---------------- rules ---------------- */
+
+  const RULE_INPUTS = { cps: 'ss-rule-cps', minDur: 'ss-rule-mindur', maxDur: 'ss-rule-maxdur',
+                        gap: 'ss-rule-gap', lineLen: 'ss-rule-linelen', lineCount: 'ss-rule-linecount' };
+
+  function rulesToInputs() {
+    for (const k in RULE_INPUTS) $(RULE_INPUTS[k]).value = String(app.rules[k]);
+    if (app.rules.preset) $('ss-preset').value = app.rules.preset;
+  }
+  function inputsToRules() {
+    for (const k in RULE_INPUTS) {
+      const v = parseFloat($(RULE_INPUTS[k]).value);
+      if (isFinite(v) && v >= 0) app.rules[k] = v;
+    }
+    recompute();
+    renderAll();
+    save();
+  }
+
+  /* ---------------- two-point stretch ---------------- */
+
+  function linearValues() {
+    const a1 = E.TC.parseTime($('ss-a1').value), b1 = E.TC.parseTime($('ss-b1').value);
+    const a2 = E.TC.parseTime($('ss-a2').value), b2 = E.TC.parseTime($('ss-b2').value);
+    if (a1 == null || b1 == null || a2 == null || b2 == null) return null;
+    if (a1 === a2) return null;
+    return { a1: a1, b1: b1, a2: a2, b2: b2 };
+  }
+
+  function updateLinearInfo() {
+    const v = linearValues();
+    const box = $('ss-linear-info');
+    if (!v) { box.textContent = '四个时间码都要能看懂，且两个锚点不能是同一时刻。'; return; }
+    const factor = (v.b2 - v.b1) / (v.a2 - v.a1);
+    const offset = v.b1 - factor * v.a1;
+    const drift = (factor - 1) * 60000;
+    box.textContent =
+      '倍率 ' + factor.toFixed(6) + ' · 偏移 ' + Math.round(offset) + ' ms\n' +
+      '效果：每分钟' + (drift >= 0 ? '推后 ' : '提前 ') + Math.abs(drift / 1000).toFixed(2) + ' 秒' +
+      (Math.abs(factor - 1) < 1e-9 ? '（纯平移）' : '');
+  }
+
+  /* ---------------- export ---------------- */
+
+  function currentExportText() {
+    if (!app.doc) return '';
+    return E.printAny(app.doc, $('ss-export-fmt').value, { fps: parseFloat($('ss-export-fps').value) });
+  }
+
+  const LOSSY = {
+    lrc: 'LRC 只有开始时间与单行文字：多行会并成一行，样式会丢。',
+    microdvd: 'MicroDVD 按帧计时：导出用的帧率必须和片源一致，否则整体偏移。',
+    sbv: 'SBV 不支持样式标记，斜体等会被去掉。',
+    txt: '纯文本只保留文字，时间轴全部丢弃。',
+    srt: 'SubRip 只保留 <i>/<b>/<u> 与位置，ASS 的字体、颜色、特效会丢。',
+    ass: 'ASS 会保留导入时的样式表；从 SRT 来的内容使用默认样式。',
+    vtt: 'WebVTT 保留行内标记与 cue 设置。',
+  };
+
+  function renderExport() {
+    if (!app.doc) return;
+    const txt = currentExportText();
+    const pre = $('ss-export-preview');
+    pre.textContent = txt.length > 4000 ? txt.slice(0, 4000) + '\n…（预览截断，下载的是完整文件）' : (txt || '—');
+    $('ss-export-size').textContent = fmtBytes(new Blob([txt]).size) + ' · ' + app.doc.cues.length + ' 条';
+    $('ss-export-lossy').textContent = LOSSY[$('ss-export-fmt').value] || '';
+  }
+
+  function download() {
+    if (!app.doc) { toast('先载入字幕'); return; }
+    const fmt = $('ss-export-fmt').value;
+    const meta = E.FORMATS.filter(function (f) { return f.id === fmt; })[0] || E.FORMATS[0];
+    const txt = currentExportText();
+    const blob = new Blob([txt], { type: meta.mime + ';charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'subtitle.' + meta.ext;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+    toast('已导出 ' + meta.name);
+  }
+
+  /* ---------------- loading subtitles ---------------- */
+
+  function loadText(text, opts) {
+    opts = opts || {};
+    const fmt = opts.format || $('ss-force-fmt').value || E.detectFormat(text);
+    const fps = parseFloat($('ss-src-fps').value) || 25;
+    const doc = E.parseAny(text, { format: fmt, fps: fps });
+    if (!doc.cues.length) {
+      toast('没解析出任何字幕条目 —— 检查一下格式或换个「按格式解析」试试');
+      renderWarnings(doc, opts.encoding);
+      return false;
+    }
+    app.rules = E.defaultRulesFor(doc);
+    setDoc(doc, { push: app.doc != null });
+    rulesToInputs();
+    const fmtName = (E.FORMATS.filter(function (f) { return f.id === doc.format; })[0] || {}).name || doc.format;
+    setBadge('ss-fmt-badge', '格式', fmtName.replace(/\s*\(.*\)/, ''), 'ss-badge-accent');
+    setBadge('ss-enc-badge', '编码', opts.encoding || 'UTF-8', '');
+    renderWarnings(doc, opts.encoding);
+    if (doc.format === 'microdvd') {
+      $('ss-src-fps').value = String(doc.fps);
+      $('ss-export-fps').value = String(doc.fps);
+    }
+    return true;
+  }
+
+  function renderWarnings(doc, encoding) {
+    const box = $('ss-warnings');
+    const lines = [];
+    lines.push('识别格式：' + doc.format.toUpperCase() + (doc.format === 'microdvd' ? '（' + doc.fps.toFixed(3) + ' fps）' : ''));
+    lines.push('文本编码：' + (encoding || 'UTF-8'));
+    lines.push('解析条目：' + doc.cues.length + ' 条');
+    if (doc.cues.length) {
+      lines.push('时间范围：' + E.TC.fmtSrt(doc.cues[0].start) + ' → ' + E.TC.fmtSrt(doc.cues[doc.cues.length - 1].end));
+    }
+    if (doc.warnings && doc.warnings.length) {
+      lines.push('');
+      lines.push('跳过 ' + doc.warnings.length + ' 处：');
+      for (const w of doc.warnings.slice(0, 12)) lines.push('  · ' + w);
+      if (doc.warnings.length > 12) lines.push('  · …还有 ' + (doc.warnings.length - 12) + ' 处');
+    } else {
+      lines.push('没有跳过任何行。');
+    }
+    box.textContent = lines.join('\n');
+  }
+
+  async function readSubtitleFile(file) {
+    const buf = await file.arrayBuffer();
+    const sn = E.sniffEncoding(new Uint8Array(buf));
+    let text;
+    try {
+      text = new TextDecoder(sn.encoding).decode(buf);
+    } catch (e) {
+      text = new TextDecoder('utf-8').decode(buf);
+    }
+    if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
+    return { text: text, encoding: sn.encoding.toUpperCase() + (sn.bom ? ' (BOM)' : sn.confident ? '' : ' · 嗅探') };
+  }
+
+  /* ---------------- media & auto sync ---------------- */
+
+  async function loadMedia(file) {
+    const isVideo = /^video\//.test(file.type) || /\.(mp4|mkv|webm|mov|avi)$/i.test(file.name);
+    const url = URL.createObjectURL(file);
+    if (app.media && app.media.url) URL.revokeObjectURL(app.media.url);
+    app.media = { url: url, name: file.name, isVideo: isVideo, env: null, durationMs: 0 };
+    app.speech = null;
+    app.autosync = null;
+    $('ss-media-name').textContent = file.name;
+    $('ss-video-card').hidden = false;
+    document.querySelector('.ss-video-wrap').classList.toggle('ss-audio-only', !isVideo);
+    $('ss-overlay').hidden = !isVideo;
+    document.querySelector('#ss-video-card .ss-card-title').textContent = isVideo ? '画面预览' : '音频';
+    const v = $('ss-video');
+    v.src = url;
+    $('ss-autosync-result').textContent = '正在读取音频…';
+    $('ss-autosync-run').disabled = true;
+    $('ss-autosync-apply').disabled = true;
+    drawTimeline();
+
+    let env = null, err = null;
+    const buf = await file.arrayBuffer();
+    try {
+      if (/\.wav$/i.test(file.name) || file.type === 'audio/wav' || file.type === 'audio/x-wav') {
+        const wav = E.decodeWav(buf);
+        env = E.wavEnvelope(wav, 100);
+      } else {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        const ac = new AC();
+        const audio = await ac.decodeAudioData(buf.slice(0));
+        env = E.bufferEnvelope(audio, 100);
+        ac.close();
+      }
+    } catch (e) {
+      err = e && e.message ? e.message : String(e);
+    }
+    if (!env) {
+      $('ss-autosync-result').textContent = '这个文件的音轨浏览器解不开（' + (err || '未知原因') +
+        '）。\n画面预览仍然可用；自动对轴可以先用 ffmpeg 抽一段 wav 再来。';
+      return;
+    }
+    app.media.env = env;
+    app.media.durationMs = env.durationMs;
+    app.speech = E.detectSpeech(env);
+    $('ss-autosync-run').disabled = false;
+    $('ss-autosync-result').textContent =
+      '音频时长 ' + fmtDur(env.durationMs) + '\n' +
+      '判为人声 ' + fmtDur(app.speech.voicedFrames * 10) +
+      '（占 ' + (app.speech.voicedFrames / app.speech.frames * 100).toFixed(1) + '%）\n' +
+      '判定门槛 ' + app.speech.thresholdDb.toFixed(1) + ' dB（底噪 ' + app.speech.floorDb.toFixed(1) +
+      ' / 峰值 ' + app.speech.loudDb.toFixed(1) + '）\n\n点「开始分析」找偏移。';
+    fitView();
+    drawTimeline();
+    renderStats();
+  }
+
+  function runAutoSync() {
+    if (!app.doc || !app.speech) { toast('先载入字幕和音频'); return; }
+    const btn = $('ss-autosync-run');
+    btn.disabled = true;
+    btn.textContent = '分析中…';
+    setTimeout(function () {
+      const tryFps = $('ss-autosync-fps').checked;
+      const r = E.autoSync(app.doc.cues, app.speech, { maxLagMs: 180000, tryFps: tryFps });
+      btn.disabled = false;
+      btn.textContent = '开始分析';
+      if (!r) { $('ss-autosync-result').textContent = '没法分析：字幕或音频是空的。'; return; }
+      app.autosync = r;
+      const lines = [];
+      lines.push('建议偏移  ' + (r.offsetMs >= 0 ? '+' : '') + (r.offsetMs / 1000).toFixed(3) + ' 秒');
+      if (Math.abs(r.ratio - 1) > 1e-6) lines.push('建议拉伸  ×' + r.ratio.toFixed(6) + '(' + r.ratioLabel + ')');
+      lines.push('人声覆盖  ' + (r.coverage * 100).toFixed(1) + '%（字幕落在人声上的比例）');
+      lines.push('把握程度  ' + (r.confidence * 100).toFixed(0) + '%');
+      if (tryFps) {
+        lines.push('');
+        lines.push('各帧率候选（分数越高越好）：');
+        const sorted = r.perRatio.slice().sort(function (a, b) { return b.score - a.score; }).slice(0, 4);
+        for (const c of sorted) {
+          lines.push('  ' + (c.label + '            ').slice(0, 12) + ' 偏移 ' +
+            (c.offsetMs / 1000).toFixed(2) + 's  分数 ' + c.score);
+        }
+      }
+      if (r.confidence < 0.15) lines.push('\n把握不高：可能音频里人声很少，或字幕本来就对不上这条音轨。');
+      $('ss-autosync-result').textContent = lines.join('\n');
+      $('ss-autosync-apply').disabled = false;
+    }, 20);
+  }
+
+  function applyAutoSync() {
+    if (!app.autosync || !app.doc) return;
+    const r = app.autosync;
+    const doc = Math.abs(r.ratio - 1) > 1e-9
+      ? E.affineDoc(app.doc, r.ratio, r.offsetMs)
+      : E.shiftDoc(app.doc, r.offsetMs);
+    setDoc(doc, { fit: false });
+    toast('已应用：偏移 ' + (r.offsetMs / 1000).toFixed(3) + ' 秒' +
+      (Math.abs(r.ratio - 1) > 1e-9 ? ' · 拉伸 ×' + r.ratio.toFixed(6) : ''));
+    $('ss-autosync-apply').disabled = true;
+  }
+
+  /* ---------------- video overlay ---------------- */
+
+  function cueAt(ms) {
+    const cues = app.doc ? app.doc.cues : [];
+    let lo = 0, hi = cues.length - 1, best = -1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if (cues[mid].start <= ms) { best = mid; lo = mid + 1; } else hi = mid - 1;
+    }
+    for (let i = best; i >= 0 && i >= best - 4; i--) {
+      if (cues[i] && cues[i].start <= ms && ms < cues[i].end) return cues[i];
+    }
+    return null;
+  }
+
+  function onTimeUpdate() {
+    const v = $('ss-video');
+    const ms = v.currentTime * 1000;
+    app.playhead = ms;
+    const c = cueAt(ms);
+    const ov = $('ss-overlay');
+    ov.innerHTML = c ? overlayHtml(c.text) : '';
+    ov.classList.toggle('ss-top', !!(c && c.an >= 7));
+    drawTimeline();
+  }
+
+  /* ---------------- panels / tabs ---------------- */
+
+  function setTab(name) {
+    app.tab = name;
+    for (const b of document.querySelectorAll('.ss-tab')) {
+      const on = b.dataset.tab === name;
+      b.classList.toggle('ss-tab-on', on);
+      b.setAttribute('aria-selected', on ? 'true' : 'false');
+    }
+    for (const id of ['import', 'sync', 'qc', 'merge', 'export']) {
+      $('ss-panel-' + id).hidden = id !== name;
+    }
+  }
+
+  function renderAll() {
+    renderStats();
+    renderTable();
+    renderIssues();
+    renderExport();
+    drawTimeline();
+    $('ss-undo').disabled = !app.undo.length;
+    $('ss-redo').disabled = !app.redo.length;
+  }
+
+  /* ---------------- sample ---------------- */
+
+  const SAMPLE = [
+    '1', '00:00:02,000 --> 00:00:04,100', '[轻快的片头音乐]', '',
+    '2', '00:00:04,000 --> 00:00:06,320', '你有没有想过，', '为什么下载来的字幕总是差半秒？', '',
+    '3', '00:00:06,320 --> 00:00:06,700', '因为片源版本不一样啊，发行商在不同地区用的帧率根本不是一回事', '',
+    '4', '00:00:07,900 --> 00:00:10,400', 'NARRATOR: 25 帧和 23.976 帧，', '每分钟会差出两秒半。', '',
+    '5', '00:00:10,450 --> 00:00:13,000', '所以越到后面 越 偏 得 厉害', '',
+    '6', '00:00:13,000 --> 00:00:15,600', '所以越到后面 越 偏 得 厉害', '',
+    '7', '00:00:16,200 --> 00:00:19,000', '<i>只要找两个锚点，就能把整条轴拉回去。</i>', '',
+    '8', '00:00:19,000 --> 00:00:24,800', '♪ 间奏 ♪', '',
+    '9', '00:00:25,000 --> 00:00:27,500', '{\\an8}（画面左上角：第 3 天）', '',
+    '10', '00:00:27,900 --> 00:00:31,200', '要是连锚点都懒得找，', '那就直接让它听音频自己对。', '',
+    '11', '00:00:31,300 --> 00:00:31,500', '就这样。', '',
+    '12', '00:00:33,000 --> 00:00:31,000', '这一条的结束时间比开始还早。', '',
+    '13', '00:00:35,000 --> 00:00:39,000', '', '',
+    '14', '00:00:40,000 --> 00:00:44,000', '这一行特别长特别长特别长，长到一屏根本放不下，观众看到一半画面就切走了，这种就应该拆成两行或者两条。', '',
+  ].join('\n');
+
+  /* ---------------- wiring ---------------- */
+
+  function init() {
+    // export format list
+    const sel = $('ss-export-fmt');
+    for (const f of E.FORMATS) {
+      const o = document.createElement('option');
+      o.value = f.id; o.textContent = f.name;
+      sel.appendChild(o);
+    }
+    sel.value = 'srt';
+    buildFixList();
+    app.rules = Object.assign({ preset: 'cjk' }, E.RULE_PRESETS.cjk);
+    rulesToInputs();
+    setTab('import');
+
+    $('ss-sample').addEventListener('click', function () {
+      $('ss-force-fmt').value = '';
+      loadText(SAMPLE, { encoding: 'UTF-8' });
+      setTab('qc');
+      toast('示例里埋了重叠、语速过快、时间倒挂等问题，可以直接体检');
+    });
+
+    $('ss-load-paste').addEventListener('click', function () {
+      const t = $('ss-paste').value;
+      if (!t.trim()) { toast('先贴一段字幕文本'); return; }
+      if (loadText(t, { encoding: 'UTF-8' })) setTab('qc');
+    });
+
+    $('ss-file').addEventListener('change', async function (ev) {
+      const f = ev.target.files && ev.target.files[0];
+      if (!f) return;
+      const r = await readSubtitleFile(f);
+      $('ss-paste').value = r.text.slice(0, 200000);
+      if (loadText(r.text, { encoding: r.encoding })) setTab('qc');
+      ev.target.value = '';
+    });
+
+    $('ss-second-file').addEventListener('change', async function (ev) {
+      const f = ev.target.files && ev.target.files[0];
+      if (!f) return;
+      const r = await readSubtitleFile(f);
+      $('ss-second').value = r.text;
+      ev.target.value = '';
+      toast('第二条字幕已读入，点「合并」');
+    });
+
+    $('ss-media').addEventListener('change', function (ev) {
+      const f = ev.target.files && ev.target.files[0];
+      if (!f) return;
+      loadMedia(f);
+      ev.target.value = '';
+    });
+
+    $('ss-video-close').addEventListener('click', function () {
+      if (app.media && app.media.url) URL.revokeObjectURL(app.media.url);
+      app.media = null; app.speech = null; app.autosync = null; app.playhead = null;
+      $('ss-video').removeAttribute('src');
+      $('ss-video-card').hidden = true;
+      $('ss-autosync-run').disabled = true;
+      $('ss-autosync-apply').disabled = true;
+      $('ss-autosync-result').textContent = '先在上方载入音频或视频文件。';
+      drawTimeline();
+    });
+
+    $('ss-video').addEventListener('timeupdate', onTimeUpdate);
+    $('ss-video').addEventListener('seeked', onTimeUpdate);
+    $('ss-video').addEventListener('loadedmetadata', function () {
+      const v = $('ss-video');
+      if (app.media && isFinite(v.duration)) {
+        app.media.durationMs = Math.max(app.media.durationMs, Math.round(v.duration * 1000));
+        fitView(); drawTimeline();
+      }
+    });
+
+    for (const b of document.querySelectorAll('.ss-tab')) {
+      b.addEventListener('click', function () { setTab(b.dataset.tab); });
+    }
+
+    // --- sync panel ---
+    $('ss-shift-apply').addEventListener('click', function () {
+      if (!app.doc) { toast('先载入字幕'); return; }
+      const ms = parseFloat($('ss-shift-ms').value);
+      if (!isFinite(ms)) { toast('偏移得是个数字'); return; }
+      const sel = app.selected.size ? Array.from(app.selected) : null;
+      setDoc(E.shiftDoc(app.doc, Math.round(ms), sel), { fit: false });
+      toast(sel ? '已平移选中的 ' + sel.length + ' 条' : '已整体平移 ' + (ms / 1000).toFixed(3) + ' 秒');
+    });
+    $('ss-shift-minus').addEventListener('click', function () {
+      $('ss-shift-ms').value = String((parseFloat($('ss-shift-ms').value) || 0) - 500);
+    });
+    $('ss-shift-plus').addEventListener('click', function () {
+      $('ss-shift-ms').value = String((parseFloat($('ss-shift-ms').value) || 0) + 500);
+    });
+
+    $('ss-linear-fill').addEventListener('click', function () {
+      if (!app.doc || !app.doc.cues.length) { toast('先载入字幕'); return; }
+      const c = app.doc.cues;
+      $('ss-a1').value = E.TC.fmtSrt(c[0].start);
+      $('ss-b1').value = E.TC.fmtSrt(c[0].start);
+      $('ss-a2').value = E.TC.fmtSrt(c[c.length - 1].start);
+      $('ss-b2').value = E.TC.fmtSrt(c[c.length - 1].start);
+      updateLinearInfo();
+    });
+    for (const id of ['ss-a1', 'ss-b1', 'ss-a2', 'ss-b2']) {
+      $(id).addEventListener('input', updateLinearInfo);
+    }
+    $('ss-linear-apply').addEventListener('click', function () {
+      if (!app.doc) { toast('先载入字幕'); return; }
+      const v = linearValues();
+      if (!v) { toast('四个时间码都要能看懂，且两个锚点不能是同一时刻'); return; }
+      const r = E.linearSync(app.doc, v.a1, v.b1, v.a2, v.b2);
+      if (!r.ok) { toast('两个锚点的「现在」时间相同，算不出倍率'); return; }
+      setDoc(r.doc, { fit: false });
+      toast('已拉伸：倍率 ' + r.factor.toFixed(6) + ' · 偏移 ' + Math.round(r.offset) + ' ms');
+    });
+
+    $('ss-fps-apply').addEventListener('click', function () {
+      if (!app.doc) { toast('先载入字幕'); return; }
+      const from = parseFloat($('ss-fps-from').value), to = parseFloat($('ss-fps-to').value);
+      if (from === to) { toast('两个帧率一样，不需要转换'); return; }
+      setDoc(E.fpsConvert(app.doc, from, to), { fit: false });
+      toast('已按 ' + from.toFixed(3) + ' → ' + to.toFixed(3) + ' 转换');
+    });
+
+    $('ss-autosync-run').addEventListener('click', runAutoSync);
+    $('ss-autosync-apply').addEventListener('click', applyAutoSync);
+
+    // --- qc panel ---
+    $('ss-preset').addEventListener('change', function () {
+      const p = E.RULE_PRESETS[$('ss-preset').value];
+      app.rules = Object.assign({ preset: $('ss-preset').value }, p);
+      rulesToInputs();
+      recompute();
+      renderAll();
+      save();
+    });
+    for (const k in RULE_INPUTS) $(RULE_INPUTS[k]).addEventListener('change', inputsToRules);
+    $('ss-fix-apply').addEventListener('click', applyFixes);
+    $('ss-fix-all').addEventListener('click', function () {
+      for (const i of document.querySelectorAll('#ss-fix-list input')) i.checked = true;
+    });
+    $('ss-fix-none').addEventListener('click', function () {
+      for (const i of document.querySelectorAll('#ss-fix-list input')) i.checked = false;
+    });
+
+    // --- merge panel ---
+    $('ss-merge-apply').addEventListener('click', function () {
+      if (!app.doc) { toast('先载入主字幕'); return; }
+      const t = $('ss-second').value;
+      if (!t.trim()) { toast('先贴入或导入第二条字幕'); return; }
+      const second = E.parseAny(t, {});
+      if (!second.cues.length) { $('ss-merge-info').textContent = '第二条字幕没解析出条目。'; return; }
+      const r = E.mergeBilingual(app.doc, second, {
+        secondOnTop: $('ss-merge-pos').value === 'above',
+        minRatio: parseFloat($('ss-merge-ratio').value) || 0.2,
+      });
+      setDoc(r.doc, { fit: false });
+      $('ss-merge-info').textContent =
+        '第二条：' + second.format.toUpperCase() + ' · ' + second.cues.length + ' 条\n' +
+        '匹配上：' + r.matched + ' / ' + r.total + ' 条（' + (r.matched / Math.max(1, r.total) * 100).toFixed(0) + '%）\n' +
+        (r.matched === 0 ? '一条都没配上 —— 两条轨的时间可能整体错开，先用「同步」把它们对齐再合并。' : '没配上的条目保持原样。');
+    });
+
+    // --- export panel ---
+    $('ss-export-fmt').addEventListener('change', function () { renderExport(); save(); });
+    $('ss-export-fps').addEventListener('change', renderExport);
+    $('ss-download').addEventListener('click', download);
+    $('ss-copy').addEventListener('click', async function () {
+      const t = currentExportText();
+      if (!t) { toast('还没有可复制的内容'); return; }
+      try { await navigator.clipboard.writeText(t); toast('已复制 ' + t.length + ' 个字符'); }
+      catch (e) {
+        const ta = document.createElement('textarea');
+        ta.value = t; ta.style.position = 'fixed'; ta.style.opacity = '0';
+        document.body.appendChild(ta); ta.select();
+        try { document.execCommand('copy'); toast('已复制'); } catch (e2) { toast('浏览器不让复制，请手动全选预览内容'); }
+        ta.remove();
+      }
+    });
+
+    // --- undo / redo ---
+    $('ss-undo').addEventListener('click', function () {
+      if (!app.undo.length) return;
+      app.redo.push(E.cloneDoc(app.doc));
+      app.doc = app.undo.pop();
+      recompute(); renderAll(); save();
+    });
+    $('ss-redo').addEventListener('click', function () {
+      if (!app.redo.length) return;
+      app.undo.push(E.cloneDoc(app.doc));
+      app.doc = app.redo.pop();
+      recompute(); renderAll(); save();
+    });
+
+    // --- table filter + lazy rows ---
+    $('ss-filter').addEventListener('input', function () {
+      app.filter = $('ss-filter').value;
+      app.renderLimit = 200;
+      renderTable();
+    });
+    $('ss-table-scroll').addEventListener('scroll', function () {
+      const el = $('ss-table-scroll');
+      if (el.scrollTop + el.clientHeight > el.scrollHeight - 240) {
+        const total = filteredIdx().length;
+        if (app.renderLimit < total) { app.renderLimit += 200; renderTable(); }
+      }
+    });
+
+    // --- timeline interaction ---
+    const cv = $('ss-timeline');
+    let drag = null;
+    cv.addEventListener('pointerdown', function (ev) {
+      cv.setPointerCapture(ev.pointerId);
+      drag = { x: ev.offsetX, t0: app.view.t0, t1: app.view.t1, moved: false };
+      cv.classList.add('ss-dragging');
+    });
+    cv.addEventListener('pointermove', function (ev) {
+      if (!drag) return;
+      const dx = ev.offsetX - drag.x;
+      if (Math.abs(dx) > 2) drag.moved = true;
+      const span = drag.t1 - drag.t0;
+      const dt = -dx / (cv.clientWidth || 1) * span;
+      app.view.t0 = Math.max(0, drag.t0 + dt);
+      app.view.t1 = app.view.t0 + span;
+      drawTimeline();
+      renderStats();
+    });
+    cv.addEventListener('pointerup', function (ev) {
+      cv.classList.remove('ss-dragging');
+      const wasDrag = drag && drag.moved;
+      drag = null;
+      if (wasDrag || !app.doc) return;
+      const t = app.view.t0 + ev.offsetX / (cv.clientWidth || 1) * (app.view.t1 - app.view.t0);
+      const cues = app.doc.cues;
+      for (let i = 0; i < cues.length; i++) {
+        if (t >= cues[i].start && t <= cues[i].end) { revealCue(i); return; }
+      }
+      if (app.media && $('ss-video').src) { $('ss-video').currentTime = t / 1000; }
+    });
+    cv.addEventListener('wheel', function (ev) {
+      ev.preventDefault();
+      const span = app.view.t1 - app.view.t0;
+      const at = app.view.t0 + (ev.offsetX / (cv.clientWidth || 1)) * span;
+      const k = ev.deltaY > 0 ? 1.25 : 0.8;
+      const ns = Math.max(1000, Math.min(24 * 3600000, span * k));
+      const frac = (at - app.view.t0) / span;
+      app.view.t0 = Math.max(0, at - frac * ns);
+      app.view.t1 = app.view.t0 + ns;
+      drawTimeline();
+      renderStats();
+    }, { passive: false });
+
+    const zoom = function (k) {
+      const span = app.view.t1 - app.view.t0;
+      const mid = (app.view.t0 + app.view.t1) / 2;
+      const ns = Math.max(1000, Math.min(24 * 3600000, span * k));
+      app.view.t0 = Math.max(0, mid - ns / 2);
+      app.view.t1 = app.view.t0 + ns;
+      drawTimeline();
+      renderStats();
+    };
+    $('ss-zoom-in').addEventListener('click', function () { zoom(0.5); });
+    $('ss-zoom-out').addEventListener('click', function () { zoom(2); });
+    $('ss-zoom-fit').addEventListener('click', function () { fitView(); drawTimeline(); renderStats(); });
+
+    window.addEventListener('resize', function () { drawTimeline(); });
+
+    document.addEventListener('keydown', function (ev) {
+      if (/^(INPUT|TEXTAREA|SELECT)$/.test(ev.target.tagName)) return;
+      if ((ev.metaKey || ev.ctrlKey) && ev.key.toLowerCase() === 'z') {
+        ev.preventDefault();
+        (ev.shiftKey ? $('ss-redo') : $('ss-undo')).click();
+      }
+    });
+
+    if (!restore()) {
+      renderAll();
+      $('ss-warnings').textContent = '还没有载入任何字幕。\n可以点左上角「导入字幕文件」，或直接把文本贴在上面。';
+    } else {
+      toast('已恢复上次的编辑');
+    }
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
+})();
+</script>
+</body>
+</html>
