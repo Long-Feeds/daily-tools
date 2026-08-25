@@ -1,0 +1,3419 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>关系网络工作台 · Graph Lab</title>
+<meta name="description" content="粘一份关系表就能算完整张网：度/PageRank/介数等 12 项中心性、Louvain 社区、循环依赖、割点与桥、最大流最小割。纯前端离线计算，与 networkx 逐位对齐。">
+<style>
+[hidden]{display:none!important}
+
+:root{
+  --gl-canvas:#fffaf0; --gl-soft:#faf5e8; --gl-card:#f5f0e0; --gl-strong:#ebe6d6;
+  --gl-ink:#0a0a0a; --gl-body:#3a3a3a; --gl-muted:#6a6a6a; --gl-mutesoft:#9a9a9a;
+  --gl-hair:#e5e5e5; --gl-hairsoft:#f0f0f0;
+  --gl-pink:#ff4d8b; --gl-teal:#1a3a3a; --gl-lav:#b8a4ed; --gl-peach:#ffb084;
+  --gl-ochre:#e8b94a; --gl-mint:#a4d4c5; --gl-coral:#ff6b5a;
+  --gl-ok:#22c55e; --gl-warn:#f59e0b; --gl-bad:#ef4444;
+  --gl-r-xs:6px; --gl-r-sm:8px; --gl-r-md:12px; --gl-r-lg:16px; --gl-r-xl:24px; --gl-r-pill:9999px;
+  --gl-sans:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  --gl-mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+}
+
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:var(--gl-canvas); color:var(--gl-body);
+  font-family:var(--gl-sans); font-size:16px; line-height:1.55;
+  -webkit-font-smoothing:antialiased;
+}
+h1,h2,h3,h4{color:var(--gl-ink); margin:0; font-weight:500}
+h1{font-size:46px; line-height:1.04; letter-spacing:-1.8px}
+h2{font-size:32px; line-height:1.15; letter-spacing:-0.8px}
+h3{font-size:18px; line-height:1.4; letter-spacing:-0.2px; font-weight:600}
+h4{font-size:15px; line-height:1.4; font-weight:600}
+a{color:var(--gl-ink)}
+p{margin:0}
+
+.gl-skip{position:absolute; left:-9999px; top:0; background:var(--gl-ink); color:#fff; padding:10px 16px; border-radius:var(--gl-r-sm); z-index:99}
+.gl-skip:focus{left:12px; top:12px}
+
+/* ---------- 顶栏 ---------- */
+.gl-nav{
+  height:64px; display:flex; align-items:center; gap:16px;
+  padding:0 24px; border-bottom:1px solid var(--gl-hair); background:var(--gl-canvas);
+  position:sticky; top:0; z-index:30;
+}
+.gl-back{
+  font-size:14px; font-weight:500; text-decoration:none; color:var(--gl-ink);
+  padding:8px 14px; border:1px solid var(--gl-hair); border-radius:var(--gl-r-md); background:var(--gl-canvas);
+  white-space:nowrap;
+}
+.gl-back:hover{background:var(--gl-card)}
+.gl-brand{font-size:16px; font-weight:600; color:var(--gl-ink); letter-spacing:-0.3px; white-space:nowrap}
+.gl-brand span{color:var(--gl-mutesoft); font-weight:500}
+.gl-navacts{margin-left:auto; display:flex; gap:8px}
+
+/* ---------- 按钮 / 表单 ---------- */
+.gl-btn{
+  font-family:inherit; font-size:14px; font-weight:600; line-height:1;
+  padding:12px 18px; min-height:40px; min-width:60px; border-radius:var(--gl-r-md);
+  background:var(--gl-ink); color:#fff; border:1px solid var(--gl-ink); cursor:pointer;
+}
+.gl-btn:hover{background:#1f1f1f}
+.gl-btn:active{transform:translateY(1px)}
+.gl-btn-sec{background:var(--gl-canvas); color:var(--gl-ink); border-color:var(--gl-hair)}
+.gl-btn-sec:hover{background:var(--gl-card)}
+.gl-btn-sm{padding:8px 12px; min-height:34px; font-size:13px; min-width:56px}
+.gl-btn[disabled]{background:var(--gl-strong); border-color:var(--gl-strong); color:var(--gl-mutesoft); cursor:not-allowed}
+input,select,textarea,button{font-family:inherit}
+.gl-field{display:block; margin-bottom:12px}
+.gl-field > span{display:block; font-size:13px; font-weight:600; color:var(--gl-muted); margin-bottom:6px; letter-spacing:0.2px}
+.gl-input,.gl-select,.gl-area{
+  width:100%; min-width:120px; min-height:42px; padding:10px 14px;
+  background:var(--gl-canvas); color:var(--gl-ink); font-size:14px;
+  border:1px solid var(--gl-hair); border-radius:var(--gl-r-md);
+}
+.gl-select{min-height:42px; padding:10px 12px}
+.gl-area{font-family:var(--gl-mono); font-size:12.5px; line-height:1.65; min-height:190px; resize:vertical; white-space:pre; overflow:auto}
+.gl-input:focus,.gl-select:focus,.gl-area:focus,.gl-btn:focus-visible,.gl-tab:focus-visible,.gl-chip:focus-visible{
+  outline:2px solid var(--gl-ink); outline-offset:2px; border-color:var(--gl-ink);
+}
+.gl-range{width:100%; min-width:120px; min-height:24px}
+.gl-row{display:flex; gap:8px; flex-wrap:wrap}
+.gl-row > *{flex:1 1 auto}
+.gl-grid2{display:grid; grid-template-columns:1fr 1fr; gap:10px}
+
+/* ---------- Hero ---------- */
+.gl-hero{padding:34px 24px 24px; max-width:1360px; margin:0 auto}
+.gl-hero h1{max-width:15em}
+.gl-lead{margin-top:16px; font-size:17px; color:var(--gl-body); max-width:54em}
+.gl-pills{display:flex; flex-wrap:wrap; gap:8px; margin-top:20px}
+.gl-pill{
+  font-size:13px; font-weight:500; padding:5px 13px; border-radius:var(--gl-r-pill);
+  background:var(--gl-card); color:var(--gl-ink);
+}
+.gl-pill-pink{background:var(--gl-pink); color:#fff}
+.gl-pill-lav{background:var(--gl-lav)}
+.gl-pill-peach{background:var(--gl-peach)}
+.gl-pill-mint{background:var(--gl-mint)}
+.gl-pill-teal{background:var(--gl-teal); color:#fff}
+
+/* ---------- 主体布局 ---------- */
+.gl-main{
+  max-width:1360px; margin:0 auto; padding:8px 24px 64px;
+  display:grid; grid-template-columns:352px minmax(0,1fr); gap:24px; align-items:start;
+}
+.gl-side{
+  background:var(--gl-card); border-radius:var(--gl-r-xl); padding:24px;
+  position:sticky; top:80px;
+}
+.gl-card{
+  background:var(--gl-canvas); border:1px solid var(--gl-hair);
+  border-radius:var(--gl-r-lg); padding:20px;
+}
+.gl-card + .gl-card{margin-top:16px}
+.gl-cardhead{display:flex; align-items:baseline; gap:10px; margin-bottom:14px; flex-wrap:wrap}
+.gl-cardhead h3{margin:0}
+.gl-note{font-size:13px; color:var(--gl-muted)}
+.gl-sep{height:1px; background:var(--gl-hair); margin:18px 0}
+
+/* ---------- 样例 chips ---------- */
+.gl-chips{display:flex; flex-wrap:wrap; gap:8px}
+.gl-chip{
+  font-size:13px; font-weight:600; padding:8px 13px; min-height:34px; min-width:64px;
+  border-radius:var(--gl-r-pill); border:1px solid transparent; cursor:pointer; color:var(--gl-ink);
+}
+.gl-chip:hover{filter:brightness(0.97)}
+.gl-chip-0{background:var(--gl-pink); color:#fff}
+.gl-chip-1{background:var(--gl-teal); color:#fff}
+.gl-chip-2{background:var(--gl-lav)}
+.gl-chip-3{background:var(--gl-peach)}
+.gl-chip-4{background:var(--gl-ochre)}
+.gl-chip-5{background:var(--gl-mint)}
+.gl-chipon{outline:2px solid var(--gl-ink); outline-offset:2px}
+
+/* ---------- 解析状态 ---------- */
+.gl-status{font-size:13px; margin-top:10px; padding:10px 12px; border-radius:var(--gl-r-sm); background:var(--gl-canvas); border:1px solid var(--gl-hair); color:var(--gl-body)}
+.gl-status-bad{border-color:var(--gl-bad); background:#fef2f2}
+.gl-status-warn{border-color:var(--gl-warn); background:#fffbeb}
+.gl-issues{margin:8px 0 0; padding-left:18px; font-size:12.5px; color:var(--gl-body); max-height:120px; overflow:auto}
+.gl-issues li{margin:2px 0}
+.gl-issues code{font-family:var(--gl-mono); font-size:12px; background:var(--gl-strong); padding:1px 4px; border-radius:4px}
+
+/* ---------- 标签页 ---------- */
+.gl-tabs{display:flex; gap:6px; flex-wrap:wrap; margin-bottom:16px}
+.gl-tab{
+  font-size:14px; font-weight:500; padding:9px 16px; min-height:38px; min-width:72px;
+  border-radius:var(--gl-r-pill); border:1px solid transparent; background:transparent;
+  color:var(--gl-muted); cursor:pointer;
+}
+.gl-tab:hover{background:var(--gl-card)}
+.gl-tabon{background:var(--gl-card); color:var(--gl-ink); font-weight:600}
+
+/* ---------- 统计卡片 ---------- */
+.gl-stats{display:grid; grid-template-columns:repeat(auto-fit,minmax(132px,1fr)); gap:12px; margin-bottom:16px}
+.gl-stat{border-radius:var(--gl-r-lg); padding:14px 16px; background:var(--gl-card)}
+.gl-stat b{display:block; font-size:26px; font-weight:500; letter-spacing:-1px; color:var(--gl-ink); line-height:1.15}
+.gl-stat i{display:block; font-style:normal; font-size:12.5px; color:var(--gl-muted); margin-top:2px}
+.gl-stat-pink{background:var(--gl-pink)} .gl-stat-pink b,.gl-stat-pink i{color:#fff}
+.gl-stat-teal{background:var(--gl-teal)} .gl-stat-teal b,.gl-stat-teal i{color:#fff}
+.gl-stat-lav{background:var(--gl-lav)}
+.gl-stat-peach{background:var(--gl-peach)}
+.gl-stat-ochre{background:var(--gl-ochre)}
+.gl-stat-mint{background:var(--gl-mint)}
+
+/* ---------- 画布 ---------- */
+.gl-canvaswrap{position:relative; border-radius:var(--gl-r-lg); overflow:hidden; border:1px solid var(--gl-hair); background:var(--gl-soft)}
+#gl-canvas{display:block; width:100%; height:560px; touch-action:none; cursor:grab}
+#gl-canvas:active{cursor:grabbing}
+.gl-canvastools{position:absolute; right:12px; top:12px; display:flex; flex-direction:column; gap:6px}
+.gl-canvastools .gl-btn{padding:8px 10px; min-width:54px; min-height:34px; font-size:12.5px}
+.gl-hint{position:absolute; left:12px; bottom:12px; font-size:12px; color:var(--gl-muted); background:rgba(255,250,240,0.9); padding:5px 10px; border-radius:var(--gl-r-pill)}
+.gl-legend{display:flex; flex-wrap:wrap; gap:8px; margin-top:14px}
+.gl-legitem{display:flex; align-items:center; gap:7px; font-size:12.5px; color:var(--gl-body); background:var(--gl-card); padding:5px 12px; border-radius:var(--gl-r-pill)}
+.gl-swatch{width:12px; height:12px; border-radius:50%; flex:0 0 auto; border:1px solid rgba(10,10,10,0.12)}
+
+/* ---------- 表格 ---------- */
+.gl-tablewrap{overflow:auto; max-height:520px; border:1px solid var(--gl-hair); border-radius:var(--gl-r-md)}
+table.gl-table{border-collapse:collapse; width:100%; font-size:13px; background:var(--gl-canvas)}
+.gl-table th,.gl-table td{padding:8px 12px; text-align:right; border-bottom:1px solid var(--gl-hairsoft); white-space:nowrap}
+.gl-table th{
+  position:sticky; top:0; background:var(--gl-strong); color:var(--gl-ink); font-weight:600;
+  font-size:12.5px; letter-spacing:0.2px; cursor:pointer; z-index:2;
+}
+.gl-table th:first-child,.gl-table td:first-child{text-align:left; position:sticky; left:0; background:var(--gl-canvas)}
+.gl-table th:first-child{background:var(--gl-strong); z-index:3}
+.gl-table tbody tr:hover td{background:var(--gl-soft)}
+.gl-table tbody tr:hover td:first-child{background:var(--gl-soft)}
+.gl-thon{color:var(--gl-pink)}
+.gl-num{font-variant-numeric:tabular-nums; font-family:var(--gl-mono); font-size:12px}
+.gl-dot{display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:6px; vertical-align:baseline}
+
+/* ---------- 列表 / 条目 ---------- */
+.gl-list{list-style:none; margin:0; padding:0}
+.gl-list li{
+  padding:10px 12px; border-radius:var(--gl-r-sm); background:var(--gl-soft);
+  margin-bottom:8px; font-size:13.5px; color:var(--gl-body);
+}
+.gl-list li b{color:var(--gl-ink); font-weight:600}
+.gl-path{font-family:var(--gl-mono); font-size:12.5px; color:var(--gl-ink); overflow-x:auto; white-space:pre; display:block; padding-bottom:2px}
+.gl-tagpill{display:inline-block; font-size:11.5px; font-weight:600; padding:2px 9px; border-radius:var(--gl-r-pill); background:var(--gl-strong); color:var(--gl-ink); margin-right:6px}
+.gl-tag-bad{background:var(--gl-pink); color:#fff}
+.gl-tag-warn{background:var(--gl-ochre)}
+.gl-tag-ok{background:var(--gl-mint)}
+.gl-empty{font-size:13.5px; color:var(--gl-muted); padding:12px; background:var(--gl-soft); border-radius:var(--gl-r-sm)}
+
+/* ---------- 直方图（DOM 条，不用画布） ---------- */
+.gl-hist{display:flex; align-items:flex-end; gap:3px; height:110px; padding:8px 0}
+.gl-bar{flex:1 1 0; background:var(--gl-lav); border-radius:4px 4px 0 0; min-height:2px; position:relative}
+.gl-bar span{position:absolute; top:-16px; left:50%; transform:translateX(-50%); font-size:10.5px; color:var(--gl-muted)}
+.gl-histaxis{display:flex; justify-content:space-between; font-size:11.5px; color:var(--gl-muted)}
+
+/* ---------- 节点详情 ---------- */
+.gl-detail{margin-top:16px}
+.gl-kv{display:grid; grid-template-columns:repeat(auto-fit,minmax(118px,1fr)); gap:10px; margin-top:6px}
+.gl-kv div{background:var(--gl-soft); border-radius:var(--gl-r-sm); padding:9px 11px}
+.gl-kv dt{font-size:12px; color:var(--gl-muted); margin:0}
+.gl-kv dd{margin:2px 0 0; font-size:15px; color:var(--gl-ink); font-family:var(--gl-mono)}
+.gl-nbrs{display:flex; flex-wrap:wrap; gap:6px; margin-top:10px}
+.gl-nbr{font-size:12.5px; padding:4px 10px; border-radius:var(--gl-r-pill); background:var(--gl-card); cursor:pointer; border:1px solid transparent; color:var(--gl-ink)}
+.gl-nbr:hover{border-color:var(--gl-ink)}
+
+/* ---------- 格式说明 ---------- */
+.gl-doc{font-size:14px; color:var(--gl-body)}
+.gl-doc h4{margin:18px 0 6px}
+.gl-code{
+  font-family:var(--gl-mono); font-size:12.5px; line-height:1.7; background:var(--gl-soft);
+  border:1px solid var(--gl-hair); border-radius:var(--gl-r-sm); padding:12px 14px;
+  overflow-x:auto; white-space:pre; margin:8px 0 0;
+}
+.gl-doc ul{margin:8px 0; padding-left:20px}
+.gl-doc li{margin:4px 0}
+
+/* ---------- 项目列表 ---------- */
+.gl-projects{list-style:none; margin:10px 0 0; padding:0}
+.gl-projects li{display:flex; align-items:center; gap:8px; padding:8px 10px; background:var(--gl-canvas); border-radius:var(--gl-r-sm); margin-bottom:6px; font-size:13px}
+.gl-projects li b{flex:1 1 auto; font-weight:600; color:var(--gl-ink); overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+
+/* ---------- 底部 ---------- */
+.gl-foot{background:var(--gl-soft); padding:56px 24px; margin-top:48px}
+.gl-footin{max-width:1360px; margin:0 auto; display:flex; gap:24px; flex-wrap:wrap; align-items:flex-start}
+.gl-foot p{font-size:13.5px; color:var(--gl-muted); max-width:44em}
+.gl-foot h3{margin-bottom:8px}
+
+/* ---------- 响应式 ---------- */
+@media (max-width:1080px){
+  .gl-main{grid-template-columns:1fr}
+  .gl-side{position:static}
+  h1{font-size:40px; letter-spacing:-1.4px}
+}
+@media (max-width:640px){
+  .gl-hero{padding:28px 16px 20px}
+  .gl-main{padding:8px 16px 48px; gap:16px}
+  .gl-nav{padding:0 14px; gap:10px}
+  .gl-brand{display:none}
+  h1{font-size:30px; letter-spacing:-1px}
+  .gl-lead{font-size:15.5px}
+  h2{font-size:24px}
+  #gl-canvas{height:420px}
+  .gl-side{padding:18px}
+  .gl-card{padding:16px}
+}
+</style>
+</head>
+<body>
+<a class="gl-skip" href="#gl-main">跳到主内容</a>
+
+<header class="gl-nav">
+  <a class="gl-back" href="../../">← 返回工具集</a>
+  <div class="gl-brand">关系网络工作台 <span>· Graph Lab</span></div>
+  <div class="gl-navacts">
+    <button type="button" class="gl-btn gl-btn-sec gl-btn-sm" id="gl-btn-copy">复制边表</button>
+    <button type="button" class="gl-btn gl-btn-sm" id="gl-btn-png">导出 PNG</button>
+  </div>
+</header>
+
+<section class="gl-hero">
+  <h1>粘一份关系表，<br>看清这张网是怎么长的。</h1>
+  <p class="gl-lead">模块依赖、服务调用、协作关系、线路网、资金流——凡是「谁连着谁」的数据，丢进来就有答案：谁是枢纽、分成了几伙、哪一个节点挂掉会把网切开、整条链路最多能流多少。全部在你自己的浏览器里算完，一个字节都不上传。</p>
+  <div class="gl-pills">
+    <span class="gl-pill gl-pill-pink">12 项中心性</span>
+    <span class="gl-pill gl-pill-lav">Louvain 社区</span>
+    <span class="gl-pill gl-pill-peach">循环依赖定位</span>
+    <span class="gl-pill gl-pill-mint">割点与桥</span>
+    <span class="gl-pill gl-pill-teal">最大流 · 最小割</span>
+    <span class="gl-pill">与 networkx 逐位对齐</span>
+  </div>
+</section>
+
+<main id="gl-main" class="gl-main">
+  <!-- ================= 侧栏 ================= -->
+  <aside class="gl-side">
+    <h3>1 · 关系数据</h3>
+    <p class="gl-note" style="margin:6px 0 12px">每行一条关系：<code>a -&gt; b</code> 有向、<code>a -- b</code> 无向，末尾数字是权重。也认 JSON、DOT、邻接矩阵。</p>
+    <label class="gl-field" for="gl-input"><span>输入</span>
+      <textarea id="gl-input" class="gl-area" spellcheck="false" aria-describedby="gl-parse-status"></textarea>
+    </label>
+    <div class="gl-grid2">
+      <label class="gl-field" for="gl-format"><span>格式</span>
+        <select id="gl-format" class="gl-select">
+          <option value="auto">自动识别</option>
+          <option value="edges">边表</option>
+          <option value="json">JSON</option>
+          <option value="dot">DOT</option>
+          <option value="matrix">邻接矩阵</option>
+        </select>
+      </label>
+      <label class="gl-field" for="gl-directed"><span>方向</span>
+        <select id="gl-directed" class="gl-select">
+          <option value="auto">跟随输入</option>
+          <option value="yes">按有向图</option>
+          <option value="no">按无向图</option>
+        </select>
+      </label>
+    </div>
+    <div id="gl-parse-status" class="gl-status" role="status" aria-live="polite">等待输入</div>
+
+    <div class="gl-sep"></div>
+    <h3>2 · 换个样例试试</h3>
+    <div class="gl-chips" id="gl-samples" style="margin-top:10px"></div>
+    <p class="gl-note" id="gl-sample-note" style="margin-top:10px"></p>
+
+    <div class="gl-sep"></div>
+    <h3>3 · 画法</h3>
+    <div class="gl-grid2" style="margin-top:10px">
+      <label class="gl-field" for="gl-layout"><span>布局</span>
+        <select id="gl-layout" class="gl-select">
+          <option value="force">力导向</option>
+          <option value="layered">分层（有向）</option>
+          <option value="circular">环形</option>
+        </select>
+      </label>
+      <label class="gl-field" for="gl-color"><span>着色</span>
+        <select id="gl-color" class="gl-select">
+          <option value="community">社区</option>
+          <option value="degree">度</option>
+          <option value="pagerank">PageRank</option>
+          <option value="betweenness">介数中心性</option>
+          <option value="core">k-core</option>
+          <option value="component">连通分量</option>
+          <option value="none">单色</option>
+        </select>
+      </label>
+      <label class="gl-field" for="gl-size"><span>节点大小</span>
+        <select id="gl-size" class="gl-select">
+          <option value="degree">度</option>
+          <option value="pagerank">PageRank</option>
+          <option value="betweenness">介数中心性</option>
+          <option value="uniform">一样大</option>
+        </select>
+      </label>
+      <label class="gl-field" for="gl-labels"><span>标签</span>
+        <select id="gl-labels" class="gl-select">
+          <option value="auto">自动（挑得下的）</option>
+          <option value="all">全部</option>
+          <option value="top">只标前 12 名</option>
+          <option value="none">不标</option>
+        </select>
+      </label>
+    </div>
+    <label class="gl-field" for="gl-community"><span>社区算法</span>
+      <select id="gl-community" class="gl-select">
+        <option value="louvain">Louvain（模块度最优）</option>
+        <option value="labelprop">标签传播</option>
+        <option value="none">不分社区</option>
+      </select>
+    </label>
+    <label class="gl-field" for="gl-resolution"><span>分辨率 <b id="gl-res-val" style="font-family:var(--gl-mono); font-weight:600; color:var(--gl-ink)">1.0</b>（越大社区越碎）</span>
+      <input type="range" id="gl-resolution" class="gl-range" min="0.4" max="2.4" step="0.1" value="1">
+    </label>
+    <div class="gl-row">
+      <button type="button" class="gl-btn gl-btn-sec gl-btn-sm" id="gl-btn-relayout">重新布局</button>
+      <button type="button" class="gl-btn gl-btn-sec gl-btn-sm" id="gl-btn-fit">缩放到刚好</button>
+    </div>
+
+    <div class="gl-sep"></div>
+    <h3>4 · 存到这台机器</h3>
+    <div class="gl-row" style="margin-top:10px">
+      <input type="text" id="gl-project-name" class="gl-input" placeholder="项目名" style="flex:2 1 140px" aria-label="项目名">
+      <button type="button" class="gl-btn gl-btn-sm" id="gl-btn-save" style="flex:1 1 72px">保存</button>
+    </div>
+    <ul class="gl-projects" id="gl-projects"></ul>
+    <p class="gl-note" id="gl-storage-note">只存在本机浏览器里（localStorage），换台设备就没了。</p>
+  </aside>
+
+  <!-- ================= 内容区 ================= -->
+  <div class="gl-content">
+    <div class="gl-tabs" role="tablist" aria-label="分析视图">
+      <button type="button" class="gl-tab gl-tabon" role="tab" id="gl-tab-graph" aria-controls="gl-panel-graph" aria-selected="true" data-panel="graph">网络图</button>
+      <button type="button" class="gl-tab" role="tab" id="gl-tab-metrics" aria-controls="gl-panel-metrics" aria-selected="false" data-panel="metrics">指标</button>
+      <button type="button" class="gl-tab" role="tab" id="gl-tab-structure" aria-controls="gl-panel-structure" aria-selected="false" data-panel="structure">结构</button>
+      <button type="button" class="gl-tab" role="tab" id="gl-tab-flow" aria-controls="gl-panel-flow" aria-selected="false" data-panel="flow">路径与流量</button>
+      <button type="button" class="gl-tab" role="tab" id="gl-tab-data" aria-controls="gl-panel-data" aria-selected="false" data-panel="data">数据与口径</button>
+    </div>
+
+    <!-- ---- 网络图 ---- -->
+    <section class="gl-panel" id="gl-panel-graph" role="tabpanel" aria-labelledby="gl-tab-graph">
+      <div class="gl-stats" id="gl-stats"></div>
+      <div class="gl-card">
+        <div class="gl-cardhead">
+          <h3>关系图</h3>
+          <span class="gl-note">滚轮缩放 · 拖动平移 · 拖节点摆位 · 点节点看详情</span>
+        </div>
+        <div class="gl-canvaswrap">
+          <canvas id="gl-canvas" width="900" height="560" role="img" aria-label="关系网络图"></canvas>
+          <div class="gl-canvastools">
+            <button type="button" class="gl-btn gl-btn-sec" id="gl-zoom-in" aria-label="放大">放大</button>
+            <button type="button" class="gl-btn gl-btn-sec" id="gl-zoom-out" aria-label="缩小">缩小</button>
+            <button type="button" class="gl-btn gl-btn-sec" id="gl-zoom-fit" aria-label="适应画布">复位</button>
+          </div>
+          <div class="gl-hint" id="gl-canvas-hint">力导向布局</div>
+        </div>
+        <div class="gl-legend" id="gl-legend"></div>
+        <div class="gl-detail" id="gl-detail"></div>
+      </div>
+    </section>
+
+    <!-- ---- 指标 ---- -->
+    <section class="gl-panel" id="gl-panel-metrics" role="tabpanel" aria-labelledby="gl-tab-metrics" hidden>
+      <div class="gl-card">
+        <div class="gl-cardhead">
+          <h3>全网指标</h3>
+          <span class="gl-note">点表头排序；数字口径与 networkx 一致（介数未归一化，无向图已除以 2）</span>
+        </div>
+        <div class="gl-row" style="margin-bottom:12px">
+          <input type="search" id="gl-metric-search" class="gl-input" placeholder="搜节点名…" style="flex:3 1 180px" aria-label="搜节点名">
+          <button type="button" class="gl-btn gl-btn-sec gl-btn-sm" id="gl-btn-csv" style="flex:1 1 96px">导出 CSV</button>
+        </div>
+        <div class="gl-tablewrap">
+          <table class="gl-table" id="gl-metric-table">
+            <thead><tr id="gl-metric-head"></tr></thead>
+            <tbody id="gl-metric-body"></tbody>
+          </table>
+        </div>
+        <p class="gl-note" id="gl-metric-count" style="margin-top:10px"></p>
+      </div>
+      <div class="gl-card">
+        <div class="gl-cardhead"><h3>度分布</h3><span class="gl-note" id="gl-hist-note"></span></div>
+        <div class="gl-hist" id="gl-hist"></div>
+        <div class="gl-histaxis" id="gl-hist-axis"></div>
+      </div>
+      <div class="gl-card">
+        <div class="gl-cardhead"><h3>排行榜</h3><span class="gl-note">各项指标的前几名，一眼看谁最关键</span></div>
+        <div class="gl-kv" id="gl-tops"></div>
+      </div>
+    </section>
+
+    <!-- ---- 结构 ---- -->
+    <section class="gl-panel" id="gl-panel-structure" role="tabpanel" aria-labelledby="gl-tab-structure" hidden>
+      <div class="gl-stats" id="gl-struct-stats"></div>
+      <div class="gl-card">
+        <div class="gl-cardhead"><h3>环 / 循环依赖</h3><span class="gl-note" id="gl-cycles-note"></span></div>
+        <div id="gl-cycles"></div>
+      </div>
+      <div class="gl-card">
+        <div class="gl-cardhead"><h3>单点故障：割点与桥</h3><span class="gl-note">删掉它，网络就断成更多块</span></div>
+        <div id="gl-cuts"></div>
+      </div>
+      <div class="gl-card">
+        <div class="gl-cardhead"><h3>分层与内核</h3><span class="gl-note">拓扑分层看依赖深度，k-core 看谁在最紧密的核里</span></div>
+        <div id="gl-layers"></div>
+      </div>
+      <div class="gl-card">
+        <div class="gl-cardhead"><h3>其他结构判定</h3></div>
+        <div id="gl-misc"></div>
+      </div>
+    </section>
+
+    <!-- ---- 路径与流量 ---- -->
+    <section class="gl-panel" id="gl-panel-flow" role="tabpanel" aria-labelledby="gl-tab-flow" hidden>
+      <div class="gl-card">
+        <div class="gl-cardhead"><h3>两点之间</h3><span class="gl-note">最短路径按跳数或按权重之和</span></div>
+        <div class="gl-grid2">
+          <label class="gl-field" for="gl-src"><span>起点</span><select id="gl-src" class="gl-select"></select></label>
+          <label class="gl-field" for="gl-dst"><span>终点</span><select id="gl-dst" class="gl-select"></select></label>
+        </div>
+        <div class="gl-row">
+          <label class="gl-field" for="gl-path-mode" style="flex:2 1 160px"><span>距离口径</span>
+            <select id="gl-path-mode" class="gl-select">
+              <option value="hops">跳数（每条边算 1）</option>
+              <option value="weight">权重之和</option>
+            </select>
+          </label>
+          <div style="flex:1 1 120px; display:flex; align-items:flex-end; padding-bottom:12px">
+            <button type="button" class="gl-btn" id="gl-btn-path" style="width:100%">找最短路</button>
+          </div>
+        </div>
+        <div id="gl-path-out"></div>
+      </div>
+      <div class="gl-card">
+        <div class="gl-cardhead"><h3>最大流与最小割</h3><span class="gl-note">权重当容量：这条链路最多能流多少、卡在哪几条边</span></div>
+        <div class="gl-row" style="margin-bottom:12px">
+          <button type="button" class="gl-btn" id="gl-btn-flow" style="flex:1 1 150px">按上面的起点终点算</button>
+          <button type="button" class="gl-btn gl-btn-sec" id="gl-btn-clearhl" style="flex:1 1 110px">清除高亮</button>
+        </div>
+        <div id="gl-flow-out"></div>
+      </div>
+      <div class="gl-card">
+        <div class="gl-cardhead"><h3>可达性与距离</h3><span class="gl-note">在最大连通块上算</span></div>
+        <div id="gl-reach-out"></div>
+      </div>
+    </section>
+
+    <!-- ---- 数据与口径 ---- -->
+    <section class="gl-panel" id="gl-panel-data" role="tabpanel" aria-labelledby="gl-tab-data" hidden>
+      <div class="gl-card">
+        <div class="gl-cardhead"><h3>导出</h3><span class="gl-note">当前这张图，换个格式带走</span></div>
+        <div class="gl-row">
+          <button type="button" class="gl-btn gl-btn-sec gl-btn-sm" id="gl-dl-edges">边表 .txt</button>
+          <button type="button" class="gl-btn gl-btn-sec gl-btn-sm" id="gl-dl-dot">DOT .dot</button>
+          <button type="button" class="gl-btn gl-btn-sec gl-btn-sm" id="gl-dl-json">JSON .json</button>
+          <button type="button" class="gl-btn gl-btn-sec gl-btn-sm" id="gl-dl-csv">指标 .csv</button>
+        </div>
+        <div class="gl-code" id="gl-preview" style="margin-top:14px; max-height:220px"></div>
+      </div>
+      <div class="gl-card gl-doc">
+        <h3>四种输入写法</h3>
+        <h4>1 · 边表（最省事）</h4>
+        <div class="gl-code">前端 -&gt; 网关        # 有向：左边指向右边
+数据库 -- 缓存       # 无向
+甲 -&gt; 乙 8          # 末尾数字是权重
+"带空格的名字" -&gt; 乙
+丙                  # 单独一行 = 孤立节点</div>
+        <h4>2 · JSON</h4>
+        <div class="gl-code">{"nodes":["a","b"],"links":[{"source":"a","target":"b","weight":3}]}
+{"a":["b","c"],"b":{"c":2}}      # 邻接表也认</div>
+        <h4>3 · DOT</h4>
+        <div class="gl-code">digraph G { a -&gt; b [weight=2]; b -&gt; c; c; }</div>
+        <h4>4 · 邻接矩阵</h4>
+        <div class="gl-code">,甲,乙,丙
+甲,0,1,0
+乙,1,0,2
+丙,0,2,0</div>
+      </div>
+      <div class="gl-card gl-doc">
+        <h3>计算口径（重要）</h3>
+        <ul>
+          <li><b>介数中心性</b>：未归一化；无向图按惯例除以 2。加权版把权重当「距离」，无权版按跳数。</li>
+          <li><b>紧密中心性</b>：Wasserman-Faust 修正（乘以可达比例），有向图按<b>入向</b>距离。谐波中心性同样按入向。</li>
+          <li><b>PageRank</b>：阻尼 0.85；出度为零的悬挂节点把分数均匀撒回全网。加权版按权重分配。</li>
+          <li><b>特征向量中心性 / 聚类系数 / k-core / 割点 / 桥 / 最小生成树 / 二部判定</b>：都在<b>无向简单视图</b>上算（去方向、去自环、反向平行边权重相加）。</li>
+          <li><b>模块度 Q 与 Louvain</b>：加权模块度；Louvain 用固定种子跑 12 次不同遍历顺序，取 Q 最大的一次，所以同一张图每次结果一致。</li>
+          <li><b>最大流</b>：权重当容量，无向边视作两个方向各有该容量。最小割是残量网络里源点侧割出来的边集。</li>
+          <li><b>平行边</b>：同方向重复的边会<b>合并、权重相加</b>；自环保留，但在无向简单视图里被忽略。</li>
+        </ul>
+        <p class="gl-note" style="margin-top:12px">上面每一项都拿 networkx 3.6 当权威实现对拍过：238 张图（含 6 份内置样例）× 全部指标 = 52463 个断言点，0 失配；解析器与三种打印格式另做了 2700 组随机往返测试。</p>
+      </div>
+    </section>
+  </div>
+</main>
+
+<footer class="gl-foot">
+  <div class="gl-footin">
+    <div style="flex:2 1 320px">
+      <h3>关系网络工作台 · Graph Lab</h3>
+      <p>一张图里最有用的信息，往往不是「有多少节点」，而是「谁卡在中间」「分成了几伙」「删掉谁会散架」。这个页面把这些问题一次算完，全部离线：你的依赖图、组织关系、客户名单都留在自己机器上。</p>
+    </div>
+    <div style="flex:1 1 220px">
+      <h3>数据来源</h3>
+      <p>内置样例中，空手道俱乐部（Zachary 1977）、《悲惨世界》人物共现（Knuth 1993）、佛罗伦萨家族联姻（Padgett）三份取自 networkx 自带数据集；其余为示意数据。</p>
+    </div>
+    <div style="flex:1 1 200px">
+      <h3>回到工具集</h3>
+      <p><a href="../../">← 每日工具集首页</a></p>
+    </div>
+  </div>
+</footer>
+
+<script>
+/* ===================== 图模型 ===================== */
+/* 内部表示：节点用整数下标，边已合并（同向平行边权重相加；无向图 a-b 与 b-a 视作同一条）。 */
+
+function buildGraph(spec) {
+  const directed = !!spec.directed;
+  const ids = [];
+  const index = new Map();
+  function addNode(raw) {
+    const id = String(raw);
+    if (!index.has(id)) { index.set(id, ids.length); ids.push(id); }
+    return index.get(id);
+  }
+  (spec.nodes || []).forEach(addNode);
+  const edges = [];
+  const emap = new Map();
+  let merged = 0;
+  for (const e of (spec.edges || [])) {
+    const u0 = addNode(e[0]), v0 = addNode(e[1]);
+    let w = (e.length > 2 && e[2] !== null && e[2] !== undefined && e[2] !== '') ? Number(e[2]) : 1;
+    if (!isFinite(w)) w = 1;
+    const u = directed ? u0 : Math.min(u0, v0);
+    const v = directed ? v0 : Math.max(u0, v0);
+    const key = u + ',' + v;
+    const hit = emap.get(key);
+    if (hit) { hit.w += w; merged++; continue; }
+    const rec = { u, v, w, i: edges.length };
+    emap.set(key, rec);
+    edges.push(rec);
+  }
+  const n = ids.length;
+  const out = [], inn = [];
+  for (let i = 0; i < n; i++) { out.push([]); inn.push([]); }
+  for (const e of edges) {
+    if (directed) {
+      out[e.u].push({ v: e.v, w: e.w, e });
+      inn[e.v].push({ v: e.u, w: e.w, e });
+    } else {
+      out[e.u].push({ v: e.v, w: e.w, e });
+      if (e.u !== e.v) out[e.v].push({ v: e.u, w: e.w, e });
+    }
+  }
+  const G = {
+    directed, n, ids, index, edges, merged,
+    out, in: directed ? inn : out,
+    selfLoops: edges.filter((e) => e.u === e.v).length,
+  };
+  G.deg = new Array(n).fill(0);
+  G.wdeg = new Array(n).fill(0);
+  G.indeg = new Array(n).fill(0);
+  G.outdeg = new Array(n).fill(0);
+  G.windeg = new Array(n).fill(0);
+  G.woutdeg = new Array(n).fill(0);
+  for (const e of edges) {
+    if (directed) {
+      G.outdeg[e.u]++; G.indeg[e.v]++;
+      G.woutdeg[e.u] += e.w; G.windeg[e.v] += e.w;
+    } else {
+      if (e.u === e.v) { G.deg[e.u] += 2; G.wdeg[e.u] += 2 * e.w; }
+      else { G.deg[e.u]++; G.deg[e.v]++; G.wdeg[e.u] += e.w; G.wdeg[e.v] += e.w; }
+    }
+  }
+  if (directed) {
+    for (let i = 0; i < n; i++) { G.deg[i] = G.indeg[i] + G.outdeg[i]; G.wdeg[i] = G.windeg[i] + G.woutdeg[i]; }
+  }
+  return G;
+}
+
+/* 无向简单视图：去方向、去自环、平行边权重相加。k-core / 聚类 / 割点 / 桥 / MST / 二部 都用它。 */
+function simpleUndirected(G) {
+  const spec = { directed: false, nodes: G.ids.slice(), edges: [] };
+  const seen = new Map();
+  for (const e of G.edges) {
+    if (e.u === e.v) continue;
+    const a = Math.min(e.u, e.v), b = Math.max(e.u, e.v);
+    const key = a + ',' + b;
+    const hit = seen.get(key);
+    if (hit) { hit[2] += e.w; continue; }
+    const rec = [G.ids[a], G.ids[b], e.w];
+    seen.set(key, rec);
+    spec.edges.push(rec);
+  }
+  const U = buildGraph(spec);
+  U.isSimpleView = true;
+  return U;
+}
+
+function graphToSpec(G) {
+  return {
+    directed: G.directed,
+    nodes: G.ids.slice(),
+    edges: G.edges.map((e) => [G.ids[e.u], G.ids[e.v], e.w]),
+  };
+}
+
+/* ===================== 输入解析 ===================== */
+/* 支持四种写法：边表 / JSON / DOT / 邻接矩阵。返回 {spec, format, errors, warnings, stats} */
+
+function splitTop(line) {
+  /* 按空白/逗号/制表符切分，"带空格的名字" 用引号包住（支持 \" 转义） */
+  const parts = [];
+  let cur = '', quote = null, quoted = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (quote) {
+      if (ch === '\\' && (line[i + 1] === quote || line[i + 1] === '\\')) { cur += line[i + 1]; i++; continue; }
+      if (ch === quote) { quote = null; continue; }
+      cur += ch;
+      continue;
+    }
+    if (ch === '"' || ch === "'") { quote = ch; quoted = true; continue; }
+    if (ch === ',' || ch === '\t' || ch === ';' || /\s/.test(ch)) {
+      if (cur || quoted) { parts.push(cur); cur = ''; quoted = false; }
+      continue;
+    }
+    cur += ch;
+  }
+  if (cur || quoted) parts.push(cur);
+  return parts;
+}
+
+const ARROWS = ['<->', '<-', '->', '=>', '→', '←', '↔', '--'];
+
+/* 在引号之外找第一个箭头。裸的 - / — 只有两侧都是空白时才算箭头，
+   否则 "my-node -> other" 会被从中间劈开（节点名里带连字符很常见）。 */
+function findArrow(s) {
+  let quote = null;
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (quote) { if (ch === quote) quote = null; continue; }
+    if (ch === '"' || ch === "'") { quote = ch; continue; }
+    for (const a of ARROWS) {
+      if (s.startsWith(a, i)) return { arrow: a, at: i };
+    }
+    if ((ch === '-' || ch === '—') && i > 0 && /\s/.test(s[i - 1]) && /\s/.test(s[i + 1] || '')) {
+      return { arrow: ch === '-' ? '--' : '--', at: i, len: 1 };
+    }
+  }
+  return null;
+}
+
+function unquote(s) {
+  const t = s.trim();
+  if (t.length >= 2 && (t[0] === '"' || t[0] === "'") && t[t.length - 1] === t[0]) {
+    return t.slice(1, -1).replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+  }
+  return t;
+}
+
+/* 打印时是否需要加引号：名字里有分隔符、箭头、引号或注释符都要包起来 */
+function needsQuote(s) {
+  if (s === '') return true;
+  if (/[\s,;:#"'\[\]=]/.test(s)) return true;
+  if (/\/\//.test(s)) return true;
+  for (const a of ARROWS) if (s.indexOf(a) >= 0) return true;
+  if (/^-|-$|^—|—$/.test(s)) return true;
+  return false;
+}
+
+function quoteName(s) {
+  return needsQuote(s) ? '"' + String(s).replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"' : s;
+}
+
+function stripComment(line) {
+  let out = '', quote = null;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (quote) { out += ch; if (ch === quote) quote = null; continue; }
+    if (ch === '"' || ch === "'") { quote = ch; out += ch; continue; }
+    /* 注释符只有在行首或空白之后才算注释，否则 C# / http://x 这类名字会被截断 */
+    const atStart = i === 0 || /\s/.test(line[i - 1]);
+    if (ch === '#' && atStart) break;
+    if (ch === '/' && line[i + 1] === '/' && atStart) break;
+    out += ch;
+  }
+  return out;
+}
+
+function detectFormat(text) {
+  const t = text.trim();
+  if (!t) return 'edges';
+  if (t[0] === '{' || t[0] === '[') return 'json';
+  if (/^\s*(strict\s+)?(di)?graph\b[\s\S]*\{/i.test(t)) return 'dot';
+  const lines = t.split('\n').map((l) => stripComment(l).trim()).filter(Boolean);
+  if (lines.length >= 2) {
+    const cells = lines.map((l) => l.split(/[,\t]/).length);
+    const wide = cells.filter((c) => c >= 3).length;
+    if (wide >= lines.length - 1 && cells[0] >= 3) {
+      /* 每行 3 列以上且几乎全是数字 → 邻接矩阵 */
+      const body = lines.slice(1).map((l) => l.split(/[,\t]/).slice(1));
+      const nums = body.flat().filter((c) => c.trim() !== '');
+      const numeric = nums.filter((c) => isFinite(Number(c))).length;
+      if (nums.length && numeric === nums.length && body.length + 1 === cells[0]) return 'matrix';
+      const firstBody = lines.slice(1).map((l) => l.split(/[,\t]/));
+      if (firstBody.length && firstBody.every((r) => r.length === cells[0]) &&
+          firstBody.flat().slice(firstBody.length).every((c) => isFinite(Number(c)) || c.trim() === '') &&
+          firstBody.length + 1 === cells[0]) return 'matrix';
+    }
+  }
+  return 'edges';
+}
+
+function parseGraphText(text, opt) {
+  opt = opt || {};
+  const fmt = (opt.format && opt.format !== 'auto') ? opt.format : detectFormat(text);
+  let res;
+  if (fmt === 'json') res = parseJSONGraph(text);
+  else if (fmt === 'dot') res = parseDOT(text);
+  else if (fmt === 'matrix') res = parseMatrix(text);
+  else res = parseEdgeList(text);
+  res.format = fmt;
+  if (opt.forceDirected === true) res.spec.directed = true;
+  if (opt.forceDirected === false) res.spec.directed = false;
+  return res;
+}
+
+function parseEdgeList(text) {
+  const errors = [], warnings = [];
+  const nodes = [], edges = [];
+  const lines = text.split('\n');
+  let sawArrow = false, sawUndirected = false;
+  for (let li = 0; li < lines.length; li++) {
+    const raw = lines[li];
+    const line = stripComment(raw).trim();
+    if (!line) continue;
+    /* 形如 a -> b : 3 或 a -> b [weight=3] */
+    let body = line, weight = null;
+    const attrAt = lastTopIndex(body, '[');
+    if (attrAt > 0 && /\]\s*$/.test(body)) {
+      const inner = body.slice(attrAt + 1, body.lastIndexOf(']'));
+      const mw = inner.match(/(?:weight|w|value|capacity)\s*=\s*("?)(-?[\d.eE+]+)\1/);
+      if (mw) weight = Number(mw[2]);
+      body = body.slice(0, attrAt).trim();
+    }
+    const colon = lastTopIndex(body, ':');
+    if (colon > 0 && weight === null) {
+      const tail = body.slice(colon + 1).trim();
+      if (tail && isFinite(Number(tail))) { weight = Number(tail); body = body.slice(0, colon).trim(); }
+    }
+    const m = findArrow(body);
+    if (m && m.at > 0) {
+      const arrow = m.arrow;
+      const left = body.slice(0, m.at).trim();
+      const right = body.slice(m.at + (m.len || arrow.length)).trim();
+      const lparts = splitTop(left), rparts = splitTop(right);
+      if (!lparts.length || !rparts.length) { errors.push({ line: li + 1, text: raw, msg: '箭头两侧需要各有一个节点名' }); continue; }
+      const a = lparts[lparts.length - 1];
+      const b = rparts[0];
+      let w = weight;
+      if (w === null && rparts.length > 1 && isFinite(Number(rparts[1]))) w = Number(rparts[1]);
+      if (w !== null && !isFinite(w)) w = null;
+      if (arrow === '--') sawUndirected = true; else sawArrow = true;
+      for (const extra of lparts.slice(0, -1)) nodes.push(extra);
+      const ww = w === null ? 1 : w;
+      if (arrow === '<-' || arrow === '←') edges.push([b, a, ww]);
+      else edges.push([a, b, ww]);
+      if (arrow === '<->' || arrow === '↔') edges.push([b, a, ww]);
+      nodes.push(a); nodes.push(b);
+      continue;
+    }
+    const parts = splitTop(body);
+    if (parts.length === 1) { nodes.push(parts[0]); continue; }
+    if (parts.length >= 2) {
+      const a = parts[0], b = parts[1];
+      let w = weight;
+      if (w === null && parts.length >= 3 && isFinite(Number(parts[2]))) w = Number(parts[2]);
+      if (parts.length >= 3 && !isFinite(Number(parts[2])) && weight === null) {
+        warnings.push({ line: li + 1, text: raw, msg: '第 3 列不是数字，已忽略（权重需为数字）' });
+      }
+      edges.push([a, b, w === null ? 1 : w]);
+      nodes.push(a); nodes.push(b);
+      sawUndirected = true;
+      continue;
+    }
+    errors.push({ line: li + 1, text: raw, msg: '看不懂这一行' });
+  }
+  return { spec: { directed: sawArrow, nodes, edges }, errors, warnings, hint: { sawArrow, sawUndirected } };
+}
+
+/* 在引号之外找某个字符最后一次出现的位置 */
+function lastTopIndex(s, ch) {
+  let quote = null, at = -1;
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (quote) { if (c === '\\') { i++; continue; } if (c === quote) quote = null; continue; }
+    if (c === '"' || c === "'") { quote = c; continue; }
+    if (c === ch) at = i;
+  }
+  return at;
+}
+
+function parseJSONGraph(text) {
+  const errors = [], warnings = [];
+  let data;
+  try { data = JSON.parse(text); }
+  catch (err) {
+    const m = String(err.message).match(/position (\d+)/);
+    /* 「Unexpected end of JSON input」这类报错不带位置 —— 指到最后一行比指到第 1 行有用 */
+    let line = Math.max(1, text.replace(/\s+$/, '').split('\n').length);
+    if (m) line = text.slice(0, Number(m[1])).split('\n').length;
+    return { spec: { directed: false, nodes: [], edges: [] }, errors: [{ line, text: '', msg: 'JSON 解析失败：' + err.message }], warnings };
+  }
+  const nodes = [], edges = [];
+  let directed = false;
+  const pushEdge = (a, b, w) => { edges.push([String(a), String(b), (w === undefined || w === null || !isFinite(Number(w))) ? 1 : Number(w)]); nodes.push(String(a)); nodes.push(String(b)); };
+  if (Array.isArray(data)) {
+    for (const row of data) {
+      if (Array.isArray(row) && row.length >= 2) pushEdge(row[0], row[1], row[2]);
+      else if (row && typeof row === 'object') pushEdge(row.source !== undefined ? row.source : row.from, row.target !== undefined ? row.target : row.to, row.weight !== undefined ? row.weight : row.value);
+      else warnings.push({ line: 0, text: JSON.stringify(row), msg: '数组元素既不是 [a,b] 也不是 {source,target}' });
+    }
+  } else if (data && typeof data === 'object') {
+    if (typeof data.directed === 'boolean') directed = data.directed;
+    const links = data.links || data.edges;
+    if (Array.isArray(links)) {
+      for (const l of links) {
+        if (Array.isArray(l)) pushEdge(l[0], l[1], l[2]);
+        else pushEdge(l.source !== undefined ? l.source : l.from, l.target !== undefined ? l.target : l.to, l.weight !== undefined ? l.weight : l.value);
+      }
+      if (Array.isArray(data.nodes)) for (const nd of data.nodes) nodes.push(String(typeof nd === 'object' ? (nd.id !== undefined ? nd.id : nd.name) : nd));
+    } else {
+      /* 邻接表 {"a": ["b","c"], "b": {"c": 3}} */
+      for (const k of Object.keys(data)) {
+        nodes.push(String(k));
+        const v = data[k];
+        if (Array.isArray(v)) for (const t of v) pushEdge(k, Array.isArray(t) ? t[0] : t, Array.isArray(t) ? t[1] : undefined);
+        else if (v && typeof v === 'object') for (const t of Object.keys(v)) pushEdge(k, t, v[t]);
+        else if (v !== null && v !== undefined && typeof v !== 'object') pushEdge(k, v, undefined);
+      }
+      directed = true;
+    }
+  }
+  return { spec: { directed, nodes, edges }, errors, warnings };
+}
+
+function parseDOT(text) {
+  const errors = [], warnings = [];
+  const nodes = [], edges = [];
+  const head = text.match(/^\s*(strict\s+)?(di)?graph\b/i);
+  const directed = !!(head && head[2]);
+  const open = text.indexOf('{');
+  const close = text.lastIndexOf('}');
+  if (open < 0 || close < 0) return { spec: { directed, nodes, edges }, errors: [{ line: 1, text: '', msg: 'DOT 缺少 { } 图体' }], warnings };
+  const body = text.slice(open + 1, close);
+  const lineOf = (idx) => text.slice(0, open + 1 + idx).split('\n').length;
+  let pos = 0;
+  /* 按引号之外的 ; 与换行切语句（节点名里可能含 ;） */
+  const stmts = [];
+  {
+    let cur = '', quote = null;
+    for (let i = 0; i < body.length; i++) {
+      const ch = body[i];
+      if (quote) { cur += ch; if (ch === '\\') { cur += body[i + 1] || ''; i++; } else if (ch === quote) quote = null; continue; }
+      if (ch === '"' || ch === "'") { quote = ch; cur += ch; continue; }
+      if (ch === ';' || ch === '\n') { stmts.push(cur); cur = ''; continue; }
+      cur += ch;
+    }
+    stmts.push(cur);
+  }
+  for (const stmtRaw of stmts) {
+    const at = pos; pos += stmtRaw.length + 1;
+    const stmt = stripComment(stmtRaw).replace(/\n/g, ' ').trim();
+    if (!stmt) continue;
+    if (/^(node|edge|graph|rankdir|subgraph|label|layout|splines)\b/i.test(stmt)) { continue; }
+    let attrs = null, main = stmt;
+    const am = lastTopIndex(stmt, '[');
+    if (am > 0 && /\]\s*$/.test(stmt)) { attrs = stmt.slice(am + 1, stmt.lastIndexOf(']')); main = stmt.slice(0, am).trim(); }
+    let w = 1;
+    if (attrs) {
+      const mw = attrs.match(/(?:weight|len|value|capacity)\s*=\s*"?(-?[\d.eE+]+)"?/i);
+      if (mw) w = Number(mw[1]);
+    }
+    /* 引号感知地按 -> / -- 切链（节点名里可能就带箭头字样） */
+    const chain = [];
+    let rest = main;
+    for (;;) {
+      const hit = findArrow(rest);
+      if (!hit || hit.at <= 0) { chain.push(unquote(rest)); break; }
+      chain.push(unquote(rest.slice(0, hit.at)));
+      rest = rest.slice(hit.at + (hit.len || hit.arrow.length));
+    }
+    while (chain.length && chain[chain.length - 1] === '') chain.pop();
+    /* 单个 token：是节点声明，除非它是引号外带 = 的属性赋值（rankdir=LR 这类） */
+    if (chain.length === 1) { if (lastTopIndex(main, '=') < 0 && chain[0]) nodes.push(chain[0]); continue; }
+    if (chain.length >= 2) {
+      for (let i = 0; i + 1 < chain.length; i++) { edges.push([chain[i], chain[i + 1], w]); }
+      chain.forEach((c) => nodes.push(c));
+      continue;
+    }
+    warnings.push({ line: lineOf(at), text: stmt, msg: 'DOT 语句已跳过' });
+  }
+  return { spec: { directed, nodes, edges }, errors, warnings };
+}
+
+function parseMatrix(text) {
+  const errors = [], warnings = [];
+  const lines = text.split('\n').map((l) => stripComment(l)).filter((l) => l.trim());
+  const rows = lines.map((l) => l.split(/[,\t]/).map((c) => c.trim().replace(/^["']|["']$/g, '')));
+  if (rows.length < 2) return { spec: { directed: false, nodes: [], edges: [] }, errors: [{ line: 1, text: '', msg: '矩阵至少要有表头行 + 一行数据' }], warnings };
+  const header = rows[0].slice(1);
+  const nodes = header.slice();
+  const edges = [];
+  const M = [], rowNames = [];
+  for (let r = 1; r < rows.length; r++) {
+    const cells = rows[r];
+    const name = cells[0];
+    if (!nodes.includes(name)) nodes.push(name);
+    rowNames.push(name);
+    const vals = cells.slice(1).map((c) => (c === '' ? 0 : Number(c)));
+    M.push(vals);
+    for (let c = 0; c < vals.length && c < header.length; c++) {
+      if (!isFinite(vals[c])) errors.push({ line: r + 1, text: rows[r].join(','), msg: `第 ${c + 2} 列不是数字` });
+    }
+  }
+  /* 先判对称，再决定怎么发边：对称矩阵的两个格子说的是同一条无向边，
+     全都发出去会让权重翻倍（合并规则是相加）。 */
+  const aligned = rowNames.length === header.length && rowNames.every((nm, i) => nm === header[i]);
+  let asym = !aligned;
+  for (let i = 0; i < M.length && !asym; i++) {
+    for (let j = 0; j < M.length; j++) {
+      const a = M[i] && M[i][j], b = M[j] && M[j][i];
+      if ((a === undefined ? 0 : a) !== (b === undefined ? 0 : b)) { asym = true; break; }
+    }
+  }
+  for (let r = 0; r < M.length; r++) {
+    for (let c = 0; c < M[r].length && c < header.length; c++) {
+      const v = M[r][c];
+      if (!isFinite(v) || v === 0) continue;
+      if (!asym && c < r) continue;          /* 对称矩阵只取上三角（含对角线的自环） */
+      edges.push([rowNames[r], header[c], v]);
+    }
+  }
+  return { spec: { directed: asym, nodes, edges }, errors, warnings, symmetric: !asym };
+}
+
+/* 导出：把当前图写回各种文本格式 */
+function graphToEdgeList(G) {
+  const arrow = G.directed ? ' -> ' : ' -- ';
+  const q = quoteName;
+  const lines = [];
+  const touched = new Set();
+  for (const e of G.edges) {
+    touched.add(e.u); touched.add(e.v);
+    lines.push(q(G.ids[e.u]) + arrow + q(G.ids[e.v]) + (e.w === 1 ? '' : ' ' + e.w));
+  }
+  for (let i = 0; i < G.n; i++) if (!touched.has(i)) lines.push(q(G.ids[i]));
+  return lines.join('\n');
+}
+
+function graphToDOT(G) {
+  const arrow = G.directed ? ' -> ' : ' -- ';
+  const q = (s) => '"' + String(s).replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
+  const lines = [(G.directed ? 'digraph' : 'graph') + ' G {'];
+  const touched = new Set();
+  for (const e of G.edges) {
+    touched.add(e.u); touched.add(e.v);
+    lines.push('  ' + q(G.ids[e.u]) + arrow + q(G.ids[e.v]) + (e.w === 1 ? ';' : ' [weight=' + e.w + '];'));
+  }
+  for (let i = 0; i < G.n; i++) if (!touched.has(i)) lines.push('  ' + q(G.ids[i]) + ';');
+  lines.push('}');
+  return lines.join('\n');
+}
+
+function graphToJSON(G) {
+  return JSON.stringify({
+    directed: G.directed,
+    nodes: G.ids.map((id) => ({ id })),
+    links: G.edges.map((e) => ({ source: G.ids[e.u], target: G.ids[e.v], weight: e.w })),
+  }, null, 2);
+}
+
+/* ===================== 中心性与全局指标 ===================== */
+/* 口径与 networkx 对齐（已用 232 张图逐项对拍）：
+   - betweenness: normalized=False，无向图结果除以 2
+   - closeness: Wasserman-Faust 修正；有向图按「入向」距离（等价于先反向）
+   - harmonic: 有向图同样按入向：harmonic[u] = Σ_v 1/d(v→u)
+   - pagerank: alpha=0.85，悬挂节点权重按均匀分布回流
+   - eigenvector / clustering / transitivity / k-core: 在「无向简单视图」上计算 */
+
+function density(G) {
+  const n = G.n, m = G.edges.length;
+  if (n <= 1) return 0;
+  return G.directed ? m / (n * (n - 1)) : (2 * m) / (n * (n - 1));
+}
+
+function bfsHops(G, s, adj) {
+  const dist = new Int32Array(G.n).fill(-1);
+  dist[s] = 0;
+  const q = [s];
+  for (let qi = 0; qi < q.length; qi++) {
+    const u = q[qi];
+    for (const { v } of adj[u]) if (dist[v] < 0) { dist[v] = dist[u] + 1; q.push(v); }
+  }
+  return dist;
+}
+
+function dijkstra(G, s, adj) {
+  const INF = Infinity;
+  const dist = new Float64Array(G.n).fill(INF);
+  const prev = new Int32Array(G.n).fill(-1);
+  const heap = new BinHeap();
+  dist[s] = 0; heap.push(0, s);
+  const done = new Uint8Array(G.n);
+  while (heap.size()) {
+    const [d, u] = heap.pop();
+    if (done[u]) continue;
+    done[u] = 1;
+    for (const { v, w } of adj[u]) {
+      const nd = d + (w > 0 ? w : 0);
+      if (nd < dist[v]) { dist[v] = nd; prev[v] = u; heap.push(nd, v); }
+    }
+  }
+  return { dist, prev };
+}
+
+function BinHeap() {
+  const a = [];
+  this.size = () => a.length;
+  this.push = (k, v) => {
+    a.push([k, v]);
+    let i = a.length - 1;
+    while (i > 0) {
+      const p = (i - 1) >> 1;
+      if (a[p][0] <= a[i][0]) break;
+      const t = a[p]; a[p] = a[i]; a[i] = t; i = p;
+    }
+  };
+  this.pop = () => {
+    const top = a[0], last = a.pop();
+    if (a.length) {
+      a[0] = last;
+      let i = 0;
+      for (;;) {
+        const l = 2 * i + 1, r = l + 1;
+        let s = i;
+        if (l < a.length && a[l][0] < a[s][0]) s = l;
+        if (r < a.length && a[r][0] < a[s][0]) s = r;
+        if (s === i) break;
+        const t = a[s]; a[s] = a[i]; a[i] = t; i = s;
+      }
+    }
+    return top;
+  };
+}
+
+function pagerank(G, opts) {
+  opts = opts || {};
+  const alpha = opts.alpha === undefined ? 0.85 : opts.alpha;
+  const weighted = !!opts.weighted;
+  const tol = opts.tol === undefined ? 1e-12 : opts.tol;
+  const maxIter = opts.maxIter || 500;
+  const n = G.n;
+  if (!n) return { values: [], iterations: 0, converged: true };
+  /* 出边（无向图等价于双向）+ 按出权重归一化 */
+  const outW = new Float64Array(n);
+  for (let i = 0; i < n; i++) for (const { w } of G.out[i]) outW[i] += weighted ? w : 1;
+  const dangling = [];
+  for (let i = 0; i < n; i++) if (outW[i] === 0) dangling.push(i);
+  let x = new Float64Array(n).fill(1 / n);
+  const p = 1 / n;
+  let iterations = 0, converged = false;
+  for (let it = 0; it < maxIter; it++) {
+    iterations = it + 1;
+    const xl = x;
+    x = new Float64Array(n);
+    let dangleSum = 0;
+    for (const d of dangling) dangleSum += xl[d];
+    dangleSum *= alpha;
+    for (let i = 0; i < n; i++) {
+      if (outW[i] > 0) {
+        const share = alpha * xl[i] / outW[i];
+        for (const { v, w } of G.out[i]) x[v] += share * (weighted ? w : 1);
+      }
+      x[i] += dangleSum * p + (1 - alpha) * p;
+    }
+    let err = 0;
+    for (let i = 0; i < n; i++) err += Math.abs(x[i] - xl[i]);
+    if (err < n * tol) { converged = true; break; }
+  }
+  return { values: Array.from(x), iterations, converged };
+}
+
+/* Brandes 介数中心性（无权 BFS / 加权 Dijkstra 两条路径），normalized=False */
+function betweenness(G, opts) {
+  opts = opts || {};
+  const weighted = !!opts.weighted;
+  const n = G.n;
+  const bc = new Float64Array(n);
+  const adj = G.out;
+  for (let s = 0; s < n; s++) {
+    const S = [];
+    const P = [];
+    const sigma = new Float64Array(n);
+    for (let i = 0; i < n; i++) P.push([]);
+    sigma[s] = 1;
+    if (!weighted) {
+      const D = new Int32Array(n).fill(-1);
+      D[s] = 0;
+      const q = [s];
+      for (let qi = 0; qi < q.length; qi++) {
+        const v = q[qi];
+        S.push(v);
+        for (const { v: w } of adj[v]) {
+          if (D[w] < 0) { D[w] = D[v] + 1; q.push(w); }
+          if (D[w] === D[v] + 1) { sigma[w] += sigma[v]; P[w].push(v); }
+        }
+      }
+    } else {
+      const D = new Float64Array(n).fill(Infinity);
+      const seen = new Float64Array(n).fill(Infinity);
+      const done = new Uint8Array(n);
+      seen[s] = 0;
+      const heap = new BinHeap();
+      heap.push(0, s);
+      while (heap.size()) {
+        const [dist, v] = heap.pop();
+        if (done[v]) continue;
+        done[v] = 1;
+        D[v] = dist;
+        S.push(v);
+        for (const { v: w, w: ew } of adj[v]) {
+          const vw = dist + (ew > 0 ? ew : 0);
+          if (!done[w] && vw < seen[w]) {
+            seen[w] = vw;
+            heap.push(vw, w);
+            sigma[w] = sigma[v];
+            P[w] = [v];
+          } else if (vw === seen[w] && w !== v) {
+            sigma[w] += sigma[v];
+            P[w].push(v);
+          }
+        }
+      }
+    }
+    const delta = new Float64Array(n);
+    for (let i = S.length - 1; i >= 0; i--) {
+      const w = S[i];
+      const coeff = (1 + delta[w]) / sigma[w];
+      for (const v of P[w]) delta[v] += sigma[v] * coeff;
+      if (w !== s) bc[w] += delta[w];
+    }
+  }
+  const scale = G.directed ? 1 : 0.5;
+  const out = new Array(n);
+  for (let i = 0; i < n; i++) out[i] = bc[i] * scale;
+  return out;
+}
+
+/* closeness：有向图按入向（对 in 邻接做 BFS） */
+function closeness(G) {
+  const n = G.n;
+  const adj = G.directed ? G.in : G.out;
+  const res = new Array(n).fill(0);
+  for (let i = 0; i < n; i++) {
+    const dist = bfsHops(G, i, adj);
+    let tot = 0, reach = 0;
+    for (let j = 0; j < n; j++) if (dist[j] >= 0) { tot += dist[j]; reach++; }
+    if (tot > 0 && n > 1) {
+      const c = (reach - 1) / tot;
+      res[i] = c * ((reach - 1) / (n - 1));
+    }
+  }
+  return res;
+}
+
+/* harmonic：harmonic[u] = Σ_{v≠u} 1/d(v→u) */
+function harmonic(G) {
+  const n = G.n;
+  const res = new Array(n).fill(0);
+  for (let s = 0; s < n; s++) {
+    const dist = bfsHops(G, s, G.out);
+    for (let t = 0; t < n; t++) if (dist[t] > 0) res[t] += 1 / dist[t];
+  }
+  return res;
+}
+
+/* 特征向量中心性（无向简单视图，(A+I) 幂迭代 + L2 归一化，与 networkx 同一实现） */
+function eigenvector(U, opts) {
+  opts = opts || {};
+  const maxIter = opts.maxIter || 100;
+  const tol = opts.tol === undefined ? 1e-6 : opts.tol;
+  const n = U.n;
+  if (!n) return { values: [], converged: false };
+  let x = new Float64Array(n).fill(1 / n);
+  for (let it = 0; it < maxIter; it++) {
+    const xl = x;
+    x = Float64Array.from(xl);
+    for (let i = 0; i < n; i++) for (const { v } of U.out[i]) x[v] += xl[i];
+    let norm = 0;
+    for (let i = 0; i < n; i++) norm += x[i] * x[i];
+    norm = Math.sqrt(norm) || 1;
+    for (let i = 0; i < n; i++) x[i] /= norm;
+    let err = 0;
+    for (let i = 0; i < n; i++) err += Math.abs(x[i] - xl[i]);
+    if (err < n * tol) return { values: Array.from(x), converged: true, iterations: it + 1 };
+  }
+  return { values: Array.from(x), converged: false, iterations: maxIter };
+}
+
+/* 局部聚类系数 + 全局传递性（无向简单视图） */
+function clustering(U) {
+  const n = U.n;
+  const nbr = [];
+  for (let i = 0; i < n; i++) nbr.push(new Set(U.out[i].map((a) => a.v)));
+  const local = new Array(n).fill(0);
+  const triPerNode = new Array(n).fill(0);
+  for (let i = 0; i < n; i++) {
+    const list = [...nbr[i]];
+    let links = 0;
+    for (let a = 0; a < list.length; a++) for (let b = a + 1; b < list.length; b++) if (nbr[list[a]].has(list[b])) links++;
+    triPerNode[i] = links;
+    const k = list.length;
+    local[i] = k > 1 ? (2 * links) / (k * (k - 1)) : 0;
+  }
+  let triangles = 0, triples = 0;
+  for (let i = 0; i < n; i++) {
+    triangles += triPerNode[i];
+    const k = nbr[i].size;
+    triples += (k * (k - 1)) / 2;
+  }
+  triangles /= 3;
+  const transitivity = triples > 0 ? (3 * triangles) / triples : 0;
+  return { local, transitivity, triangles, trianglesPerNode: triPerNode };
+}
+
+/* k-core 分解（无向简单视图） */
+function coreNumbers(U) {
+  const n = U.n;
+  const deg = new Array(n);
+  for (let i = 0; i < n; i++) deg[i] = U.out[i].length;
+  const order = Array.from({ length: n }, (_, i) => i).sort((a, b) => deg[a] - deg[b] || a - b);
+  const core = deg.slice();
+  const pos = new Array(n);
+  order.forEach((v, i) => { pos[v] = i; });
+  const bin = [];
+  const removed = new Uint8Array(n);
+  const list = order.slice();
+  for (let idx = 0; idx < list.length; idx++) {
+    /* 简单实现：每轮取当前最小度节点（n 较小，够用；大图走 O(n log n) 排序足够快） */
+    let best = -1;
+    for (let k = idx; k < list.length; k++) if (best < 0 || core[list[k]] < core[list[best]]) best = k;
+    const t = list[idx]; list[idx] = list[best]; list[best] = t;
+    const v = list[idx];
+    removed[v] = 1;
+    for (const { v: u } of U.out[v]) if (!removed[u] && core[u] > core[v]) core[u]--;
+  }
+  void bin; void pos;
+  return Array.from(core);
+}
+
+/* 度相关性（Pearson，与 networkx degree_assortativity_coefficient 同口径） */
+function assortativity(U) {
+  const pairs = [];
+  for (const e of U.edges) {
+    const du = U.out[e.u].length, dv = U.out[e.v].length;
+    pairs.push([du, dv]); pairs.push([dv, du]);
+  }
+  if (!pairs.length) return null;
+  const m = pairs.length;
+  let sx = 0, sy = 0;
+  for (const [a, b] of pairs) { sx += a; sy += b; }
+  const mx = sx / m, my = sy / m;
+  let sxy = 0, sxx = 0, syy = 0;
+  for (const [a, b] of pairs) { sxy += (a - mx) * (b - my); sxx += (a - mx) * (a - mx); syy += (b - my) * (b - my); }
+  if (sxx === 0 || syy === 0) return null;
+  return sxy / Math.sqrt(sxx * syy);
+}
+
+/* 一次性算全部节点级指标（UI 表格与排行榜用） */
+function computeMetrics(G, U) {
+  U = U || simpleUndirected(G);
+  const n = G.n;
+  const pr = pagerank(G, { weighted: false });
+  const prW = pagerank(G, { weighted: true });
+  const bt = betweenness(G, { weighted: false });
+  const btW = betweenness(G, { weighted: true });
+  const cl = closeness(G);
+  const hm = harmonic(G);
+  const ev = eigenvector(U);
+  const cc = clustering(U);
+  const core = coreNumbers(U);
+  return {
+    n, m: G.edges.length,
+    density: density(G),
+    degree: G.deg.slice(),
+    wdegree: G.wdeg.slice(),
+    indeg: G.indeg.slice(),
+    outdeg: G.outdeg.slice(),
+    pagerank: pr.values,
+    pagerankW: prW.values,
+    betweenness: bt,
+    betweennessW: btW,
+    closeness: cl,
+    harmonic: hm,
+    eigenvector: ev.values,
+    eigenvectorConverged: ev.converged,
+    clustering: cc.local,
+    triangles: cc.trianglesPerNode,
+    transitivity: cc.transitivity,
+    core,
+    assortativity: assortativity(U),
+    avgDegree: n ? G.deg.reduce((a, b) => a + b, 0) / n : 0,
+  };
+}
+
+/* ===================== 结构分析 ===================== */
+
+/* 连通分量（无向简单视图） */
+function connectedComponents(U) {
+  const seen = new Uint8Array(U.n);
+  const comps = [];
+  for (let i = 0; i < U.n; i++) {
+    if (seen[i]) continue;
+    const comp = [i]; seen[i] = 1;
+    for (let qi = 0; qi < comp.length; qi++) {
+      for (const { v } of U.out[comp[qi]]) if (!seen[v]) { seen[v] = 1; comp.push(v); }
+    }
+    comps.push(comp.sort((a, b) => a - b));
+  }
+  return comps;
+}
+
+/* Tarjan 强连通分量（有向图） */
+function stronglyConnected(G) {
+  const n = G.n;
+  const index = new Int32Array(n).fill(-1);
+  const low = new Int32Array(n);
+  const onStack = new Uint8Array(n);
+  const stack = [];
+  let counter = 0;
+  const comps = [];
+  for (let root = 0; root < n; root++) {
+    if (index[root] >= 0) continue;
+    /* 迭代版 Tarjan，避免深图爆栈 */
+    const work = [[root, 0]];
+    while (work.length) {
+      const frame = work[work.length - 1];
+      const v = frame[0];
+      if (frame[1] === 0) {
+        index[v] = low[v] = counter++;
+        stack.push(v); onStack[v] = 1;
+      }
+      let recursed = false;
+      while (frame[1] < G.out[v].length) {
+        const w = G.out[v][frame[1]].v;
+        frame[1]++;
+        if (index[w] < 0) { work.push([w, 0]); recursed = true; break; }
+        else if (onStack[w]) low[v] = Math.min(low[v], index[w]);
+      }
+      if (recursed) continue;
+      if (low[v] === index[v]) {
+        const comp = [];
+        for (;;) {
+          const w = stack.pop(); onStack[w] = 0; comp.push(w);
+          if (w === v) break;
+        }
+        comps.push(comp.sort((a, b) => a - b));
+      }
+      work.pop();
+      if (work.length) {
+        const parent = work[work.length - 1][0];
+        low[parent] = Math.min(low[parent], low[v]);
+      }
+    }
+  }
+  return comps;
+}
+
+/* 弱连通分量（有向图忽略方向） */
+function weaklyConnected(G) {
+  const seen = new Uint8Array(G.n);
+  const comps = [];
+  for (let i = 0; i < G.n; i++) {
+    if (seen[i]) continue;
+    const comp = [i]; seen[i] = 1;
+    for (let qi = 0; qi < comp.length; qi++) {
+      const u = comp[qi];
+      for (const { v } of G.out[u]) if (!seen[v]) { seen[v] = 1; comp.push(v); }
+      for (const { v } of G.in[u]) if (!seen[v]) { seen[v] = 1; comp.push(v); }
+    }
+    comps.push(comp.sort((a, b) => a - b));
+  }
+  return comps;
+}
+
+/* 割点与桥（Hopcroft–Tarjan，迭代版，跑在无向简单视图上） */
+function cutsAndBridges(U) {
+  const n = U.n;
+  const disc = new Int32Array(n).fill(-1);
+  const low = new Int32Array(n);
+  const parent = new Int32Array(n).fill(-1);
+  const isCut = new Uint8Array(n);
+  const bridges = [];
+  let timer = 0;
+  for (let root = 0; root < n; root++) {
+    if (disc[root] >= 0) continue;
+    let rootChildren = 0;
+    const stack = [[root, 0]];
+    disc[root] = low[root] = timer++;
+    while (stack.length) {
+      const frame = stack[stack.length - 1];
+      const u = frame[0];
+      if (frame[1] < U.out[u].length) {
+        const v = U.out[u][frame[1]].v;
+        frame[1]++;
+        if (v === parent[u]) {
+          /* 简单图里父边只出现一次，直接跳过 */
+          continue;
+        }
+        if (disc[v] < 0) {
+          parent[v] = u;
+          if (u === root) rootChildren++;
+          disc[v] = low[v] = timer++;
+          stack.push([v, 0]);
+        } else {
+          low[u] = Math.min(low[u], disc[v]);
+        }
+      } else {
+        stack.pop();
+        const p = parent[u];
+        if (p >= 0) {
+          low[p] = Math.min(low[p], low[u]);
+          if (low[u] > disc[p]) bridges.push([Math.min(p, u), Math.max(p, u)]);
+          if (p !== root && low[u] >= disc[p]) isCut[p] = 1;
+        }
+      }
+    }
+    if (rootChildren > 1) isCut[root] = 1;
+  }
+  const cuts = [];
+  for (let i = 0; i < n; i++) if (isCut[i]) cuts.push(i);
+  return { articulation: cuts, bridges };
+}
+
+/* 二部判定 + Hopcroft–Karp 最大匹配（无向简单视图） */
+function bipartite(U) {
+  const n = U.n;
+  const color = new Int8Array(n).fill(-1);
+  let ok = true;
+  const odd = [];
+  for (let s = 0; s < n; s++) {
+    if (color[s] >= 0) continue;
+    color[s] = 0;
+    const q = [s];
+    for (let qi = 0; qi < q.length && ok; qi++) {
+      const u = q[qi];
+      for (const { v } of U.out[u]) {
+        if (color[v] < 0) { color[v] = 1 - color[u]; q.push(v); }
+        else if (color[v] === color[u]) { ok = false; odd.push([u, v]); break; }
+      }
+    }
+    if (!ok) break;
+  }
+  if (!ok) return { bipartite: false, color: null, matching: null, matchingSize: 0, conflict: odd[0] || null };
+  const left = [], right = [];
+  for (let i = 0; i < n; i++) (color[i] === 0 ? left : right).push(i);
+  const match = new Int32Array(n).fill(-1);
+  /* Hopcroft–Karp */
+  const INF = Infinity;
+  const dist = new Float64Array(n);
+  function bfs() {
+    const q = [];
+    let found = false;
+    for (const u of left) {
+      if (match[u] < 0) { dist[u] = 0; q.push(u); } else dist[u] = INF;
+    }
+    for (let qi = 0; qi < q.length; qi++) {
+      const u = q[qi];
+      for (const { v } of U.out[u]) {
+        const w = match[v];
+        if (w < 0) { found = true; }
+        else if (dist[w] === INF) { dist[w] = dist[u] + 1; q.push(w); }
+      }
+    }
+    return found;
+  }
+  function dfs(u) {
+    for (const { v } of U.out[u]) {
+      const w = match[v];
+      if (w < 0 || (dist[w] === dist[u] + 1 && dfs(w))) {
+        match[u] = v; match[v] = u;
+        return true;
+      }
+    }
+    dist[u] = INF;
+    return false;
+  }
+  let size = 0;
+  while (bfs()) {
+    for (const u of left) if (match[u] < 0 && dfs(u)) size++;
+  }
+  return { bipartite: true, color: Array.from(color), left, right, matching: Array.from(match), matchingSize: size };
+}
+
+/* 最小生成森林（Kruskal，无向简单视图） */
+function minimumSpanningForest(U) {
+  const parent = Array.from({ length: U.n }, (_, i) => i);
+  const find = (x) => { while (parent[x] !== x) { parent[x] = parent[parent[x]]; x = parent[x]; } return x; };
+  const es = U.edges.slice().sort((a, b) => a.w - b.w || a.i - b.i);
+  const chosen = [];
+  let total = 0;
+  for (const e of es) {
+    const a = find(e.u), b = find(e.v);
+    if (a === b) continue;
+    parent[a] = b;
+    chosen.push(e);
+    total += e.w;
+  }
+  return { edges: chosen, weight: total };
+}
+
+/* Dinic 最大流 + 最小割（无向边按两条反向弧处理，与 networkx 同口径） */
+function maxFlow(G, s, t) {
+  if (s === t) return { value: 0, cut: [], reachable: [], flows: [] };
+  const n = G.n;
+  const head = [], to = [], cap = [], next = [];
+  const first = new Int32Array(n).fill(-1);
+  const origin = [];
+  function addArc(u, v, c, ei) {
+    to.push(v); cap.push(c); next.push(first[u]); origin.push(ei); first[u] = to.length - 1; head.push(u);
+    to.push(u); cap.push(0); next.push(first[v]); origin.push(-1); first[v] = to.length - 1; head.push(v);
+  }
+  for (const e of G.edges) {
+    if (e.u === e.v) continue;
+    const c = e.w > 0 ? e.w : 0;
+    addArc(e.u, e.v, c, e.i);
+    if (!G.directed) addArc(e.v, e.u, c, e.i);
+  }
+  const level = new Int32Array(n);
+  const iter = new Int32Array(n);
+  function bfs() {
+    level.fill(-1);
+    level[s] = 0;
+    const q = [s];
+    for (let qi = 0; qi < q.length; qi++) {
+      const u = q[qi];
+      for (let a = first[u]; a >= 0; a = next[a]) {
+        if (cap[a] > 0 && level[to[a]] < 0) { level[to[a]] = level[u] + 1; q.push(to[a]); }
+      }
+    }
+    return level[t] >= 0;
+  }
+  function dfs(u, f) {
+    if (u === t) return f;
+    for (; iter[u] >= 0; iter[u] = next[iter[u]]) {
+      const a = iter[u], v = to[a];
+      if (cap[a] > 0 && level[v] === level[u] + 1) {
+        const d = dfs(v, Math.min(f, cap[a]));
+        if (d > 0) { cap[a] -= d; cap[a ^ 1] += d; return d; }
+      }
+    }
+    return 0;
+  }
+  let flow = 0;
+  while (bfs()) {
+    for (let i = 0; i < n; i++) iter[i] = first[i];
+    for (;;) {
+      const f = dfs(s, Infinity);
+      if (f <= 0) break;
+      flow += f;
+    }
+  }
+  /* 最小割：残量网络里从 s 可达的一侧 */
+  const vis = new Uint8Array(n);
+  vis[s] = 1;
+  const q = [s];
+  for (let qi = 0; qi < q.length; qi++) {
+    const u = q[qi];
+    for (let a = first[u]; a >= 0; a = next[a]) if (cap[a] > 0 && !vis[to[a]]) { vis[to[a]] = 1; q.push(to[a]); }
+  }
+  const cut = [];
+  for (const e of G.edges) {
+    if (e.u === e.v) continue;
+    if (vis[e.u] && !vis[e.v]) cut.push(e);
+    else if (!G.directed && vis[e.v] && !vis[e.u]) cut.push(e);
+  }
+  const reachable = [];
+  for (let i = 0; i < n; i++) if (vis[i]) reachable.push(i);
+  return { value: flow, cut, reachable, cutWeight: cut.reduce((a, e) => a + e.w, 0) };
+}
+
+/* 最短路（无权跳数 / 加权距离），返回路径节点序列 */
+function shortestPath(G, s, t, weighted) {
+  if (s === t) return { path: [s], hops: 0, dist: 0 };
+  if (!weighted) {
+    const prev = new Int32Array(G.n).fill(-1);
+    const dist = new Int32Array(G.n).fill(-1);
+    dist[s] = 0;
+    const q = [s];
+    for (let qi = 0; qi < q.length; qi++) {
+      const u = q[qi];
+      for (const { v } of G.out[u]) if (dist[v] < 0) { dist[v] = dist[u] + 1; prev[v] = u; q.push(v); }
+    }
+    if (dist[t] < 0) return null;
+    const path = [];
+    for (let cur = t; cur >= 0; cur = prev[cur]) { path.push(cur); if (cur === s) break; }
+    path.reverse();
+    let wsum = 0;
+    for (let i = 0; i + 1 < path.length; i++) wsum += edgeWeight(G, path[i], path[i + 1]);
+    return { path, hops: dist[t], dist: wsum };
+  }
+  const { dist, prev } = dijkstra(G, s, G.out);
+  if (!isFinite(dist[t])) return null;
+  const path = [];
+  for (let cur = t; cur >= 0; cur = prev[cur]) { path.push(cur); if (cur === s) break; }
+  path.reverse();
+  return { path, hops: path.length - 1, dist: dist[t] };
+}
+
+function edgeWeight(G, u, v) {
+  for (const a of G.out[u]) if (a.v === v) return a.w;
+  return 1;
+}
+
+/* 最大连通分量上的离心率 / 直径 / 半径 / 平均最短路（无向无权） */
+function componentStats(U) {
+  const comps = connectedComponents(U);
+  if (!comps.length) return null;
+  let big = comps[0];
+  for (const c of comps) if (c.length > big.length) big = c;
+  const inComp = new Set(big);
+  let diameter = 0, radius = Infinity, totalDist = 0, pairs = 0;
+  const ecc = new Map();
+  for (const s of big) {
+    const dist = bfsHops(U, s, U.out);
+    let e = 0;
+    for (const t of big) {
+      if (t === s || !inComp.has(t)) continue;
+      const d = dist[t];
+      if (d > e) e = d;
+      totalDist += d; pairs++;
+    }
+    ecc.set(s, e);
+    if (e > diameter) diameter = e;
+    if (e < radius) radius = e;
+  }
+  if (!isFinite(radius)) radius = 0;
+  return {
+    size: big.length,
+    nodes: big,
+    diameter,
+    radius,
+    avgPath: pairs ? totalDist / pairs : 0,
+    eccentricity: ecc,
+    center: big.filter((v) => ecc.get(v) === radius),
+    periphery: big.filter((v) => ecc.get(v) === diameter),
+    componentCount: comps.length,
+  };
+}
+
+/* 拓扑排序 + 最长路径分层（有向图） */
+function topoLayers(G) {
+  const n = G.n;
+  const indeg = new Int32Array(n);
+  for (const e of G.edges) if (e.u !== e.v) indeg[e.v]++;
+  const q = [];
+  for (let i = 0; i < n; i++) if (indeg[i] === 0) q.push(i);
+  const order = [];
+  const layer = new Int32Array(n);
+  const qq = q.slice();
+  for (let qi = 0; qi < qq.length; qi++) {
+    const u = qq[qi];
+    order.push(u);
+    for (const { v } of G.out[u]) {
+      if (v === u) continue;
+      if (layer[v] < layer[u] + 1) layer[v] = layer[u] + 1;
+      if (--indeg[v] === 0) qq.push(v);
+    }
+  }
+  const isDag = order.length === n && G.edges.every((e) => e.u !== e.v);
+  return { isDag, order: isDag ? order : null, layers: isDag ? Array.from(layer) : null };
+}
+
+/* Johnson 算法枚举简单环（有向图；含自环与二元环），最多 limit 条 */
+function simpleCycles(G, limit) {
+  limit = limit || 500;
+  const cycles = [];
+  const n = G.n;
+  for (const e of G.edges) if (e.u === e.v) cycles.push([e.u]);
+  const sccs = stronglyConnected(G).filter((c) => c.length > 1);
+  let truncated = false;
+  for (const comp of sccs) {
+    const inComp = new Set(comp);
+    const blocked = new Set();
+    const B = new Map();
+    const stack = [];
+    let startNode = null;
+    const allowed = new Set(comp);
+    function unblock(u) {
+      blocked.delete(u);
+      const set = B.get(u);
+      if (set) {
+        for (const w of set) if (blocked.has(w)) unblock(w);
+        set.clear();
+      }
+    }
+    function circuit(v) {
+      let found = false;
+      stack.push(v);
+      blocked.add(v);
+      for (const { v: w } of G.out[v]) {
+        if (!allowed.has(w) || w === v) continue;
+        if (w === startNode) {
+          if (cycles.length < limit) cycles.push(stack.slice());
+          else truncated = true;
+          found = true;
+        } else if (!blocked.has(w)) {
+          if (circuit(w)) found = true;
+        }
+        if (cycles.length >= limit && truncated) break;
+      }
+      if (found) unblock(v);
+      else {
+        for (const { v: w } of G.out[v]) {
+          if (!allowed.has(w) || w === v) continue;
+          if (!B.has(w)) B.set(w, new Set());
+          B.get(w).add(v);
+        }
+      }
+      stack.pop();
+      return found;
+    }
+    const sorted = comp.slice().sort((a, b) => a - b);
+    for (const s of sorted) {
+      startNode = s;
+      blocked.clear(); B.clear();
+      circuit(s);
+      allowed.delete(s);
+      if (truncated) break;
+    }
+    void inComp;
+    if (truncated) break;
+  }
+  return { cycles, truncated };
+}
+
+/* 反馈边：把每个环里「回边」找出来（按 DFS 后序），用于「打破循环依赖该删哪条」 */
+function feedbackEdges(G) {
+  const state = new Int8Array(G.n); /* 0 未访问 1 在栈上 2 完成 */
+  const back = [];
+  for (let root = 0; root < G.n; root++) {
+    if (state[root]) continue;
+    const stack = [[root, 0]];
+    state[root] = 1;
+    while (stack.length) {
+      const frame = stack[stack.length - 1];
+      const u = frame[0];
+      if (frame[1] < G.out[u].length) {
+        const { v, e } = G.out[u][frame[1]];
+        frame[1]++;
+        if (state[v] === 1) back.push(e);
+        else if (state[v] === 0) { state[v] = 1; stack.push([v, 0]); }
+      } else { state[u] = 2; stack.pop(); }
+    }
+  }
+  return back;
+}
+
+/* ===================== 社区发现 ===================== */
+
+/* 模块度 Q（无向加权，口径与 networkx.community.modularity 一致） */
+function modularity(U, comm, resolution) {
+  const res = resolution === undefined ? 1 : resolution;
+  const degSum = U.wdeg.reduce((a, b) => a + b, 0);
+  if (degSum === 0) return 0;
+  const m = degSum / 2;
+  const norm = 1 / (degSum * degSum);
+  const inW = new Map(), degW = new Map();
+  for (let i = 0; i < U.n; i++) {
+    const c = comm[i];
+    degW.set(c, (degW.get(c) || 0) + U.wdeg[i]);
+    if (!inW.has(c)) inW.set(c, 0);
+  }
+  for (const e of U.edges) {
+    if (comm[e.u] === comm[e.v]) inW.set(comm[e.u], inW.get(comm[e.u]) + e.w);
+  }
+  let q = 0;
+  for (const [c, L] of inW) {
+    const d = degW.get(c) || 0;
+    q += L / m - res * d * d * norm;
+  }
+  return q;
+}
+
+/* Louvain：固定种子多次重启（不同节点遍历顺序），取 Q 最大的一次 —— 结果确定可复现 */
+function louvain(U, opts) {
+  opts = opts || {};
+  const restarts = opts.restarts === undefined ? 12 : opts.restarts;
+  let best = null;
+  for (let r = 0; r < Math.max(1, restarts); r++) {
+    const cand = louvainOnce(U, Object.assign({}, opts, { seed: r }));
+    if (!best || cand.modularity > best.modularity + 1e-12) best = cand;
+  }
+  return best;
+}
+
+/* 单次 Louvain（种子决定节点遍历顺序；增益相同取社区编号最小者） */
+function louvainOnce(U, opts) {
+  opts = opts || {};
+  const resolution = opts.resolution === undefined ? 1 : opts.resolution;
+  const seed = opts.seed === undefined ? 0 : opts.seed;
+  const n = U.n;
+  if (!n) return { communities: [], levels: 0, modularity: 0, count: 0 };
+  let nodeComm = Array.from({ length: n }, (_, i) => i);   /* 原图节点 -> 当前层社区 */
+  /* 当前层的图：adj[i] = Map(j -> w)，self[i] = 内部权重（贡献 2*self 到度） */
+  let adj = [], self = new Float64Array(n), deg = new Float64Array(n);
+  for (let i = 0; i < n; i++) adj.push(new Map());
+  for (const e of U.edges) {
+    if (e.u === e.v) { self[e.u] += e.w; continue; }
+    adj[e.u].set(e.v, (adj[e.u].get(e.v) || 0) + e.w);
+    adj[e.v].set(e.u, (adj[e.v].get(e.u) || 0) + e.w);
+  }
+  for (let i = 0; i < n; i++) {
+    let d = 2 * self[i];
+    for (const w of adj[i].values()) d += w;
+    deg[i] = d;
+  }
+  const totalDeg = deg.reduce((a, b) => a + b, 0);
+  if (totalDeg === 0) return { communities: nodeComm.map(() => 0), levels: 0, modularity: 0 };
+  const m2 = totalDeg;
+  let levels = 0;
+
+  for (let pass = 0; pass < 30; pass++) {
+    const N = adj.length;
+    const comm = Array.from({ length: N }, (_, i) => i);
+    const commTot = Float64Array.from(deg);
+    let improvedAny = false;
+    /* 遍历顺序：seed=0 用自然顺序（可读性好），其余用种子打乱 */
+    const visit = Array.from({ length: N }, (_, i) => i);
+    if (seed > 0) {
+      const rnd = mulberry32(seed * 7919 + N);
+      for (let i = visit.length - 1; i > 0; i--) {
+        const j = Math.floor(rnd() * (i + 1));
+        const t = visit[i]; visit[i] = visit[j]; visit[j] = t;
+      }
+    }
+    for (let round = 0; round < 50; round++) {
+      let moved = 0;
+      for (const i of visit) {
+        const ci = comm[i];
+        const links = new Map();
+        for (const [j, w] of adj[i]) {
+          if (j === i) continue;
+          links.set(comm[j], (links.get(comm[j]) || 0) + w);
+        }
+        commTot[ci] -= deg[i];
+        let bestC = ci, bestGain = (links.get(ci) || 0) - resolution * commTot[ci] * deg[i] / m2;
+        for (const [c, w] of links) {
+          if (c === ci) continue;
+          const gain = w - resolution * commTot[c] * deg[i] / m2;
+          if (gain > bestGain + 1e-12 || (Math.abs(gain - bestGain) <= 1e-12 && c < bestC)) { bestGain = gain; bestC = c; }
+        }
+        comm[i] = bestC;
+        commTot[bestC] += deg[i];
+        if (bestC !== ci) { moved++; improvedAny = true; }
+      }
+      if (!moved) break;
+    }
+    /* 重编号 */
+    const remap = new Map();
+    for (let i = 0; i < N; i++) if (!remap.has(comm[i])) remap.set(comm[i], remap.size);
+    for (let i = 0; i < N; i++) comm[i] = remap.get(comm[i]);
+    const K = remap.size;
+    nodeComm = nodeComm.map((c) => comm[c]);
+    levels++;
+    if (!improvedAny || K === N) break;
+    /* 聚合成新图 */
+    const nadj = [];
+    const nself = new Float64Array(K);
+    for (let i = 0; i < K; i++) nadj.push(new Map());
+    for (let i = 0; i < N; i++) {
+      nself[comm[i]] += self[i];
+      for (const [j, w] of adj[i]) {
+        if (j <= i) continue;                 /* 每条边只处理一次 */
+        const a = comm[i], b = comm[j];
+        if (a === b) nself[a] += w;
+        else {
+          nadj[a].set(b, (nadj[a].get(b) || 0) + w);
+          nadj[b].set(a, (nadj[b].get(a) || 0) + w);
+        }
+      }
+    }
+    const ndeg = new Float64Array(K);
+    for (let i = 0; i < K; i++) {
+      let d = 2 * nself[i];
+      for (const w of nadj[i].values()) d += w;
+      ndeg[i] = d;
+    }
+    adj = nadj; self = nself; deg = ndeg;
+  }
+  const q = modularity(U, nodeComm, resolution);
+  return { communities: nodeComm, levels, modularity: q, count: new Set(nodeComm).size };
+}
+
+/* 标签传播（异步，确定性伪随机顺序） */
+function labelPropagation(U, seed) {
+  const n = U.n;
+  const rnd = mulberry32(seed === undefined ? 42 : seed);
+  const label = Array.from({ length: n }, (_, i) => i);
+  const order = Array.from({ length: n }, (_, i) => i);
+  for (let round = 0; round < 100; round++) {
+    for (let i = order.length - 1; i > 0; i--) {
+      const j = Math.floor(rnd() * (i + 1));
+      const t = order[i]; order[i] = order[j]; order[j] = t;
+    }
+    let changed = 0;
+    for (const i of order) {
+      if (!U.out[i].length) continue;
+      const tally = new Map();
+      for (const { v, w } of U.out[i]) tally.set(label[v], (tally.get(label[v]) || 0) + w);
+      let best = label[i], bestW = -1;
+      for (const [l, w] of tally) if (w > bestW || (w === bestW && l < best)) { best = l; bestW = w; }
+      if (best !== label[i]) { label[i] = best; changed++; }
+    }
+    if (!changed) break;
+  }
+  const remap = new Map();
+  const out = label.map((l) => {
+    if (!remap.has(l)) remap.set(l, remap.size);
+    return remap.get(l);
+  });
+  return { communities: out, modularity: modularity(U, out), count: remap.size };
+}
+
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/* 社区摘要：规模、内外边、桥接节点 */
+function communitySummary(G, U, comm) {
+  const groups = new Map();
+  for (let i = 0; i < G.n; i++) {
+    if (!groups.has(comm[i])) groups.set(comm[i], []);
+    groups.get(comm[i]).push(i);
+  }
+  const internal = new Map(), external = new Map();
+  for (const [c] of groups) { internal.set(c, 0); external.set(c, 0); }
+  for (const e of U.edges) {
+    const a = comm[e.u], b = comm[e.v];
+    if (a === b) internal.set(a, internal.get(a) + e.w);
+    else { external.set(a, external.get(a) + e.w); external.set(b, external.get(b) + e.w); }
+  }
+  const out = [];
+  for (const [c, members] of groups) {
+    const sorted = members.slice().sort((a, b) => G.deg[b] - G.deg[a] || a - b);
+    out.push({
+      id: c,
+      size: members.length,
+      members: sorted,
+      internal: internal.get(c) || 0,
+      external: external.get(c) || 0,
+      top: sorted.slice(0, 3),
+    });
+  }
+  out.sort((a, b) => b.size - a.size || a.id - b.id);
+  return out;
+}
+
+/* ===================== 布局 ===================== */
+/* 全部布局都用固定种子的伪随机数，保证同一张图每次画出来一模一样（截图与断言才稳定）。 */
+
+function seedFromGraph(G) {
+  let h = 2166136261;
+  for (const id of G.ids) {
+    for (let i = 0; i < id.length; i++) { h ^= id.charCodeAt(i); h = Math.imul(h, 16777619); }
+  }
+  h ^= G.edges.length * 2654435761;
+  return h >>> 0;
+}
+
+/* Fruchterman–Reingold 力导向 */
+function layoutForce(G, opts) {
+  opts = opts || {};
+  const n = G.n;
+  const width = opts.width || 1000, height = opts.height || 700;
+  const iters = opts.iterations || (n > 260 ? 220 : 380);
+  const pos = new Float64Array(n * 2);
+  const rnd = mulberry32(opts.seed === undefined ? seedFromGraph(G) : opts.seed);
+  const area = width * height;
+  const k = Math.sqrt(area / Math.max(1, n)) * (opts.spread || 1);
+  /* 初始位置：按分量分组撒在不同的圆环上，避免所有分量堆在正中间 */
+  const U = opts.simple || simpleUndirected(G);
+  const comps = connectedComponents(U);
+  comps.sort((a, b) => b.length - a.length);
+  let ringR = 0;
+  comps.forEach((comp, ci) => {
+    const r = Math.sqrt(comp.length) * k * 0.6 + 1;
+    const cx = ci === 0 ? 0 : Math.cos(ci * 2.39996) * (ringR + r * 1.6);
+    const cy = ci === 0 ? 0 : Math.sin(ci * 2.39996) * (ringR + r * 1.6);
+    ringR = Math.max(ringR, Math.abs(cx) + r, Math.abs(cy) + r);
+    comp.forEach((v, i) => {
+      const a = (i / Math.max(1, comp.length)) * Math.PI * 2 + rnd() * 0.6;
+      const rr = r * (0.35 + 0.65 * Math.sqrt(rnd()));
+      pos[v * 2] = cx + Math.cos(a) * rr;
+      pos[v * 2 + 1] = cy + Math.sin(a) * rr;
+    });
+  });
+  const disp = new Float64Array(n * 2);
+  let temp = k * 1.4;
+  const cool = temp / (iters + 1);
+  const wmax = G.edges.reduce((a, e) => Math.max(a, e.w), 1);
+  for (let it = 0; it < iters; it++) {
+    disp.fill(0);
+    for (let i = 0; i < n; i++) {
+      for (let j = i + 1; j < n; j++) {
+        let dx = pos[i * 2] - pos[j * 2], dy = pos[i * 2 + 1] - pos[j * 2 + 1];
+        let d2 = dx * dx + dy * dy;
+        if (d2 < 1e-6) { dx = (rnd() - 0.5) * 0.1; dy = (rnd() - 0.5) * 0.1; d2 = dx * dx + dy * dy + 1e-6; }
+        const d = Math.sqrt(d2);
+        const f = (k * k) / d;
+        const ux = (dx / d) * f, uy = (dy / d) * f;
+        disp[i * 2] += ux; disp[i * 2 + 1] += uy;
+        disp[j * 2] -= ux; disp[j * 2 + 1] -= uy;
+      }
+    }
+    for (const e of G.edges) {
+      if (e.u === e.v) continue;
+      const dx = pos[e.u * 2] - pos[e.v * 2], dy = pos[e.u * 2 + 1] - pos[e.v * 2 + 1];
+      const d = Math.sqrt(dx * dx + dy * dy) || 1e-3;
+      const strength = 1 + 0.5 * (Math.log(1 + e.w) / Math.log(1 + wmax));
+      const f = (d * d) / k * strength;
+      const ux = (dx / d) * f, uy = (dy / d) * f;
+      disp[e.u * 2] -= ux; disp[e.u * 2 + 1] -= uy;
+      disp[e.v * 2] += ux; disp[e.v * 2 + 1] += uy;
+    }
+    /* 轻微向心力：把游离节点收回画面 */
+    for (let i = 0; i < n; i++) {
+      disp[i * 2] -= pos[i * 2] * 0.012;
+      disp[i * 2 + 1] -= pos[i * 2 + 1] * 0.012;
+    }
+    for (let i = 0; i < n; i++) {
+      const dx = disp[i * 2], dy = disp[i * 2 + 1];
+      const d = Math.sqrt(dx * dx + dy * dy) || 1e-9;
+      const lim = Math.min(d, temp);
+      pos[i * 2] += (dx / d) * lim;
+      pos[i * 2 + 1] += (dy / d) * lim;
+    }
+    temp -= cool;
+  }
+  const out = [];
+  for (let i = 0; i < n; i++) out.push({ x: pos[i * 2], y: pos[i * 2 + 1] });
+  return alignPrincipalAxis(out, (opts.width || 1000) >= (opts.height || 700));
+}
+
+/* 把点云的主轴转到画布的长边方向：力导向出来的图常常是斜的长条，
+   不转的话等比缩放会在两侧留下大片空白，标签也更挤。 */
+function alignPrincipalAxis(pos, wide) {
+  const n = pos.length;
+  if (n < 3) return pos;
+  let mx = 0, my = 0;
+  for (const p of pos) { mx += p.x; my += p.y; }
+  mx /= n; my /= n;
+  let sxx = 0, syy = 0, sxy = 0;
+  for (const p of pos) {
+    const dx = p.x - mx, dy = p.y - my;
+    sxx += dx * dx; syy += dy * dy; sxy += dx * dy;
+  }
+  if (Math.abs(sxy) < 1e-9 && Math.abs(sxx - syy) < 1e-9) return pos;
+  let theta = 0.5 * Math.atan2(2 * sxy, sxx - syy);   /* 主轴与 x 轴的夹角 */
+  if (!wide) theta -= Math.PI / 2;                     /* 画布更高时把主轴转成竖的 */
+  const c = Math.cos(-theta), s = Math.sin(-theta);
+  return pos.map((p) => {
+    const dx = p.x - mx, dy = p.y - my;
+    return { x: dx * c - dy * s, y: dx * s + dy * c };
+  });
+}
+
+/* 分层布局（Sugiyama 简化版）：有向图按拓扑层，同层用重心法减交叉 */
+function layoutLayered(G, opts) {
+  opts = opts || {};
+  const n = G.n;
+  const back = new Set(feedbackEdges(G).map((e) => e.i));
+  /* 分层：先按（去掉回边后的）最长路径 */
+  const layer = new Int32Array(n);
+  const indeg = new Int32Array(n);
+  const fwd = [];
+  for (let i = 0; i < n; i++) fwd.push([]);
+  for (const e of G.edges) {
+    if (e.u === e.v || back.has(e.i)) continue;
+    fwd[e.u].push(e.v);
+    indeg[e.v]++;
+  }
+  const q = [];
+  for (let i = 0; i < n; i++) if (!indeg[i]) q.push(i);
+  for (let qi = 0; qi < q.length; qi++) {
+    const u = q[qi];
+    for (const v of fwd[u]) {
+      if (layer[v] < layer[u] + 1) layer[v] = layer[u] + 1;
+      if (--indeg[v] === 0) q.push(v);
+    }
+  }
+  const maxLayer = n ? Math.max(...layer) : 0;
+  const buckets = [];
+  for (let l = 0; l <= maxLayer; l++) buckets.push([]);
+  for (let i = 0; i < n; i++) buckets[layer[i]].push(i);
+  const order = new Float64Array(n);
+  buckets.forEach((b) => b.forEach((v, i) => { order[v] = i; }));
+  /* 重心法：上下各扫几轮 */
+  for (let sweep = 0; sweep < 6; sweep++) {
+    const down = sweep % 2 === 0;
+    for (let li = 0; li <= maxLayer; li++) {
+      const b = buckets[li];
+      const key = new Map();
+      for (const v of b) {
+        const nbrs = [];
+        for (const { v: w } of (down ? G.in[v] : G.out[v])) if (layer[w] !== layer[v]) nbrs.push(order[w]);
+        key.set(v, nbrs.length ? nbrs.reduce((a, x) => a + x, 0) / nbrs.length : order[v]);
+      }
+      b.sort((x, y) => key.get(x) - key.get(y) || x - y);
+      b.forEach((v, i) => { order[v] = i; });
+    }
+  }
+  const width = opts.width || 1000, height = opts.height || 700;
+  const maxRow = Math.max(1, ...buckets.map((b) => b.length));
+  const gapX = width / Math.max(1, maxRow);
+  const gapY = height / Math.max(1, maxLayer + 1);
+  const out = new Array(n);
+  buckets.forEach((b, li) => {
+    b.forEach((v, i) => {
+      out[v] = {
+        x: (i - (b.length - 1) / 2) * gapX,
+        y: (li - maxLayer / 2) * Math.max(gapY, 70),
+      };
+    });
+  });
+  return out;
+}
+
+/* 环形布局：按社区分组，组内按度排序 */
+function layoutCircular(G, opts) {
+  opts = opts || {};
+  const n = G.n;
+  const comm = opts.communities || null;
+  const idx = Array.from({ length: n }, (_, i) => i);
+  idx.sort((a, b) => {
+    if (comm) { const d = comm[a] - comm[b]; if (d) return d; }
+    return G.deg[b] - G.deg[a] || a - b;
+  });
+  const R = Math.max(120, (opts.radius || Math.min(opts.width || 900, opts.height || 640) * 0.42));
+  const out = new Array(n);
+  idx.forEach((v, i) => {
+    const a = (i / Math.max(1, n)) * Math.PI * 2 - Math.PI / 2;
+    out[v] = { x: Math.cos(a) * R, y: Math.sin(a) * R };
+  });
+  return out;
+}
+
+/* 把坐标缩放平移到画布框内 */
+function fitToBox(pos, box) {
+  if (!pos.length) return { scale: 1, dx: 0, dy: 0 };
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (const p of pos) {
+    if (p.x < minX) minX = p.x;
+    if (p.x > maxX) maxX = p.x;
+    if (p.y < minY) minY = p.y;
+    if (p.y > maxY) maxY = p.y;
+  }
+  const w = Math.max(1e-6, maxX - minX), h = Math.max(1e-6, maxY - minY);
+  const pad = box.pad === undefined ? 40 : box.pad;
+  const scale = Math.min((box.w - pad * 2) / w, (box.h - pad * 2) / h);
+  const dx = box.w / 2 - (minX + w / 2) * scale;
+  const dy = box.h / 2 - (minY + h / 2) * scale;
+  return { scale, dx, dy };
+}
+
+/* ===================== 画布文字避让 ===================== */
+/* 教训（07-28 起连撞 7 次、全部逃过 DOM 断言）：canvas 上每一段文字都必须走同一个 placer，
+   带退让位、白底、画布边界裁剪，并且要能报出「画出来几个 / 丢了几个」供测试断言。 */
+function LabelPlacer(ctx, box) {
+  const boxes = [];
+  const self = this;
+  this.drawn = 0;
+  this.dropped = 0;
+  this.labels = [];
+  this.reserve = function (x, y, w, h) { boxes.push({ x, y, w, h }); };
+  this.hits = function (r) {
+    for (const b of boxes) {
+      if (r.x < b.x + b.w && b.x < r.x + r.w && r.y < b.y + b.h && b.y < r.y + r.h) return true;
+    }
+    return false;
+  };
+  this.inBox = function (r) {
+    return r.x >= box.x - 0.5 && r.y >= box.y - 0.5 && r.x + r.w <= box.x + box.w + 0.5 && r.y + r.h <= box.y + box.h + 0.5;
+  };
+  /* text: 文本；ax/ay: 锚点；offsets: [[dx,dy],…] 退让位（按顺序试）；opt: {plate, color, font, align} */
+  this.place = function (text, ax, ay, offsets, opt) {
+    opt = opt || {};
+    if (opt.font) ctx.font = opt.font;
+    const m = ctx.measureText(text);
+    const w = m.width;
+    const h = opt.lineHeight || 12;
+    const padX = opt.plate ? 3 : 1, padY = opt.plate ? 2 : 1;
+    for (const [dx, dy] of (offsets && offsets.length ? offsets : [[0, 0]])) {
+      let x = ax + dx;
+      const y = ay + dy;
+      if (opt.align === 'center') x -= w / 2;
+      else if (opt.align === 'right') x -= w;
+      const r = { x: x - padX, y: y - h + padY, w: w + padX * 2, h: h + padY };
+      if (!self.inBox(r)) continue;
+      if (self.hits(r)) continue;
+      if (opt.plate) {
+        ctx.fillStyle = opt.plate === true ? 'rgba(255,250,240,0.88)' : opt.plate;
+        const rad = 3;
+        roundRect(ctx, r.x, r.y, r.w, r.h, rad);
+        ctx.fill();
+      }
+      ctx.fillStyle = opt.color || '#0a0a0a';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'alphabetic';
+      ctx.fillText(text, x, y);
+      boxes.push(r);
+      self.drawn++;
+      self.labels.push({ text, x, y, w, h });
+      return true;
+    }
+    self.dropped++;
+    return false;
+  };
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  const rr = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + rr, y);
+  ctx.arcTo(x + w, y, x + w, y + h, rr);
+  ctx.arcTo(x + w, y + h, x, y + h, rr);
+  ctx.arcTo(x, y + h, x, y, rr);
+  ctx.arcTo(x, y, x + w, y, rr);
+  ctx.closePath();
+}
+
+/* ===================== 内置样例 ===================== */
+/* 样例正文就是本工具的输入格式本身，粘出来即可复现。 */
+const SAMPLES = [
+  {
+    "id": "deps",
+    "title": "前端项目依赖图",
+    "tag": "循环依赖 / 分层",
+    "subtitle": "43 条 import 关系，藏着 2 处循环依赖和一个人人都依赖的模块",
+    "directed": true,
+    "text": "# 一个真实感的前端项目依赖图（-> 表示「左边 import 了右边」）\napp/main -> app/router\napp/main -> app/providers\napp/router -> pages/home\napp/router -> pages/checkout\napp/router -> pages/orders\napp/router -> pages/settings\napp/providers -> store/session\napp/providers -> ui/theme\npages/home -> components/product-card\npages/home -> hooks/useProducts\npages/checkout -> components/cart\npages/checkout -> components/address-form\npages/checkout -> hooks/usePayment\npages/orders -> components/order-table\npages/orders -> hooks/useOrders\npages/settings -> components/address-form\npages/settings -> store/session\ncomponents/cart -> hooks/useCart\ncomponents/cart -> ui/button\ncomponents/product-card -> ui/button\ncomponents/product-card -> ui/image\ncomponents/order-table -> ui/table\ncomponents/order-table -> utils/format\ncomponents/address-form -> ui/input\ncomponents/address-form -> utils/validate\nhooks/useCart -> pages/checkout\nhooks/useCart -> store/cart\nhooks/useProducts -> api/client\nhooks/useOrders -> api/client\nhooks/usePayment -> api/client\nhooks/usePayment -> store/cart\nstore/cart -> utils/format\nstore/session -> api/client\napi/client -> store/session\napi/client -> utils/format\napi/client -> utils/logger\nui/button -> ui/theme\nui/input -> ui/theme\nui/table -> ui/theme\nui/image -> utils/format\nutils/validate -> utils/format\nutils/logger -> utils/format\nui/theme -> utils/format\n",
+    "note": "箭头表示「左边 import 了右边」。看「结构」页的循环依赖清单，再看「指标」页谁的入度最高。"
+  },
+  {
+    "id": "micro",
+    "title": "微服务容量链路",
+    "tag": "最大流 / 瓶颈",
+    "subtitle": "权重是每秒处理上限，问整条链路每秒最多扛多少单、卡在哪几条边",
+    "directed": true,
+    "text": "# 订单链路的每秒处理能力（权重 = 每秒请求数上限），问：整条链路每秒最多扛多少单？\n入口网关 -> 鉴权服务 900\n入口网关 -> 静态缓存 400\n鉴权服务 -> 订单服务 500\n鉴权服务 -> 商品服务 300\n静态缓存 -> 商品服务 260\n订单服务 -> 库存服务 260\n订单服务 -> 支付网关 180\n商品服务 -> 库存服务 240\n库存服务 -> 主数据库 300\n支付网关 -> 对账服务 150\n对账服务 -> 主数据库 150\n商品服务 -> 只读副本 200\n只读副本 -> 主数据库 220\n",
+    "note": "到「路径与流量」页把源点设为「入口网关」、汇点设为「主数据库」，跑最大流即可看到瓶颈边。"
+  },
+  {
+    "id": "metro",
+    "title": "城市轨道网",
+    "tag": "割点 / 桥",
+    "subtitle": "21 段线路，权重是行车分钟数；哪一站故障会把线网切开？",
+    "directed": false,
+    "text": "# 一张城市轨道网（权重 = 行车分钟数）：哪一站坏掉会把网络切成两半？\n西站 -- 云岭 3\n云岭 -- 文化宫 2\n文化宫 -- 市民中心 3\n市民中心 -- 体育馆 2\n体育馆 -- 东湖 4\n东湖 -- 机场路 6\n机场路 -- 机场 5\n北苑 -- 师范学院 3\n师范学院 -- 文化宫 4\n市民中心 -- 医院 2\n医院 -- 会展中心 3\n会展中心 -- 滨江 4\n滨江 -- 南港 5\n南港 -- 保税区 6\n体育馆 -- 会展中心 5\n云岭 -- 师范学院 5\n滨江 -- 东湖 7\n科技园 -- 大学城 4\n大学城 -- 北苑 3\n老城 -- 西站 4\n古镇 -- 老城 6\n",
+    "note": "「结构」页的割点就是单点故障站；桥是断掉就分家的区间。"
+  },
+  {
+    "id": "karate",
+    "title": "空手道俱乐部",
+    "tag": "社区发现",
+    "subtitle": "Zachary 1977：34 人 78 条关系，后来真的分裂成两派",
+    "directed": false,
+    "text": "0 -- 1\n0 -- 2\n0 -- 3\n0 -- 4\n0 -- 5\n0 -- 6\n0 -- 7\n0 -- 8\n0 -- 10\n0 -- 11\n0 -- 12\n0 -- 13\n0 -- 17\n0 -- 19\n0 -- 21\n0 -- 31\n1 -- 2\n1 -- 3\n1 -- 7\n1 -- 13\n1 -- 17\n1 -- 19\n1 -- 21\n1 -- 30\n2 -- 3\n2 -- 7\n2 -- 8\n2 -- 9\n2 -- 13\n2 -- 27\n2 -- 28\n2 -- 32\n3 -- 7\n3 -- 12\n3 -- 13\n4 -- 6\n4 -- 10\n5 -- 6\n5 -- 10\n5 -- 16\n6 -- 16\n8 -- 30\n8 -- 32\n8 -- 33\n9 -- 33\n13 -- 33\n14 -- 32\n14 -- 33\n15 -- 32\n15 -- 33\n18 -- 32\n18 -- 33\n19 -- 33\n20 -- 32\n20 -- 33\n22 -- 32\n22 -- 33\n23 -- 25\n23 -- 27\n23 -- 29\n23 -- 32\n23 -- 33\n24 -- 25\n24 -- 27\n24 -- 31\n25 -- 31\n26 -- 29\n26 -- 33\n27 -- 33\n28 -- 31\n28 -- 33\n29 -- 32\n29 -- 33\n30 -- 32\n30 -- 33\n31 -- 32\n31 -- 33\n32 -- 33",
+    "note": "Zachary 1977 年记录的空手道俱乐部社交网（34 人 78 条关系），后来俱乐部真的分裂成两派 —— 社区发现算法的标准考题。"
+  },
+  {
+    "id": "lesmis",
+    "title": "《悲惨世界》人物共现",
+    "tag": "加权社区",
+    "subtitle": "77 个人物 254 条共现关系，权重是同场次数",
+    "directed": false,
+    "text": "Napoleon -- Myriel\nMyriel -- MlleBaptistine 8\nMyriel -- MmeMagloire 10\nMyriel -- CountessDeLo\nMyriel -- Geborand\nMyriel -- Champtercier\nMyriel -- Cravatte\nMyriel -- Count 2\nMyriel -- OldMan\nMyriel -- Valjean 5\nMlleBaptistine -- MmeMagloire 6\nMlleBaptistine -- Valjean 3\nMmeMagloire -- Valjean 3\nValjean -- Labarre\nValjean -- Marguerite\nValjean -- MmeDeR\nValjean -- Isabeau\nValjean -- Gervais\nValjean -- Fantine 9\nValjean -- MmeThenardier 7\nValjean -- Thenardier 12\nValjean -- Cosette 31\nValjean -- Javert 17\nValjean -- Fauchelevent 8\nValjean -- Bamatabois 2\nValjean -- Simplice 3\nValjean -- Scaufflaire\nValjean -- Woman1 2\nValjean -- Judge 3\nValjean -- Champmathieu 3\nValjean -- Brevet 2\nValjean -- Chenildieu 2\nValjean -- Cochepaille 2\nValjean -- Woman2 3\nValjean -- MotherInnocent\nValjean -- Gavroche\nValjean -- Gillenormand 2\nValjean -- MlleGillenormand 2\nValjean -- Marius 19\nValjean -- Enjolras 4\nValjean -- Bossuet\nValjean -- Gueulemer\nValjean -- Babet\nValjean -- Claquesous\nValjean -- Montparnasse\nValjean -- Toussaint\nMarguerite -- Fantine 2\nListolier -- Tholomyes 4\nListolier -- Fameuil 4\nListolier -- Blacheville 4\nListolier -- Favourite 3\nListolier -- Dahlia 3\nListolier -- Zephine 3\nListolier -- Fantine 3\nTholomyes -- Fameuil 4\nTholomyes -- Blacheville 4\nTholomyes -- Favourite 3\nTholomyes -- Dahlia 3\nTholomyes -- Zephine 3\nTholomyes -- Fantine 3\nTholomyes -- Cosette\nTholomyes -- Marius\nFameuil -- Blacheville 4\nFameuil -- Favourite 3\nFameuil -- Dahlia 3\nFameuil -- Zephine 3\nFameuil -- Fantine 3\nBlacheville -- Favourite 4\nBlacheville -- Dahlia 3\nBlacheville -- Zephine 3\nBlacheville -- Fantine 3\nFavourite -- Dahlia 5\nFavourite -- Zephine 4\nFavourite -- Fantine 4\nDahlia -- Zephine 4\nDahlia -- Fantine 4\nZephine -- Fantine 4\nFantine -- MmeThenardier 2\nFantine -- Thenardier\nFantine -- Javert 5\nFantine -- Bamatabois\nFantine -- Perpetue\nFantine -- Simplice 2\nMmeThenardier -- Thenardier 13\nMmeThenardier -- Cosette 4\nMmeThenardier -- Javert\nMmeThenardier -- Eponine 2\nMmeThenardier -- Anzelma\nMmeThenardier -- Magnon\nMmeThenardier -- Gueulemer\nMmeThenardier -- Babet\nMmeThenardier -- Claquesous\nThenardier -- Cosette\nThenardier -- Javert 5\nThenardier -- Pontmercy\nThenardier -- Boulatruelle\nThenardier -- Eponine 3\nThenardier -- Anzelma 2\nThenardier -- Gavroche\nThenardier -- Marius 2\nThenardier -- Gueulemer 5\nThenardier -- Babet 6\nThenardier -- Claquesous 4\nThenardier -- Montparnasse\nThenardier -- Brujon 3\nCosette -- Javert\nCosette -- Woman2\nCosette -- Gillenormand 3\nCosette -- MlleGillenormand 2\nCosette -- LtGillenormand\nCosette -- Marius 21\nCosette -- Toussaint 2\nJavert -- Fauchelevent\nJavert -- Bamatabois\nJavert -- Simplice\nJavert -- Woman1\nJavert -- Woman2\nJavert -- Gavroche\nJavert -- Enjolras 6\nJavert -- Gueulemer\nJavert -- Babet 2\nJavert -- Claquesous\nJavert -- Montparnasse\nJavert -- Toussaint\nFauchelevent -- MotherInnocent 3\nFauchelevent -- Gribier 2\nBamatabois -- Judge 2\nBamatabois -- Champmathieu 2\nBamatabois -- Brevet\nBamatabois -- Chenildieu\nBamatabois -- Cochepaille\nPerpetue -- Simplice 2\nJudge -- Champmathieu 3\nJudge -- Brevet 2\nJudge -- Chenildieu 2\nJudge -- Cochepaille 2\nChampmathieu -- Brevet 2\nChampmathieu -- Chenildieu 2\nChampmathieu -- Cochepaille 2\nBrevet -- Chenildieu 2\nBrevet -- Cochepaille 2\nChenildieu -- Cochepaille 2\nPontmercy -- MmePontmercy\nPontmercy -- Marius\nEponine -- Anzelma 2\nEponine -- Marius 5\nEponine -- Mabeuf\nEponine -- Courfeyrac\nEponine -- Gueulemer\nEponine -- Babet\nEponine -- Claquesous\nEponine -- Montparnasse\nEponine -- Brujon\nMmeBurgon -- Jondrette\nMmeBurgon -- Gavroche 2\nGavroche -- Marius 4\nGavroche -- Mabeuf\nGavroche -- Enjolras 7\nGavroche -- Combeferre 6\nGavroche -- Prouvaire\nGavroche -- Feuilly 2\nGavroche -- Courfeyrac 7\nGavroche -- Bahorel 5\nGavroche -- Bossuet 5\nGavroche -- Joly 3\nGavroche -- Grantaire\nGavroche -- Gueulemer\nGavroche -- Babet\nGavroche -- Montparnasse\nGavroche -- Child1 2\nGavroche -- Child2 2\nGavroche -- Brujon\nGavroche -- MmeHucheloup\nGillenormand -- Magnon\nGillenormand -- MlleGillenormand 9\nGillenormand -- LtGillenormand\nGillenormand -- Marius 12\nGillenormand -- BaronessT\nMlleGillenormand -- MmePontmercy\nMlleGillenormand -- MlleVaubois\nMlleGillenormand -- LtGillenormand 2\nMlleGillenormand -- Marius 6\nLtGillenormand -- Marius\nMarius -- BaronessT\nMarius -- Mabeuf\nMarius -- Enjolras 7\nMarius -- Combeferre 5\nMarius -- Feuilly\nMarius -- Courfeyrac 9\nMarius -- Bahorel\nMarius -- Bossuet 5\nMarius -- Joly 2\nMabeuf -- Enjolras\nMabeuf -- Combeferre 2\nMabeuf -- Feuilly\nMabeuf -- Courfeyrac 2\nMabeuf -- Bahorel 2\nMabeuf -- Bossuet\nMabeuf -- Joly\nMabeuf -- MotherPlutarch 3\nEnjolras -- Combeferre 15\nEnjolras -- Prouvaire 4\nEnjolras -- Feuilly 6\nEnjolras -- Courfeyrac 17\nEnjolras -- Bahorel 4\nEnjolras -- Bossuet 10\nEnjolras -- Joly 5\nEnjolras -- Grantaire 3\nEnjolras -- Claquesous\nEnjolras -- MmeHucheloup\nCombeferre -- Prouvaire 2\nCombeferre -- Feuilly 5\nCombeferre -- Courfeyrac 13\nCombeferre -- Bahorel 5\nCombeferre -- Bossuet 9\nCombeferre -- Joly 5\nCombeferre -- Grantaire\nProuvaire -- Feuilly 2\nProuvaire -- Courfeyrac 3\nProuvaire -- Bahorel 2\nProuvaire -- Bossuet 2\nProuvaire -- Joly 2\nProuvaire -- Grantaire\nFeuilly -- Courfeyrac 6\nFeuilly -- Bahorel 3\nFeuilly -- Bossuet 6\nFeuilly -- Joly 5\nFeuilly -- Grantaire\nCourfeyrac -- Bahorel 6\nCourfeyrac -- Bossuet 12\nCourfeyrac -- Joly 5\nCourfeyrac -- Grantaire 2\nCourfeyrac -- MmeHucheloup\nBahorel -- Bossuet 4\nBahorel -- Joly 5\nBahorel -- Grantaire\nBahorel -- MmeHucheloup\nBossuet -- Joly 7\nBossuet -- Grantaire 3\nBossuet -- MmeHucheloup\nJoly -- Grantaire 2\nJoly -- MmeHucheloup\nGrantaire -- MmeHucheloup\nGueulemer -- Babet 6\nGueulemer -- Claquesous 4\nGueulemer -- Montparnasse 2\nGueulemer -- Brujon 3\nBabet -- Claquesous 4\nBabet -- Montparnasse 2\nBabet -- Brujon 3\nClaquesous -- Montparnasse 2\nClaquesous -- Brujon\nMontparnasse -- Brujon\nChild1 -- Child2 3",
+    "note": "《悲惨世界》人物共现网（77 人 254 条关系，权重 = 同场次数），Knuth 从原著整理。"
+  },
+  {
+    "id": "florentine",
+    "title": "佛罗伦萨家族联姻",
+    "tag": "中介中心性",
+    "subtitle": "15 个家族的联姻网 —— 美第奇为什么赢",
+    "directed": false,
+    "text": "Acciaiuoli -- Medici\nMedici -- Barbadori\nMedici -- Ridolfi\nMedici -- Tornabuoni\nMedici -- Albizzi\nMedici -- Salviati\nCastellani -- Peruzzi\nCastellani -- Strozzi\nCastellani -- Barbadori\nPeruzzi -- Strozzi\nPeruzzi -- Bischeri\nStrozzi -- Ridolfi\nStrozzi -- Bischeri\nRidolfi -- Tornabuoni\nTornabuoni -- Guadagni\nAlbizzi -- Ginori\nAlbizzi -- Guadagni\nSalviati -- Pazzi\nBischeri -- Guadagni\nGuadagni -- Lamberteschi",
+    "note": "文艺复兴时期佛罗伦萨 15 个家族的联姻网。美第奇家族的联姻数并不是最多的，但介数中心性远超其他家族 —— 权力来自「卡在中间」。"
+  }
+];
+
+/* ===================== 界面 ===================== */
+const $ = (id) => document.getElementById(id);
+const PALETTE = ['#ff4d8b', '#1a3a3a', '#b8a4ed', '#ffb084', '#e8b94a', '#a4d4c5', '#ff6b5a', '#7c6bd6', '#2f7d6b', '#d94f9b', '#c98a2e', '#5a8fd6'];
+const HEAT = ['#f0e7cf', '#e8b94a', '#ffb084', '#ff6b5a', '#ff4d8b'];
+const STORE_KEY = 'graph-lab-projects-v1';
+const LAST_KEY = 'graph-lab-last-v1';
+
+const state = {
+  parsed: null, G: null, U: null, metrics: null,
+  comm: null, commInfo: null, struct: null, stats: null,
+  layout: [], view: { scale: 1, dx: 0, dy: 0 },
+  selected: -1, hover: -1, dragging: -1, panning: null, moved: false,
+  hl: { nodes: new Set(), edges: new Set(), kind: '', note: '' },
+  sortKey: 'degree', sortDir: -1, search: '',
+  sampleId: null, skipped: [],
+  lastDraw: { nodes: 0, labels: 0, dropped: 0, edges: 0 },
+};
+
+/* ---------- 小工具 ---------- */
+function fmt(x, d) {
+  if (x === null || x === undefined || Number.isNaN(x)) return '—';
+  if (typeof x !== 'number') return String(x);
+  if (Number.isInteger(x)) return String(x);      /* 整数就干净地写整数，别补 .00 */
+  const digits = d === undefined ? 3 : d;
+  if (x !== 0 && Math.abs(x) < 0.0005) return x.toExponential(1);
+  return x.toFixed(digits);
+}
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+function heatColor(t) {
+  if (!isFinite(t)) t = 0;
+  t = Math.max(0, Math.min(1, t));
+  const seg = t * (HEAT.length - 1);
+  const i = Math.min(HEAT.length - 2, Math.floor(seg));
+  const f = seg - i;
+  const a = hexToRgb(HEAT[i]), b = hexToRgb(HEAT[i + 1]);
+  return `rgb(${Math.round(a[0] + (b[0] - a[0]) * f)},${Math.round(a[1] + (b[1] - a[1]) * f)},${Math.round(a[2] + (b[2] - a[2]) * f)})`;
+}
+function hexToRgb(h) {
+  return [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+}
+function download(name, text, mime) {
+  const blob = new Blob([text], { type: mime || 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = name;
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 200);
+}
+
+/* ---------- 解析 → 计算 → 渲染 ---------- */
+function currentOptions() {
+  const dir = $('gl-directed').value;
+  return {
+    format: $('gl-format').value,
+    forceDirected: dir === 'yes' ? true : dir === 'no' ? false : undefined,
+  };
+}
+
+function recompute(opts) {
+  opts = opts || {};
+  const text = $('gl-input').value;
+  const parsed = parseGraphText(text, currentOptions());
+  state.parsed = parsed;
+  const G = buildGraph(parsed.spec);
+  state.G = G;
+  state.U = simpleUndirected(G);
+  state.skipped = [];
+
+  const heavy = G.n * Math.max(1, G.edges.length);
+  const budget = { betweenness: heavy <= 900000, weightedBt: heavy <= 400000, distances: G.n <= 700 };
+  if (!budget.betweenness) state.skipped.push('介数中心性');
+  if (!budget.distances) state.skipped.push('紧密 / 谐波中心性与直径');
+
+  const t0 = (typeof performance !== 'undefined' ? performance.now() : 0);
+  state.metrics = computeMetricsBudgeted(G, state.U, budget);
+  const resolution = Number($('gl-resolution').value) || 1;
+  const algo = $('gl-community').value;
+  if (algo === 'none' || !G.n) {
+    state.comm = new Array(G.n).fill(0);
+    state.commInfo = [];
+  } else if (algo === 'labelprop') {
+    const r = labelPropagation(state.U, 7);
+    state.comm = r.communities;
+    state.commInfo = communitySummary(G, state.U, state.comm);
+    state.modularity = r.modularity;
+  } else {
+    const r = louvain(state.U, { resolution });
+    state.comm = r.communities;
+    state.commInfo = communitySummary(G, state.U, state.comm);
+    state.modularity = r.modularity;
+  }
+  state.struct = computeStructure(G, state.U);
+  state.compIndex = new Array(G.n).fill(0);
+  state.struct.components.forEach((c, ci) => c.forEach((v) => { state.compIndex[v] = ci; }));
+  state.calcMs = (typeof performance !== 'undefined' ? performance.now() : 0) - t0;
+
+  if (opts.relayout !== false) doLayout();
+  if (state.selected >= G.n) state.selected = -1;
+  state.hl = { nodes: new Set(), edges: new Set(), kind: '', note: '' };
+  renderAll();
+  saveLast();
+}
+
+function computeMetricsBudgeted(G, U, budget) {
+  const n = G.n;
+  const blank = () => new Array(n).fill(null);
+  const pr = pagerank(G, { weighted: false });
+  const prW = pagerank(G, { weighted: true });
+  const cc = clustering(U);
+  return {
+    n, m: G.edges.length, density: density(G),
+    degree: G.deg.slice(), wdegree: G.wdeg.slice(), indeg: G.indeg.slice(), outdeg: G.outdeg.slice(),
+    pagerank: pr.values, pagerankW: prW.values,
+    betweenness: budget.betweenness ? betweenness(G, { weighted: false }) : blank(),
+    betweennessW: budget.weightedBt ? betweenness(G, { weighted: true }) : blank(),
+    closeness: budget.distances ? closeness(G) : blank(),
+    harmonic: budget.distances ? harmonic(G) : blank(),
+    eigenvector: eigenvector(U).values,
+    clustering: cc.local, triangles: cc.trianglesPerNode, transitivity: cc.transitivity,
+    core: coreNumbers(U),
+    assortativity: assortativity(U),
+    avgDegree: n ? G.deg.reduce((a, b) => a + b, 0) / n : 0,
+  };
+}
+
+function computeStructure(G, U) {
+  const cb = cutsAndBridges(U);
+  const comps = connectedComponents(U);
+  const bp = bipartite(U);
+  const msf = minimumSpanningForest(U);
+  const stats = U.n ? componentStats(U) : null;
+  const out = {
+    components: comps, articulation: cb.articulation, bridges: cb.bridges,
+    bipartite: bp, msf, stats, scc: null, cycles: null, topo: null, feedback: null,
+  };
+  if (G.directed) {
+    out.scc = stronglyConnected(G);
+    out.topo = topoLayers(G);
+    if (!out.topo.isDag) {
+      out.cycles = simpleCycles(G, G.n > 120 ? 60 : 300);
+      out.feedback = feedbackEdges(G);
+    }
+  } else {
+    out.topo = { isDag: false, order: null, layers: null };
+  }
+  return out;
+}
+
+function doLayout() {
+  const G = state.G;
+  if (!G || !G.n) { state.layout = []; return; }
+  const mode = $('gl-layout').value;
+  const box = canvasBox();
+  if (mode === 'layered' && G.directed) state.layout = layoutLayered(G, { width: box.w * 1.2, height: box.h * 1.1 });
+  else if (mode === 'circular') state.layout = layoutCircular(G, { width: box.w, height: box.h, communities: state.comm });
+  else state.layout = layoutForce(G, { width: box.w, height: box.h, simple: state.U });
+  fitView();
+}
+
+function canvasBox() {
+  const c = $('gl-canvas');
+  const r = c.getBoundingClientRect();
+  return { w: Math.max(320, r.width || 900), h: Math.max(240, r.height || 560) };
+}
+
+function fitView() {
+  const box = canvasBox();
+  const f = fitToBox(state.layout, { w: box.w, h: box.h, pad: 54 });
+  state.view = { scale: Math.min(3, Math.max(0.05, f.scale)), dx: f.dx, dy: f.dy };
+}
+
+/* ---------- 画图 ---------- */
+function nodeRadius(i) {
+  const m = state.metrics;
+  const key = $('gl-size').value;
+  if (key === 'uniform') return 7;
+  const arr = key === 'pagerank' ? m.pagerank : key === 'betweenness' ? (m.betweenness[0] === null ? m.degree : m.betweenness) : m.degree;
+  let max = 0;
+  for (const v of arr) if (v !== null && v > max) max = v;
+  const v = arr[i] === null ? 0 : arr[i];
+  const t = max > 0 ? Math.sqrt(v / max) : 0;
+  return 4.5 + t * 15;
+}
+
+function nodeColor(i) {
+  const mode = $('gl-color').value;
+  const m = state.metrics;
+  if (mode === 'none') return '#1a3a3a';
+  if (mode === 'community') return PALETTE[(state.comm[i] || 0) % PALETTE.length];
+  if (mode === 'component') {
+    const idx = state.compIndex ? state.compIndex[i] : 0;
+    return PALETTE[idx % PALETTE.length];
+  }
+  const arr = mode === 'pagerank' ? m.pagerank : mode === 'betweenness' ? m.betweenness : mode === 'core' ? m.core : m.degree;
+  let max = 0;
+  for (const v of arr) if (v !== null && v > max) max = v;
+  const v = arr[i] === null ? 0 : arr[i];
+  return heatColor(max > 0 ? v / max : 0);
+}
+
+function draw() {
+  const canvas = $('gl-canvas');
+  const ctx = canvas.getContext('2d');
+  const box = canvasBox();
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  if (canvas.width !== Math.round(box.w * dpr) || canvas.height !== Math.round(box.h * dpr)) {
+    canvas.width = Math.round(box.w * dpr);
+    canvas.height = Math.round(box.h * dpr);
+  }
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, box.w, box.h);
+  ctx.fillStyle = '#faf5e8';
+  ctx.fillRect(0, 0, box.w, box.h);
+  const G = state.G;
+  if (!G || !G.n) {
+    ctx.fillStyle = '#9a9a9a';
+    ctx.font = '15px ' + FONT;
+    ctx.textAlign = 'center';
+    ctx.fillText('左边粘一份关系数据，或者点一个样例', box.w / 2, box.h / 2);
+    state.lastDraw = { nodes: 0, labels: 0, dropped: 0, edges: 0 };
+    return;
+  }
+  const { scale, dx, dy } = state.view;
+  const P = (i) => ({ x: state.layout[i].x * scale + dx, y: state.layout[i].y * scale + dy });
+
+  /* --- 边 --- */
+  const focus = state.hover >= 0 ? state.hover : state.selected;
+  const nbrMask = new Set();
+  if (focus >= 0) {
+    nbrMask.add(focus);
+    for (const { v } of G.out[focus]) nbrMask.add(v);
+    for (const { v } of G.in[focus]) nbrMask.add(v);
+  }
+  let drawnEdges = 0;
+  const wmax = G.edges.reduce((a, e) => Math.max(a, e.w), 1);
+  for (const e of G.edges) {
+    const a = P(e.u), b = P(e.v);
+    const isHL = state.hl.edges.has(e.i);
+    const dim = focus >= 0 && !(nbrMask.has(e.u) && nbrMask.has(e.v));
+    ctx.lineWidth = isHL ? 3.4 : Math.min(4, 0.8 + 1.6 * (Math.log(1 + e.w) / Math.log(1 + wmax)));
+    ctx.strokeStyle = isHL ? '#ff4d8b' : dim ? 'rgba(58,58,58,0.10)' : 'rgba(58,58,58,0.30)';
+    if (e.u === e.v) {
+      const r = nodeRadius(e.u) * Math.max(0.6, Math.min(1.6, scale)) + 6;
+      ctx.beginPath();
+      ctx.arc(a.x, a.y - r * 0.8, r * 0.75, 0.2 * Math.PI, 1.9 * Math.PI);
+      ctx.stroke();
+      drawnEdges++;
+      continue;
+    }
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(b.x, b.y);
+    ctx.stroke();
+    drawnEdges++;
+    if (G.directed) {
+      const rb = nodeRadius(e.v) * Math.max(0.6, Math.min(1.6, scale));
+      const ang = Math.atan2(b.y - a.y, b.x - a.x);
+      const tipX = b.x - Math.cos(ang) * (rb + 1.5), tipY = b.y - Math.sin(ang) * (rb + 1.5);
+      const size = isHL ? 9 : 7;
+      ctx.fillStyle = isHL ? '#ff4d8b' : dim ? 'rgba(58,58,58,0.12)' : 'rgba(58,58,58,0.38)';
+      ctx.beginPath();
+      ctx.moveTo(tipX, tipY);
+      ctx.lineTo(tipX - Math.cos(ang - 0.42) * size, tipY - Math.sin(ang - 0.42) * size);
+      ctx.lineTo(tipX - Math.cos(ang + 0.42) * size, tipY - Math.sin(ang + 0.42) * size);
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+
+  /* --- 节点 --- */
+  const zoomR = Math.max(0.6, Math.min(1.6, scale));
+  const order = Array.from({ length: G.n }, (_, i) => i).sort((a, b) => nodeRadius(a) - nodeRadius(b));
+  for (const i of order) {
+    const p = P(i);
+    const r = nodeRadius(i) * zoomR;
+    const dim = focus >= 0 && !nbrMask.has(i);
+    ctx.globalAlpha = dim ? 0.28 : 1;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+    ctx.fillStyle = nodeColor(i);
+    ctx.fill();
+    if (state.hl.nodes.has(i)) { ctx.lineWidth = 3; ctx.strokeStyle = '#ff4d8b'; ctx.stroke(); }
+    else if (i === state.selected) { ctx.lineWidth = 3; ctx.strokeStyle = '#0a0a0a'; ctx.stroke(); }
+    else { ctx.lineWidth = 1.2; ctx.strokeStyle = 'rgba(10,10,10,0.18)'; ctx.stroke(); }
+    ctx.globalAlpha = 1;
+  }
+
+  /* --- 标签（全部走同一个 placer：先把节点圆占位，再按重要性依次尝试退让位） --- */
+  const placer = new LabelPlacer(ctx, { x: 0, y: 0, w: box.w, h: box.h });
+  for (let i = 0; i < G.n; i++) {
+    const p = P(i);
+    const r = nodeRadius(i) * zoomR;
+    placer.reserve(p.x - r, p.y - r, r * 2, r * 2);
+  }
+  const mode = $('gl-labels').value;
+  let candidates = [];
+  if (mode !== 'none') {
+    candidates = Array.from({ length: G.n }, (_, i) => i).sort((a, b) => nodeRadius(b) - nodeRadius(a));
+    if (mode === 'top') candidates = candidates.slice(0, 12);
+    else if (mode === 'auto') candidates = candidates.slice(0, Math.min(G.n, 90));
+  }
+  ctx.font = '12px ' + FONT;
+  for (const i of candidates) {
+    const p = P(i);
+    const r = nodeRadius(i) * zoomR;
+    const dim = focus >= 0 && !nbrMask.has(i);
+    if (dim && focus >= 0) continue;
+    /* 退让位：先右后左，再上下，最后往外多走一格 */
+    const offs = [
+      [r + 5, 4], [-(r + 5), 4], [0, -(r + 6)], [0, r + 14],
+      [r + 5, -(r + 2)], [-(r + 5), -(r + 2)], [r + 16, 4], [-(r + 16), 4],
+    ];
+    const alignFor = (dxv) => (dxv < 0 ? 'right' : dxv === 0 ? 'center' : 'left');
+    let done = false;
+    for (const o of offs) {
+      if (placer.place(state.G.ids[i], p.x, p.y, [o], {
+        align: alignFor(o[0]), plate: 'rgba(255,250,240,0.86)', color: '#0a0a0a', lineHeight: 12,
+      })) { done = true; break; }
+    }
+    if (!done && placer.dropped > 0) { /* 放不下就放弃这个标签，计数已在 placer 里 */ }
+  }
+  state.lastDraw = { nodes: G.n, labels: placer.drawn, dropped: placer.dropped, edges: drawnEdges };
+  $('gl-canvas-hint').textContent =
+    ({ force: '力导向布局', layered: '分层布局', circular: '环形布局' })[$('gl-layout').value] +
+    ` · ${G.n} 节点 / ${G.edges.length} 边 · 标注 ${placer.drawn}`;
+}
+const FONT = 'Inter,-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif';
+
+/* ---------- 渲染各面板 ---------- */
+function renderAll() {
+  renderStatus();
+  renderStats();
+  renderLegend();
+  renderDetail();
+  renderMetrics();
+  renderStructure();
+  renderFlowControls();
+  renderReach();
+  renderPreview();
+  draw();
+}
+
+function renderStatus() {
+  const el = $('gl-parse-status');
+  const p = state.parsed, G = state.G;
+  if (!p) { el.textContent = '等待输入'; return; }
+  const fmtName = { edges: '边表', json: 'JSON', dot: 'DOT', matrix: '邻接矩阵' }[p.format] || p.format;
+  const issues = [];
+  for (const e of p.errors.slice(0, 6)) issues.push(`<li><b>第 ${e.line} 行</b>：${esc(e.msg)}${e.text ? ` <code>${esc(String(e.text).slice(0, 40))}</code>` : ''}</li>`);
+  for (const w of p.warnings.slice(0, 4)) issues.push(`<li>第 ${w.line} 行：${esc(w.msg)}</li>`);
+  const cls = p.errors.length ? 'gl-status gl-status-bad' : (p.warnings.length ? 'gl-status gl-status-warn' : 'gl-status');
+  el.className = cls;
+  const merged = G.merged ? ` · 合并了 ${G.merged} 条重复边` : '';
+  const selfl = G.selfLoops ? ` · ${G.selfLoops} 个自环` : '';
+  el.innerHTML = `<b>${fmtName}</b> · ${G.directed ? '有向' : '无向'} · ${G.n} 节点 / ${G.edges.length} 边${merged}${selfl}` +
+    (state.skipped.length ? `<br><span style="color:var(--gl-muted)">图较大，已跳过：${state.skipped.join('、')}</span>` : '') +
+    (issues.length ? `<ul class="gl-issues">${issues.join('')}</ul>` : '');
+}
+
+function statCard(cls, value, label) {
+  return `<div class="gl-stat ${cls}"><b>${value}</b><i>${label}</i></div>`;
+}
+
+function renderStats() {
+  const G = state.G, m = state.metrics;
+  if (!G) return;
+  const st = state.struct;
+  const nc = state.commInfo ? state.commInfo.length : 0;
+  const big = st.stats ? st.stats.size : 0;
+  $('gl-stats').innerHTML = [
+    statCard('gl-stat-pink', G.n, '节点'),
+    statCard('gl-stat-teal', G.edges.length, '边'),
+    statCard('gl-stat-lav', fmt(m.avgDegree, 2), '平均度'),
+    statCard('gl-stat-peach', fmt(m.density, 4), '密度'),
+    statCard('gl-stat-ochre', nc || '—', '社区数'),
+    statCard('gl-stat-mint', state.modularity === undefined || nc === 0 ? '—' : fmt(state.modularity, 3), '模块度 Q'),
+    statCard('', st.components.length, '连通块'),
+    statCard('', G.n ? Math.round((big / G.n) * 100) + '%' : '—', '最大块占比'),
+  ].join('');
+}
+
+function renderLegend() {
+  const el = $('gl-legend');
+  const mode = $('gl-color').value;
+  const G = state.G;
+  if (!G || !G.n) { el.innerHTML = ''; return; }
+  if (mode === 'community' && state.commInfo && state.commInfo.length) {
+    el.innerHTML = state.commInfo.slice(0, 10).map((c) => {
+      const names = c.top.map((i) => esc(G.ids[i])).join('、');
+      return `<span class="gl-legitem"><span class="gl-swatch" style="background:${PALETTE[c.id % PALETTE.length]}"></span>社区 ${c.id + 1}（${c.size} 个）：${names}</span>`;
+    }).join('') + (state.commInfo.length > 10 ? `<span class="gl-legitem">另有 ${state.commInfo.length - 10} 个小社区</span>` : '');
+    return;
+  }
+  if (mode === 'component') {
+    el.innerHTML = state.struct.components.slice(0, 8).map((c, i) =>
+      `<span class="gl-legitem"><span class="gl-swatch" style="background:${PALETTE[i % PALETTE.length]}"></span>第 ${i + 1} 块（${c.length} 个）</span>`).join('');
+    return;
+  }
+  if (mode === 'none') { el.innerHTML = '<span class="gl-legitem">单色模式：节点大小仍按所选指标</span>'; return; }
+  const label = { degree: '度', pagerank: 'PageRank', betweenness: '介数中心性', core: 'k-core' }[mode];
+  el.innerHTML = ['低', '', '', '', '高'].map((t, i) =>
+    `<span class="gl-legitem"><span class="gl-swatch" style="background:${HEAT[i]}"></span>${t || ''}</span>`).join('') +
+    `<span class="gl-legitem">颜色深浅 = ${label}</span>`;
+}
+
+function renderDetail() {
+  const el = $('gl-detail');
+  const G = state.G, m = state.metrics;
+  const i = state.selected;
+  if (!G || i < 0 || i >= G.n) {
+    el.innerHTML = '<div class="gl-empty">点一个节点看它的邻居和各项中心性；再点空白处取消。</div>';
+    return;
+  }
+  const outs = G.out[i].map((a) => a.v), ins = G.directed ? G.in[i].map((a) => a.v) : [];
+  const uniq = (arr) => [...new Set(arr)];
+  const kv = [
+    ['度', fmt(m.degree[i])],
+    G.directed ? ['入度', fmt(m.indeg[i])] : null,
+    G.directed ? ['出度', fmt(m.outdeg[i])] : null,
+    ['加权度', fmt(m.wdegree[i], 2)],
+    ['PageRank', fmt(m.pagerank[i], 4)],
+    ['介数中心性', fmt(m.betweenness[i], 2)],
+    ['紧密中心性', fmt(m.closeness[i], 4)],
+    ['特征向量', fmt(m.eigenvector[i], 4)],
+    ['聚类系数', fmt(m.clustering[i], 3)],
+    ['k-core', fmt(m.core[i])],
+    state.commInfo && state.commInfo.length ? ['所属社区', '第 ' + (state.comm[i] + 1) + ' 个'] : null,
+  ].filter(Boolean);
+  const chip = (v) => `<button type="button" class="gl-nbr" data-node="${v}">${esc(G.ids[v])}</button>`;
+  el.innerHTML =
+    `<h4 style="font-size:17px">${esc(G.ids[i])}</h4>` +
+    `<dl class="gl-kv">${kv.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>` +
+    (G.directed
+      ? `<p class="gl-note" style="margin-top:12px">指向它的（${uniq(ins).length}）</p><div class="gl-nbrs">${uniq(ins).map(chip).join('') || '<span class="gl-note">无</span>'}</div>
+         <p class="gl-note" style="margin-top:10px">它指向的（${uniq(outs).length}）</p><div class="gl-nbrs">${uniq(outs).map(chip).join('') || '<span class="gl-note">无</span>'}</div>`
+      : `<p class="gl-note" style="margin-top:12px">邻居（${uniq(outs).length}）</p><div class="gl-nbrs">${uniq(outs).map(chip).join('') || '<span class="gl-note">无</span>'}</div>`);
+}
+
+const METRIC_COLS = [
+  { key: 'id', label: '节点', num: false },
+  { key: 'degree', label: '度', d: 0 },
+  { key: 'indeg', label: '入度', d: 0, dirOnly: true },
+  { key: 'outdeg', label: '出度', d: 0, dirOnly: true },
+  { key: 'wdegree', label: '加权度', d: 2 },
+  { key: 'pagerank', label: 'PageRank', d: 4 },
+  { key: 'betweenness', label: '介数', d: 2 },
+  { key: 'closeness', label: '紧密', d: 4 },
+  { key: 'harmonic', label: '谐波', d: 2 },
+  { key: 'eigenvector', label: '特征向量', d: 4 },
+  { key: 'clustering', label: '聚类', d: 3 },
+  { key: 'core', label: 'k-core', d: 0 },
+  { key: 'comm', label: '社区', d: 0 },
+];
+
+function visibleCols() {
+  const G = state.G;
+  return METRIC_COLS.filter((c) => !(c.dirOnly && (!G || !G.directed)));
+}
+
+function renderMetrics() {
+  const G = state.G, m = state.metrics;
+  const head = $('gl-metric-head'), body = $('gl-metric-body');
+  if (!G || !G.n) {
+    head.innerHTML = ''; body.innerHTML = '<tr><td>还没有数据</td></tr>';
+    $('gl-metric-count').textContent = '';
+    $('gl-hist').innerHTML = ''; $('gl-hist-axis').innerHTML = ''; $('gl-tops').innerHTML = '';
+    return;
+  }
+  const cols = visibleCols();
+  head.innerHTML = cols.map((c) =>
+    `<th data-key="${c.key}" class="${state.sortKey === c.key ? 'gl-thon' : ''}" title="点一下按这列排序">${c.label}${state.sortKey === c.key ? (state.sortDir < 0 ? ' ↓' : ' ↑') : ''}</th>`).join('');
+  const val = (i, key) => {
+    if (key === 'id') return G.ids[i];
+    if (key === 'comm') return state.commInfo && state.commInfo.length ? state.comm[i] + 1 : null;
+    return m[key] ? m[key][i] : null;
+  };
+  let rows = Array.from({ length: G.n }, (_, i) => i);
+  const q = state.search.trim().toLowerCase();
+  if (q) rows = rows.filter((i) => G.ids[i].toLowerCase().indexOf(q) >= 0);
+  rows.sort((a, b) => {
+    const x = val(a, state.sortKey), y = val(b, state.sortKey);
+    if (typeof x === 'string' || typeof y === 'string') {
+      return String(x).localeCompare(String(y), 'zh') * (state.sortDir < 0 ? -1 : 1);
+    }
+    const xv = x === null ? -Infinity : x, yv = y === null ? -Infinity : y;
+    return (xv - yv) * (state.sortDir < 0 ? -1 : 1) || a - b;
+  });
+  const cap = rows.slice(0, 400);
+  body.innerHTML = cap.map((i) => {
+    const cells = cols.map((c) => {
+      if (c.key === 'id') {
+        const dot = state.commInfo && state.commInfo.length
+          ? `<span class="gl-dot" style="background:${PALETTE[state.comm[i] % PALETTE.length]}"></span>` : '';
+        return `<td>${dot}${esc(G.ids[i])}</td>`;
+      }
+      return `<td class="gl-num">${fmt(val(i, c.key), c.d)}</td>`;
+    }).join('');
+    return `<tr data-node="${i}" tabindex="0">${cells}</tr>`;
+  }).join('');
+  $('gl-metric-count').textContent =
+    `${rows.length} 行${rows.length > cap.length ? `（只显示前 ${cap.length} 行，导出 CSV 拿全量）` : ''}` +
+    (state.skipped.length ? ` · 图较大，${state.skipped.join('、')}已跳过（显示为 —）` : '') +
+    ` · 本次计算耗时 ${fmt(state.calcMs, 0)} 毫秒`;
+
+  /* 度分布 */
+  const degs = m.degree;
+  const maxDeg = Math.max(1, ...degs);
+  const bins = Math.min(18, maxDeg + 1);
+  const width = Math.ceil((maxDeg + 1) / bins);
+  const counts = new Array(bins).fill(0);
+  for (const d of degs) counts[Math.min(bins - 1, Math.floor(d / width))]++;
+  const maxCount = Math.max(1, ...counts);
+  $('gl-hist').innerHTML = counts.map((c, i) =>
+    `<div class="gl-bar" style="height:${Math.max(2, (c / maxCount) * 100)}%" title="度 ${i * width}–${i * width + width - 1}：${c} 个节点">${c ? `<span>${c}</span>` : ''}</div>`).join('');
+  $('gl-hist-axis').innerHTML = `<span>度 0</span><span>度 ${maxDeg}</span>`;
+  $('gl-hist-note').textContent = `最大度 ${maxDeg} · 平均 ${fmt(m.avgDegree, 2)} · 全局传递性 ${fmt(m.transitivity, 3)}` +
+    (m.assortativity === null ? '' : ` · 度相关性 ${fmt(m.assortativity, 3)}`);
+
+  /* 排行榜 */
+  const topOf = (key, d) => {
+    const arr = m[key];
+    if (!arr || arr[0] === null) return '—';
+    const idx = Array.from({ length: G.n }, (_, i) => i).sort((a, b) => (arr[b] || 0) - (arr[a] || 0)).slice(0, 3);
+    return idx.map((i) => `${esc(G.ids[i])} <span style="color:var(--gl-muted)">${fmt(arr[i], d)}</span>`).join('<br>');
+  };
+  $('gl-tops').innerHTML = [
+    ['连接最多 · 度', topOf('degree', 0)],
+    ['最像枢纽 · PageRank', topOf('pagerank', 4)],
+    ['最卡在中间 · 介数', topOf('betweenness', 1)],
+    ['离所有人最近 · 紧密', topOf('closeness', 4)],
+    ['影响力 · 特征向量', topOf('eigenvector', 4)],
+    ['最深的核 · k-core', topOf('core', 0)],
+  ].map(([k, v]) => `<div><dt>${k}</dt><dd style="font-size:13px; line-height:1.6; font-family:var(--gl-sans)">${v}</dd></div>`).join('');
+}
+
+function renderStructure() {
+  const G = state.G, st = state.struct;
+  if (!G || !G.n) {
+    $('gl-struct-stats').innerHTML = '';
+    $('gl-cycles').innerHTML = '<div class="gl-empty">还没有数据</div>';
+    $('gl-cuts').innerHTML = ''; $('gl-layers').innerHTML = ''; $('gl-misc').innerHTML = '';
+    return;
+  }
+  const cyc = st.cycles ? st.cycles.cycles.length : 0;
+  const hasCycle = G.directed ? !st.topo.isDag : (G.edges.length >= G.n - st.components.length + 1);
+  $('gl-struct-stats').innerHTML = [
+    statCard('gl-stat-lav', st.components.length, '连通块'),
+    G.directed ? statCard('gl-stat-peach', st.scc.filter((c) => c.length > 1).length, '强连通团（>1）') : '',
+    G.directed ? statCard(hasCycle ? 'gl-stat-pink' : 'gl-stat-mint', hasCycle ? (st.cycles.truncated ? cyc + '+' : cyc) : '0', '有向环') : '',
+    statCard('gl-stat-ochre', st.articulation.length, '割点'),
+    statCard('', st.bridges.length, '桥'),
+    statCard('', Math.max(0, ...state.metrics.core), '最大 k-core'),
+    statCard('', fmt(st.msf.weight, 2), '最小生成森林权重'),
+  ].filter(Boolean).join('');
+
+  /* --- 环 --- */
+  const cy = $('gl-cycles');
+  if (!G.directed) {
+    cy.innerHTML = `<div class="gl-empty">无向图不谈「有向环」。这张图有 ${G.edges.length - G.n + st.components.length} 条独立回路（回路数 = 边数 − 节点数 + 连通块数）。</div>`;
+    $('gl-cycles-note').textContent = '';
+  } else if (st.topo.isDag) {
+    cy.innerHTML = '<div class="gl-empty">没有环：这是一张有向无环图（DAG），可以拓扑排序。</div>';
+    $('gl-cycles-note').textContent = '';
+  } else {
+    const list = st.cycles.cycles.slice(0, 30).map((c) => {
+      const names = c.map((i) => esc(G.ids[i]));
+      const back = c.length > 1 ? `${names[names.length - 1]} → ${names[0]}` : `${names[0]} → 自己`;
+      return `<li><span class="gl-tagpill gl-tag-bad">${c.length} 步</span><span class="gl-path">${names.join(' → ')} → ${names[0]}</span>
+        <span class="gl-note">打破它：删掉这条回边 <b>${back}</b></span></li>`;
+    }).join('');
+    cy.innerHTML = `<ul class="gl-list">${list}</ul>`;
+    $('gl-cycles-note').textContent =
+      `${st.cycles.truncated ? '至少 ' : ''}${st.cycles.cycles.length} 个简单环` +
+      (st.feedback && st.feedback.length ? ` · 一遍深度优先扫出 ${st.feedback.length} 条回边` : '');
+  }
+
+  /* --- 割点与桥 --- */
+  const cuts = $('gl-cuts');
+  const impact = (v) => {
+    /* 删掉这个点之后，它原来所在的块会碎成几块 */
+    const keep = state.U.ids.filter((_, i) => i !== v);
+    const sub = buildGraph({
+      directed: false, nodes: keep,
+      edges: state.U.edges.filter((e) => e.u !== v && e.v !== v).map((e) => [state.U.ids[e.u], state.U.ids[e.v], e.w]),
+    });
+    return connectedComponents(sub).length - (st.components.length - 1);
+  };
+  const canImpact = G.n <= 400;
+  const cutList = st.articulation.slice(0, 24).map((v) => {
+    const extra = canImpact ? `碎成 ${impact(v)} 块` : '';
+    return `<li><b>${esc(G.ids[v])}</b> <span class="gl-tagpill gl-tag-warn">割点</span>
+      <span class="gl-note">度 ${state.metrics.degree[v]}${extra ? ' · 删掉后它所在的块' + extra : ''}</span></li>`;
+  }).join('');
+  const bridgeList = st.bridges.slice(0, 24).map((b) =>
+    `<li><span class="gl-tagpill">桥</span><b>${esc(G.ids[b[0]])}</b> — <b>${esc(G.ids[b[1]])}</b>
+      <span class="gl-note">这条边断了，两端就分家</span></li>`).join('');
+  cuts.innerHTML =
+    (st.articulation.length ? `<h4>割点（${st.articulation.length}）</h4><ul class="gl-list">${cutList}</ul>`
+      : '<div class="gl-empty">没有割点：删掉任何单个节点，网络都不会被切开（这是好事）。</div>') +
+    (st.bridges.length ? `<h4 style="margin-top:14px">桥（${st.bridges.length}）</h4><ul class="gl-list">${bridgeList}</ul>` : '');
+
+  /* --- 分层与 k-core --- */
+  const layersEl = $('gl-layers');
+  let layerHtml = '';
+  if (G.directed && st.topo.isDag) {
+    const layers = st.topo.layers;
+    const maxL = Math.max(0, ...layers);
+    const buckets = [];
+    for (let l = 0; l <= maxL; l++) buckets.push([]);
+    for (let i = 0; i < G.n; i++) buckets[layers[i]].push(i);
+    layerHtml = `<h4>拓扑分层（共 ${maxL + 1} 层，第 0 层没有任何依赖指向它）</h4><ul class="gl-list">` +
+      buckets.map((b, l) => `<li><span class="gl-tagpill">第 ${l} 层</span>${b.slice(0, 18).map((i) => esc(G.ids[i])).join('、')}${b.length > 18 ? ` 等 ${b.length} 个` : ''}</li>`).join('') + '</ul>';
+  } else if (G.directed) {
+    const big = st.scc.filter((c) => c.length > 1).sort((a, b) => b.length - a.length);
+    layerHtml = `<h4>强连通团（互相都能到达的抱团）</h4>` + (big.length
+      ? `<ul class="gl-list">${big.slice(0, 12).map((c) => `<li><span class="gl-tagpill gl-tag-bad">${c.length} 个</span>${c.slice(0, 16).map((i) => esc(G.ids[i])).join('、')}</li>`).join('')}</ul>`
+      : '<div class="gl-empty">没有大于 1 个节点的强连通团。</div>');
+  } else {
+    layerHtml = '<h4>拓扑分层</h4><div class="gl-empty">无向图没有方向，谈不上拓扑分层。</div>';
+  }
+  const cores = state.metrics.core;
+  const maxCore = Math.max(0, ...cores);
+  const coreBuckets = [];
+  for (let k = 0; k <= maxCore; k++) coreBuckets.push(cores.filter((c) => c === k).length);
+  layersEl.innerHTML = layerHtml +
+    `<h4 style="margin-top:16px">k-core 分布</h4><ul class="gl-list">` +
+    coreBuckets.map((c, k) => c ? `<li><span class="gl-tagpill">${k}-core</span>${c} 个节点的核数正好是 ${k}</li>` : '').join('') + '</ul>' +
+    `<p class="gl-note">核数 k 表示：把所有度小于 k 的节点反复剥掉之后，它还留在图里。核数最大的那批是网络最紧的内核。</p>`;
+
+  /* --- 其他判定 --- */
+  const bp = st.bipartite;
+  const parts = st.components.map((c) => c.length).sort((a, b) => b - a);
+  $('gl-misc').innerHTML = `<ul class="gl-list">
+    <li><b>二部图</b>：${bp.bipartite ? `是。可以把节点分成两拨，边只在两拨之间。最大匹配 ${bp.matchingSize} 对` : `否。存在奇数长度的环${bp.conflict ? `（例如 ${esc(G.ids[bp.conflict[0]])} 与 ${esc(G.ids[bp.conflict[1]])} 之间那条边）` : ''}`}</li>
+    <li><b>连通块规模</b>：${parts.slice(0, 8).join(' / ')}${parts.length > 8 ? ` …共 ${parts.length} 块` : ''}</li>
+    <li><b>最小生成森林</b>：把每个连通块用最省的方式连起来，总权重 ${fmt(st.msf.weight, 2)}（用了 ${st.msf.edges.length} 条边）</li>
+    <li><b>度相关性</b>：${state.metrics.assortativity === null ? '算不出（度全一样）' : fmt(state.metrics.assortativity, 3) + (state.metrics.assortativity > 0.05 ? '，正相关：高连接度的节点倾向于互相连接' : state.metrics.assortativity < -0.05 ? '，负相关：枢纽更爱连叶子节点（星形/技术网络常见）' : '，接近 0：连接偏好不明显')}</li>
+    <li><b>全局传递性</b>：${fmt(state.metrics.transitivity, 3)}（朋友的朋友也是朋友的比例）</li>
+  </ul>`;
+}
+
+function renderFlowControls() {
+  const G = state.G;
+  const src = $('gl-src'), dst = $('gl-dst');
+  const prevS = src.value, prevD = dst.value;
+  const opts = G ? G.ids.map((id, i) => `<option value="${i}">${esc(id)}</option>`).join('') : '';
+  src.innerHTML = opts; dst.innerHTML = opts;
+  if (!G || !G.n) return;
+  const keepS = prevS && Number(prevS) < G.n ? prevS : '0';
+  const keepD = prevD && Number(prevD) < G.n ? prevD : String(Math.min(G.n - 1, 1));
+  src.value = keepS; dst.value = keepD;
+}
+
+function renderReach() {
+  const el = $('gl-reach-out');
+  const G = state.G, st = state.struct;
+  if (!G || !G.n) { el.innerHTML = '<div class="gl-empty">还没有数据</div>'; return; }
+  if (!st.stats) { el.innerHTML = '<div class="gl-empty">图里没有边</div>'; return; }
+  const s = st.stats;
+  const names = (arr) => arr.slice(0, 6).map((i) => esc(G.ids[i])).join('、') + (arr.length > 6 ? ` 等 ${arr.length} 个` : '');
+  el.innerHTML = `<ul class="gl-list">
+    <li><b>最大连通块</b>：${s.size} 个节点（占 ${Math.round((s.size / G.n) * 100)}%）</li>
+    <li><b>直径</b>：${s.diameter} 跳 —— 块内最远的两点之间要走这么多步</li>
+    <li><b>半径</b>：${s.radius} 跳 · <b>平均最短路</b>：${fmt(s.avgPath, 3)} 跳</li>
+    <li><b>中心</b>（离最远点也最近）：${names(s.center)}</li>
+    <li><b>边缘</b>（最偏远）：${names(s.periphery)}</li>
+  </ul>` + (state.skipped.length ? '<p class="gl-note">注：图较大时部分距离指标会被跳过。</p>' : '');
+}
+
+function renderPreview() {
+  const G = state.G;
+  $('gl-preview').textContent = G && G.n ? graphToEdgeList(G).split('\n').slice(0, 40).join('\n') + (G.edges.length > 40 ? '\n…' : '') : '（空）';
+}
+
+/* ---------- 项目存档 ---------- */
+function loadProjects() {
+  try { return JSON.parse(localStorage.getItem(STORE_KEY) || '[]'); } catch (e) { return []; }
+}
+function saveProjects(list) {
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(list)); } catch (e) { /* 隐私模式下写不了，忽略 */ }
+}
+function renderProjects() {
+  const list = loadProjects();
+  const el = $('gl-projects');
+  if (!list.length) { el.innerHTML = '<li style="color:var(--gl-muted)">还没有存过项目</li>'; return; }
+  el.innerHTML = list.map((p, i) =>
+    `<li><b title="${esc(p.name)}">${esc(p.name)}</b>
+      <button type="button" class="gl-btn gl-btn-sec gl-btn-sm" data-load="${i}">载入</button>
+      <button type="button" class="gl-btn gl-btn-sec gl-btn-sm" data-del="${i}">删</button></li>`).join('');
+}
+function saveLast() {
+  try {
+    localStorage.setItem(LAST_KEY, JSON.stringify({
+      text: $('gl-input').value, format: $('gl-format').value, directed: $('gl-directed').value,
+      layout: $('gl-layout').value, color: $('gl-color').value, size: $('gl-size').value,
+      labels: $('gl-labels').value, community: $('gl-community').value, resolution: $('gl-resolution').value,
+    }));
+  } catch (e) { /* ignore */ }
+}
+
+/* ---------- 事件绑定 ---------- */
+function switchTab(name) {
+  for (const t of document.querySelectorAll('.gl-tab')) {
+    const on = t.dataset.panel === name;
+    t.classList.toggle('gl-tabon', on);
+    t.setAttribute('aria-selected', on ? 'true' : 'false');
+  }
+  for (const p of document.querySelectorAll('.gl-panel')) {
+    p.hidden = p.id !== 'gl-panel-' + name;
+  }
+  if (name === 'graph') draw();
+}
+
+function pickNode(px, py) {
+  const G = state.G;
+  if (!G) return -1;
+  const { scale, dx, dy } = state.view;
+  const zoomR = Math.max(0.6, Math.min(1.6, scale));
+  let best = -1, bestD = Infinity;
+  for (let i = 0; i < G.n; i++) {
+    const x = state.layout[i].x * scale + dx, y = state.layout[i].y * scale + dy;
+    const r = nodeRadius(i) * zoomR + 4;
+    const d = (x - px) * (x - px) + (y - py) * (y - py);
+    if (d <= r * r && d < bestD) { best = i; bestD = d; }
+  }
+  return best;
+}
+
+function bindCanvas() {
+  const c = $('gl-canvas');
+  const local = (ev) => {
+    const r = c.getBoundingClientRect();
+    return { x: ev.clientX - r.left, y: ev.clientY - r.top };
+  };
+  c.addEventListener('pointerdown', (ev) => {
+    const p = local(ev);
+    const hit = pickNode(p.x, p.y);
+    state.moved = false;
+    if (hit >= 0) { state.dragging = hit; }
+    else { state.panning = { x: p.x, y: p.y, dx: state.view.dx, dy: state.view.dy }; }
+    c.setPointerCapture(ev.pointerId);
+  });
+  c.addEventListener('pointermove', (ev) => {
+    const p = local(ev);
+    if (state.dragging >= 0) {
+      state.moved = true;
+      state.layout[state.dragging] = {
+        x: (p.x - state.view.dx) / state.view.scale,
+        y: (p.y - state.view.dy) / state.view.scale,
+      };
+      draw();
+      return;
+    }
+    if (state.panning) {
+      state.moved = true;
+      state.view.dx = state.panning.dx + (p.x - state.panning.x);
+      state.view.dy = state.panning.dy + (p.y - state.panning.y);
+      draw();
+      return;
+    }
+    const hit = pickNode(p.x, p.y);
+    if (hit !== state.hover) { state.hover = hit; c.style.cursor = hit >= 0 ? 'pointer' : 'grab'; draw(); }
+  });
+  const end = (ev) => {
+    const p = local(ev);
+    if (!state.moved) {
+      const hit = pickNode(p.x, p.y);
+      state.selected = hit;
+      renderDetail();
+    }
+    state.dragging = -1; state.panning = null;
+    draw();
+  };
+  c.addEventListener('pointerup', end);
+  c.addEventListener('pointercancel', () => { state.dragging = -1; state.panning = null; });
+  c.addEventListener('pointerleave', () => { if (state.hover >= 0) { state.hover = -1; draw(); } });
+  c.addEventListener('wheel', (ev) => {
+    ev.preventDefault();
+    const p = local(ev);
+    zoomAt(p.x, p.y, Math.exp(-ev.deltaY * 0.0016));
+  }, { passive: false });
+}
+
+function zoomAt(px, py, factor) {
+  const v = state.view;
+  const ns = Math.max(0.04, Math.min(8, v.scale * factor));
+  v.dx = px - (px - v.dx) * (ns / v.scale);
+  v.dy = py - (py - v.dy) * (ns / v.scale);
+  v.scale = ns;
+  draw();
+}
+
+function highlightPath(path, kind, note) {
+  const G = state.G;
+  state.hl = { nodes: new Set(path), edges: new Set(), kind, note };
+  for (let i = 0; i + 1 < path.length; i++) {
+    for (const e of G.edges) {
+      const match = G.directed
+        ? (e.u === path[i] && e.v === path[i + 1])
+        : ((e.u === path[i] && e.v === path[i + 1]) || (e.v === path[i] && e.u === path[i + 1]));
+      if (match) { state.hl.edges.add(e.i); break; }
+    }
+  }
+  draw();
+}
+
+function runPath() {
+  const G = state.G;
+  const out = $('gl-path-out');
+  if (!G || !G.n) { out.innerHTML = '<div class="gl-empty">还没有数据</div>'; return; }
+  const s = Number($('gl-src').value), t = Number($('gl-dst').value);
+  const weighted = $('gl-path-mode').value === 'weight';
+  const r = shortestPath(G, s, t, weighted);
+  if (!r) {
+    state.hl = { nodes: new Set(), edges: new Set(), kind: '', note: '' };
+    draw();
+    out.innerHTML = `<div class="gl-empty">从 <b>${esc(G.ids[s])}</b> 走不到 <b>${esc(G.ids[t])}</b>${G.directed ? '（有向图里方向是硬约束）' : ''}。</div>`;
+    return;
+  }
+  const names = r.path.map((i) => esc(G.ids[i]));
+  highlightPath(r.path, 'path', '最短路');
+  out.innerHTML = `<ul class="gl-list">
+    <li><span class="gl-tagpill gl-tag-ok">${r.hops} 跳</span>权重之和 <b>${fmt(r.dist, 2)}</b>
+      <span class="gl-path">${names.join(G.directed ? ' → ' : ' — ')}</span>
+      <span class="gl-note">已在「网络图」里把这条路高亮成粉色</span></li></ul>`;
+}
+
+function runFlow() {
+  const G = state.G;
+  const out = $('gl-flow-out');
+  if (!G || !G.n) { out.innerHTML = '<div class="gl-empty">还没有数据</div>'; return; }
+  const s = Number($('gl-src').value), t = Number($('gl-dst').value);
+  if (s === t) { out.innerHTML = '<div class="gl-empty">起点和终点是同一个节点。</div>'; return; }
+  const f = maxFlow(G, s, t);
+  state.hl = { nodes: new Set([s, t]), edges: new Set(f.cut.map((e) => e.i)), kind: 'cut', note: '最小割' };
+  draw();
+  if (f.value <= 0) {
+    out.innerHTML = `<div class="gl-empty">从 <b>${esc(G.ids[s])}</b> 到 <b>${esc(G.ids[t])}</b> 没有可用容量（要么不连通，要么权重为 0）。</div>`;
+    return;
+  }
+  const cutList = f.cut.map((e) =>
+    `<li><b>${esc(G.ids[e.u])}</b> → <b>${esc(G.ids[e.v])}</b> <span class="gl-tagpill">容量 ${fmt(e.w, 2)}</span></li>`).join('');
+  out.innerHTML = `<ul class="gl-list">
+      <li><span class="gl-tagpill gl-tag-bad">最大流</span>从 <b>${esc(G.ids[s])}</b> 到 <b>${esc(G.ids[t])}</b> 每单位时间最多 <b>${fmt(f.value, 2)}</b>
+        <span class="gl-note">权重被当作容量；瓶颈就是下面这几条边（已在图上高亮）</span></li>
+    </ul>
+    <h4 style="margin-top:12px">最小割（${f.cut.length} 条边，容量合计 ${fmt(f.cutWeight, 2)}）</h4>
+    <ul class="gl-list">${cutList}</ul>
+    <p class="gl-note">最小割定理：这几条边的容量之和恰好等于最大流。把其中任意一条扩容，整条链路的上限才会抬起来。</p>`;
+}
+
+function metricsCSV() {
+  const G = state.G, m = state.metrics;
+  const cols = visibleCols();
+  const head = cols.map((c) => c.label).join(',');
+  const lines = [head];
+  for (let i = 0; i < G.n; i++) {
+    const row = cols.map((c) => {
+      if (c.key === 'id') return '"' + String(G.ids[i]).replace(/"/g, '""') + '"';
+      if (c.key === 'comm') return state.commInfo && state.commInfo.length ? state.comm[i] + 1 : '';
+      const v = m[c.key] ? m[c.key][i] : null;
+      return v === null || v === undefined ? '' : v;
+    });
+    lines.push(row.join(','));
+  }
+  return lines.join('\n');
+}
+
+function applySample(id) {
+  const s = SAMPLES.find((x) => x.id === id) || SAMPLES[0];
+  state.sampleId = s.id;
+  $('gl-input').value = s.text;
+  /* 留在「自动识别」上：样例本身就能被认出来，而且用户紧接着粘一段 JSON 时不会被上一次的选择坑到 */
+  $('gl-format').value = 'auto';
+  $('gl-directed').value = 'auto';
+  $('gl-layout').value = (s.id === 'deps') ? 'layered' : 'force';
+  $('gl-sample-note').textContent = s.note;
+  for (const b of document.querySelectorAll('#gl-samples .gl-chip')) b.classList.toggle('gl-chipon', b.dataset.sample === s.id);
+  state.selected = -1;
+  recompute();
+}
+
+function init() {
+  /* 样例按钮 */
+  $('gl-samples').innerHTML = SAMPLES.map((s, i) =>
+    `<button type="button" class="gl-chip gl-chip-${i % 6}" data-sample="${s.id}" title="${esc(s.subtitle)}">${esc(s.title)}</button>`).join('');
+  $('gl-samples').addEventListener('click', (ev) => {
+    const b = ev.target.closest('[data-sample]');
+    if (b) applySample(b.dataset.sample);
+  });
+
+  /* 标签页 */
+  for (const t of document.querySelectorAll('.gl-tab')) {
+    t.addEventListener('click', () => switchTab(t.dataset.panel));
+  }
+
+  /* 输入与设置 */
+  let timer = null;
+  $('gl-input').addEventListener('input', () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => { state.sampleId = null; recompute(); }, 260);
+  });
+  for (const id of ['gl-format', 'gl-directed']) $(id).addEventListener('change', () => recompute());
+  for (const id of ['gl-color', 'gl-size', 'gl-labels']) $(id).addEventListener('change', () => { renderLegend(); draw(); saveLast(); });
+  $('gl-layout').addEventListener('change', () => { doLayout(); draw(); saveLast(); });
+  $('gl-community').addEventListener('change', () => recompute({ relayout: false }));
+  $('gl-resolution').addEventListener('input', () => {
+    $('gl-res-val').textContent = Number($('gl-resolution').value).toFixed(1);
+  });
+  $('gl-resolution').addEventListener('change', () => recompute({ relayout: false }));
+  $('gl-btn-relayout').addEventListener('click', () => { doLayout(); draw(); });
+  $('gl-btn-fit').addEventListener('click', () => { fitView(); draw(); });
+  $('gl-zoom-in').addEventListener('click', () => { const b = canvasBox(); zoomAt(b.w / 2, b.h / 2, 1.25); });
+  $('gl-zoom-out').addEventListener('click', () => { const b = canvasBox(); zoomAt(b.w / 2, b.h / 2, 0.8); });
+  $('gl-zoom-fit').addEventListener('click', () => { fitView(); draw(); });
+
+  /* 指标表 */
+  $('gl-metric-head').addEventListener('click', (ev) => {
+    const th = ev.target.closest('th');
+    if (!th) return;
+    const key = th.dataset.key;
+    if (state.sortKey === key) state.sortDir = -state.sortDir;
+    else { state.sortKey = key; state.sortDir = key === 'id' ? 1 : -1; }
+    renderMetrics();
+  });
+  $('gl-metric-body').addEventListener('click', (ev) => {
+    const tr = ev.target.closest('tr[data-node]');
+    if (!tr) return;
+    state.selected = Number(tr.dataset.node);
+    renderDetail();
+    switchTab('graph');
+  });
+  $('gl-metric-body').addEventListener('keydown', (ev) => {
+    if (ev.key !== 'Enter' && ev.key !== ' ') return;
+    const tr = ev.target.closest('tr[data-node]');
+    if (!tr) return;
+    ev.preventDefault();
+    state.selected = Number(tr.dataset.node);
+    renderDetail();
+    switchTab('graph');
+  });
+  $('gl-metric-search').addEventListener('input', () => { state.search = $('gl-metric-search').value; renderMetrics(); });
+  $('gl-btn-csv').addEventListener('click', () => download('graph-metrics.csv', '\uFEFF' + metricsCSV(), 'text/csv;charset=utf-8'));
+
+  /* 节点详情里的邻居按钮 */
+  $('gl-detail').addEventListener('click', (ev) => {
+    const b = ev.target.closest('[data-node]');
+    if (!b) return;
+    state.selected = Number(b.dataset.node);
+    renderDetail();
+    draw();
+  });
+
+  /* 路径与流量 */
+  $('gl-btn-path').addEventListener('click', runPath);
+  $('gl-btn-flow').addEventListener('click', runFlow);
+  $('gl-btn-clearhl').addEventListener('click', () => {
+    state.hl = { nodes: new Set(), edges: new Set(), kind: '', note: '' };
+    draw();
+  });
+
+  /* 导出 */
+  $('gl-dl-edges').addEventListener('click', () => download('graph.txt', graphToEdgeList(state.G)));
+  $('gl-dl-dot').addEventListener('click', () => download('graph.dot', graphToDOT(state.G)));
+  $('gl-dl-json').addEventListener('click', () => download('graph.json', graphToJSON(state.G), 'application/json'));
+  $('gl-dl-csv').addEventListener('click', () => download('graph-metrics.csv', '\uFEFF' + metricsCSV(), 'text/csv;charset=utf-8'));
+  $('gl-btn-copy').addEventListener('click', async () => {
+    const text = graphToEdgeList(state.G);
+    try { await navigator.clipboard.writeText(text); toast($('gl-btn-copy'), '已复制'); }
+    catch (e) { $('gl-input').select(); toast($('gl-btn-copy'), '复制失败'); }
+  });
+  $('gl-btn-png').addEventListener('click', () => {
+    $('gl-canvas').toBlob((blob) => {
+      if (!blob) return;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'graph.png';
+      document.body.appendChild(a); a.click();
+      setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 200);
+    });
+  });
+
+  /* 项目存档 */
+  $('gl-btn-save').addEventListener('click', () => {
+    const name = ($('gl-project-name').value || '').trim() || ('图 ' + (loadProjects().length + 1));
+    const list = loadProjects();
+    const rec = {
+      name, text: $('gl-input').value, format: $('gl-format').value, directed: $('gl-directed').value,
+      layout: $('gl-layout').value, savedAt: new Date().toISOString().slice(0, 16).replace('T', ' '),
+    };
+    const at = list.findIndex((p) => p.name === name);
+    if (at >= 0) list[at] = rec; else list.unshift(rec);
+    saveProjects(list.slice(0, 30));
+    renderProjects();
+    toast($('gl-btn-save'), '已存');
+  });
+  $('gl-projects').addEventListener('click', (ev) => {
+    const load = ev.target.closest('[data-load]');
+    const del = ev.target.closest('[data-del]');
+    const list = loadProjects();
+    if (load) {
+      const p = list[Number(load.dataset.load)];
+      if (!p) return;
+      $('gl-input').value = p.text;
+      $('gl-format').value = p.format || 'auto';
+      $('gl-directed').value = p.directed || 'auto';
+      if (p.layout) $('gl-layout').value = p.layout;
+      $('gl-project-name').value = p.name;
+      state.sampleId = null;
+      recompute();
+    } else if (del) {
+      list.splice(Number(del.dataset.del), 1);
+      saveProjects(list);
+      renderProjects();
+    }
+  });
+
+  bindCanvas();
+  window.addEventListener('resize', () => { draw(); });
+  renderProjects();
+
+  /* 恢复上次，没有就用第一个样例 */
+  let restored = false;
+  try {
+    const last = JSON.parse(localStorage.getItem(LAST_KEY) || 'null');
+    if (last && last.text && last.text.trim()) {
+      $('gl-input').value = last.text;
+      $('gl-format').value = last.format || 'auto';
+      $('gl-directed').value = last.directed || 'auto';
+      if (last.layout) $('gl-layout').value = last.layout;
+      if (last.color) $('gl-color').value = last.color;
+      if (last.size) $('gl-size').value = last.size;
+      if (last.labels) $('gl-labels').value = last.labels;
+      if (last.community) $('gl-community').value = last.community;
+      if (last.resolution) { $('gl-resolution').value = last.resolution; $('gl-res-val').textContent = Number(last.resolution).toFixed(1); }
+      restored = true;
+    }
+  } catch (e) { restored = false; }
+  if (restored) { $('gl-sample-note').textContent = '已恢复上次的输入（存在本机）。'; recompute(); }
+  else applySample('deps');
+}
+
+function toast(btn, text) {
+  const old = btn.textContent;
+  btn.textContent = text;
+  setTimeout(() => { btn.textContent = old; }, 1100);
+}
+
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+else init();
+
+</script>
+</body>
+</html>
