@@ -1,0 +1,2456 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>预测工作台 · Forecast Studio</title>
+<meta name="description" content="粘一列数字就能做时间序列预测：11 种模型、滚动回测选模、预测区间、季节分解与自相关诊断，全部在浏览器本地计算。">
+<style>
+[hidden]{display:none!important}
+
+:root{
+  --fs-ink:#000; --fs-canvas:#fbfbf5; --fs-white:#fff; --fs-hair:#e4e4e7;
+  --fs-s30:#d4d4d8; --fs-s40:#a1a1aa; --fs-s50:#71717a; --fs-s60:#52525b; --fs-s70:#3f3f46;
+  --fs-aloe:#c1fbd4; --fs-pist:#d4f9e0; --fs-night:#000; --fs-teal:#1e2c31;
+  --fs-link1:#9dabad; --fs-link2:#9797a2; --fs-link3:#bdbdca;
+  --fs-display:"Helvetica Neue",Helvetica,Arial,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  --fs-ui:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  --fs-mono:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono",monospace;
+  --fs-shadow:0 8px 8px rgba(0,0,0,.055),0 4px 4px rgba(0,0,0,.05),0 2px 2px rgba(0,0,0,.05),0 0 0 1px rgba(0,0,0,.08);
+  --fs-r-md:8px; --fs-r-lg:12px; --fs-r-xl:20px; --fs-pill:9999px;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0; background:var(--fs-canvas); color:var(--fs-ink);
+  font-family:var(--fs-ui); font-size:16px; font-weight:420; line-height:1.5;
+  font-feature-settings:"ss03"; -webkit-font-smoothing:antialiased;
+}
+a{color:inherit}
+h1,h2,h3{margin:0; font-family:var(--fs-display); font-weight:330}
+button,input,select,textarea{font:inherit; color:inherit; font-feature-settings:"ss03"}
+
+.fs-wrap{max-width:1360px; margin:0 auto; padding:0 24px}
+
+/* ---- 顶部返回 ---- */
+.fs-topbar{padding:18px 0 0}
+.fs-back{
+  display:inline-flex; align-items:center; gap:8px; text-decoration:none;
+  border:1px solid var(--fs-ink); background:var(--fs-white); color:var(--fs-ink);
+  border-radius:var(--fs-pill); padding:9px 20px; font-size:15px; line-height:1.4;
+}
+.fs-back:hover{background:var(--fs-ink); color:var(--fs-white)}
+.fs-back:focus-visible,.fs-btn:focus-visible,.fs-tab:focus-visible,
+input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--fs-ink); outline-offset:2px}
+
+/* ---- Hero ---- */
+.fs-hero{padding:56px 0 40px; max-width:820px}
+.fs-eyebrow{
+  display:inline-block; background:var(--fs-aloe); color:var(--fs-ink);
+  border-radius:var(--fs-pill); padding:5px 14px; font-size:12px; font-weight:400;
+  letter-spacing:.72px; margin-bottom:22px;
+}
+.fs-display{font-size:clamp(40px,7vw,72px); line-height:1.02; letter-spacing:.5px}
+.fs-lead{margin:20px 0 0; font-size:18px; font-weight:550; line-height:1.56; max-width:700px}
+.fs-lead .fs-quiet{font-weight:420; color:var(--fs-s60)}
+
+/* ---- 布局 ---- */
+.fs-grid{display:grid; grid-template-columns:minmax(320px,390px) minmax(0,1fr); gap:24px; align-items:start; padding-bottom:64px}
+/* 网格子项默认 min-width:auto，会被内部 min-width:520px 的宽表顶开，导致整页横向滚动 */
+.fs-grid > *,.fs-two > *,.fs-card{min-width:0}
+@media (max-width:1020px){.fs-grid{grid-template-columns:1fr}}
+
+.fs-card{background:var(--fs-white); border-radius:var(--fs-r-lg); box-shadow:var(--fs-shadow); padding:26px}
+.fs-card + .fs-card{margin-top:20px}
+.fs-side{position:sticky; top:20px}
+@media (max-width:1020px){.fs-side{position:static}}
+
+.fs-h2{font-size:24px; line-height:1.16; letter-spacing:.36px; margin-bottom:6px}
+.fs-hint{font-size:14px; font-weight:500; letter-spacing:.28px; color:var(--fs-s50); margin:0 0 18px}
+.fs-sec{margin-top:26px; padding-top:24px; border-top:1px solid var(--fs-hair)}
+.fs-sec:first-child{margin-top:0; padding-top:0; border-top:0}
+.fs-label{display:block; font-size:12px; font-weight:400; letter-spacing:.72px; color:var(--fs-s60); margin-bottom:7px}
+
+/* ---- 控件 ---- */
+.fs-ta{
+  width:100%; min-height:186px; resize:vertical; background:var(--fs-white); color:var(--fs-ink);
+  border:1px solid var(--fs-hair); border-radius:var(--fs-r-md); padding:12px 13px;
+  font-family:var(--fs-mono); font-size:13px; line-height:1.62;
+}
+.fs-ta:focus{border-color:var(--fs-ink)}
+.fs-fields{display:grid; grid-template-columns:1fr 1fr; gap:14px}
+.fs-field{min-width:0}
+.fs-input,.fs-select{
+  width:100%; min-width:100px; height:44px; background:var(--fs-white); color:var(--fs-ink);
+  border:1px solid var(--fs-hair); border-radius:var(--fs-r-md); padding:10px 12px;
+}
+.fs-select{appearance:none; padding-right:30px;
+  background-image:linear-gradient(45deg,transparent 50%,var(--fs-s60) 50%),linear-gradient(135deg,var(--fs-s60) 50%,transparent 50%);
+  background-position:calc(100% - 16px) 20px,calc(100% - 11px) 20px; background-size:5px 5px,5px 5px; background-repeat:no-repeat}
+.fs-input:focus,.fs-select:focus{border-color:var(--fs-ink)}
+.fs-check{display:flex; align-items:flex-start; gap:10px; margin-top:12px; font-size:14px; line-height:1.45; cursor:pointer}
+.fs-check input{width:18px; height:18px; min-width:18px; margin:1px 0 0; accent-color:#000; cursor:pointer}
+.fs-check span{color:var(--fs-s60)}
+.fs-check b{font-weight:550; color:var(--fs-ink)}
+
+.fs-btn{
+  display:inline-flex; align-items:center; justify-content:center; gap:7px; cursor:pointer;
+  border-radius:var(--fs-pill); padding:12px 24px; border:1px solid var(--fs-ink);
+  background:var(--fs-ink); color:var(--fs-white); font-size:16px; line-height:1.25; min-width:56px;
+}
+.fs-btn:hover{background:var(--fs-s70); border-color:var(--fs-s70)}
+.fs-btn:active{background:var(--fs-s70)}
+.fs-btn-ghost{background:var(--fs-white); color:var(--fs-ink)}
+.fs-btn-ghost:hover{background:var(--fs-ink); color:var(--fs-white)}
+.fs-btn-aloe{background:var(--fs-aloe); border-color:var(--fs-aloe); color:var(--fs-ink)}
+.fs-btn-aloe:hover{background:#a8f5c2; border-color:#a8f5c2; color:var(--fs-ink)}
+.fs-btn-sm{padding:8px 16px; font-size:14px}
+.fs-btnrow{display:flex; flex-wrap:wrap; gap:10px; margin-top:18px}
+
+.fs-chips{display:flex; flex-wrap:wrap; gap:8px}
+.fs-chip{
+  cursor:pointer; border-radius:var(--fs-pill); border:1px solid var(--fs-hair); background:var(--fs-white);
+  color:var(--fs-ink); padding:7px 15px; font-size:13px; line-height:1.3; min-width:56px;
+}
+.fs-chip:hover{border-color:var(--fs-ink)}
+.fs-chip[aria-pressed="true"]{background:var(--fs-aloe); border-color:var(--fs-aloe)}
+
+/* ---- 解析摘要 pill ---- */
+.fs-pills{display:flex; flex-wrap:wrap; gap:8px; margin-top:16px}
+.fs-pill{border-radius:var(--fs-pill); padding:5px 13px; font-size:12px; font-weight:400; letter-spacing:.5px; background:var(--fs-s30); color:var(--fs-ink); white-space:nowrap}
+.fs-pill-mint{background:var(--fs-aloe)}
+.fs-pill-warn{background:var(--fs-white); border:1px solid var(--fs-ink)}
+
+/* ---- Tabs ---- */
+.fs-tabs{display:flex; flex-wrap:wrap; gap:8px; border-bottom:1px solid var(--fs-hair); padding-bottom:18px; margin-bottom:24px}
+.fs-tab{
+  cursor:pointer; border-radius:var(--fs-pill); border:1px solid transparent; background:transparent;
+  color:var(--fs-s50); padding:9px 18px; font-size:15px; line-height:1.3; min-width:56px;
+}
+.fs-tab:hover{color:var(--fs-ink); border-color:var(--fs-hair)}
+.fs-tab[aria-selected="true"]{background:var(--fs-ink); color:var(--fs-white); border-color:var(--fs-ink)}
+
+/* ---- 结果摘要 ---- */
+.fs-verdict{background:var(--fs-pist); border-radius:var(--fs-r-lg); padding:22px 24px; margin-bottom:22px}
+.fs-verdict .fs-pill{background:var(--fs-white); border:1px solid var(--fs-ink)}
+.fs-verdict-top{display:flex; flex-wrap:wrap; align-items:baseline; gap:10px 16px}
+.fs-verdict-name{font-family:var(--fs-display); font-size:28px; font-weight:500; letter-spacing:.42px; line-height:1.2}
+.fs-verdict-why{margin:10px 0 0; font-size:15px; line-height:1.55; color:var(--fs-s70)}
+.fs-verdict-why b{font-weight:550; color:var(--fs-ink)}
+.fs-metrics{display:flex; flex-wrap:wrap; gap:26px; margin-top:18px}
+.fs-metric dt{font-size:12px; font-weight:400; letter-spacing:.6px; color:var(--fs-s60); margin-bottom:3px}
+.fs-metric dd{margin:0; font-family:var(--fs-display); font-size:26px; font-weight:330; line-height:1.1}
+.fs-metric dd small{font-family:var(--fs-ui); font-size:13px; font-weight:500; color:var(--fs-s50); margin-left:3px}
+
+/* ---- 图表 ---- */
+.fs-figure{margin:0 0 8px}
+.fs-chart{display:block; width:100%; height:auto; overflow:visible}
+.fs-chart text{font-family:var(--fs-ui); font-size:11px; fill:var(--fs-s50); font-weight:500}
+.fs-chart .fs-axis-line{stroke:var(--fs-hair); stroke-width:1}
+.fs-chart .fs-grid-line{stroke:var(--fs-hair); stroke-width:1; stroke-dasharray:2 4}
+.fs-chart .fs-line-hist{fill:none; stroke:var(--fs-ink); stroke-width:2; stroke-linejoin:round; stroke-linecap:round}
+.fs-chart .fs-line-fit{fill:none; stroke:var(--fs-s40); stroke-width:1.5; stroke-dasharray:4 3}
+.fs-chart .fs-line-fc{fill:none; stroke:var(--fs-teal); stroke-width:2.4; stroke-linejoin:round; stroke-linecap:round}
+.fs-chart .fs-band-95{fill:#e6fbee}
+.fs-chart .fs-band-80{fill:var(--fs-aloe)}
+.fs-chart .fs-split{stroke:var(--fs-s60); stroke-width:1; stroke-dasharray:3 3}
+.fs-chart .fs-bar{fill:var(--fs-teal)}
+.fs-chart .fs-bar-alt{fill:var(--fs-s30)}
+.fs-chart .fs-bar-win{fill:var(--fs-aloe); stroke:var(--fs-teal); stroke-width:1}
+.fs-chart .fs-sigband{fill:var(--fs-pist); opacity:.75}
+.fs-chart .fs-dot{fill:var(--fs-teal)}
+.fs-chart .fs-cursor{stroke:var(--fs-ink); stroke-width:1}
+.fs-chart .fs-lbl-strong{fill:var(--fs-ink); font-weight:550}
+.fs-legend{display:flex; flex-wrap:wrap; gap:8px 20px; margin:4px 0 16px; font-size:13px; color:var(--fs-s60)}
+.fs-legend span{display:inline-flex; align-items:center; gap:7px}
+.fs-swatch{width:22px; height:10px; border-radius:2px; display:inline-block}
+.fs-readout{
+  min-height:44px; display:flex; flex-wrap:wrap; align-items:center; gap:8px 20px;
+  border:1px solid var(--fs-hair); border-radius:var(--fs-r-md); padding:11px 14px;
+  font-size:14px; color:var(--fs-s60); margin-bottom:20px;
+}
+.fs-readout b{font-weight:550; color:var(--fs-ink)}
+.fs-readout .fs-mono{font-family:var(--fs-mono); font-size:13px}
+
+/* ---- 表格 ---- */
+.fs-tablewrap{overflow-x:auto; border:1px solid var(--fs-hair); border-radius:var(--fs-r-md)}
+table.fs-table{border-collapse:collapse; width:100%; font-size:14px; min-width:520px}
+.fs-table th,.fs-table td{padding:10px 14px; text-align:right; border-bottom:1px solid var(--fs-hair); white-space:nowrap}
+.fs-table th{font-size:12px; font-weight:550; letter-spacing:.4px; color:var(--fs-s60); background:#fafafa; position:sticky; top:0}
+.fs-table th:first-child,.fs-table td:first-child{text-align:left}
+.fs-table tbody tr:last-child td{border-bottom:0}
+.fs-table td.fs-num{font-family:var(--fs-mono); font-size:13px}
+.fs-table tr.fs-row-win td{background:var(--fs-aloe); font-weight:550}
+.fs-table tr.fs-row-fc td{background:#fbfdfb}
+.fs-table td.fs-mark{font-size:12px; color:var(--fs-s60)}
+.fs-scroller{max-height:460px; overflow-y:auto}
+
+.fs-note{font-size:13px; line-height:1.6; color:var(--fs-s50); margin:14px 0 0}
+.fs-warnbox{border:1px solid var(--fs-ink); border-radius:var(--fs-r-md); padding:14px 16px; font-size:14px; line-height:1.55; margin-bottom:20px}
+.fs-warnbox ul{margin:8px 0 0; padding-left:20px}
+.fs-empty{padding:56px 20px; text-align:center; color:var(--fs-s50); font-size:15px}
+
+.fs-subhead{font-family:var(--fs-display); font-size:20px; font-weight:500; letter-spacing:.3px; margin:32px 0 6px}
+.fs-subhead:first-child{margin-top:0}
+.fs-subnote{font-size:13.5px; line-height:1.6; color:var(--fs-s50); margin:0 0 16px}
+.fs-two{display:grid; grid-template-columns:1fr 1fr; gap:24px}
+@media (max-width:820px){.fs-two{grid-template-columns:1fr}}
+
+.fs-dl{display:grid; grid-template-columns:repeat(auto-fill,minmax(132px,1fr)); gap:16px 22px; margin:0}
+.fs-dl div{min-width:0}
+.fs-dl dt{font-size:12px; font-weight:400; letter-spacing:.55px; color:var(--fs-s60); margin-bottom:3px}
+.fs-dl dd{margin:0; font-family:var(--fs-mono); font-size:15px; overflow-wrap:break-word}
+
+.fs-prose{max-width:760px; font-size:15px; line-height:1.7; color:var(--fs-s70)}
+.fs-prose h3{font-family:var(--fs-display); font-size:20px; font-weight:500; letter-spacing:.3px; color:var(--fs-ink); margin:28px 0 8px}
+.fs-prose h3:first-child{margin-top:0}
+.fs-prose p{margin:0 0 12px}
+.fs-prose ul{margin:0 0 12px; padding-left:20px}
+.fs-prose li{margin-bottom:6px}
+.fs-prose code{font-family:var(--fs-mono); font-size:13.5px; background:#f4f4f5; border-radius:4px; padding:1.5px 5px}
+.fs-prose b{color:var(--fs-ink); font-weight:550}
+
+/* ---- Footer ---- */
+.fs-footer{background:var(--fs-night); color:var(--fs-white); padding:56px 0 44px; margin-top:0}
+.fs-footer-in{display:flex; flex-wrap:wrap; gap:26px 56px; justify-content:space-between; align-items:flex-start}
+.fs-footer h2{font-size:24px; font-weight:330; letter-spacing:.3px; margin-bottom:10px}
+.fs-footer p{margin:0; font-size:14px; font-weight:500; letter-spacing:.28px; color:var(--fs-link1); max-width:460px; line-height:1.55}
+.fs-footer a{color:var(--fs-link3); text-decoration:underline; text-underline-offset:3px}
+.fs-footer a:hover{color:var(--fs-white)}
+.fs-footer-links{display:flex; flex-direction:column; gap:8px; font-size:14px}
+
+@media (max-width:640px){
+  .fs-wrap{padding:0 16px}
+  .fs-hero{padding:36px 0 28px}
+  .fs-card{padding:20px}
+  .fs-fields{grid-template-columns:1fr}
+  .fs-metrics{gap:18px}
+}
+</style>
+
+<div class="fs-wrap">
+  <div class="fs-topbar"><a class="fs-back" href="../../">← 返回工具集</a></div>
+
+  <header class="fs-hero">
+    <span class="fs-eyebrow">时间序列 · 预测</span>
+    <h1 class="fs-display">预测工作台</h1>
+    <p class="fs-lead">粘一列数字，看它接下来会怎么走。
+      <span class="fs-quiet">11 种模型一起跑滚动回测，用真实的「历史上预测得准不准」替你选模型，并给出预测区间。全部在你自己的浏览器里算，数据不上传。</span></p>
+  </header>
+
+  <div class="fs-grid">
+    <!-- ============ 左栏：输入与控制 ============ -->
+    <div class="fs-side">
+      <section class="fs-card">
+        <h2 class="fs-h2">1 · 数据</h2>
+        <p class="fs-hint">每行一个数；有日期就写成「日期,数值」。支持月 / 季 / 年 / 周 / 日，千分位与货币符号都能认。</p>
+
+        <div class="fs-sec">
+          <span class="fs-label" id="fs-ex-label">载入示例（真实公开数据）</span>
+          <div class="fs-chips" role="group" aria-labelledby="fs-ex-label" id="fs-examples"></div>
+        </div>
+
+        <div class="fs-sec">
+          <label class="fs-label" for="fs-input">数据</label>
+          <textarea id="fs-input" class="fs-ta" spellcheck="false" aria-describedby="fs-parse-pills"></textarea>
+          <div class="fs-pills" id="fs-parse-pills" aria-live="polite"></div>
+        </div>
+
+        <div class="fs-sec">
+          <h2 class="fs-h2">2 · 设置</h2>
+          <p class="fs-hint">季节周期会自动识别，也可以自己改。模型留「自动挑选」时，按回测 MASE 最低的那个来。</p>
+          <div class="fs-fields">
+            <div class="fs-field">
+              <label class="fs-label" for="fs-h">预测步数</label>
+              <input id="fs-h" class="fs-input" type="number" min="1" max="120" step="1" value="12">
+            </div>
+            <div class="fs-field">
+              <label class="fs-label" for="fs-m">季节周期 m</label>
+              <input id="fs-m" class="fs-input" type="number" min="1" max="60" step="1" value="12">
+            </div>
+            <div class="fs-field">
+              <label class="fs-label" for="fs-model">模型</label>
+              <select id="fs-model" class="fs-select"></select>
+            </div>
+            <div class="fs-field">
+              <label class="fs-label" for="fs-level">置信水平</label>
+              <select id="fs-level" class="fs-select">
+                <option value="0.8">80%</option>
+                <option value="0.9">90%</option>
+                <option value="0.95" selected>95%</option>
+              </select>
+            </div>
+            <div class="fs-field">
+              <label class="fs-label" for="fs-interval">区间口径</label>
+              <select id="fs-interval" class="fs-select">
+                <option value="auto" selected>解析式（可用时）</option>
+                <option value="boot">自助抽样</option>
+              </select>
+            </div>
+            <div class="fs-field">
+              <label class="fs-label" for="fs-bth">回测步长</label>
+              <input id="fs-bth" class="fs-input" type="number" min="1" max="36" step="1" value="6">
+            </div>
+          </div>
+          <label class="fs-check"><input type="checkbox" id="fs-log"><span><b>对数变换</b> —— 波动随水平等比放大时更稳（要求全为正数）</span></label>
+          <label class="fs-check"><input type="checkbox" id="fs-fill" checked><span><b>线性插值补缺</b> —— 把空行 / NA 按前后值补齐</span></label>
+        </div>
+
+        <div class="fs-sec">
+          <h2 class="fs-h2">3 · 项目</h2>
+          <p class="fs-hint">保存在本机浏览器里，下次打开还在。</p>
+          <div class="fs-fields">
+            <div class="fs-field">
+              <label class="fs-label" for="fs-project">已存项目</label>
+              <select id="fs-project" class="fs-select"></select>
+            </div>
+            <div class="fs-field">
+              <label class="fs-label" for="fs-pname">项目名</label>
+              <input id="fs-pname" class="fs-input" type="text" placeholder="例如：门店月销量">
+            </div>
+          </div>
+          <div class="fs-btnrow">
+            <button class="fs-btn fs-btn-sm" id="fs-save" type="button">保存</button>
+            <button class="fs-btn fs-btn-ghost fs-btn-sm" id="fs-delete" type="button">删除</button>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- ============ 右栏：结果 ============ -->
+    <div>
+      <section class="fs-card">
+        <div class="fs-tabs" role="tablist" aria-label="结果视图">
+          <button class="fs-tab" role="tab" id="fs-tab-forecast" aria-controls="fs-panel-forecast" aria-selected="true">预测</button>
+          <button class="fs-tab" role="tab" id="fs-tab-compare" aria-controls="fs-panel-compare" aria-selected="false" tabindex="-1">模型对比</button>
+          <button class="fs-tab" role="tab" id="fs-tab-diag" aria-controls="fs-panel-diag" aria-selected="false" tabindex="-1">诊断</button>
+          <button class="fs-tab" role="tab" id="fs-tab-data" aria-controls="fs-panel-data" aria-selected="false" tabindex="-1">数据</button>
+          <button class="fs-tab" role="tab" id="fs-tab-method" aria-controls="fs-panel-method" aria-selected="false" tabindex="-1">方法</button>
+        </div>
+
+        <div id="fs-panel-forecast" role="tabpanel" aria-labelledby="fs-tab-forecast">
+          <div id="fs-verdict"></div>
+          <figure class="fs-figure" id="fs-chart-box"></figure>
+          <div class="fs-legend" id="fs-legend"></div>
+          <div class="fs-readout" id="fs-readout">把鼠标移到图上可以逐点读数。</div>
+          <label class="fs-check" style="margin-bottom:18px"><input type="checkbox" id="fs-show-fitted"><span><b>显示拟合值</b> —— 模型对历史每一期的一步预测，用来看它贴不贴合</span></label>
+          <div class="fs-tablewrap fs-scroller"><table class="fs-table" id="fs-fc-table"></table></div>
+          <div class="fs-btnrow">
+            <button class="fs-btn" id="fs-export" type="button">导出预测 CSV</button>
+            <button class="fs-btn fs-btn-ghost" id="fs-copy" type="button">复制预测表</button>
+          </div>
+          <p class="fs-note" id="fs-interval-note"></p>
+        </div>
+
+        <div id="fs-panel-compare" role="tabpanel" aria-labelledby="fs-tab-compare" hidden>
+          <h3 class="fs-subhead">滚动回测排行榜</h3>
+          <p class="fs-subnote" id="fs-bt-desc"></p>
+          <div class="fs-tablewrap"><table class="fs-table" id="fs-bt-table"></table></div>
+          <p class="fs-note" id="fs-mase-note"></p>
+          <h3 class="fs-subhead">误差随预测步长的变化</h3>
+          <p class="fs-subnote">越往后预测越难。这张图对比冠军模型与基准模型在每个步长上的平均绝对误差（MAE）。</p>
+          <figure class="fs-figure" id="fs-bth-box"></figure>
+          <div class="fs-legend" id="fs-bth-legend"></div>
+        </div>
+
+        <div id="fs-panel-diag" role="tabpanel" aria-labelledby="fs-tab-diag" hidden>
+          <h3 class="fs-subhead">这条序列长什么样</h3>
+          <dl class="fs-dl" id="fs-desc"></dl>
+          <h3 class="fs-subhead">季节性与周期</h3>
+          <p class="fs-subnote" id="fs-season-note"></p>
+          <div class="fs-tablewrap"><table class="fs-table" id="fs-period-table"></table></div>
+          <h3 class="fs-subhead">自相关</h3>
+          <p class="fs-subnote">ACF 看「隔 k 期还有多像」，PACF 剔除中间期的间接影响。超出淡绿带（±1.96/√n）的柱子才算显著。</p>
+          <div class="fs-fields" style="max-width:260px; margin-bottom:16px">
+            <div class="fs-field">
+              <label class="fs-label" for="fs-lags">滞后阶数</label>
+              <input id="fs-lags" class="fs-input" type="number" min="4" max="60" step="1" value="24">
+            </div>
+          </div>
+          <figure class="fs-figure" id="fs-acf-box"></figure>
+          <figure class="fs-figure" id="fs-pacf-box"></figure>
+          <h3 class="fs-subhead">残差检验</h3>
+          <p class="fs-subnote">好模型的残差应该像白噪声。Ljung-Box 的 p 值若小于 0.05，说明残差里还有没被用上的规律。</p>
+          <dl class="fs-dl" id="fs-lb"></dl>
+          <h3 class="fs-subhead">经典分解</h3>
+          <p class="fs-subnote" id="fs-decomp-note"></p>
+          <div id="fs-decomp-box"></div>
+          <h3 class="fs-subhead">异常点</h3>
+          <div id="fs-outliers"></div>
+        </div>
+
+        <div id="fs-panel-data" role="tabpanel" aria-labelledby="fs-tab-data" hidden>
+          <div id="fs-warnings"></div>
+          <div class="fs-tablewrap fs-scroller"><table class="fs-table" id="fs-data-table"></table></div>
+        </div>
+
+        <div id="fs-panel-method" role="tabpanel" aria-labelledby="fs-tab-method" hidden>
+          <div class="fs-prose" id="fs-method"></div>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<footer class="fs-footer">
+  <div class="fs-wrap fs-footer-in">
+    <div>
+      <h2>算在你的浏览器里</h2>
+      <p>数据从不离开这台设备：没有后端、没有上传、没有账号。关掉页面就什么都不剩，除非你自己按了「保存」——那也只存在本机 localStorage 里。</p>
+    </div>
+    <div class="fs-footer-links">
+      <a href="../../">← 返回工具集</a>
+      <a href="https://otexts.com/fpp3/" target="_blank" rel="noopener">方法参考：Forecasting: Principles and Practice</a>
+      <a href="https://www.statsmodels.org/" target="_blank" rel="noopener">对拍基准：statsmodels</a>
+    </div>
+  </div>
+</footer>
+
+<script id="fs-engine">/* Forecast Studio engine — 纯前端时间序列预测内核
+   口径说明：ETS 递推与 statsmodels ExponentialSmoothing(initialization_method="known") 逐点一致；
+   季节项在预测期的取用有两种约定，见 seasonalRef。 */
+var FS = (function () {
+  'use strict';
+
+  /* ---------- 基础数值工具 ---------- */
+  function sum(a) { var s = 0; for (var i = 0; i < a.length; i++) s += a[i]; return s; }
+  function mean(a) { return a.length ? sum(a) / a.length : NaN; }
+  function isNum(v) { return typeof v === 'number' && isFinite(v); }
+  function clamp(v, lo, hi) { return v < lo ? lo : (v > hi ? hi : v); }
+
+  // 正态尾概率一律走不完全伽马（erf(x) = P(1/2, x²)），避免低精度有理逼近污染分位数精修
+  function normSF(x) { // P(X > x)
+    var t = gammaPQ(0.5, x * x / 2);
+    return x >= 0 ? 0.5 * t.q : 1 - 0.5 * t.q;
+  }
+  function normCDF(x) { return normSF(-x); }
+  function erf(x) { var t = gammaPQ(0.5, x * x); return x >= 0 ? t.p : -t.p; }
+  // Acklam 逆正态 + 两次 Halley 精修（在尾部用尾概率算残差，保持相对精度）
+  function normPPF(p) {
+    if (!(p > 0 && p < 1)) return p === 0 ? -Infinity : (p === 1 ? Infinity : NaN);
+    var a = [-3.969683028665376e+01, 2.209460984245205e+02, -2.759285104469687e+02,
+      1.383577518672690e+02, -3.066479806614716e+01, 2.506628277459239e+00];
+    var b = [-5.447609879822406e+01, 1.615858368580409e+02, -1.556989798598866e+02,
+      6.680131188771972e+01, -1.328068155288572e+01];
+    var c = [-7.784894002430293e-03, -3.223964580411365e-01, -2.400758277161838e+00,
+      -2.549732539343734e+00, 4.374664141464968e+00, 2.938163982698783e+00];
+    var d = [7.784695709041462e-03, 3.224671290700398e-01, 2.445134137142996e+00,
+      3.754408661907416e+00];
+    var pl = 0.02425, x;
+    if (p < pl) {
+      var q = Math.sqrt(-2 * Math.log(p));
+      x = (((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) /
+        ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1);
+    } else if (p <= 1 - pl) {
+      var q2 = p - 0.5, r = q2 * q2;
+      x = (((((a[0] * r + a[1]) * r + a[2]) * r + a[3]) * r + a[4]) * r + a[5]) * q2 /
+        (((((b[0] * r + b[1]) * r + b[2]) * r + b[3]) * r + b[4]) * r + 1);
+    } else {
+      var q3 = Math.sqrt(-2 * Math.log(1 - p));
+      x = -(((((c[0] * q3 + c[1]) * q3 + c[2]) * q3 + c[3]) * q3 + c[4]) * q3 + c[5]) /
+        ((((d[0] * q3 + d[1]) * q3 + d[2]) * q3 + d[3]) * q3 + 1);
+    }
+    for (var it = 0; it < 2; it++) {
+      // p ≤ 0.5 时用下尾、否则用上尾，两边都保持相对精度
+      var e = p <= 0.5 ? normCDF(x) - p : (1 - p) - normSF(x);
+      var u = e * Math.sqrt(2 * Math.PI) * Math.exp(x * x / 2);
+      x = x - u / (1 + x * u / 2);
+    }
+    return x;
+  }
+  // 下不完全伽马正则化 P(a,x)（级数 + 连分数）；上尾 Q 直接由连分数给出，不做 1-P
+  function gammaln(x) {
+    var g = [76.18009172947146, -86.50532032941677, 24.01409824083091,
+      -1.231739572450155, 0.1208650973866179e-2, -0.5395239384953e-5];
+    var xx = x, y = x, tmp = xx + 5.5;
+    tmp -= (xx + 0.5) * Math.log(tmp);
+    var ser = 1.000000000190015;
+    for (var j = 0; j < 6; j++) ser += g[j] / ++y;
+    return -tmp + Math.log(2.5066282746310005 * ser / xx);
+  }
+  function gammaPQ(a, x) {
+    if (!(x > 0)) return { p: 0, q: 1 };
+    if (x < a + 1) {
+      var ap = a, del = 1 / a, s = del;
+      for (var n = 0; n < 1000; n++) { ap++; del *= x / ap; s += del; if (Math.abs(del) < Math.abs(s) * 1e-17) break; }
+      var pv = s * Math.exp(-x + a * Math.log(x) - gammaln(a));
+      return { p: pv, q: 1 - pv };
+    }
+    var b = x + 1 - a, c = 1e300, d = 1 / b, h = d;
+    for (var i = 1; i <= 1000; i++) {
+      var an = -i * (i - a);
+      b += 2; d = an * d + b; if (Math.abs(d) < 1e-300) d = 1e-300;
+      c = b + an / c; if (Math.abs(c) < 1e-300) c = 1e-300;
+      d = 1 / d; var de = d * c; h *= de;
+      if (Math.abs(de - 1) < 1e-17) break;
+    }
+    var qv = Math.exp(-x + a * Math.log(x) - gammaln(a)) * h;
+    return { p: 1 - qv, q: qv };
+  }
+  function gammaP(a, x) { return gammaPQ(a, x).p; }
+  function chi2SF(x, df) { return df <= 0 ? NaN : gammaPQ(df / 2, x / 2).q; }
+
+  // 确定性伪随机（mulberry32）——自助抽样必须可复现
+  function rng(seed) {
+    var t = seed >>> 0;
+    return function () {
+      t += 0x6D2B79F5; var r = t;
+      r = Math.imul(r ^ (r >>> 15), r | 1);
+      r ^= r + Math.imul(r ^ (r >>> 7), r | 61);
+      return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  /* ---------- 线性代数：最小二乘（正规方程 + 部分主元高斯消元） ---------- */
+  function solveLS(X, y) {
+    var n = X.length, k = X[0].length, i, j, t;
+    var A = [], b = [];
+    for (i = 0; i < k; i++) {
+      A.push(new Array(k).fill(0)); b.push(0);
+      for (j = 0; j < k; j++) { var s = 0; for (t = 0; t < n; t++) s += X[t][i] * X[t][j]; A[i][j] = s; }
+      var s2 = 0; for (t = 0; t < n; t++) s2 += X[t][i] * y[t]; b[i] = s2;
+    }
+    for (i = 0; i < k; i++) {
+      var piv = i;
+      for (j = i + 1; j < k; j++) if (Math.abs(A[j][i]) > Math.abs(A[piv][i])) piv = j;
+      if (Math.abs(A[piv][i]) < 1e-12) return null;
+      var tmpR = A[i]; A[i] = A[piv]; A[piv] = tmpR;
+      var tb = b[i]; b[i] = b[piv]; b[piv] = tb;
+      for (j = i + 1; j < k; j++) {
+        var f = A[j][i] / A[i][i];
+        if (f === 0) continue;
+        for (t = i; t < k; t++) A[j][t] -= f * A[i][t];
+        b[j] -= f * b[i];
+      }
+    }
+    var out = new Array(k).fill(0);
+    for (i = k - 1; i >= 0; i--) {
+      var acc = b[i];
+      for (j = i + 1; j < k; j++) acc -= A[i][j] * out[j];
+      out[i] = acc / A[i][i];
+    }
+    return out;
+  }
+  function olsTrend(y) { // y ~ a + b*t，t = 0..n-1
+    var X = [], i;
+    for (i = 0; i < y.length; i++) X.push([1, i]);
+    var p = solveLS(X, y);
+    return p ? { a: p[0], b: p[1] } : { a: mean(y), b: 0 };
+  }
+
+  /* ---------- 描述统计与自相关 ---------- */
+  function describe(y) {
+    var n = y.length, mu = mean(y), i, s2 = 0;
+    for (i = 0; i < n; i++) s2 += (y[i] - mu) * (y[i] - mu);
+    var sd = n > 1 ? Math.sqrt(s2 / (n - 1)) : 0;
+    var srt = y.slice().sort(function (a, b) { return a - b; });
+    function q(p) {
+      if (!n) return NaN;
+      var h = (n - 1) * p, lo = Math.floor(h), hi = Math.ceil(h);
+      return srt[lo] + (srt[hi] - srt[lo]) * (h - lo);
+    }
+    return { n: n, mean: mu, sd: sd, min: srt[0], q1: q(0.25), median: q(0.5), q3: q(0.75), max: srt[n - 1] };
+  }
+  // 有偏（分母 n）自相关，与 statsmodels acf(adjusted=False, fft=False) 一致
+  function acf(y, nlags) {
+    var n = y.length, mu = mean(y), i, k, d0 = 0;
+    for (i = 0; i < n; i++) d0 += (y[i] - mu) * (y[i] - mu);
+    var out = [1];
+    for (k = 1; k <= nlags; k++) {
+      var s = 0;
+      for (i = k; i < n; i++) s += (y[i] - mu) * (y[i - k] - mu);
+      out.push(d0 === 0 ? 0 : s / d0);
+    }
+    return out;
+  }
+  // Levinson-Durbin，等价 statsmodels pacf(method="ywm")
+  function pacf(y, nlags) {
+    var r = acf(y, nlags), out = [1], phi = [], i, k;
+    var prev = [];
+    for (k = 1; k <= nlags; k++) {
+      var num = r[k], j;
+      for (j = 1; j < k; j++) num -= prev[j - 1] * r[k - j];
+      var den = 1;
+      for (j = 1; j < k; j++) den -= prev[j - 1] * r[j];
+      var pk = den === 0 ? 0 : num / den;
+      var cur = [];
+      for (j = 1; j < k; j++) cur.push(prev[j - 1] - pk * prev[k - j - 1]);
+      cur.push(pk);
+      prev = cur; out.push(pk);
+    }
+    return out;
+  }
+  function ljungBox(resid, lags, ddof) {
+    var n = resid.length, r = acf(resid, lags), q = 0, k;
+    for (k = 1; k <= lags; k++) q += (r[k] * r[k]) / (n - k);
+    q *= n * (n + 2);
+    var df = lags - (ddof || 0);
+    return { q: q, df: df, p: df > 0 ? chi2SF(q, df) : NaN };
+  }
+
+  /* ---------- 经典分解（对齐 statsmodels seasonal_decompose） ---------- */
+  function centeredMA(y, m) {
+    var n = y.length, out = new Array(n).fill(null), i, j;
+    var filt = [];
+    if (m % 2 === 0) { filt.push(0.5); for (j = 0; j < m - 1; j++) filt.push(1); filt.push(0.5); }
+    else { for (j = 0; j < m; j++) filt.push(1); }
+    for (j = 0; j < filt.length; j++) filt[j] /= m;
+    var half = Math.floor(filt.length / 2);
+    for (i = half; i < n - half; i++) {
+      var s = 0;
+      for (j = 0; j < filt.length; j++) s += filt[j] * y[i - half + j];
+      out[i] = s;
+    }
+    return out;
+  }
+  function decompose(y, m, model) {
+    var mult = model === 'mul';
+    var n = y.length, trend = centeredMA(y, m), i;
+    var det = new Array(n).fill(null);
+    for (i = 0; i < n; i++) if (trend[i] !== null) det[i] = mult ? y[i] / trend[i] : y[i] - trend[i];
+    var avg = [];
+    for (var ph = 0; ph < m; ph++) {
+      var acc = [], t;
+      for (t = ph; t < n; t += m) if (det[t] !== null && isFinite(det[t])) acc.push(det[t]);
+      avg.push(acc.length ? mean(acc) : (mult ? 1 : 0));
+    }
+    var c = mean(avg);
+    for (i = 0; i < m; i++) avg[i] = mult ? avg[i] / c : avg[i] - c;
+    var seasonal = [], resid = [];
+    for (i = 0; i < n; i++) {
+      seasonal.push(avg[i % m]);
+      resid.push(trend[i] === null ? null : (mult ? y[i] / (trend[i] * seasonal[i]) : y[i] - trend[i] - seasonal[i]));
+    }
+    return { trend: trend, seasonal: seasonal, resid: resid, indices: avg, model: mult ? 'mul' : 'add' };
+  }
+  // 季节强度 / 趋势强度（Wang-Smith-Hyndman，基于经典分解残差）
+  function strength(y, m) {
+    if (m < 2 || y.length < 2 * m + 1) return { seasonal: 0, trend: 0 };
+    var d = decompose(y, m, 'add'), i;
+    var rs = [], ds = [], ts = [];
+    for (i = 0; i < y.length; i++) {
+      if (d.resid[i] === null) continue;
+      rs.push(d.resid[i]); ds.push(d.resid[i] + d.seasonal[i]); ts.push(d.resid[i] + d.trend[i]);
+    }
+    function vr(a) { var mu = mean(a), s = 0; for (var k = 0; k < a.length; k++) s += (a[k] - mu) * (a[k] - mu); return a.length > 1 ? s / (a.length - 1) : 0; }
+    var vR = vr(rs);
+    return {
+      seasonal: clamp(1 - vR / (vr(ds) || 1), 0, 1),
+      trend: clamp(1 - vR / (vr(ts) || 1), 0, 1)
+    };
+  }
+  // 从 ACF 峰值挑周期（无日期信息时的兜底）
+  function detectPeriod(y, hint, poolIn) {
+    var n = y.length;
+    var cands = [];
+    var pool = (poolIn && poolIn.length) ? poolIn.slice() : [2, 3, 4, 6, 7, 12, 24, 52];
+    if (hint && pool.indexOf(hint) < 0) pool.push(hint);
+    for (var i = 0; i < pool.length; i++) {
+      var m = pool[i];
+      if (n < 2 * m + 1) continue;
+      cands.push({ m: m, s: strength(y, m).seasonal });
+    }
+    if (!cands.length) return { m: 1, score: 0, candidates: [] };
+    cands.sort(function (a, b) { return b.s - a.s; });
+    var best = cands[0];
+    if (hint) {
+      for (var j = 0; j < cands.length; j++) if (cands[j].m === hint && cands[j].s > best.s * 0.8) { best = cands[j]; break; }
+    }
+    return { m: best.s >= 0.3 ? best.m : 1, score: best.s, candidates: cands };
+  }
+
+  /* ---------- Nelder-Mead（带箱型约束，靠惩罚回推） ---------- */
+  function nelderMead(f, x0, lo, hi, opts) {
+    opts = opts || {};
+    var maxIter = opts.maxIter || 800, tol = opts.tol || 1e-10, k = x0.length;
+    function proj(x) { var o = []; for (var i = 0; i < k; i++) o.push(clamp(x[i], lo[i], hi[i])); return o; }
+    function fv(x) { var v = f(proj(x)); return isFinite(v) ? v : 1e300; }
+    var simplex = [proj(x0.slice())], i, j;
+    for (i = 0; i < k; i++) {
+      var p = x0.slice();
+      var step = (hi[i] - lo[i]) * 0.1 || 0.05;
+      p[i] = p[i] + step > hi[i] ? p[i] - step : p[i] + step;
+      simplex.push(proj(p));
+    }
+    var vals = simplex.map(fv);
+    for (var it = 0; it < maxIter; it++) {
+      var ord = simplex.map(function (_, idx) { return idx; })
+        .sort(function (a, b) { return vals[a] - vals[b]; });
+      simplex = ord.map(function (idx) { return simplex[idx]; });
+      vals = ord.map(function (idx) { return vals[idx]; });
+      if (Math.abs(vals[k] - vals[0]) <= tol * (Math.abs(vals[0]) + tol)) break;
+      var cen = new Array(k).fill(0);
+      for (i = 0; i < k; i++) { for (j = 0; j < k; j++) cen[j] += simplex[i][j] / k; }
+      var refl = [], exp = [], con = [];
+      for (j = 0; j < k; j++) refl.push(cen[j] + (cen[j] - simplex[k][j]));
+      var fr = fv(refl);
+      if (fr < vals[0]) {
+        for (j = 0; j < k; j++) exp.push(cen[j] + 2 * (cen[j] - simplex[k][j]));
+        var fe = fv(exp);
+        if (fe < fr) { simplex[k] = proj(exp); vals[k] = fe; } else { simplex[k] = proj(refl); vals[k] = fr; }
+      } else if (fr < vals[k - 1]) {
+        simplex[k] = proj(refl); vals[k] = fr;
+      } else {
+        for (j = 0; j < k; j++) con.push(cen[j] + 0.5 * (simplex[k][j] - cen[j]));
+        var fc = fv(con);
+        if (fc < vals[k]) { simplex[k] = proj(con); vals[k] = fc; }
+        else {
+          for (i = 1; i <= k; i++) {
+            for (j = 0; j < k; j++) simplex[i][j] = simplex[0][j] + 0.5 * (simplex[i][j] - simplex[0][j]);
+            simplex[i] = proj(simplex[i]); vals[i] = fv(simplex[i]);
+          }
+        }
+      }
+    }
+    var bi = 0;
+    for (i = 1; i <= k; i++) if (vals[i] < vals[bi]) bi = i;
+    return { x: proj(simplex[bi]), f: vals[bi] };
+  }
+
+  /* ---------- ETS 递推内核 ---------- */
+  // seasonalRef: 'hyndman'（FPP3 / R forecast：预测期取最新一轮季节状态）
+  //              'statsmodels'（statsmodels 的循环起点比 Hyndman 早一个周期，仅在 h ≥ m 时体现）
+  function etsRun(y, cfg) {
+    var m = cfg.m || 1, hasT = !!cfg.trend, hasS = !!cfg.seasonal;
+    var mulS = cfg.seasonal === 'mul';
+    var a = cfg.alpha, b = hasT ? cfg.beta : 0, g = hasS ? cfg.gamma : 0;
+    var phi = cfg.damped ? cfg.phi : 1;
+    var L = cfg.l0, B = hasT ? cfg.b0 : 0;
+    var S = hasS ? cfg.s0.slice() : null;
+    var n = y.length, fitted = [], lev = [], tre = [], sea = [], i;
+    for (i = 0; i < n; i++) {
+      var st = hasS ? S[i % m] : (mulS ? 1 : 0);
+      var base = L + (hasT ? phi * B : 0);
+      var f = hasS ? (mulS ? base * st : base + st) : base;
+      fitted.push(f);
+      var Lp = L, Bp = hasT ? phi * B : 0;
+      if (hasS) {
+        L = mulS ? a * (y[i] / st) + (1 - a) * (Lp + Bp) : a * (y[i] - st) + (1 - a) * (Lp + Bp);
+      } else {
+        L = a * y[i] + (1 - a) * (Lp + Bp);
+      }
+      if (hasT) B = b * (L - Lp) + (1 - b) * Bp;
+      if (hasS) S[i % m] = mulS ? g * (y[i] / (Lp + Bp)) + (1 - g) * st : g * (y[i] - Lp - Bp) + (1 - g) * st;
+      lev.push(L); if (hasT) tre.push(B); if (hasS) sea.push(S[i % m]);
+    }
+    var sse = 0;
+    for (i = 0; i < n; i++) { var e = y[i] - fitted[i]; sse += e * e; }
+    var ref = cfg.seasonalRef === 'statsmodels' ? 'statsmodels' : 'hyndman';
+    function forecast(h) {
+      var out = [], damp = 0, kk;
+      for (kk = 1; kk <= h; kk++) {
+        damp += hasT ? Math.pow(phi, kk) : 0;
+        var base = L + (hasT ? damp * B : 0), sIdx, st;
+        if (hasS) {
+          if (ref === 'statsmodels') {
+            // s[(nobs-1) + (kk % m)]：对应 0-based 时刻 n-1-m + (kk % m)
+            sIdx = ((n - 1 - m + (kk % m)) % m + m) % m;
+            // 该槽位若已被最后一轮覆盖，statsmodels 读到的是覆盖前的值 —— 用历史序列还原
+            var tIdx = n - 1 - m + (kk % m);
+            st = tIdx >= 0 && tIdx < n ? sea[tIdx] : (cfg.s0[((tIdx % m) + m) % m]);
+          } else {
+            var kBlock = Math.floor((kk - 1) / m);
+            var t2 = n - 1 + kk - m * (kBlock + 1);
+            st = t2 >= 0 ? sea[t2] : cfg.s0[((t2 % m) + m) % m];
+          }
+          out.push(mulS ? base * st : base + st);
+        } else out.push(base);
+      }
+      return out;
+    }
+    return {
+      fitted: fitted, sse: sse, level: lev, trend: tre, season: sea,
+      finalLevel: L, finalTrend: hasT ? B : 0, finalSeason: S, forecast: forecast
+    };
+  }
+
+  // 初值：季节用经典分解指数，水平/斜率用去季节后前段回归
+  function etsInit(y, m, cfg) {
+    var hasS = !!cfg.seasonal, mulS = cfg.seasonal === 'mul', hasT = !!cfg.trend;
+    var s0 = null, ds = y.slice(), i;
+    if (hasS) {
+      var canDecompose = y.length >= 2 * m + 1 && (!mulS || Math.min.apply(null, y) > 0);
+      if (canDecompose) {
+        var d = decompose(y, m, mulS ? 'mul' : 'add');
+        s0 = d.indices.slice();
+      } else {
+        s0 = new Array(m).fill(mulS ? 1 : 0);
+        // 退化情形：用各相位相对总体均值的偏离
+        var gm = mean(y);
+        for (var ph = 0; ph < m; ph++) {
+          var acc = [];
+          for (i = ph; i < y.length; i += m) acc.push(y[i]);
+          if (!acc.length) continue;
+          s0[ph] = mulS ? (gm !== 0 ? mean(acc) / gm : 1) : mean(acc) - gm;
+        }
+      }
+      for (i = 0; i < y.length; i++) ds[i] = mulS ? (s0[i % m] !== 0 ? y[i] / s0[i % m] : y[i]) : y[i] - s0[i % m];
+    }
+    var head = ds.slice(0, Math.max(2, Math.min(ds.length, Math.max(10, 2 * m))));
+    var tr = olsTrend(head);
+    var l0 = tr.a, b0 = tr.b;
+    if (!hasT) { l0 = ds[0]; b0 = 0; }
+    if (mulS && l0 <= 0) l0 = Math.max(1e-8, mean(ds));
+    return { l0: l0, b0: b0, s0: s0 };
+  }
+
+  /* ---------- 模型层 ---------- */
+  function residOf(y, fitted) { var r = [], i; for (i = 0; i < y.length; i++) r.push(y[i] - fitted[i]); return r; }
+  function sdOf(res, k) {
+    var n = res.length, df = Math.max(1, n - (k || 0)), s = 0, i;
+    for (i = 0; i < n; i++) s += res[i] * res[i];
+    return Math.sqrt(s / df);
+  }
+
+  function benchmark(id, y, m) {
+    var n = y.length, fitted = new Array(n).fill(null), i;
+    var lastCycle, muAll = mean(y);
+    if (id === 'mean') {
+      for (i = 0; i < n; i++) fitted[i] = i === 0 ? y[0] : mean(y.slice(0, i));
+      return { fitted: fitted, k: 1, forecast: function (h) { return new Array(h).fill(muAll); } };
+    }
+    if (id === 'naive') {
+      for (i = 0; i < n; i++) fitted[i] = i === 0 ? y[0] : y[i - 1];
+      return { fitted: fitted, k: 0, forecast: function (h) { return new Array(h).fill(y[n - 1]); } };
+    }
+    if (id === 'snaive') {
+      for (i = 0; i < n; i++) fitted[i] = i >= m ? y[i - m] : y[i];
+      return {
+        fitted: fitted, k: 0, forecast: function (h) {
+          var o = [], kk;
+          for (kk = 1; kk <= h; kk++) { var idx = n - m + ((kk - 1) % m); o.push(y[idx >= 0 ? idx : 0]); }
+          return o;
+        }
+      };
+    }
+    // drift
+    var slope = n > 1 ? (y[n - 1] - y[0]) / (n - 1) : 0;
+    for (i = 0; i < n; i++) fitted[i] = i === 0 ? y[0] : y[i - 1] + slope;
+    return { fitted: fitted, k: 1, forecast: function (h) { var o = [], kk; for (kk = 1; kk <= h; kk++) o.push(y[n - 1] + kk * slope); return o; } };
+  }
+
+  var ETS_SPECS = {
+    ses: { trend: null, seasonal: null, damped: false, label: '简单指数平滑 SES', short: 'SES' },
+    holt: { trend: 'add', seasonal: null, damped: false, label: 'Holt 线性趋势', short: 'Holt' },
+    holtDamped: { trend: 'add', seasonal: null, damped: true, label: 'Holt 阻尼趋势', short: 'Holt-d' },
+    hwAdd: { trend: 'add', seasonal: 'add', damped: false, label: 'Holt-Winters 加法季节', short: 'HW-add' },
+    hwMul: { trend: 'add', seasonal: 'mul', damped: false, label: 'Holt-Winters 乘法季节', short: 'HW-mul' },
+    hwAddDamped: { trend: 'add', seasonal: 'add', damped: true, label: 'Holt-Winters 加法·阻尼', short: 'HW-add-d' }
+  };
+
+  function fitETS(id, y, m, opts) {
+    opts = opts || {};
+    var spec = ETS_SPECS[id];
+    var cfgBase = { m: m, trend: spec.trend, seasonal: spec.seasonal, damped: spec.damped, seasonalRef: opts.seasonalRef };
+    var init = opts.init || etsInit(y, m, spec);
+    cfgBase.l0 = init.l0; cfgBase.b0 = init.b0; cfgBase.s0 = init.s0;
+    // 边界对齐 statsmodels：平滑系数 [0,1]，阻尼 [0.8, 0.995]
+    var names = ['alpha'], lo = [1e-4], hi = [0.9999], x0 = [0.4];
+    if (spec.trend) { names.push('beta'); lo.push(1e-4); hi.push(0.9999); x0.push(0.1); }
+    if (spec.seasonal) { names.push('gamma'); lo.push(1e-4); hi.push(0.9999); x0.push(0.1); }
+    if (spec.damped) { names.push('phi'); lo.push(0.8); hi.push(0.995); x0.push(0.95); }
+
+    function build(x) {
+      var c = {}, i;
+      for (i in cfgBase) c[i] = cfgBase[i];
+      for (i = 0; i < names.length; i++) c[names[i]] = x[i];
+      if (spec.seasonal) c.s0 = init.s0.slice();
+      return c;
+    }
+    var res;
+    if (opts.params) {
+      var xf = names.map(function (nm) { return opts.params[nm]; });
+      res = { x: xf, f: etsRun(y, build(xf)).sse };
+    } else {
+      var obj = function (x) { return etsRun(y, build(x)).sse; };
+      // 先粗网格扫一遍，再从最好的几个点做 Nelder-Mead 精修。
+      // 只靠 NM 多点起步会陷进坏盆地：150 条语料里曾有 40 处 SSE 明显劣于 statsmodels（最差 434895 vs 273187）。
+      var levels = [0, 33, 15, 9, 7][names.length] || 7;
+      var grids = names.map(function (nm, i) {
+        var g = [], L = nm === 'phi' ? 5 : levels;
+        for (var t = 0; t < L; t++) g.push(lo[i] + (hi[i] - lo[i]) * (t + 0.5) / L);
+        return g;
+      });
+      var pool = [[]];
+      for (var gi = 0; gi < grids.length; gi++) {
+        var nxt = [];
+        for (var pi = 0; pi < pool.length; pi++)
+          for (var vi = 0; vi < grids[gi].length; vi++) nxt.push(pool[pi].concat([grids[gi][vi]]));
+        pool = nxt;
+      }
+      var scored = [];
+      for (var si2 = 0; si2 < pool.length; si2++) {
+        var v = obj(pool[si2]);
+        if (isFinite(v)) scored.push({ x: pool[si2], f: v });
+      }
+      scored.sort(function (a, b) { return a.f - b.f; });
+      var starts = scored.slice(0, 3).map(function (s) { return s.x; });
+      starts.push(x0);
+      var best = null;
+      for (var si = 0; si < starts.length; si++) {
+        var r = nelderMead(obj, starts[si], lo, hi, { maxIter: 1200 });
+        if (!best || r.f < best.f) best = r;
+      }
+      if (scored.length && scored[0].f < best.f) best = scored[0];
+      res = best;
+    }
+    var cfg = build(res.x), run = etsRun(y, cfg);
+    var params = {};
+    for (var i2 = 0; i2 < names.length; i2++) params[names[i2]] = res.x[i2];
+    params.l0 = cfg.l0; params.b0 = cfg.b0; params.s0 = init.s0 ? init.s0.slice() : null;
+    var nP = names.length + 1 + (spec.trend ? 1 : 0) + (spec.seasonal ? m : 0);
+    return {
+      id: id, label: spec.label, short: spec.short, fitted: run.fitted, sse: run.sse,
+      params: params, k: nP, run: run, spec: spec, m: m,
+      forecast: function (h) { return run.forecast(h); }
+    };
+  }
+
+  // AR(p)：条件最小二乘（含常数），可先做 d 阶差分与 D 阶季节差分
+  function diffSeries(y, d, D, m) {
+    var cur = y.slice(), i, j;
+    for (j = 0; j < D; j++) { var nx = []; for (i = m; i < cur.length; i++) nx.push(cur[i] - cur[i - m]); cur = nx; }
+    for (j = 0; j < d; j++) { var nx2 = []; for (i = 1; i < cur.length; i++) nx2.push(cur[i] - cur[i - 1]); cur = nx2; }
+    return cur;
+  }
+  function fitAR(y, m, opts) {
+    opts = opts || {};
+    var d = opts.d || 0, D = opts.D || 0, mm = m > 1 ? m : 1;
+    var z = diffSeries(y, d, D, mm);
+    var maxP = Math.min(opts.maxP != null ? opts.maxP : 8, Math.max(1, Math.floor(z.length / 3) - 1));
+    var p = opts.p != null ? opts.p : null, bestAIC = Infinity, bestFit = null;
+    function fitP(pp) {
+      if (pp < 1 || z.length - pp < pp + 2) return null;
+      var X = [], yy = [], i, j;
+      for (i = pp; i < z.length; i++) {
+        var row = [1];
+        for (j = 1; j <= pp; j++) row.push(z[i - j]);
+        X.push(row); yy.push(z[i]);
+      }
+      var beta = solveLS(X, yy);
+      if (!beta) return null;
+      var res = [], ss = 0;
+      for (i = 0; i < yy.length; i++) {
+        var f = 0; for (j = 0; j < beta.length; j++) f += beta[j] * X[i][j];
+        var e = yy[i] - f; res.push(e); ss += e * e;
+      }
+      var nn = yy.length;
+      var aic = nn * Math.log(ss / nn) + 2 * (pp + 1);
+      return { p: pp, beta: beta, sse: ss, aic: aic, nobs: nn, resid: res };
+    }
+    if (p != null) bestFit = fitP(p);
+    else {
+      for (var pp = 1; pp <= maxP; pp++) {
+        var f = fitP(pp);
+        if (f && f.aic < bestAIC) { bestAIC = f.aic; bestFit = f; }
+      }
+    }
+    if (!bestFit) bestFit = { p: 0, beta: [mean(z)], sse: 0, aic: Infinity, nobs: z.length, resid: [] };
+    var beta = bestFit.beta, P = bestFit.p;
+
+    function forecastZ(h) {
+      var hist = z.slice(), out = [], kk, j;
+      for (kk = 0; kk < h; kk++) {
+        var f = beta[0];
+        for (j = 1; j <= P; j++) f += beta[j] * hist[hist.length - j];
+        hist.push(f); out.push(f);
+      }
+      return out;
+    }
+    // 逆差分：先还原一阶差分，再还原季节差分
+    function integrate(fz, h) {
+      var cur = fz.slice(), j, i;
+      var lvl = [];   // 记录每一层差分前的序列
+      var tmp = y.slice();
+      for (j = 0; j < D; j++) { lvl.push(tmp.slice()); tmp = diffSeries(tmp, 0, 1, mm); }
+      for (j = 0; j < d; j++) { lvl.push(tmp.slice()); tmp = diffSeries(tmp, 1, 0, mm); }
+      for (j = lvl.length - 1; j >= 0; j--) {
+        var base = lvl[j], isSeasonal = j < D, step = isSeasonal ? mm : 1;
+        var ext = base.slice(), o = [];
+        for (i = 0; i < h; i++) {
+          var prev = ext[ext.length - step + (isSeasonal ? 0 : 0)];
+          prev = ext[ext.length - step];
+          var v = prev + cur[i];
+          ext.push(v); o.push(v);
+        }
+        cur = o;
+      }
+      return cur;
+    }
+    // 拟合值（在原尺度上做一步预测，仅用于残差诊断；差分阶数处以 null 占位）
+    var fitted = new Array(y.length).fill(null);
+    var offset = y.length - bestFit.nobs;
+    for (var i3 = 0; i3 < bestFit.nobs; i3++) {
+      var zi = offset + i3;
+      if (d === 0 && D === 0) fitted[zi] = z[i3 + P] - bestFit.resid[i3];
+      else fitted[zi] = y[zi] - bestFit.resid[i3];
+    }
+    return {
+      id: 'ar', label: 'AR(' + P + ')' + (d || D ? ' · 差分 d=' + d + (D ? ',D=' + D : '') : ''),
+      short: 'AR(' + P + ')' + (d || D ? '·I' : ''),
+      p: P, d: d, D: D, beta: beta, sse: bestFit.sse, aic: bestFit.aic, k: P + 1,
+      fitted: fitted, resid: bestFit.resid, z: z,
+      forecastZ: forecastZ,
+      forecast: function (h) { return (d || D) ? integrate(forecastZ(h), h) : forecastZ(h); }
+    };
+  }
+
+  // Theta（statsmodels ThetaModel 的 2 步 OLS 形式）
+  function fitTheta(y, m, opts) {
+    opts = opts || {};
+    var deseason = opts.deseasonalize !== false && m > 1 && y.length >= 2 * m + 1 && Math.min.apply(null, y) > 0;
+    var method = opts.method || 'mul';
+    var seasonal = null, z = y.slice(), i;
+    if (deseason) {
+      var d = decompose(y, m, method === 'mul' ? 'mul' : 'add');
+      seasonal = d.indices.slice();
+      for (i = 0; i < y.length; i++) z[i] = method === 'mul' ? y[i] / seasonal[i % m] : y[i] - seasonal[i % m];
+    }
+    var tr = olsTrend(z), b0 = tr.b;
+    // SES，初值锁定 z[0]（与 statsmodels ThetaModel 一致）
+    var ses = fitETS('ses', z, 1, { init: { l0: z[0], b0: 0, s0: null }, params: opts.alpha != null ? { alpha: opts.alpha } : null });
+    var alpha = ses.params.alpha, T = z.length;
+    var oneStep = ses.forecast(1)[0];
+    var theta = opts.theta || 2, w = (theta - 1) / theta;
+    return {
+      id: 'theta', label: 'Theta 方法' + (deseason ? '（季节调整）' : ''), short: 'Theta',
+      alpha: alpha, b0: b0, k: 3, deseason: deseason, seasonalIdx: seasonal, method: method,
+      thetaState: { level: oneStep, alpha: alpha, b0: b0, w: w, T: T, seasonal: seasonal, method: method },
+      fitted: (function () {
+        var f = [];
+        for (i = 0; i < y.length; i++) {
+          var base = ses.fitted[i];
+          f.push(deseason ? (method === 'mul' ? base * seasonal[i % m] : base + seasonal[i % m]) : base);
+        }
+        return f;
+      })(),
+      forecast: function (h) {
+        var out = [], kk;
+        for (kk = 1; kk <= h; kk++) {
+          var trendComp = b0 * ((kk - 1) + 1 / alpha - Math.pow(1 - alpha, T) / alpha);
+          var v = w * trendComp + oneStep;
+          if (deseason) v = method === 'mul' ? v * seasonal[(T + kk - 1) % m] : v + seasonal[(T + kk - 1) % m];
+          out.push(v);
+        }
+        return out;
+      }
+    };
+  }
+
+  var MODEL_IDS = ['mean', 'naive', 'snaive', 'drift', 'ses', 'holt', 'holtDamped', 'hwAdd', 'hwMul', 'hwAddDamped', 'ar', 'theta'];
+  var MODEL_LABELS = {
+    mean: '历史均值', naive: '朴素法（照抄上期）', snaive: '季节朴素法', drift: '漂移法',
+    ses: '简单指数平滑 SES', holt: 'Holt 线性趋势', holtDamped: 'Holt 阻尼趋势',
+    hwAdd: 'Holt-Winters 加法季节', hwMul: 'Holt-Winters 乘法季节', hwAddDamped: 'Holt-Winters 加法·阻尼',
+    ar: '自回归 AR(p)', theta: 'Theta 方法'
+  };
+  var MODEL_SHORT = {
+    mean: '均值', naive: '朴素', snaive: '季节朴素', drift: '漂移', ses: 'SES', holt: 'Holt',
+    holtDamped: 'Holt-d', hwAdd: 'HW-add', hwMul: 'HW-mul', hwAddDamped: 'HW-add-d', ar: 'AR', theta: 'Theta'
+  };
+
+  function modelApplicable(id, y, m) {
+    var n = y.length;
+    if (id === 'snaive' || id === 'hwAdd' || id === 'hwMul' || id === 'hwAddDamped') {
+      if (m < 2 || n < 2 * m + 1) return false;
+    }
+    if (id === 'hwMul' && Math.min.apply(null, y) <= 0) return false;
+    if ((id === 'holt' || id === 'holtDamped' || id === 'drift') && n < 3) return false;
+    if (id === 'ar' && n < 8) return false;
+    if (id === 'theta' && n < 5) return false;
+    return n >= 2;
+  }
+
+  function fitModel(id, y, m, opts) {
+    opts = opts || {};
+    if (id === 'mean' || id === 'naive' || id === 'snaive' || id === 'drift') {
+      var b = benchmark(id, y, m);
+      var res = residOf(y, b.fitted);
+      return {
+        id: id, label: MODEL_LABELS[id], short: MODEL_SHORT[id], fitted: b.fitted,
+        resid: res, k: b.k, forecast: b.forecast, m: m, params: {}
+      };
+    }
+    if (id === 'ar') { var a = fitAR(y, m, opts.ar || {}); a.label = MODEL_LABELS.ar + ' · ' + a.label; a.short = MODEL_SHORT.ar + '(' + a.p + ')'; a.m = m; a.params = { p: a.p, d: a.d, D: a.D }; return a; }
+    if (id === 'theta') { var t = fitTheta(y, m, opts.theta || {}); t.resid = residOf(y, t.fitted); t.m = m; t.params = { alpha: t.alpha, b0: t.b0 }; return t; }
+    var e = fitETS(id, y, m, opts.ets || {});
+    e.resid = residOf(y, e.fitted);
+    e.label = MODEL_LABELS[id]; e.short = MODEL_SHORT[id];
+    return e;
+  }
+
+  /* ---------- 预测区间 ---------- */
+  // 冲激响应系数 c[j][k] = ∂(第 k 步点预测)/∂(第 j 步扰动)。
+  // 对加性误差模型，h 步预测误差 = ε_h + Σ_{j<h} c[j][h] ε_j，故方差 = σ²(1 + Σ c²)。
+  // 直接从推进器上取数，避免手抄 FPP3 的方差表 —— 那张表里 β 是误差修正参数（= α·β*），
+  // 抄成组件形式的 β* 会让 HW 的区间在 h=8 处虚高一个数量级（2026-08-27 实撞，靠蒙特卡洛对拍抓出）。
+  function impulseCoef(model, y, m, h) {
+    var base = [], st = makeStepper(model, y, m), k, j;
+    for (k = 0; k < h; k++) base.push(st(0).f);
+    var rows = [];
+    for (j = 1; j < h; j++) {
+      st = makeStepper(model, y, m);
+      var row = [];
+      for (k = 1; k <= h; k++) row.push(st(k === j ? 1 : 0).f - base[k - 1]);
+      rows.push(row);
+    }
+    return rows;
+  }
+  // 解析式预测标准差（加性误差假设）；乘法季节是非线性的，返回 null 交给自助抽样
+  function analyticSD(model, y, m, h) {
+    var res = (model.resid || []).filter(function (v) { return v !== null && isFinite(v); });
+    var s = sdOf(res, model.k || 0), n = y.length, out = [], i;
+    var id = model.id;
+    // 这两个模型的区间还含参数估计不确定性，用 FPP3 的闭式（比纯递推方差略宽）
+    if (id === 'mean') { for (i = 1; i <= h; i++) out.push(s * Math.sqrt(1 + 1 / n)); return out; }
+    if (id === 'drift') { for (i = 1; i <= h; i++) out.push(s * Math.sqrt(i * (1 + i / Math.max(1, n - 1)))); return out; }
+    if (model.spec && model.spec.seasonal === 'mul') return null;
+    if (id === 'theta') return null;
+    var C = impulseCoef(model, y, m, h);
+    for (i = 1; i <= h; i++) {
+      var acc = 1;
+      for (var j = 1; j <= i - 1; j++) { var c = C[j - 1][i - 1]; acc += c * c; }
+      out.push(s * Math.sqrt(acc));
+    }
+    return out;
+  }
+  // 逐步推进器：给定一个扰动 e，产出下一期的点预测 f 与含扰动的实现值 v，并推进内部状态。
+  // 不含扰动时（e 恒为 0）逐步产出的 f 必须与 model.forecast(h) 完全一致 —— 测试里对这一点有断言。
+  function makeStepper(model, y, m) {
+    var id = model.id, n = y.length, hist = y.slice();
+    if (id === 'mean') {
+      return function (e) { var f = mean(hist), v = f + e; hist.push(f); return { f: f, v: v }; };
+    }
+    if (id === 'naive') {
+      var last = y[n - 1];
+      return function (e) { var f = last, v = f + e; last = v; return { f: f, v: v }; };
+    }
+    if (id === 'snaive') {
+      return function (e) { var f = hist[hist.length - m], v = f + e; hist.push(v); return { f: f, v: v }; };
+    }
+    if (id === 'drift') {
+      var slope = n > 1 ? (y[n - 1] - y[0]) / (n - 1) : 0, cur = y[n - 1];
+      return function (e) { var f = cur + slope, v = f + e; cur = v; return { f: f, v: v }; };
+    }
+    if (id === 'ar') {
+      var beta = model.beta, P = model.p, d = model.d, D = model.D, mm = m > 1 ? m : 1;
+      var histY = y.slice();
+      return function (e) {
+        var z = diffSeries(histY, d, D, mm), j;
+        var fz = beta[0];
+        for (j = 1; j <= P; j++) fz += beta[j] * z[z.length - j];
+        // 逆差分：把 fz 还原到原始尺度
+        var lvls = [], tmp = histY.slice();
+        for (j = 0; j < D; j++) { lvls.push(tmp); tmp = diffSeries(tmp, 0, 1, mm); }
+        for (j = 0; j < d; j++) { lvls.push(tmp); tmp = diffSeries(tmp, 1, 0, mm); }
+        var val = fz;
+        for (j = lvls.length - 1; j >= 0; j--) {
+          var base = lvls[j], step = j < D ? mm : 1;
+          val = base[base.length - step] + val;
+        }
+        var v = val + e;
+        histY.push(v);
+        return { f: val, v: v };
+      };
+    }
+    if (id === 'theta') {
+      var st = model.thetaState, L = st.level, alpha = st.alpha, b0 = st.b0, w = st.w;
+      var T = st.T, seasonal = st.seasonal, method = st.method, k = 0;
+      return function (e) {
+        k++;
+        var sIdx = seasonal ? seasonal[(T + k - 1) % m] : null;
+        var trendComp = b0 * ((k - 1) + 1 / alpha - Math.pow(1 - alpha, T) / alpha);
+        var des = w * trendComp + L;
+        var f = seasonal ? (method === 'mul' ? des * sIdx : des + sIdx) : des;
+        var v = f + e;
+        // 去季节尺度上的误差驱动 SES 水平（e=0 时水平不动，逐步预测与 forecast(h) 完全一致）
+        var desErr = seasonal ? (method === 'mul' ? v / sIdx - des : v - sIdx - des) : v - des;
+        L = L + alpha * desErr;
+        return { f: f, v: v };
+      };
+    }
+    // ETS 家族
+    var spec = model.spec, run = model.run, p = model.params;
+    var hasT = !!spec.trend, hasS = !!spec.seasonal, mulS = spec.seasonal === 'mul';
+    var phi = spec.damped ? p.phi : 1, a = p.alpha, b = hasT ? p.beta : 0, g = hasS ? p.gamma : 0;
+    var L2 = run.finalLevel, B2 = hasT ? run.finalTrend : 0;
+    var S2 = hasS ? run.finalSeason.slice() : null;
+    // Hyndman 约定：预测期第 k 步用的季节槽位就是 (n-1+k) % m 上「最近一次更新」的值；
+    // 由于状态数组按相位覆盖，直接沿用 S2 即可（第 m 步之后用的正是自己刚写回的值）。
+    var tIdx = n - 1;
+    return function (e) {
+      tIdx++;
+      var slot = tIdx % m;
+      var st2 = hasS ? S2[slot] : (mulS ? 1 : 0);
+      var base = L2 + (hasT ? phi * B2 : 0);
+      var f = hasS ? (mulS ? base * st2 : base + st2) : base;
+      var v = f + e;
+      var Lp = L2, Bp = hasT ? phi * B2 : 0;
+      if (hasS) L2 = mulS ? a * (v / st2) + (1 - a) * (Lp + Bp) : a * (v - st2) + (1 - a) * (Lp + Bp);
+      else L2 = a * v + (1 - a) * (Lp + Bp);
+      if (hasT) B2 = b * (L2 - Lp) + (1 - b) * Bp;
+      if (hasS) S2[slot] = mulS ? g * (v / (Lp + Bp)) + (1 - g) * st2 : g * (v - Lp - Bp) + (1 - g) * st2;
+      return { f: f, v: v };
+    };
+  }
+  // 自助抽样：对（去均值的）残差重采样，沿模型递推重放，得到 h 步路径分布
+  function bootstrapPaths(model, y, m, h, opts) {
+    opts = opts || {};
+    var paths = opts.paths || 1000, seed = opts.seed || 20260827;
+    var rand = rng(seed);
+    var res = (model.resid || []).filter(function (v) { return v !== null && isFinite(v); });
+    if (res.length < 3) return null;
+    var mu = mean(res), i, j;
+    var centered = res.map(function (v) { return v - mu; });
+    var cols = [];
+    for (j = 0; j < h; j++) cols.push([]);
+    for (i = 0; i < paths; i++) {
+      var stepFn = makeStepper(model, y, m);
+      for (j = 0; j < h; j++) {
+        var e = centered[Math.floor(rand() * centered.length)];
+        var r = stepFn(e);
+        cols[j].push(r.v);
+      }
+    }
+    for (j = 0; j < h; j++) cols[j].sort(function (a, b) { return a - b; });
+    return cols;
+  }
+  function quantileOf(sorted, p) {
+    var n = sorted.length, hh = (n - 1) * p, lo = Math.floor(hh), hi = Math.ceil(hh);
+    return sorted[lo] + (sorted[hi] - sorted[lo]) * (hh - lo);
+  }
+
+  /* ---------- 误差指标与回测 ---------- */
+  function metrics(actual, pred, scale) {
+    var n = actual.length, i, ae = 0, se = 0, pe = 0, spe = 0, me = 0, cnt = 0, sc = 0;
+    for (i = 0; i < n; i++) {
+      var e = actual[i] - pred[i];
+      me += e; ae += Math.abs(e); se += e * e;
+      if (actual[i] !== 0) { pe += Math.abs(e / actual[i]); cnt++; }
+      var den = (Math.abs(actual[i]) + Math.abs(pred[i]));
+      if (den !== 0) { spe += Math.abs(e) / (den / 2); sc++; }
+    }
+    return {
+      n: n, me: me / n, mae: ae / n, rmse: Math.sqrt(se / n),
+      mape: cnt ? (pe / cnt) * 100 : NaN,
+      smape: sc ? (spe / sc) * 100 : NaN,
+      mase: scale > 0 ? (ae / n) / scale : NaN
+    };
+  }
+  function naiveScale(y, m) {
+    var step = m > 1 ? m : 1, i, s = 0, c = 0;
+    for (i = step; i < y.length; i++) { s += Math.abs(y[i] - y[i - step]); c++; }
+    return c ? s / c : 0;
+  }
+  function backtest(y, m, ids, opts) {
+    opts = opts || {};
+    var h = opts.horizon || Math.min(6, Math.max(1, Math.floor(y.length / 6)));
+    var minTrain = opts.initial || Math.max(m > 1 ? 2 * m + 2 : 6, Math.ceil(y.length * 0.5));
+    // 序列太短时按比例回退，保证至少还能切出一个折点（否则整张排行榜会静默变空）
+    if (minTrain + h > y.length) minTrain = Math.max(3, Math.min(minTrain, y.length - h));
+    var step = opts.step || 1;
+    var origins = [], o;
+    for (o = minTrain; o + h <= y.length; o += step) origins.push(o);
+    if (origins.length > (opts.maxOrigins || 24)) {
+      var keep = [], strideF = origins.length / (opts.maxOrigins || 24);
+      for (var t = 0; t < (opts.maxOrigins || 24); t++) keep.push(origins[Math.floor(t * strideF)]);
+      origins = keep.filter(function (v, i, a) { return a.indexOf(v) === i; });
+    }
+    var rows = [], scaleFull = naiveScale(y, m);
+    for (var mi = 0; mi < ids.length; mi++) {
+      var id = ids[mi];
+      if (!modelApplicable(id, y, m)) continue;
+      var A = [], P = [], byH = [], ok = true, failed = 0;
+      for (var k = 0; k < h; k++) byH.push({ a: [], p: [] });
+      for (var oi = 0; oi < origins.length; oi++) {
+        var tr = y.slice(0, origins[oi]);
+        if (!modelApplicable(id, tr, m)) { failed++; continue; }
+        var f;
+        try { f = fitModel(id, tr, m, opts.fitOpts); } catch (e) { failed++; continue; }
+        var fc = f.forecast(h);
+        for (var j = 0; j < h; j++) {
+          var av = y[origins[oi] + j];
+          if (!isNum(fc[j])) { ok = false; continue; }
+          A.push(av); P.push(fc[j]); byH[j].a.push(av); byH[j].p.push(fc[j]);
+        }
+      }
+      if (!A.length) continue;
+      var mt = metrics(A, P, scaleFull);
+      mt.id = id; mt.label = MODEL_LABELS[id]; mt.short = MODEL_SHORT[id];
+      mt.origins = origins.length - failed; mt.ok = ok;
+      mt.byHorizon = byH.map(function (b, idx) {
+        return b.a.length ? { h: idx + 1, mae: metrics(b.a, b.p, scaleFull).mae } : { h: idx + 1, mae: NaN };
+      });
+      rows.push(mt);
+    }
+    rows.sort(function (a, b) { return a.mase - b.mase || a.rmse - b.rmse; });
+    return { rows: rows, origins: origins, horizon: h, minTrain: minTrain, scale: scaleFull };
+  }
+
+  /* ---------- 数据解析 ---------- */
+  var MONTH_MS = 0;
+  function parseNumber(s) {
+    if (s == null) return null;
+    var t = String(s).trim();
+    if (!t) return null;
+    var neg = /^\(.*\)$/.test(t);
+    if (neg) t = t.slice(1, -1);
+    t = t.replace(/[,\s ]/g, '').replace(/[¥$€£]/g, '');
+    var pct = /%$/.test(t);
+    if (pct) t = t.slice(0, -1);
+    if (!/^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/.test(t)) return null;
+    var v = parseFloat(t);
+    if (!isFinite(v)) return null;
+    if (neg) v = -v;
+    return v;
+  }
+  function parseDateToken(s) {
+    var t = String(s).trim();
+    var mm;
+    if ((mm = /^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/.exec(t)))
+      return { kind: 'day', y: +mm[1], m: +mm[2], d: +mm[3], key: +mm[1] * 10000 + (+mm[2]) * 100 + (+mm[3]) };
+    if ((mm = /^(\d{4})[-/](\d{1,2})$/.exec(t)))
+      return { kind: 'month', y: +mm[1], m: +mm[2], d: 1, key: +mm[1] * 12 + (+mm[2]) - 1 };
+    if ((mm = /^(\d{4})[-/]?[Qq]([1-4])$/.exec(t)))
+      return { kind: 'quarter', y: +mm[1], m: (+mm[2] - 1) * 3 + 1, d: 1, key: +mm[1] * 4 + (+mm[2]) - 1 };
+    if ((mm = /^(\d{4})年(\d{1,2})月$/.exec(t)))
+      return { kind: 'month', y: +mm[1], m: +mm[2], d: 1, key: +mm[1] * 12 + (+mm[2]) - 1 };
+    if ((mm = /^(\d{4})年(\d{1,2})月(\d{1,2})日$/.exec(t)))
+      return { kind: 'day', y: +mm[1], m: +mm[2], d: +mm[3], key: +mm[1] * 10000 + (+mm[2]) * 100 + (+mm[3]) };
+    if ((mm = /^(\d{4})$/.exec(t)) && +mm[1] >= 1000 && +mm[1] <= 3000)
+      return { kind: 'year', y: +mm[1], m: 1, d: 1, key: +mm[1] };
+    if ((mm = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(t)))
+      return { kind: 'day', y: +mm[3], m: +mm[1], d: +mm[2], key: +mm[3] * 10000 + (+mm[1]) * 100 + (+mm[2]) };
+    return null;
+  }
+  function dayNumber(y, m, d) { return Math.floor(Date.UTC(y, m - 1, d) / 86400000); }
+  // 千分位必须是「1~3 位 + 若干组 3 位」；否则逗号就是列分隔符。
+  // 用宽松的 [\d,]+ 会把「1990,123.45」（年份 + 数值）误判成一个千分位数字（2026-08-27 fuzz 实撞）。
+  var THOUSANDS = /^[+-]?\d{1,3}(,\d{3})+(\.\d+)?$/;
+  function looksThousands(s) { return THOUSANDS.test(String(s).replace(/[\u00a5$\u20ac\u00a3\s]/g, '')); }
+  function splitCells(line) {
+    if (line.indexOf('\t') >= 0) return line.split('\t');
+    if (line.indexOf(',') >= 0 && !looksThousands(line)) return line.split(',');
+    if (/\s{2,}|\s/.test(line) && line.split(/\s+/).filter(Boolean).length > 1) return line.split(/\s+/);
+    return [line];
+  }
+  function parseSeries(text, opts) {
+    opts = opts || {};
+    var lines = String(text == null ? '' : text).split(/\r?\n/);
+    var rows = [], warnings = [], skippedHeader = null, i;
+    for (i = 0; i < lines.length; i++) {
+      var raw = lines[i];
+      if (!raw.trim()) continue;
+      var cells = splitCells(raw).map(function (c) { return c.trim(); });
+      var label = null, valCell = null, dateInfo = null;
+      if (cells.length === 1) { valCell = cells[0]; }
+      else {
+        dateInfo = parseDateToken(cells[0]);
+        label = cells[0];
+        // 「2024-01,1,234.56」这类：后面几列拼起来才是一个千分位数字
+        var rest = cells.slice(1).join(',');
+        if (cells.length > 2 && looksThousands(rest)) valCell = rest;
+        else {
+          // 取第一个能解析成数字的后续列
+          for (var c = 1; c < cells.length; c++) { if (parseNumber(cells[c]) !== null) { valCell = cells[c]; break; } }
+          if (valCell === null) valCell = cells[cells.length - 1];
+        }
+      }
+      var v = parseNumber(valCell);
+      var missing = /^(na|n\/a|null|nan|-|—|)$/i.test(String(valCell).trim());
+      if (v === null && !missing) {
+        if (rows.length === 0 && skippedHeader === null) { skippedHeader = raw; continue; }
+        warnings.push('第 ' + (i + 1) + ' 行无法解析为数值，已跳过：' + raw.slice(0, 40));
+        continue;
+      }
+      rows.push({ label: label, date: dateInfo, value: v, missing: v === null, line: i + 1 });
+    }
+    // 频率推断
+    var freq = null, m = 1, dated = rows.length > 0 && rows.every(function (r) { return r.date; });
+    if (dated) {
+      var kinds = {};
+      rows.forEach(function (r) { kinds[r.date.kind] = 1; });
+      var kk = Object.keys(kinds);
+      if (kk.length === 1) {
+        var kind = kk[0];
+        if (kind === 'month') { freq = 'month'; m = 12; }
+        else if (kind === 'quarter') { freq = 'quarter'; m = 4; }
+        else if (kind === 'year') { freq = 'year'; m = 1; }
+        else {
+          var gaps = [];
+          for (i = 1; i < rows.length; i++) {
+            gaps.push(dayNumber(rows[i].date.y, rows[i].date.m, rows[i].date.d) -
+              dayNumber(rows[i - 1].date.y, rows[i - 1].date.m, rows[i - 1].date.d));
+          }
+          var med = gaps.length ? gaps.slice().sort(function (a, b) { return a - b; })[Math.floor(gaps.length / 2)] : 1;
+          if (med === 1) { freq = 'day'; m = 7; }
+          else if (med === 7) { freq = 'week'; m = 52; }
+          else if (med >= 28 && med <= 31) { freq = 'month'; m = 12; }
+          else if (med >= 89 && med <= 92) { freq = 'quarter'; m = 4; }
+          else if (med >= 364 && med <= 366) { freq = 'year'; m = 1; }
+          else { freq = 'irregular'; m = 1; warnings.push('日期间隔不规则（中位数 ' + med + ' 天），已按等间距处理'); }
+        }
+      } else { dated = false; warnings.push('日期格式不统一，已忽略日期列'); }
+    }
+    var missCount = rows.filter(function (r) { return r.missing; }).length;
+    return {
+      rows: rows, freq: freq, m: m, dated: dated, warnings: warnings,
+      header: skippedHeader, missing: missCount
+    };
+  }
+  // 线性插值补缺；首尾用最近可用值
+  function fillMissing(values) {
+    var v = values.slice(), n = v.length, i, j, filled = [];
+    for (i = 0; i < n; i++) {
+      if (v[i] !== null && isFinite(v[i])) continue;
+      var prev = -1, next = -1;
+      for (j = i - 1; j >= 0; j--) if (v[j] !== null && isFinite(v[j])) { prev = j; break; }
+      for (j = i + 1; j < n; j++) if (v[j] !== null && isFinite(v[j])) { next = j; break; }
+      var nv;
+      if (prev < 0 && next < 0) nv = 0;
+      else if (prev < 0) nv = v[next];
+      else if (next < 0) nv = v[prev];
+      else nv = v[prev] + (v[next] - v[prev]) * (i - prev) / (next - prev);
+      v[i] = nv; filled.push(i);
+    }
+    return { values: v, filled: filled };
+  }
+  // 异常点：以经典分解残差（或一阶差分）的 IQR 规则标注
+  function outliers(y, m, factor) {
+    factor = factor || 3;
+    var base;
+    if (m > 1 && y.length >= 2 * m + 1) {
+      var d = decompose(y, m, 'add');
+      base = d.resid.map(function (v, i) { return v === null ? null : v; });
+    } else {
+      base = y.map(function (v, i) { return i === 0 ? null : y[i] - y[i - 1]; });
+    }
+    var vals = base.filter(function (v) { return v !== null && isFinite(v); }).sort(function (a, b) { return a - b; });
+    if (vals.length < 4) return [];
+    function q(p) { var h = (vals.length - 1) * p, lo = Math.floor(h), hi = Math.ceil(h); return vals[lo] + (vals[hi] - vals[lo]) * (h - lo); }
+    var q1 = q(0.25), q3 = q(0.75), iqr = q3 - q1;
+    var out = [];
+    for (var i = 0; i < base.length; i++) {
+      if (base[i] === null || !isFinite(base[i])) continue;
+      if (base[i] > q3 + factor * iqr || base[i] < q1 - factor * iqr) out.push({ i: i, value: y[i], score: base[i] });
+    }
+    return out;
+  }
+
+  /* ---------- 未来标签生成 ---------- */
+  function nextLabels(lastRow, freq, h, dated) {
+    var out = [], i;
+    if (!dated || !lastRow || !lastRow.date) {
+      for (i = 1; i <= h; i++) out.push('T+' + i);
+      return out;
+    }
+    var d = lastRow.date;
+    function pad(v) { return (v < 10 ? '0' : '') + v; }
+    if (freq === 'month') {
+      var y = d.y, mo = d.m;
+      for (i = 0; i < h; i++) { mo++; if (mo > 12) { mo = 1; y++; } out.push(y + '-' + pad(mo)); }
+    } else if (freq === 'quarter') {
+      var yq = d.y, q = Math.floor((d.m - 1) / 3) + 1;
+      for (i = 0; i < h; i++) { q++; if (q > 4) { q = 1; yq++; } out.push(yq + '-Q' + q); }
+    } else if (freq === 'year') {
+      for (i = 1; i <= h; i++) out.push(String(d.y + i));
+    } else if (freq === 'day' || freq === 'week') {
+      var step = freq === 'week' ? 7 : 1, base = Date.UTC(d.y, d.m - 1, d.d);
+      for (i = 1; i <= h; i++) {
+        var dt = new Date(base + i * step * 86400000);
+        out.push(dt.getUTCFullYear() + '-' + pad(dt.getUTCMonth() + 1) + '-' + pad(dt.getUTCDate()));
+      }
+    } else {
+      for (i = 1; i <= h; i++) out.push('T+' + i);
+    }
+    return out;
+  }
+
+  /* ---------- CSV 打印 / 解析（往返测试用） ---------- */
+  function toCSV(rows, cols) {
+    var lines = [cols.map(csvCell).join(',')];
+    for (var i = 0; i < rows.length; i++) {
+      lines.push(cols.map(function (c) { return csvCell(rows[i][c]); }).join(','));
+    }
+    return lines.join('\n');
+  }
+  function csvCell(v) {
+    if (v === null || v === undefined) return '';
+    var s = String(v);
+    if (/[",\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+    return s;
+  }
+  function parseCSV(text) {
+    var rows = [], row = [], cur = '', q = false, i = 0, s = String(text);
+    while (i < s.length) {
+      var ch = s[i];
+      if (q) {
+        if (ch === '"') { if (s[i + 1] === '"') { cur += '"'; i += 2; continue; } q = false; i++; continue; }
+        cur += ch; i++; continue;
+      }
+      if (ch === '"') { q = true; i++; continue; }
+      if (ch === ',') { row.push(cur); cur = ''; i++; continue; }
+      if (ch === '\n') { row.push(cur); rows.push(row); row = []; cur = ''; i++; continue; }
+      if (ch === '\r') { i++; continue; }
+      cur += ch; i++;
+    }
+    row.push(cur); rows.push(row);
+    return rows;
+  }
+
+  return {
+    // 数值工具
+    erf: erf, normCDF: normCDF, normSF: normSF, normPPF: normPPF, chi2SF: chi2SF,
+    gammaP: gammaP, gammaPQ: gammaPQ, rng: rng,
+    solveLS: solveLS, olsTrend: olsTrend, nelderMead: nelderMead,
+    // 统计
+    describe: describe, acf: acf, pacf: pacf, ljungBox: ljungBox,
+    decompose: decompose, centeredMA: centeredMA, strength: strength, detectPeriod: detectPeriod,
+    // 模型
+    etsRun: etsRun, etsInit: etsInit, fitETS: fitETS, fitAR: fitAR, fitTheta: fitTheta,
+    diffSeries: diffSeries, benchmark: benchmark, fitModel: fitModel, modelApplicable: modelApplicable,
+    MODEL_IDS: MODEL_IDS, MODEL_LABELS: MODEL_LABELS, MODEL_SHORT: MODEL_SHORT, ETS_SPECS: ETS_SPECS,
+    // 区间与评估
+    analyticSD: analyticSD, impulseCoef: impulseCoef, bootstrapPaths: bootstrapPaths,
+    makeStepper: makeStepper, quantileOf: quantileOf, sdOf: sdOf,
+    metrics: metrics, naiveScale: naiveScale, backtest: backtest,
+    // 数据
+    parseSeries: parseSeries, parseNumber: parseNumber, parseDateToken: parseDateToken,
+    fillMissing: fillMissing, outliers: outliers, nextLabels: nextLabels,
+    toCSV: toCSV, parseCSV: parseCSV,
+    mean: mean, sum: sum
+  };
+})();
+</script>
+<script id="fs-data">var FS_DATA = {"co2":{"start":"1986-01","freq":"month","values":[346.25,346.82,347.74,349.52,350.08,349.38,347.82,345.82,344.8,344.1,345.62,346.88,348,348.5,349.48,350.85,351.74,351.15,349.45,348.08,346.4,346.44,347.93,348.93,350.4,351.77,352.12,353.58,354.18,353.75,352.22,350.3,348.75,348.96,350,351.36,352.77,353,353.6,355.36,355.6,355.12,353.86,351.57,349.86,350.05,351.2,352.48,353.65,354.65,355.48,356.18,357.07,356.08,354.68,352.9,350.94,351.23,352.7,354.14,354.68,355.65,357.2,358.6,359.25,358.18,356.05,353.86,352.12,352.25,353.74,355.02,355.9,356.68,357.9,359.07,359.54,359.12,357,354.86,353.02,353.42,354.2,355.35,356.68,357.18,358.43,359.32,360.18,359.5,357.42,355.32,353.77,354.06,355.35,356.77,358.32,358.9,359.93,361.22,361.65,360.9,359.46,357.38,355.92,356.02,357.57,359.06,359.98,360.93,361.57,363.36,363.7,363.25,361.8,359.38,358,357.85,359.48,360.7,362.02,363.18,364.06,364.7,365.32,364.88,363.48,361.32,359.4,359.62,360.74,362.38,363.12,363.88,364.56,366.32,366.68,365.48,364.38,362.46,360.15,360.75,362.38,364.25,365.34,366.2,367.38,368.52,369.14,368.75,367.6,365.72,363.93,364.32,365.55,366.93,368.12,368.85,369.6,370.98,370.84,370.25,369,366.7,364.68,365.14,366.65,367.9,369.02,369.38,370.4,371.54,371.65,371.62,369.94,367.95,366.54,366.73,368.12,369.44,370.18,371.32,372.06,372.77,373.8,373.06,371.3,369.43,367.88,368.05,369.38,371.02],"name":"大气二氧化碳（月）","m":12,"h":24,"bth":12},"elnino":{"start":"1991-01","freq":"month","values":[23.99,25.59,26.31,25.15,24.44,23.28,22.39,21.39,21.22,21.73,22.4,23.75,25.02,26.62,27.72,27.58,26.44,23.86,21.84,20.87,20.85,21.15,21.84,22.79,24.68,26.46,27.07,26.84,25.6,24.11,22.61,21.65,21.11,21.71,22.07,22.86,24.56,25.89,25.75,24.49,23.52,22.31,21.17,20.22,20.65,22.04,22.27,23.75,25.48,26.25,26.09,24.32,23.37,22.43,21.42,20.46,20.5,20.62,21.49,22.03,23.81,25.52,26.28,24,23.11,21.66,20.72,20.23,20.43,20.52,20.77,21.68,23.7,26.08,27.17,26.74,26.77,26.15,25.59,24.95,24.69,24.64,25.85,27.08,28.12,28.82,29.24,28.45,27.36,25.19,23.61,22.27,21.31,21.37,21.6,22.81,24.23,25.73,26.47,24.53,23.64,22.09,21.36,20.67,20.08,20.46,20.62,22.42,24.01,25.38,25.67,25.53,24.27,22.93,21.47,20.07,20.64,20.9,20.67,22.08,24.24,26.11,26.89,25.99,23.98,22.71,21.48,20.24,19.73,20.14,20.68,21.73,24.09,26.23,27.39,26.44,25.29,23.28,21.64,21.32,21.42,21.85,22.85,24.05,25.01,26.27,26.91,25.41,23.24,22.15,21.5,21.25,20.75,21.7,22.33,23.6,25.09,26.47,26.12,25.27,23.44,22.54,21.26,20.79,20.83,21.56,22.88,23.39,24.61,25.09,25.23,25.21,24.31,22.6,21.61,20.47,20,19.89,20.61,22.2,24.76,26.52,26.22,24.29,23.84,22.82,22.2,21.89,21.93,22.46,22.61,24.15,25.82,26.81,26.41,24.96,23.05,21.61,21.05,19.95,19.85,19.31,19.82,21.15,24.24,26.39,26.91,25.68,24.43,23.19,23.02,22.14,21.6,21.39,21.54,22.73,24.39,25.53,25.48,25.84,24.95,24.09,23.09,22.03,21.48,21.64,21.99,23.21,24.7,26.16,26.54,26.04,24.75,23.26,21.11,19.49,19.28,19.73,20.44,22.07],"name":"赤道太平洋海温（月）","m":12,"h":24,"bth":12},"gdp":{"start":"1959-Q1","freq":"quarter","values":[2710.3,2778.8,2775.5,2785.2,2847.7,2834.4,2839,2802.6,2819.3,2872,2918.4,2977.8,3031.2,3064.7,3093,3100.6,3141.1,3180.4,3240.3,3265,3338.2,3376.6,3422.5,3432,3516.3,3564,3636.3,3724,3815.4,3828.1,3853.3,3884.5,3918.7,3919.6,3950.8,3981,4063,4132,4160.3,4178.3,4244.1,4256.5,4283.4,4263.3,4256.6,4264.3,4302.3,4256.6,4374,4398.8,4433.9,4446.3,4525.8,4633.1,4677.5,4754.5,4876.2,4932.6,4906.3,4953.1,4909.6,4922.2,4873.5,4854.3,4795.3,4831.9,4913.3,4977.5,5090.7,5128.9,5154.1,5191.5,5251.8,5356.1,5451.9,5450.8,5469.4,5684.6,5740.3,5816.2,5825.9,5831.4,5873.3,5889.5,5908.5,5787.4,5776.6,5883.5,6005.7,5957.8,6030.2,5955.1,5857.3,5889.1,5866.4,5871,5944,6077.6,6197.5,6325.6,6448.3,6559.6,6623.3,6677.3,6740.3,6797.3,6903.5,6955.9,7022.8,7051,7118.9,7153.4,7193,7269.5,7332.6,7458,7496.6,7592.9,7632.1,7734,7806.6,7865,7927.4,7944.7,8027.7,8059.6,8059.5,7988.9,7950.2,8003.8,8037.5,8069,8157.6,8244.3,8329.4,8417,8432.5,8486.4,8531.1,8643.8,8727.9,8847.3,8904.3,9003.2,9025.3,9044.7,9120.7,9184.3,9247.2,9407.1,9488.9,9592.5,9666.2,9809.6,9932.7,10008.9,10103.4,10194.3,10328.8,10507.6,10601.2,10684,10819.9,11014.3,11043,11258.5,11267.9,11334.5,11297.2,11371.3,11340.1,11380.1,11477.9,11538.8,11596.4,11598.8,11645.8,11738.7,11935.5,12042.8,12127.6,12213.8,12303.5,12410.3,12534.1,12587.5,12683.2,12748.7,12915.9,12962.5,12965.9,13060.7,13099.9,13204,13321.1,13391.2,13366.9,13415.3,13324.6,13141.9,12925.4,12901.5,12990.3],"name":"美国实际 GDP（季）","m":4,"h":12,"bth":4},"nile":{"start":"1871","freq":"year","values":[1120,1160,963,1210,1160,1160,813,1230,1370,1140,995,935,1110,994,1020,960,1180,799,958,1140,1100,1210,1150,1250,1260,1220,1030,1100,774,840,874,694,940,833,701,916,692,1020,1050,969,831,726,456,824,702,1120,1100,832,764,821,768,845,864,862,698,845,744,796,1040,759,781,865,845,944,984,897,822,1010,771,676,649,846,812,742,801,1040,860,874,848,890,744,749,838,1050,918,986,797,923,975,815,1020,906,901,1170,912,746,919,718,714,740],"name":"尼罗河径流量（年）","m":1,"h":15,"bth":6},"sunspots":{"start":"1750","freq":"year","values":[83.4,47.7,47.8,30.7,12.2,9.6,10.2,32.4,47.6,54,62.9,85.9,61.2,45.1,36.4,20.9,11.4,37.8,69.8,106.1,100.8,81.6,66.5,34.8,30.6,7,19.8,92.5,154.4,125.9,84.8,68.1,38.5,22.8,10.2,24.1,82.9,132,130.9,118.1,89.9,66.6,60,46.9,41,21.3,16,6.4,4.1,6.8,14.5,34,45,43.1,47.5,42.2,28.1,10.1,8.1,2.5,0,1.4,5,12.2,13.9,35.4,45.8,41.1,30.1,23.9,15.6,6.6,4,1.8,8.5,16.6,36.3,49.6,64.2,67,70.9,47.8,27.5,8.5,13.2,56.9,121.5,138.3,103.2,85.7,64.6,36.7,24.2,10.7,15,40.1,61.5,98.5,124.7,96.3,66.6,64.5,54.1,39,20.6,6.7,4.3,22.7,54.8,93.8,95.8,77.2,59.1,44,47,30.5,16.3,7.3,37.6,74,139,111.2,101.6,66.2,44.7,17,11.3,12.4,3.4,6,32.3,54.3,59.7,63.7,63.5,52.2,25.4,13.1,6.8,6.3,7.1,35.6,73,85.1,78,64,41.8,26.2,26.7,12.1,9.5,2.7,5,24.4,42,63.5,53.8,62,48.5,43.9,18.6,5.7,3.6,1.4,9.6,47.4,57.1,103.9,80.6,63.6,37.6,26.1,14.2,5.8,16.7,44.3,63.9,69,77.8,64.9,35.7,21.2,11.1,5.7,8.7,36.1,79.7,114.4,109.6,88.8,67.8,47.5,30.6,16.3,9.6,33.2,92.6,151.6,136.3,134.7,83.9,69.4,31.5,13.9,4.4,38,141.7,190.2,184.8,159,112.3,53.9,37.6,27.9,10.2,15.1,47,93.8,105.9,105.5,104.5,66.6,68.9,38,34.5,15.5,12.6,27.5,92.5,155.4,154.6,140.4,115.9,66.6,45.9,17.9,13.4,29.4,100.2,157.6,142.6,145.7,94.3,54.6,29.9,17.5,8.6,21.5,64.3,93.3,119.6,111,104,63.7,40.4,29.8,15.2,7.5,2.9],"name":"太阳黑子数（年）","m":11,"h":20,"bth":6}};</script>
+<script id="fs-ui">
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+  var state = { parsed: null, y: [], labels: [], m: 1, freq: null, result: null, bt: null, hoverIdx: -1, runCount: 0 };
+
+  /* ---------------- 工具 ---------------- */
+  function fmt(v, d) {
+    if (v === null || v === undefined || !isFinite(v)) return '—';
+    if (d === undefined) {
+      var a = Math.abs(v);
+      d = a >= 1000 ? 1 : (a >= 100 ? 2 : (a >= 1 ? 3 : 4));
+      if (Math.abs(v - Math.round(v)) < 1e-9 && a < 1e15) d = 0;
+    }
+    var s = v.toFixed(d), neg = s.charAt(0) === '-';
+    if (neg) s = s.slice(1);
+    var parts = s.split('.'), ip = parts[0], out = '';
+    for (var i = 0; i < ip.length; i++) {
+      if (i > 0 && (ip.length - i) % 3 === 0) out += ',';
+      out += ip.charAt(i);
+    }
+    return (neg ? '-' : '') + out + (parts[1] ? '.' + parts[1] : '');
+  }
+  function pct(v, d) { return !isFinite(v) ? '—' : (v).toFixed(d === undefined ? 1 : d) + '%'; }
+  // MASE 的分母基准叫什么，取决于季节周期与频率；月度数据说「上一季同期」是错的
+  function baselineName() {
+    var m = currentM(), f = state.freq;
+    if (m < 2) return '照抄上期';
+    if (m === 12 && f === 'month') return '照抄去年同月';
+    if (m === 4 && f === 'quarter') return '照抄去年同季';
+    if (m === 7 && f === 'day') return '照抄上周同一天';
+    if (m === 52 && f === 'week') return '照抄去年同周';
+    return '照抄 ' + m + ' 期前的同一期';
+  }
+  function el(tag, cls, txt) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (txt !== undefined && txt !== null) e.textContent = String(txt);
+    return e;
+  }
+  function clear(node) { while (node.firstChild) node.removeChild(node.firstChild); }
+  var SVGNS = 'http://www.w3.org/2000/svg';
+  function s(tag, attrs) {
+    var e = document.createElementNS(SVGNS, tag);
+    for (var k in attrs) if (attrs[k] !== null && attrs[k] !== undefined) e.setAttribute(k, String(attrs[k]));
+    return e;
+  }
+  // 取「刻度个数最接近 want」的那一档，而不是「第一个 ≥ raw 的档」。
+  // 后者在 norm 落进 (2.5, 5] 时会跳到 5×mag —— 美国 GDP 那条序列 norm=2.566，
+  // 整条 12830 的值域只剩 5,000 和 10,000 两根刻度（2026-08-27 人工看图发现）。
+  function niceTicks(lo, hi, want) {
+    if (!(isFinite(lo) && isFinite(hi))) return [0, 1];
+    if (hi === lo) { hi = lo + 1; lo = lo - 1; }
+    want = Math.max(2, want || 5);
+    var mag = Math.pow(10, Math.floor(Math.log((hi - lo) / want) / Math.LN10));
+    var mults = [1, 2, 2.5, 5, 10], best = null;
+    for (var e = -1; e <= 1; e++) {
+      for (var i = 0; i < mults.length; i++) {
+        var step = mults[i] * mag * Math.pow(10, e);
+        if (!(step > 0) || !isFinite(step)) continue;
+        var first = Math.ceil(lo / step - 1e-9) * step;
+        var cnt = Math.floor((hi - first) / step + 1e-9) + 1;
+        if (cnt < 2 || cnt > 40) continue;
+        var score = Math.abs(cnt - want);
+        if (!best || score < best.score || (score === best.score && step > best.step)) best = { step: step, first: first, cnt: cnt, score: score };
+      }
+    }
+    if (!best) return [lo, hi];
+    var out = [];
+    for (var k = 0; k < best.cnt; k++) {
+      var v = best.first + k * best.step;
+      out.push(Math.abs(v) < best.step * 1e-9 ? 0 : v);
+    }
+    return out;
+  }
+  // 估算文字宽度（西文 0.56em、中文 1em），用于 x 轴标签抽稀
+  function textWidth(str, size) {
+    var w = 0;
+    for (var i = 0; i < str.length; i++) w += str.charCodeAt(i) > 255 ? size : size * 0.56;
+    return w;
+  }
+
+  /* ---------------- 解析与计算 ---------------- */
+  function readInput() {
+    var parsed = FS.parseSeries($('fs-input').value);
+    state.parsed = parsed;
+    var raw = parsed.rows.map(function (r) { return r.value; });
+    var fillOn = $('fs-fill').checked;
+    var filled = fillOn ? FS.fillMissing(raw) : { values: raw.slice(), filled: [] };
+    var y = [], labels = [], idxMap = [];
+    for (var i = 0; i < filled.values.length; i++) {
+      var v = filled.values[i];
+      if (v === null || !isFinite(v)) continue;
+      y.push(v);
+      labels.push(parsed.rows[i].label || ('#' + (i + 1)));
+      idxMap.push(i);
+    }
+    state.y = y; state.labels = labels; state.filled = filled.filled; state.idxMap = idxMap;
+    state.freq = parsed.dated ? parsed.freq : null;
+    return parsed;
+  }
+  function autoPeriod() {
+    var parsed = state.parsed, y = state.y;
+    if (parsed && parsed.dated && parsed.m > 1) return parsed.m;
+    var d = FS.detectPeriod(y, parsed ? parsed.m : null, freqPool());
+    return d.m;
+  }
+  function currentM() { return Math.max(1, Math.round(Number($('fs-m').value) || 1)); }
+  // 候选周期必须符合这条序列的频率：月度数据摆出「52」这种候选纯属误导
+  var POOL_BY_FREQ = {
+    month: [2, 3, 4, 6, 12, 24], quarter: [2, 4, 8], week: [4, 13, 26, 52],
+    day: [7, 14, 30], year: [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+  };
+  function freqPool() { return POOL_BY_FREQ[state.freq] || null; }
+
+  function compute() {
+    var y = state.y, m = currentM();
+    if (y.length < 4) { state.result = null; state.bt = null; return; }
+    var useLog = $('fs-log').checked && Math.min.apply(null, y) > 0;
+    var z = useLog ? y.map(function (v) { return Math.log(v); }) : y;
+    var h = Math.max(1, Math.min(120, Math.round(Number($('fs-h').value) || 12)));
+    var bth = Math.max(1, Math.min(36, Math.round(Number($('fs-bth').value) || 6)));
+
+    var ids = FS.MODEL_IDS.filter(function (id) { return FS.modelApplicable(id, z, m); });
+    var bt = FS.backtest(z, m, ids, { horizon: Math.min(bth, Math.max(1, Math.floor(z.length / 4))) });
+    state.bt = bt;
+
+    var sel = $('fs-model').value;
+    var chosen = sel === 'auto' ? (bt.rows.length ? bt.rows[0].id : 'naive') : sel;
+    if (!FS.modelApplicable(chosen, z, m)) chosen = bt.rows.length ? bt.rows[0].id : 'naive';
+
+    var model = FS.fitModel(chosen, z, m, {});
+    var point = model.forecast(h);
+    var level = Number($('fs-level').value);
+    var mode = $('fs-interval').value;
+    var sd = mode === 'boot' ? null : FS.analyticSD(model, z, m, h);
+    var lo = [], hi = [], lo2 = [], hi2 = [], how;
+    var l2 = 0.8; // 内层固定 80%
+    if (sd) {
+      how = 'analytic';
+      var zq = FS.normPPF(1 - (1 - level) / 2), zq2 = FS.normPPF(1 - (1 - l2) / 2);
+      for (var i = 0; i < h; i++) {
+        lo.push(point[i] - zq * sd[i]); hi.push(point[i] + zq * sd[i]);
+        lo2.push(point[i] - zq2 * sd[i]); hi2.push(point[i] + zq2 * sd[i]);
+      }
+    } else {
+      how = 'boot';
+      var cols = FS.bootstrapPaths(model, z, m, h, { paths: 1200, seed: 20260827 });
+      if (cols) {
+        for (var j = 0; j < h; j++) {
+          lo.push(FS.quantileOf(cols[j], (1 - level) / 2)); hi.push(FS.quantileOf(cols[j], 1 - (1 - level) / 2));
+          lo2.push(FS.quantileOf(cols[j], (1 - l2) / 2)); hi2.push(FS.quantileOf(cols[j], 1 - (1 - l2) / 2));
+        }
+      } else { how = 'none'; }
+    }
+    var back = function (a) { return useLog ? a.map(function (v) { return Math.exp(v); }) : a.slice(); };
+    var fitted = (model.fitted || []).map(function (v) { return v === null ? null : (useLog ? Math.exp(v) : v); });
+    var resid = (model.resid || []).filter(function (v) { return v !== null && isFinite(v); });
+    var lbLags = Math.min(Math.max(m > 1 ? 2 * m : 10, 6), Math.max(4, Math.floor(resid.length / 3)));
+    var lb = resid.length > 8 ? FS.ljungBox(resid, lbLags, model.k || 0) : null;
+
+    state.result = {
+      model: model, id: chosen, useLog: useLog, h: h, level: level,
+      point: back(point), lo: how === 'none' ? null : back(lo), hi: how === 'none' ? null : back(hi),
+      lo2: how === 'none' ? null : back(lo2), hi2: how === 'none' ? null : back(hi2),
+      how: how, fitted: fitted, lb: lb, m: m,
+      futureLabels: FS.nextLabels(state.parsed.rows[state.parsed.rows.length - 1], state.freq, h, !!state.freq),
+      btRow: bt.rows.filter(function (r) { return r.id === chosen; })[0] || null,
+      auto: sel === 'auto'
+    };
+  }
+
+  /* ---------------- 渲染：解析摘要 ---------------- */
+  function renderPills() {
+    var box = $('fs-parse-pills'); clear(box);
+    var p = state.parsed, y = state.y;
+    function pill(txt, cls) { box.appendChild(el('span', 'fs-pill' + (cls ? ' ' + cls : ''), txt)); }
+    if (!p || !y.length) { pill('等待数据', 'fs-pill-warn'); return; }
+    pill(y.length + ' 个观测值', 'fs-pill-mint');
+    var freqName = { month: '月度', quarter: '季度', year: '年度', week: '周度', day: '日度', irregular: '间隔不规则' };
+    pill(p.dated ? (freqName[p.freq] || p.freq) : '无日期列');
+    var m = currentM();
+    pill(m > 1 ? '季节周期 m = ' + m : '按无季节处理');
+    if (p.missing) pill(p.missing + ' 处缺失' + ($('fs-fill').checked ? '（已插值）' : '（已跳过）'), 'fs-pill-warn');
+    if (p.warnings.length) pill(p.warnings.length + ' 条解析提示', 'fs-pill-warn');
+  }
+
+  /* ---------------- 渲染：预测图 ---------------- */
+  function renderChart() {
+    var box = $('fs-chart-box'); clear(box);
+    var r = state.result, y = state.y;
+    if (!r) { box.appendChild(el('div', 'fs-empty', '数据不足，至少需要 4 个观测值。')); return; }
+    var W = 900, H = 380, pad = { l: 62, r: 18, t: 18, b: 40 };
+    var n = y.length, h = r.h, total = n + h;
+    var showFit = $('fs-show-fitted').checked;
+
+    var all = y.slice();
+    if (r.lo) all = all.concat(r.lo, r.hi);
+    all = all.concat(r.point);
+    if (showFit) for (var q = 0; q < r.fitted.length; q++) if (r.fitted[q] !== null && isFinite(r.fitted[q])) all.push(r.fitted[q]);
+    var lo = Math.min.apply(null, all), hi = Math.max.apply(null, all);
+    var padv = (hi - lo) * 0.08 || 1;
+    var yLo = lo - padv, yHi = hi + padv;
+    var ticks = niceTicks(yLo, yHi, 5);
+
+    var plotW = W - pad.l - pad.r, plotH = H - pad.t - pad.b;
+    var X = function (i) { return pad.l + (total <= 1 ? 0 : (i / (total - 1)) * plotW); };
+    var Y = function (v) { return pad.t + plotH - ((v - yLo) / (yHi - yLo)) * plotH; };
+
+    var svg = s('svg', { class: 'fs-chart', viewBox: '0 0 ' + W + ' ' + H, role: 'img', id: 'fs-chart' });
+    svg.appendChild(s('title', {})).textContent = '历史观测与未来 ' + h + ' 期预测';
+    svg.setAttribute('aria-label', '折线图：' + n + ' 期历史观测与未来 ' + h + ' 期预测，含预测区间');
+
+    // 网格 + y 轴刻度
+    var g = s('g', {});
+    ticks.forEach(function (t) {
+      g.appendChild(s('line', { class: 'fs-grid-line', x1: pad.l, x2: W - pad.r, y1: Y(t), y2: Y(t) }));
+      var tx = s('text', { x: pad.l - 9, y: Y(t) + 4, 'text-anchor': 'end', class: 'fs-tick-y' });
+      tx.textContent = fmt(t);
+      g.appendChild(tx);
+    });
+    svg.appendChild(g);
+
+    // 区间扇形
+    if (r.lo) {
+      [['fs-band-95', r.lo, r.hi], ['fs-band-80', r.lo2, r.hi2]].forEach(function (b) {
+        var d = 'M ' + X(n - 1) + ' ' + Y(y[n - 1]);
+        for (var i = 0; i < h; i++) d += ' L ' + X(n + i) + ' ' + Y(b[2][i]);
+        for (var j = h - 1; j >= 0; j--) d += ' L ' + X(n + j) + ' ' + Y(b[1][j]);
+        d += ' Z';
+        svg.appendChild(s('path', { class: b[0], d: d }));
+      });
+    }
+    // 分界线
+    svg.appendChild(s('line', { class: 'fs-split', x1: X(n - 1), x2: X(n - 1), y1: pad.t, y2: pad.t + plotH }));
+
+    function poly(vals, startIdx, cls) {
+      var pts = [];
+      for (var i = 0; i < vals.length; i++) {
+        if (vals[i] === null || !isFinite(vals[i])) continue;
+        pts.push(X(startIdx + i) + ',' + Y(vals[i]));
+      }
+      if (pts.length > 1) svg.appendChild(s('polyline', { class: cls, points: pts.join(' ') }));
+    }
+    poly(y, 0, 'fs-line-hist');
+    if (showFit) poly(r.fitted, 0, 'fs-line-fit');  // 必须画在历史线之上，否则拟合得越好越看不见
+    poly([y[n - 1]].concat(r.point), n - 1, 'fs-line-fc');
+    for (var i2 = 0; i2 < h; i2++) svg.appendChild(s('circle', { class: 'fs-dot', cx: X(n + i2), cy: Y(r.point[i2]), r: h > 40 ? 1.6 : 2.6 }));
+
+    // x 轴标签：按可用宽度抽稀，绝不重叠
+    svg.appendChild(s('line', { class: 'fs-axis-line', x1: pad.l, x2: W - pad.r, y1: pad.t + plotH, y2: pad.t + plotH }));
+    var labels = state.labels.concat(r.futureLabels);
+    var maxW = 0;
+    labels.forEach(function (L) { maxW = Math.max(maxW, textWidth(L, 11)); });
+    var slots = Math.max(2, Math.floor(plotW / (maxW + 18)));
+    var stride = Math.max(1, Math.ceil(total / slots));
+    for (var k = 0; k < total; k += stride) {
+      var t2 = s('text', { x: X(k), y: pad.t + plotH + 18, 'text-anchor': 'middle', class: k >= n ? 'fs-lbl-strong' : null });
+      t2.textContent = labels[k];
+      svg.appendChild(t2);
+    }
+    // 游标
+    var cur = s('line', { class: 'fs-cursor', x1: 0, x2: 0, y1: pad.t, y2: pad.t + plotH, opacity: 0 });
+    svg.appendChild(cur);
+    var hit = s('rect', { x: pad.l, y: pad.t, width: plotW, height: plotH, fill: 'transparent', style: 'cursor:crosshair' });
+    svg.appendChild(hit);
+    function onMove(ev) {
+      var rect = svg.getBoundingClientRect();
+      var px = (ev.clientX - rect.left) / rect.width * W;
+      var idx = Math.round((px - pad.l) / (plotW || 1) * (total - 1));
+      idx = Math.max(0, Math.min(total - 1, idx));
+      cur.setAttribute('x1', X(idx)); cur.setAttribute('x2', X(idx)); cur.setAttribute('opacity', 1);
+      showReadout(idx);
+    }
+    hit.addEventListener('mousemove', onMove);
+    hit.addEventListener('mouseleave', function () { cur.setAttribute('opacity', 0); showReadout(-1); });
+    box.appendChild(svg);
+
+    var lg = $('fs-legend'); clear(lg);
+    function leg(color, txt, dashed) {
+      var sp = el('span');
+      var sw = el('i', 'fs-swatch');
+      sw.style.background = color;
+      if (dashed) { sw.style.background = 'transparent'; sw.style.borderTop = '2px dashed ' + color; sw.style.height = '0'; }
+      sp.appendChild(sw); sp.appendChild(document.createTextNode(txt));
+      lg.appendChild(sp);
+    }
+    leg('#000', '历史观测');
+    leg('#1e2c31', '预测');
+    if (r.lo) { leg('#c1fbd4', '80% 区间'); leg('#d4f9e0', Math.round(r.level * 100) + '% 区间'); }
+    if (showFit) leg('#a1a1aa', '拟合值', true);
+  }
+
+  function showReadout(idx) {
+    var box = $('fs-readout'); clear(box);
+    var r = state.result, y = state.y, n = y.length;
+    if (!r) { box.textContent = '数据不足。'; return; }
+    if (idx < 0) { box.textContent = '把鼠标移到图上可以逐点读数。'; return; }
+    function add(k, v, mono) {
+      var sp = el('span');
+      sp.appendChild(el('b', null, k + ' '));
+      var vv = el('span', mono ? 'fs-mono' : null, v);
+      sp.appendChild(vv); box.appendChild(sp);
+    }
+    var labels = state.labels.concat(r.futureLabels);
+    add('期次', labels[idx]);
+    if (idx < n) { add('观测', fmt(y[idx]), true); if ($('fs-show-fitted').checked && r.fitted[idx] !== null) add('拟合', fmt(r.fitted[idx]), true); }
+    else {
+      var j = idx - n;
+      add('预测', fmt(r.point[j]), true);
+      if (r.lo) add(Math.round(r.level * 100) + '% 区间', fmt(r.lo[j]) + ' ~ ' + fmt(r.hi[j]), true);
+    }
+  }
+
+  /* ---------------- 渲染：结论卡 ---------------- */
+  function renderVerdict() {
+    var box = $('fs-verdict'); clear(box);
+    var r = state.result;
+    if (!r) return;
+    var wrap = el('div', 'fs-verdict');
+    var top = el('div', 'fs-verdict-top');
+    top.appendChild(el('div', 'fs-verdict-name', r.model.label));
+    if (r.auto) top.appendChild(el('span', 'fs-pill', '自动挑选 · 回测 MASE 最低'));
+    if (r.useLog) top.appendChild(el('span', 'fs-pill', '已做对数变换'));
+    wrap.appendChild(top);
+
+    var why = el('p', 'fs-verdict-why');
+    var bt = r.btRow;
+    if (bt && isFinite(bt.mase)) {
+      var better = (1 - bt.mase) * 100;
+      why.appendChild(document.createTextNode('在 ' + bt.origins + ' 个滚动折点上，它的平均绝对误差是季节朴素法的 '));
+      why.appendChild(el('b', null, bt.mase.toFixed(3) + ' 倍'));
+      var base = baselineName();
+      why.appendChild(document.createTextNode(bt.mase < 1
+        ? '——也就是比「' + base + '」准 ' + better.toFixed(0) + '%。'
+        : '——比「' + base + '」还差，这条序列可能没有可预测的结构。'));
+    } else {
+      why.textContent = '样本太短，没能切出足够的回测折点，下面的结果只反映样本内拟合。';
+    }
+    wrap.appendChild(why);
+
+    var dl = el('dl', 'fs-metrics');
+    function metric(k, v, unit) {
+      var d = el('div', 'fs-metric');
+      d.appendChild(el('dt', null, k));
+      var dd = el('dd', null, v);
+      if (unit) { var sm = el('small', null, unit); dd.appendChild(sm); }
+      d.appendChild(dd); dl.appendChild(d);
+    }
+    metric('下期预测', fmt(r.point[0]));
+    metric('第 ' + r.h + ' 期', fmt(r.point[r.h - 1]));
+    if (r.lo) metric(Math.round(r.level * 100) + '% 区间（下期）', fmt(r.lo[0]) + ' ~ ' + fmt(r.hi[0]));
+    if (bt && isFinite(bt.mape)) metric('回测 MAPE', pct(bt.mape));
+    if (r.lb) metric('残差 Ljung-Box p', r.lb.p < 0.001 ? '<0.001' : r.lb.p.toFixed(3));
+    wrap.appendChild(dl);
+    box.appendChild(wrap);
+  }
+
+  /* ---------------- 渲染：预测表 ---------------- */
+  function renderForecastTable() {
+    var tb = $('fs-fc-table'); clear(tb);
+    var r = state.result;
+    if (!r) return;
+    var thead = el('thead'), tr = el('tr');
+    var cols = ['期次', '点预测'];
+    if (r.lo) cols.push('80% 下限', '80% 上限', Math.round(r.level * 100) + '% 下限', Math.round(r.level * 100) + '% 上限');
+    cols.forEach(function (c) { tr.appendChild(el('th', null, c)); });
+    thead.appendChild(tr); tb.appendChild(thead);
+    var tbody = el('tbody');
+    for (var i = 0; i < r.h; i++) {
+      var row = el('tr', 'fs-row-fc');
+      row.appendChild(el('td', null, r.futureLabels[i]));
+      row.appendChild(el('td', 'fs-num', fmt(r.point[i])));
+      if (r.lo) {
+        row.appendChild(el('td', 'fs-num', fmt(r.lo2[i])));
+        row.appendChild(el('td', 'fs-num', fmt(r.hi2[i])));
+        row.appendChild(el('td', 'fs-num', fmt(r.lo[i])));
+        row.appendChild(el('td', 'fs-num', fmt(r.hi[i])));
+      }
+      tbody.appendChild(row);
+    }
+    tb.appendChild(tbody);
+    var note = $('fs-interval-note');
+    note.textContent = r.how === 'analytic'
+      ? '区间口径：解析式 —— 由该模型的冲激响应系数推出 h 步预测方差，再按正态分位数展开。它只反映随机扰动，不包含「模型选错了」的风险。'
+      : (r.how === 'boot'
+        ? '区间口径：自助抽样 —— 对模型残差重采样 1200 条路径逐步重放取分位数，不假设正态；乘法季节与 Theta 只能用这一种。'
+        : '当前模型无法给出区间。');
+  }
+
+  /* ---------------- 渲染：回测 ---------------- */
+  function renderBacktest() {
+    var tb = $('fs-bt-table'); clear(tb);
+    var bt = state.bt;
+    var desc = $('fs-bt-desc');
+    if (!bt || !bt.rows.length) {
+      desc.textContent = '样本太短，无法做滚动回测。';
+      clear($('fs-bth-box')); clear($('fs-bth-legend'));
+      return;
+    }
+    desc.textContent = '从第 ' + bt.minTrain + ' 期开始，每次只用当时之前的数据训练、往后预测 ' + bt.horizon +
+      ' 期，再和真实值比对，共 ' + bt.origins.length + ' 个折点。每个折点都完整重估一遍参数，不会偷看未来。';
+    var thead = el('thead'), tr = el('tr');
+    ['模型', 'MASE', 'RMSE', 'MAE', 'MAPE', 'sMAPE', '折点', ''].forEach(function (c) { tr.appendChild(el('th', null, c)); });
+    thead.appendChild(tr); tb.appendChild(thead);
+    var tbody = el('tbody');
+    bt.rows.forEach(function (row, i) {
+      var tr2 = el('tr', i === 0 ? 'fs-row-win' : null);
+      tr2.appendChild(el('td', null, row.label));
+      tr2.appendChild(el('td', 'fs-num', isFinite(row.mase) ? row.mase.toFixed(3) : '—'));
+      tr2.appendChild(el('td', 'fs-num', fmt(row.rmse)));
+      tr2.appendChild(el('td', 'fs-num', fmt(row.mae)));
+      tr2.appendChild(el('td', 'fs-num', pct(row.mape)));
+      tr2.appendChild(el('td', 'fs-num', pct(row.smape)));
+      tr2.appendChild(el('td', 'fs-num', row.origins));
+      var td = el('td');
+      var btn = el('button', 'fs-chip', '选用');
+      btn.type = 'button';
+      btn.setAttribute('data-model', row.id);
+      btn.addEventListener('click', function () { $('fs-model').value = row.id; run(); selectTab('fs-tab-forecast'); });
+      td.appendChild(btn); tr2.appendChild(td);
+      tbody.appendChild(tr2);
+    });
+    tb.appendChild(tbody);
+    $('fs-mase-note').textContent = 'MASE = 平均绝对误差 ÷ 基准法在训练集上的平均绝对误差。当前基准是「' +
+      baselineName() + '」，小于 1 才说明这个模型比它强；越小越好。';
+    renderHorizonChart();
+  }
+
+  function renderHorizonChart() {
+    var box = $('fs-bth-box'); clear(box);
+    var lg = $('fs-bth-legend'); clear(lg);
+    var bt = state.bt;
+    if (!bt || !bt.rows.length) return;
+    var win = bt.rows[0];
+    var baseRow = null;
+    for (var i = 0; i < bt.rows.length; i++) {
+      var cand = bt.rows[i];
+      if (cand.id !== win.id && (cand.id === 'snaive' || cand.id === 'naive')) { baseRow = cand; break; }
+    }
+    var series = [win].concat(baseRow ? [baseRow] : []);
+    var H2 = bt.horizon, W = 900, H = 220, pad = { l: 62, r: 18, t: 16, b: 38 };
+    var maxV = 0;
+    series.forEach(function (r) { r.byHorizon.forEach(function (b) { if (isFinite(b.mae)) maxV = Math.max(maxV, b.mae); }); });
+    var ticks = niceTicks(0, maxV, 4);
+    var plotW = W - pad.l - pad.r, plotH = H - pad.t - pad.b;
+    var svg = s('svg', { class: 'fs-chart', viewBox: '0 0 ' + W + ' ' + H, role: 'img', id: 'fs-bth-chart' });
+    svg.setAttribute('aria-label', '柱状图：冠军模型与基准模型在各预测步长上的平均绝对误差');
+    var top = Math.max(maxV * 1.08, ticks[ticks.length - 1] || 1);
+    var Y = function (v) { return pad.t + plotH - (v / top) * plotH; };
+    ticks.forEach(function (t) {
+      svg.appendChild(s('line', { class: 'fs-grid-line', x1: pad.l, x2: W - pad.r, y1: Y(t), y2: Y(t) }));
+      var tx = s('text', { x: pad.l - 9, y: Y(t) + 4, 'text-anchor': 'end' });
+      tx.textContent = fmt(t); svg.appendChild(tx);
+    });
+    var slotW = plotW / H2, bw = Math.min(28, slotW / (series.length + 0.8));
+    for (var k = 0; k < H2; k++) {
+      series.forEach(function (r, si) {
+        var v = r.byHorizon[k] ? r.byHorizon[k].mae : NaN;
+        if (!isFinite(v)) return;
+        var cx = pad.l + slotW * (k + 0.5) + (si - (series.length - 1) / 2) * (bw + 3);
+        svg.appendChild(s('rect', {
+          class: si === 0 ? 'fs-bar-win' : 'fs-bar-alt',
+          x: cx - bw / 2, y: Y(v), width: bw, height: Math.max(0, plotH + pad.t - Y(v))
+        }));
+      });
+      var lb = s('text', { x: pad.l + slotW * (k + 0.5), y: pad.t + plotH + 18, 'text-anchor': 'middle' });
+      lb.textContent = 'h' + (k + 1);
+      if (H2 <= 24) svg.appendChild(lb);
+    }
+    svg.appendChild(s('line', { class: 'fs-axis-line', x1: pad.l, x2: W - pad.r, y1: pad.t + plotH, y2: pad.t + plotH }));
+    box.appendChild(svg);
+    function leg(color, txt, border) {
+      var sp = el('span'), sw = el('i', 'fs-swatch');
+      sw.style.background = color;
+      if (border) sw.style.border = '1px solid #1e2c31';
+      sp.appendChild(sw); sp.appendChild(document.createTextNode(txt)); lg.appendChild(sp);
+    }
+    leg('#c1fbd4', '冠军：' + win.label, true);
+    if (baseRow) leg('#d4d4d8', '基准：' + baseRow.label);
+  }
+
+  /* ---------------- 渲染：诊断 ---------------- */
+  function barChart(id, vals, conf, title) {
+    var W = 900, H = 200, pad = { l: 62, r: 18, t: 16, b: 34 };
+    var plotW = W - pad.l - pad.r, plotH = H - pad.t - pad.b;
+    var maxAbs = Math.max(0.2, conf * 1.4);
+    for (var i = 1; i < vals.length; i++) maxAbs = Math.max(maxAbs, Math.abs(vals[i]));
+    maxAbs = Math.min(1.05, maxAbs * 1.12);
+    var svg = s('svg', { class: 'fs-chart', viewBox: '0 0 ' + W + ' ' + H, role: 'img', id: id });
+    svg.setAttribute('aria-label', title);
+    var Y = function (v) { return pad.t + plotH / 2 - (v / maxAbs) * (plotH / 2); };
+    svg.appendChild(s('rect', { class: 'fs-sigband', x: pad.l, y: Y(conf), width: plotW, height: Math.max(1, Y(-conf) - Y(conf)) }));
+    [-1, -0.5, 0.5, 1].forEach(function (t) {
+      if (Math.abs(t) > maxAbs) return;
+      svg.appendChild(s('line', { class: 'fs-grid-line', x1: pad.l, x2: W - pad.r, y1: Y(t), y2: Y(t) }));
+      var tx = s('text', { x: pad.l - 9, y: Y(t) + 4, 'text-anchor': 'end' });
+      tx.textContent = t.toFixed(1); svg.appendChild(tx);
+    });
+    svg.appendChild(s('line', { class: 'fs-axis-line', x1: pad.l, x2: W - pad.r, y1: Y(0), y2: Y(0) }));
+    var K = vals.length - 1, slot = plotW / Math.max(1, K), bw = Math.max(1.5, Math.min(9, slot * 0.55));
+    for (var k = 1; k <= K; k++) {
+      var v = vals[k], x = pad.l + slot * (k - 0.5);
+      svg.appendChild(s('rect', { class: 'fs-bar', x: x - bw / 2, y: Math.min(Y(v), Y(0)), width: bw, height: Math.max(1, Math.abs(Y(v) - Y(0))) }));
+    }
+    var stride = Math.max(1, Math.ceil(K / Math.max(2, Math.floor(plotW / 34))));
+    for (var k2 = stride; k2 <= K; k2 += stride) {
+      var tx2 = s('text', { x: pad.l + slot * (k2 - 0.5), y: pad.t + plotH + 18, 'text-anchor': 'middle' });
+      tx2.textContent = String(k2); svg.appendChild(tx2);
+    }
+    return svg;
+  }
+
+  function miniLine(vals, title, id) {
+    var W = 900, H = 118, pad = { l: 62, r: 18, t: 12, b: 18 };
+    var plotW = W - pad.l - pad.r, plotH = H - pad.t - pad.b;
+    var fin = vals.filter(function (v) { return v !== null && isFinite(v); });
+    var lo = Math.min.apply(null, fin), hi = Math.max.apply(null, fin);
+    if (hi === lo) { hi = lo + 1; lo -= 1; }
+    var svg = s('svg', { class: 'fs-chart', viewBox: '0 0 ' + W + ' ' + H, role: 'img', id: id });
+    svg.setAttribute('aria-label', title);
+    var X = function (i) { return pad.l + (vals.length <= 1 ? 0 : i / (vals.length - 1) * plotW); };
+    var Y = function (v) { return pad.t + plotH - (v - lo) / (hi - lo) * plotH; };
+    [hi, lo].forEach(function (t) {
+      var tx = s('text', { x: pad.l - 9, y: Y(t) + 4, 'text-anchor': 'end' });
+      tx.textContent = fmt(t); svg.appendChild(tx);
+    });
+    svg.appendChild(s('line', { class: 'fs-grid-line', x1: pad.l, x2: W - pad.r, y1: Y(lo), y2: Y(lo) }));
+    var run = [];
+    for (var i = 0; i < vals.length; i++) {
+      if (vals[i] === null || !isFinite(vals[i])) {
+        if (run.length > 1) svg.appendChild(s('polyline', { class: 'fs-line-hist', points: run.join(' ') }));
+        run = []; continue;
+      }
+      run.push(X(i) + ',' + Y(vals[i]));
+    }
+    if (run.length > 1) svg.appendChild(s('polyline', { class: 'fs-line-hist', points: run.join(' ') }));
+    var lab = s('text', { x: pad.l, y: pad.t + 2, class: 'fs-lbl-strong' });
+    lab.textContent = title; svg.appendChild(lab);
+    return svg;
+  }
+
+  function renderDiag() {
+    var y = state.y, m = currentM();
+    var d = FS.describe(y), box = $('fs-desc'); clear(box);
+    [['期数 n', String(y.length)], ['均值', fmt(d.mean)], ['标准差', fmt(d.sd)], ['最小值', fmt(d.min)],
+    ['下四分位', fmt(d.q1)], ['中位数', fmt(d.median)], ['上四分位', fmt(d.q3)], ['最大值', fmt(d.max)]]
+      .forEach(function (kv) {
+        var w = el('div'); w.appendChild(el('dt', null, kv[0])); w.appendChild(el('dd', null, kv[1])); box.appendChild(w);
+      });
+
+    var det = FS.detectPeriod(y, state.parsed && state.parsed.dated ? state.parsed.m : null, freqPool());
+    var st = m > 1 ? FS.strength(y, m) : { seasonal: 0, trend: 0 };
+    $('fs-season-note').textContent = m > 1
+      ? '当前按 m = ' + m + ' 计算：季节强度 ' + st.seasonal.toFixed(3) + '、趋势强度 ' + st.trend.toFixed(3) +
+      '（0 到 1，越大说明该成分越主导）。下表是各候选周期的季节强度。'
+      : '当前按无季节处理。下表列出各候选周期的季节强度，若某个明显偏高，可以把上面的 m 改成它。';
+    var pt = $('fs-period-table'); clear(pt);
+    var th = el('thead'), tr = el('tr');
+    ['候选周期 m', '季节强度', '判读'].forEach(function (c) { tr.appendChild(el('th', null, c)); });
+    th.appendChild(tr); pt.appendChild(th);
+    var tb = el('tbody');
+    (det.candidates.length ? det.candidates : [{ m: 1, s: 0 }]).forEach(function (c) {
+      var tr2 = el('tr', c.m === m ? 'fs-row-win' : null);
+      tr2.appendChild(el('td', null, String(c.m)));
+      tr2.appendChild(el('td', 'fs-num', c.s.toFixed(3)));
+      tr2.appendChild(el('td', null, c.s >= 0.6 ? '季节性很强' : (c.s >= 0.3 ? '有一定季节性' : '基本没有')));
+      tb.appendChild(tr2);
+    });
+    pt.appendChild(tb);
+
+    var maxLag = Math.max(4, Math.min(Math.round(Number($('fs-lags').value) || 24), Math.floor(y.length / 2) - 1));
+    var conf = 1.959963984540054 / Math.sqrt(y.length);
+    var ab = $('fs-acf-box'); clear(ab);
+    ab.appendChild(barChart('fs-acf-chart', FS.acf(y, maxLag), conf, '自相关函数 ACF 柱状图'));
+    ab.appendChild(el('figcaption', 'fs-subnote', 'ACF · 自相关'));
+    var pb = $('fs-pacf-box'); clear(pb);
+    pb.appendChild(barChart('fs-pacf-chart', FS.pacf(y, maxLag), conf, '偏自相关函数 PACF 柱状图'));
+    pb.appendChild(el('figcaption', 'fs-subnote', 'PACF · 偏自相关'));
+
+    var lbBox = $('fs-lb'); clear(lbBox);
+    var r = state.result;
+    if (r && r.lb) {
+      [['检验统计量 Q', r.lb.q.toFixed(3)], ['自由度', String(r.lb.df)],
+      ['p 值', r.lb.p < 0.001 ? '<0.001' : r.lb.p.toFixed(4)],
+      ['结论', r.lb.p < 0.05 ? '残差仍有结构' : '看不出残差里还有结构']].forEach(function (kv) {
+        var w = el('div'); w.appendChild(el('dt', null, kv[0])); w.appendChild(el('dd', null, kv[1])); lbBox.appendChild(w);
+      });
+    } else {
+      var w2 = el('div'); w2.appendChild(el('dt', null, '状态')); w2.appendChild(el('dd', null, '样本不足')); lbBox.appendChild(w2);
+    }
+
+    var db = $('fs-decomp-box'); clear(db);
+    if (m > 1 && y.length >= 2 * m + 1) {
+      $('fs-decomp-note').textContent = '把序列拆成「趋势 + 季节 + 残差」：趋势用 ' + m +
+        ' 期中心移动平均，季节取各相位去趋势后的平均并中心化，剩下的就是残差。首尾各 ' +
+        Math.floor(m / 2) + ' 期算不出趋势，属正常。';
+      var dc = FS.decompose(y, m, 'add');
+      db.appendChild(miniLine(y, '原始序列', 'fs-dc-raw'));
+      db.appendChild(miniLine(dc.trend, '趋势', 'fs-dc-trend'));
+      db.appendChild(miniLine(dc.seasonal, '季节', 'fs-dc-seasonal'));
+      db.appendChild(miniLine(dc.resid, '残差', 'fs-dc-resid'));
+    } else {
+      $('fs-decomp-note').textContent = '需要 m ≥ 2 且至少 2m+1 期数据才能做经典分解。';
+      db.appendChild(el('div', 'fs-empty', '当前设置下不做分解。'));
+    }
+
+    var ob = $('fs-outliers'); clear(ob);
+    var outs = FS.outliers(y, m, 3);
+    if (!outs.length) ob.appendChild(el('p', 'fs-subnote', '按 IQR 3 倍规则，没有找到异常点。'));
+    else {
+      var t = el('table', 'fs-table'), h2 = el('thead'), hr = el('tr');
+      ['期次', '数值', '偏离'].forEach(function (c) { hr.appendChild(el('th', null, c)); });
+      h2.appendChild(hr); t.appendChild(h2);
+      var body = el('tbody');
+      outs.slice(0, 30).forEach(function (o) {
+        var tr3 = el('tr');
+        tr3.appendChild(el('td', null, state.labels[o.i] || ('#' + (o.i + 1))));
+        tr3.appendChild(el('td', 'fs-num', fmt(o.value)));
+        tr3.appendChild(el('td', 'fs-num', fmt(o.score)));
+        body.appendChild(tr3);
+      });
+      t.appendChild(body);
+      var wrap = el('div', 'fs-tablewrap'); wrap.appendChild(t); ob.appendChild(wrap);
+      ob.appendChild(el('p', 'fs-subnote', '共 ' + outs.length + ' 个。异常点只是标注出来提醒你核对，不会自动删改。'));
+    }
+  }
+
+  /* ---------------- 渲染：数据表 ---------------- */
+  function renderData() {
+    var wb = $('fs-warnings'); clear(wb);
+    var p = state.parsed;
+    if (p && (p.warnings.length || p.header)) {
+      var box = el('div', 'fs-warnbox');
+      box.appendChild(el('b', null, '解析提示'));
+      var ul = el('ul');
+      if (p.header) ul.appendChild(el('li', null, '首行「' + p.header + '」看起来是表头，已跳过。'));
+      p.warnings.forEach(function (w) { ul.appendChild(el('li', null, w)); });
+      box.appendChild(ul); wb.appendChild(box);
+    }
+    var tb = $('fs-data-table'); clear(tb);
+    var th = el('thead'), tr = el('tr');
+    ['#', '期次', '数值', '标记'].forEach(function (c) { tr.appendChild(el('th', null, c)); });
+    th.appendChild(tr); tb.appendChild(th);
+    var body = el('tbody');
+    var outs = {}, m = currentM();
+    FS.outliers(state.y, m, 3).forEach(function (o) { outs[o.i] = 1; });
+    var filledSet = {};
+    (state.filled || []).forEach(function (i) { filledSet[i] = 1; });
+    for (var i = 0; i < state.y.length; i++) {
+      var tr2 = el('tr');
+      tr2.appendChild(el('td', null, String(i + 1)));
+      tr2.appendChild(el('td', null, state.labels[i]));
+      tr2.appendChild(el('td', 'fs-num', fmt(state.y[i])));
+      var marks = [];
+      if (filledSet[state.idxMap[i]]) marks.push('插值补齐');
+      if (outs[i]) marks.push('异常点');
+      tr2.appendChild(el('td', 'fs-mark', marks.join(' · ') || ''));
+      body.appendChild(tr2);
+    }
+    tb.appendChild(body);
+  }
+
+  /* ---------------- 渲染：方法 ---------------- */
+  function renderMethod() {
+    var box = $('fs-method');
+    if (box.getAttribute('data-done')) return;
+    box.setAttribute('data-done', '1');
+    box.innerHTML = [
+      '<h3>它到底在算什么</h3>',
+      '<p>给一条按时间排好的数列，先看它有没有<b>趋势</b>和<b>季节性</b>，再用若干种模型各自外推，最后用<b>滚动回测</b>决定该信谁。所有计算都在这个页面里完成，没有任何网络请求。</p>',
+      '<h3>模型清单</h3>',
+      '<ul>',
+      '<li><b>四个基准</b>：历史均值、朴素法（照抄上期）、季节朴素法（照抄上一个周期的同一期）、漂移法。它们的意义是当尺子——复杂模型打不过基准，就说明这条序列没什么可预测的结构。</li>',
+      '<li><b>指数平滑族</b>：SES、Holt 线性趋势、Holt 阻尼趋势、Holt-Winters 加法 / 乘法季节、加法季节 + 阻尼。参数由最小化一步预测残差平方和得到（先粗网格扫描，再 Nelder-Mead 精修）。</li>',
+      '<li><b>AR(p)</b>：条件最小二乘估计的自回归，阶数 p 按 AIC 自动挑，支持差分。</li>',
+      '<li><b>Theta</b>：M3 竞赛的经典强基准，等价于「SES + 一半的线性趋势」，季节性先用乘法分解剥掉。</li>',
+      '</ul>',
+      '<h3>怎么选模型：滚动回测</h3>',
+      '<p>不看样本内拟合得多贴（那永远是参数越多越贴），而是<b>模拟当时的处境</b>：站在历史上的某一期，只用那之前的数据重新估一遍参数，往后预测若干期，再和真实值比。原点一路往后滚，累计所有误差。</p>',
+      '<p>排序用 <b>MASE</b>：平均绝对误差除以季节朴素法在训练集上的平均绝对误差。它没有量纲、对零值安全，而且 1 这个刻度自带含义——大于 1 就是还不如照抄上一个周期的同一期。</p>',
+      '<h3>预测区间</h3>',
+      '<ul>',
+      '<li><b>解析式</b>：把模型写成状态空间递推后，第 <code>j</code> 期扰动对第 <code>h</code> 期预测的影响系数可以直接从递推里取出来，于是 h 步预测方差 = σ²(1 + Σc²)。均值法和漂移法额外含参数估计的不确定性，用教科书闭式。</li>',
+      '<li><b>自助抽样</b>：把残差去均值后重采样，沿模型递推重放 1200 条路径，取分位数。不假设正态，乘法季节和 Theta 只能走这条。</li>',
+      '</ul>',
+      '<p>两种口径都只回答「假设这个模型是对的，随机扰动会让结果散多开」。它们<b>不包含</b>模型选错、结构突变、外部冲击的风险——所以真实的意外总会比区间更宽。</p>',
+      '<h3>数值口径与验证</h3>',
+      '<p>引擎的每一处口径都拿 Python 的 <code>statsmodels</code> 当权威实现逐点对拍过：ACF / PACF（<code>ywm</code>）、Ljung-Box、经典分解、指数平滑族的拟合值与预测值（固定参数、<code>initialization_method="known"</code>）、<code>AutoReg</code> 的系数与预测、<code>ThetaModel</code>。特殊函数（正态分位数、卡方上尾）对拍 <code>scipy</code>。</p>',
+      '<p>有一处刻意的差异值得说明：季节项在预测期的循环取法，<code>statsmodels</code> 比 Hyndman《Forecasting: Principles and Practice》的公式晚用一个周期，因此在 <code>h ≥ m</code> 处两者会分叉。本工具采用教科书（也是 R <code>forecast</code> 包）的取法，即用最新一轮的季节状态；<code>h &lt; m</code> 时两者完全一致。</p>',
+      '<h3>已知边界</h3>',
+      '<ul>',
+      '<li>没有 MA 项与完整 ARIMA 的极大似然估计——AR 用的是条件最小二乘，遇到强移动平均结构会吃亏。</li>',
+      '<li>不做多变量、不做外生回归量（节假日、促销、价格），也不识别结构突变点。</li>',
+      '<li>季节周期是单一整数周期；同时含周内和年内双重季节的日度数据只能挑一个。</li>',
+      '<li>回测折点最多 24 个；序列很长时会等间距抽样，不是全部原点都跑。</li>',
+      '</ul>',
+      '<h3>示例数据来源</h3>',
+      '<p>五份示例都是 <code>statsmodels</code> 随包分发的<b>真实公开数据</b>，不是编出来的：夏威夷 Mauna Loa 观测站的大气二氧化碳浓度、赤道东太平洋海表温度、美国实际 GDP、尼罗河年径流量、太阳黑子年活动数。</p>'
+    ].join('');
+  }
+
+  /* ---------------- 导出 ---------------- */
+  function forecastRows() {
+    var r = state.result, rows = [];
+    for (var i = 0; i < r.h; i++) {
+      var o = { 期次: r.futureLabels[i], 点预测: r.point[i] };
+      if (r.lo) {
+        o['80%下限'] = r.lo2[i]; o['80%上限'] = r.hi2[i];
+        o[Math.round(r.level * 100) + '%下限'] = r.lo[i];
+        o[Math.round(r.level * 100) + '%上限'] = r.hi[i];
+      }
+      rows.push(o);
+    }
+    return rows;
+  }
+  function forecastCSV() {
+    var r = state.result;
+    if (!r) return '';
+    var cols = ['期次', '点预测'];
+    if (r.lo) cols = cols.concat(['80%下限', '80%上限', Math.round(r.level * 100) + '%下限', Math.round(r.level * 100) + '%上限']);
+    var rows = forecastRows().map(function (o) {
+      var c = {};
+      cols.forEach(function (k) { c[k] = typeof o[k] === 'number' ? Number(o[k].toFixed(6)) : o[k]; });
+      return c;
+    });
+    return FS.toCSV(rows, cols);
+  }
+
+  /* ---------------- 项目存储 ---------------- */
+  var LSK = 'fs.forecast-studio.projects';
+  function loadProjects() {
+    try { return JSON.parse(localStorage.getItem(LSK) || '[]'); } catch (e) { return []; }
+  }
+  function saveProjects(list) {
+    try { localStorage.setItem(LSK, JSON.stringify(list)); } catch (e) { }
+  }
+  function refreshProjects(selectId) {
+    var sel = $('fs-project'), list = loadProjects();
+    clear(sel);
+    var opt0 = el('option', null, list.length ? '— 选择项目 —' : '— 暂无 —');
+    opt0.value = ''; sel.appendChild(opt0);
+    list.forEach(function (p) {
+      var o = el('option', null, p.name);
+      o.value = p.id; sel.appendChild(o);
+    });
+    if (selectId) sel.value = selectId;
+  }
+  function cfgSnapshot() {
+    return {
+      h: $('fs-h').value, m: $('fs-m').value, model: $('fs-model').value, level: $('fs-level').value,
+      interval: $('fs-interval').value, bth: $('fs-bth').value,
+      log: $('fs-log').checked, fill: $('fs-fill').checked
+    };
+  }
+  function applyCfg(c) {
+    if (!c) return;
+    $('fs-h').value = c.h; $('fs-m').value = c.m; $('fs-model').value = c.model;
+    $('fs-level').value = c.level; $('fs-interval').value = c.interval; $('fs-bth').value = c.bth;
+    $('fs-log').checked = !!c.log; $('fs-fill').checked = !!c.fill;
+  }
+
+  /* ---------------- Tabs ---------------- */
+  var TABS = ['fs-tab-forecast', 'fs-tab-compare', 'fs-tab-diag', 'fs-tab-data', 'fs-tab-method'];
+  function selectTab(id) {
+    TABS.forEach(function (t) {
+      var btn = $(t), panel = $(btn.getAttribute('aria-controls'));
+      var on = t === id;
+      btn.setAttribute('aria-selected', on ? 'true' : 'false');
+      btn.tabIndex = on ? 0 : -1;
+      panel.hidden = !on;
+    });
+    if (id === 'fs-tab-method') renderMethod();
+  }
+
+  /* ---------------- 主流程 ---------------- */
+  var busy = false;
+  function run() {
+    if (busy) return;
+    busy = true;
+    try {
+      readInput();
+      renderPills();
+      if (state.y.length < 4) {
+        state.result = null; state.bt = null;
+        clear($('fs-verdict'));
+        var cb = $('fs-chart-box'); clear(cb);
+        cb.appendChild(el('div', 'fs-empty', '至少需要 4 个观测值才能预测。'));
+        clear($('fs-fc-table')); clear($('fs-legend'));
+        $('fs-readout').textContent = '等待数据。';
+        renderData();
+        return;
+      }
+      compute();
+      renderVerdict();
+      renderChart();
+      renderForecastTable();
+      renderBacktest();
+      renderDiag();
+      renderData();
+      renderPills();
+    } finally { busy = false; state.runCount++; }
+  }
+
+  /* ---------------- 初始化 ---------------- */
+  function buildExamples() {
+    var box = $('fs-examples');
+    Object.keys(FS_DATA).forEach(function (key) {
+      var d = FS_DATA[key];
+      var b = el('button', 'fs-chip', d.name);
+      b.type = 'button';
+      b.setAttribute('data-example', key);
+      b.addEventListener('click', function () { loadExample(key); });
+      box.appendChild(b);
+    });
+  }
+  function seriesText(d) {
+    var out = [], y = d.start.split('-')[0] | 0, sub = d.start.split('-')[1];
+    var mo = sub ? (sub.charAt(0) === 'Q' ? (parseInt(sub.slice(1), 10)) : parseInt(sub, 10)) : 1;
+    for (var i = 0; i < d.values.length; i++) {
+      var label;
+      if (d.freq === 'month') { label = y + '-' + (mo < 10 ? '0' : '') + mo; mo++; if (mo > 12) { mo = 1; y++; } }
+      else if (d.freq === 'quarter') { label = y + '-Q' + mo; mo++; if (mo > 4) { mo = 1; y++; } }
+      else { label = String(y); y++; }
+      out.push(label + ',' + d.values[i]);
+    }
+    return out.join('\n');
+  }
+  function loadExample(key) {
+    var d = FS_DATA[key];
+    $('fs-input').value = seriesText(d);
+    $('fs-m').value = d.m;
+    $('fs-h').value = d.h;
+    $('fs-bth').value = d.bth;
+    $('fs-model').value = 'auto';
+    $('fs-log').checked = false;
+    $('fs-pname').value = d.name;
+    Array.prototype.forEach.call($('fs-examples').children, function (c) {
+      c.setAttribute('aria-pressed', c.getAttribute('data-example') === key ? 'true' : 'false');
+    });
+    run();
+  }
+
+  function init() {
+    var sel = $('fs-model');
+    var opt = el('option', null, '自动挑选');
+    opt.value = 'auto'; sel.appendChild(opt);
+    FS.MODEL_IDS.forEach(function (id) {
+      var o = el('option', null, FS.MODEL_LABELS[id]);
+      o.value = id; sel.appendChild(o);
+    });
+    buildExamples();
+    TABS.forEach(function (t) {
+      $(t).addEventListener('click', function () { selectTab(t); });
+      $(t).addEventListener('keydown', function (ev) {
+        var i = TABS.indexOf(t), nxt = -1;
+        if (ev.key === 'ArrowRight') nxt = (i + 1) % TABS.length;
+        else if (ev.key === 'ArrowLeft') nxt = (i - 1 + TABS.length) % TABS.length;
+        if (nxt >= 0) { ev.preventDefault(); selectTab(TABS[nxt]); $(TABS[nxt]).focus(); }
+      });
+    });
+    var timer = null;
+    $('fs-input').addEventListener('input', function () {
+      clearTimeout(timer);
+      timer = setTimeout(function () {
+        var auto = autoPeriod();
+        if (auto > 1) $('fs-m').value = auto;
+        run();
+      }, 350);
+    });
+    ['fs-h', 'fs-m', 'fs-model', 'fs-level', 'fs-interval', 'fs-bth', 'fs-log', 'fs-fill'].forEach(function (id) {
+      $(id).addEventListener('change', run);
+    });
+    $('fs-show-fitted').addEventListener('change', function () { renderChart(); });
+    $('fs-lags').addEventListener('change', renderDiag);
+    $('fs-export').addEventListener('click', function () {
+      if (!state.result) return;
+      var blob = new Blob(['﻿' + forecastCSV()], { type: 'text/csv;charset=utf-8' });
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'forecast-' + state.result.id + '.csv';
+      document.body.appendChild(a); a.click();
+      setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 0);
+    });
+    $('fs-copy').addEventListener('click', function () {
+      var txt = forecastCSV(), btn = $('fs-copy');
+      function done() { btn.textContent = '已复制'; setTimeout(function () { btn.textContent = '复制预测表'; }, 1400); }
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(done, done);
+      else done();
+    });
+    $('fs-save').addEventListener('click', function () {
+      var name = ($('fs-pname').value || '').trim() || ('项目 ' + (loadProjects().length + 1));
+      var list = loadProjects();
+      var id = 'p' + Math.abs(hashStr(name)) + '-' + name.length;
+      var rec = { id: id, name: name, text: $('fs-input').value, cfg: cfgSnapshot() };
+      var found = -1;
+      for (var i = 0; i < list.length; i++) if (list[i].id === id) found = i;
+      if (found >= 0) list[found] = rec; else list.push(rec);
+      saveProjects(list);
+      refreshProjects(id);
+      var b = $('fs-save'); b.textContent = '已保存';
+      setTimeout(function () { b.textContent = '保存'; }, 1400);
+    });
+    $('fs-delete').addEventListener('click', function () {
+      var id = $('fs-project').value;
+      if (!id) return;
+      saveProjects(loadProjects().filter(function (p) { return p.id !== id; }));
+      refreshProjects();
+    });
+    $('fs-project').addEventListener('change', function () {
+      var id = $('fs-project').value;
+      if (!id) return;
+      var p = loadProjects().filter(function (x) { return x.id === id; })[0];
+      if (!p) return;
+      $('fs-input').value = p.text;
+      $('fs-pname').value = p.name;
+      applyCfg(p.cfg);
+      run();
+    });
+    refreshProjects();
+    selectTab('fs-tab-forecast');
+    loadExample('co2');
+  }
+  function hashStr(str) {
+    var hh = 5381;
+    for (var i = 0; i < str.length; i++) hh = ((hh << 5) + hh + str.charCodeAt(i)) | 0;
+    return hh;
+  }
+
+  window.FS_UI = { run: run, selectTab: selectTab, state: state, loadExample: loadExample, forecastCSV: forecastCSV };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
+})();
+</script>
