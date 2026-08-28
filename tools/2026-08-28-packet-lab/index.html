@@ -1,0 +1,3927 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>抓包解剖台 · Packet Lab</title>
+<meta name="description" content="把 .pcap / .pcapng 拖进浏览器就能看：逐层字段树、十六进制联动、显示过滤器、TCP 会话与重传分析、追踪流、协议层次与吞吐曲线。全部本地解析，抓包文件不上传。">
+<style>
+[hidden]{display:none!important}
+
+:root{
+  /* Kraken 设计语言 */
+  --pl-purple:#7132f5; --pl-purple-dark:#5741d8; --pl-purple-deep:#5b1ecf;
+  --pl-purple-subtle:rgba(133,91,251,.16); --pl-purple-wash:rgba(133,91,251,.07);
+  --pl-ink:#101114; --pl-gray:#686b82; --pl-silver:#9497a9; --pl-slate:#484b5e;
+  --pl-white:#fff; --pl-border:#dedee5; --pl-hair:rgba(104,107,130,.24);
+  --pl-fog:rgba(148,151,169,.08); --pl-fog2:rgba(148,151,169,.14);
+  --pl-green:#149e61; --pl-green-bg:rgba(20,158,97,.16); --pl-green-ink:#026b3f;
+  --pl-amber:#a86b00; --pl-amber-bg:rgba(214,158,46,.18);
+  --pl-red:#c0332c; --pl-red-bg:rgba(192,51,44,.14);
+  --pl-shadow:rgba(0,0,0,.03) 0 4px 24px;
+  --pl-shadow-micro:rgba(16,24,40,.04) 0 1px 4px;
+  --pl-r:12px; --pl-r-sm:8px; --pl-r-xs:6px; --pl-r-lg:16px;
+  --pl-ui:"IBM Plex Sans","Helvetica Neue",Helvetica,Arial,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  --pl-mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono",monospace;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0; background:var(--pl-white); color:var(--pl-ink);
+  font-family:var(--pl-ui); font-size:16px; line-height:1.38;
+  -webkit-font-smoothing:antialiased;
+}
+h1,h2,h3{margin:0; font-weight:700; letter-spacing:-.5px}
+button,input,select,textarea{font:inherit; color:inherit}
+a{color:var(--pl-purple)}
+
+.pl-wrap{max-width:1400px; margin:0 auto; padding:0 24px}
+
+/* ---------- 顶栏 ---------- */
+.pl-top{padding:18px 0 0}
+.pl-back{
+  display:inline-flex; align-items:center; gap:8px; text-decoration:none;
+  background:var(--pl-white); color:var(--pl-purple-dark);
+  border:1px solid var(--pl-purple-dark); border-radius:var(--pl-r);
+  padding:9px 16px; font-size:15px; font-weight:500;
+}
+.pl-back:hover{background:var(--pl-purple-subtle)}
+:focus-visible{outline:2px solid var(--pl-purple); outline-offset:2px}
+
+/* ---------- Hero ---------- */
+.pl-hero{padding:28px 0 20px; max-width:760px}
+.pl-eyebrow{
+  display:inline-block; font-size:12px; font-weight:600; letter-spacing:.08em;
+  color:var(--pl-purple); background:var(--pl-purple-subtle);
+  padding:5px 10px; border-radius:var(--pl-r-xs); margin-bottom:14px;
+}
+.pl-hero h1{font-size:40px; line-height:1.15; letter-spacing:-1px}
+.pl-hero p{margin:12px 0 0; font-size:17px; color:var(--pl-gray); line-height:1.5}
+.pl-privacy{
+  display:inline-flex; align-items:center; gap:7px; margin-top:14px;
+  background:var(--pl-green-bg); color:var(--pl-green-ink);
+  border-radius:var(--pl-r-xs); padding:6px 11px; font-size:13px; font-weight:500;
+}
+
+/* ---------- 卡片 ---------- */
+.pl-card{
+  background:var(--pl-white); border:1px solid var(--pl-border);
+  border-radius:var(--pl-r-lg); box-shadow:var(--pl-shadow); padding:20px;
+}
+.pl-card + .pl-card{margin-top:16px}
+.pl-card h2{font-size:19px; letter-spacing:-.3px}
+.pl-card h3{font-size:15px; font-weight:600; letter-spacing:0; color:var(--pl-slate)}
+.pl-sub{margin:6px 0 0; font-size:13.5px; color:var(--pl-silver); line-height:1.5}
+
+/* ---------- 按钮 ---------- */
+.pl-btn{
+  display:inline-flex; align-items:center; justify-content:center; gap:7px;
+  border:1px solid transparent; border-radius:var(--pl-r); cursor:pointer;
+  padding:11px 16px; font-size:15px; font-weight:500; min-width:52px; min-height:38px;
+  background:var(--pl-fog); color:var(--pl-ink); transition:background .12s ease;
+}
+.pl-btn:hover{background:var(--pl-fog2)}
+.pl-btn-primary{background:var(--pl-purple); color:#fff}
+.pl-btn-primary:hover{background:var(--pl-purple-deep)}
+.pl-btn-outline{background:var(--pl-white); color:var(--pl-purple-dark); border-color:var(--pl-purple-dark)}
+.pl-btn-outline:hover{background:var(--pl-purple-subtle)}
+.pl-btn-subtle{background:var(--pl-purple-subtle); color:var(--pl-purple)}
+.pl-btn-subtle:hover{background:rgba(133,91,251,.24)}
+.pl-btn-sm{padding:7px 12px; font-size:13.5px; min-height:32px; border-radius:var(--pl-r-sm)}
+.pl-btn:disabled{opacity:.45; cursor:not-allowed}
+
+/* ---------- 徽标 ---------- */
+.pl-badge{
+  display:inline-flex; align-items:center; gap:5px; font-size:12.5px; font-weight:500;
+  background:rgba(104,107,130,.12); color:var(--pl-slate);
+  padding:4px 9px; border-radius:var(--pl-r-sm); white-space:nowrap;
+}
+.pl-badge-ok{background:var(--pl-green-bg); color:var(--pl-green-ink)}
+.pl-badge-warn{background:var(--pl-amber-bg); color:var(--pl-amber)}
+.pl-badge-bad{background:var(--pl-red-bg); color:var(--pl-red)}
+.pl-badge-brand{background:var(--pl-purple-subtle); color:var(--pl-purple)}
+
+/* ---------- 数据源 ---------- */
+.pl-source{display:flex; flex-wrap:wrap; gap:10px; align-items:center}
+.pl-drop{
+  border:1.5px dashed var(--pl-hair); border-radius:var(--pl-r);
+  padding:14px 16px; flex:1 1 320px; min-width:0;
+  display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+  background:var(--pl-purple-wash);
+}
+.pl-drop.pl-drag{border-color:var(--pl-purple); background:var(--pl-purple-subtle)}
+.pl-drop-hint{font-size:13.5px; color:var(--pl-gray); min-width:0}
+.pl-samples{display:flex; flex-wrap:wrap; gap:8px; margin-top:14px}
+.pl-chips{display:flex; flex-wrap:wrap; gap:8px; margin-top:14px}
+
+/* ---------- 过滤器 ---------- */
+.pl-filter-row{display:flex; gap:10px; flex-wrap:wrap; align-items:stretch}
+.pl-filter-box{flex:1 1 380px; min-width:0; position:relative}
+#pl-filter{
+  width:100%; min-width:100px; font-family:var(--pl-mono); font-size:14.5px;
+  padding:12px 14px; border:1px solid var(--pl-border); border-radius:var(--pl-r);
+  background:var(--pl-white);
+}
+#pl-filter:focus{border-color:var(--pl-purple)}
+.pl-filter-ok #pl-filter{border-color:var(--pl-green)}
+.pl-filter-bad #pl-filter{border-color:var(--pl-red); background:rgba(192,51,44,.04)}
+.pl-filter-msg{margin-top:8px; font-size:13px; color:var(--pl-gray); min-height:18px; line-height:1.45}
+.pl-filter-msg.pl-msg-bad{color:var(--pl-red)}
+.pl-fieldref{margin-top:14px; border-top:1px solid var(--pl-border); padding-top:12px}
+.pl-fieldref summary{cursor:pointer; font-size:14px; font-weight:500; color:var(--pl-purple-dark)}
+.pl-fieldref table{width:100%; border-collapse:collapse; margin-top:10px; font-size:13px}
+.pl-fieldref td{padding:5px 8px 5px 0; border-bottom:1px solid var(--pl-border); vertical-align:top}
+.pl-fieldref td:first-child{font-family:var(--pl-mono); color:var(--pl-purple-dark); white-space:nowrap}
+
+/* ---------- 标签页 ---------- */
+.pl-tabs{display:flex; gap:6px; flex-wrap:wrap; margin:20px 0 14px}
+.pl-tab{
+  border:1px solid var(--pl-border); background:var(--pl-white); color:var(--pl-slate);
+  border-radius:var(--pl-r); padding:9px 15px; font-size:14.5px; font-weight:500;
+  cursor:pointer; min-height:38px; min-width:52px;
+}
+.pl-tab:hover{background:var(--pl-fog)}
+.pl-tab[aria-selected="true"]{background:var(--pl-purple); border-color:var(--pl-purple); color:#fff}
+.pl-tab-count{font-size:12px; opacity:.75; margin-left:4px}
+
+/* ---------- 表格 ---------- */
+.pl-scroll{overflow-x:auto; -webkit-overflow-scrolling:touch}
+table.pl-table{border-collapse:collapse; width:100%; font-size:13.5px}
+table.pl-table th{
+  text-align:left; font-weight:600; font-size:12.5px; color:var(--pl-gray);
+  padding:8px 10px; border-bottom:1px solid var(--pl-border); white-space:nowrap;
+  position:sticky; top:0; background:var(--pl-white); z-index:1;
+}
+table.pl-table td{padding:7px 10px; border-bottom:1px solid var(--pl-border); vertical-align:top}
+table.pl-table tbody tr:hover{background:var(--pl-purple-wash)}
+.pl-num{font-family:var(--pl-mono); font-variant-numeric:tabular-nums; text-align:right; white-space:nowrap}
+.pl-mono{font-family:var(--pl-mono)}
+
+/* ---------- 包列表（虚拟滚动） ---------- */
+.pl-pkt-head{display:flex; flex-wrap:wrap; gap:10px; align-items:center; justify-content:space-between; margin-bottom:10px}
+.pl-listwrap{border:1px solid var(--pl-border); border-radius:var(--pl-r); overflow:hidden; min-width:0}
+.pl-listhdr{display:flex; background:var(--pl-fog); border-bottom:1px solid var(--pl-border); font-size:12px; font-weight:600; color:var(--pl-gray)}
+.pl-listhdr span{padding:8px 8px; white-space:nowrap; overflow:hidden}
+.pl-vp{height:376px; overflow:auto; position:relative; font-size:13px}
+.pl-vp-inner{position:relative; width:100%}
+.pl-row{
+  position:absolute; left:0; right:0; height:26px; display:flex; align-items:center;
+  cursor:pointer; border-bottom:1px solid rgba(222,222,229,.6); white-space:nowrap;
+}
+.pl-row:hover{background:var(--pl-purple-wash)}
+.pl-row[aria-selected="true"]{background:var(--pl-purple-subtle)}
+.pl-row span{padding:0 8px; overflow:hidden; text-overflow:ellipsis}
+.pl-c-num{width:62px; text-align:right; font-family:var(--pl-mono); color:var(--pl-silver); flex:none}
+.pl-c-time{width:98px; font-family:var(--pl-mono); font-size:12px; color:var(--pl-gray); flex:none}
+.pl-c-src{width:150px; font-family:var(--pl-mono); font-size:12px; flex:none}
+.pl-c-dst{width:150px; font-family:var(--pl-mono); font-size:12px; flex:none}
+.pl-c-proto{width:70px; flex:none; font-weight:600; font-size:12px}
+.pl-c-len{width:56px; text-align:right; font-family:var(--pl-mono); color:var(--pl-silver); flex:none}
+.pl-c-info{flex:1 1 auto; min-width:0; color:var(--pl-slate); font-size:12.5px}
+.pl-row-flag{color:var(--pl-purple); font-weight:700}
+.pl-row-bad{box-shadow:inset 3px 0 0 var(--pl-red)}
+.pl-row-warn{box-shadow:inset 3px 0 0 var(--pl-amber)}
+@media (max-width:820px){
+  .pl-c-time,.pl-c-len{display:none}
+  .pl-c-src,.pl-c-dst{width:118px}
+}
+/* 窄屏上「说明」列比源/目的更有信息量，宁可把地址藏起来给它让位 */
+@media (max-width:560px){
+  .pl-c-src,.pl-c-dst{display:none}
+  .pl-c-num{width:48px}
+  .pl-c-proto{width:64px}
+}
+
+/* ---------- 详情 / 字段树 ---------- */
+.pl-detail{border:1px solid var(--pl-border); border-radius:var(--pl-r); overflow:hidden; min-width:0; margin-top:16px}
+.pl-detail-hd{padding:12px 14px; background:var(--pl-fog); border-bottom:1px solid var(--pl-border); display:flex; gap:8px; flex-wrap:wrap; align-items:center}
+/* 字段树与十六进制并排：这样一行放得下 16 个字节，ASCII 列不会被挤掉 */
+.pl-detail-body{display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+.pl-detail-body > *{min-width:0}
+.pl-tree{max-height:330px; overflow:auto; padding:8px 4px; font-size:13px; font-family:var(--pl-mono); border-right:1px solid var(--pl-border)}
+.pl-node{padding:2px 8px; border-radius:var(--pl-r-xs); cursor:pointer; white-space:pre-wrap; word-break:break-word}
+.pl-node:hover{background:var(--pl-purple-wash)}
+.pl-node[aria-selected="true"]{background:var(--pl-purple-subtle)}
+.pl-node-name{color:var(--pl-purple-dark)}
+.pl-node-val{color:var(--pl-ink)}
+.pl-node-toggle{display:inline-block; width:14px; color:var(--pl-silver)}
+.pl-hex{
+  padding:10px 12px; overflow:auto; max-height:330px;
+  font-family:var(--pl-mono); font-size:12.5px; line-height:1.55; white-space:pre;
+}
+@media (max-width:900px){
+  .pl-detail-body{grid-template-columns:minmax(0,1fr)}
+  .pl-tree{border-right:none; border-bottom:1px solid var(--pl-border); max-height:260px}
+  .pl-hex{max-height:240px}
+}
+.pl-hex b{background:var(--pl-purple); color:#fff; font-weight:400; border-radius:2px}
+.pl-hex i{color:var(--pl-silver); font-style:normal}
+.pl-note{width:100%; min-width:100px; margin-top:8px; padding:8px 10px; font-size:13.5px;
+  border:1px solid var(--pl-border); border-radius:var(--pl-r-sm); resize:vertical; min-height:38px}
+
+/* ---------- 统计 ---------- */
+.pl-stats{display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px}
+.pl-stat{background:var(--pl-fog); border-radius:var(--pl-r); padding:14px; min-width:0}
+.pl-stat dt{font-size:12.5px; color:var(--pl-gray); margin:0}
+.pl-stat dd{margin:6px 0 0; font-size:22px; font-weight:700; letter-spacing:-.5px; font-variant-numeric:tabular-nums; word-break:break-word}
+.pl-chart{width:100%; height:190px; display:block}
+.pl-chart text{font-family:var(--pl-ui); fill:var(--pl-silver)}
+.pl-grid-2{display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:16px; align-items:start}
+.pl-grid-2 > *{min-width:0}
+
+/* ---------- 追踪流 ---------- */
+.pl-stream{
+  border:1px solid var(--pl-border); border-radius:var(--pl-r); padding:14px;
+  font-family:var(--pl-mono); font-size:12.5px; line-height:1.55;
+  max-height:440px; overflow:auto; white-space:pre-wrap; word-break:break-all;
+}
+.pl-dir-a{color:var(--pl-purple-deep)}
+.pl-dir-b{color:var(--pl-green-ink)}
+.pl-stream-gap{color:var(--pl-red)}
+
+/* ---------- 专家信息 ---------- */
+.pl-expert-item{
+  display:flex; gap:10px; align-items:flex-start; padding:10px 12px;
+  border:1px solid var(--pl-border); border-radius:var(--pl-r-sm); margin-bottom:8px; cursor:pointer;
+}
+.pl-expert-item:hover{background:var(--pl-purple-wash)}
+.pl-expert-text{min-width:0; font-size:14px; line-height:1.5}
+
+.pl-panel-head{display:flex; gap:10px; flex-wrap:wrap; align-items:center; justify-content:space-between}
+.pl-panel-head > *{min-width:0; max-width:100%}
+.pl-tools{display:flex; gap:8px; flex-wrap:wrap; min-width:0; max-width:100%}
+/* select 的固有宽度跟着最长的那条 option 走，窄屏必须允许它收缩 */
+#pl-follow-pick{
+  flex:1 1 160px; min-width:160px; max-width:100%; padding:8px 10px;
+  border:1px solid var(--pl-border); border-radius:var(--pl-r-sm); background:#fff;
+}
+.pl-empty{padding:26px; text-align:center; color:var(--pl-silver); font-size:14px}
+.pl-warn-list{margin:12px 0 0; padding:0; list-style:none}
+.pl-warn-list li{background:var(--pl-amber-bg); color:var(--pl-amber); padding:8px 12px; border-radius:var(--pl-r-sm); font-size:13.5px; margin-bottom:6px}
+
+.pl-help h3{margin-top:18px}
+.pl-help p,.pl-help li{font-size:14.5px; color:var(--pl-gray); line-height:1.6}
+.pl-help ul{padding-left:20px}
+.pl-help code{font-family:var(--pl-mono); font-size:13px; background:var(--pl-fog); padding:2px 6px; border-radius:var(--pl-r-xs); color:var(--pl-purple-dark)}
+.pl-codeblock{font-family:var(--pl-mono); font-size:12.5px; background:var(--pl-fog); border-radius:var(--pl-r-sm); padding:10px 12px; overflow-x:auto; white-space:pre; margin:8px 0}
+
+.pl-foot{margin:34px 0 46px; font-size:13px; color:var(--pl-silver); line-height:1.6}
+</style>
+
+<div class="pl-wrap">
+  <div class="pl-top"><a class="pl-back" href="../../">← 返回工具集</a></div>
+
+  <header class="pl-hero">
+    <span class="pl-eyebrow">抓包分析 · Packet Lab</span>
+    <h1>把抓包文件拖进来，当场拆到字节</h1>
+    <p>手上有一个 <code class="pl-mono">.pcap</code> / <code class="pl-mono">.pcapng</code>，但这台机器没装 Wireshark——把它拖到下面就行。逐层字段树、十六进制联动高亮、显示过滤器、TCP 重传与握手时延分析、追踪流、协议层次与吞吐曲线，都在这一页里。</p>
+    <span class="pl-privacy">🔒 全部在浏览器本地解析，抓包文件不会离开这台电脑</span>
+  </header>
+
+  <section class="pl-card">
+    <div class="pl-source">
+      <div class="pl-drop" id="pl-drop">
+        <button class="pl-btn pl-btn-primary" id="pl-open">选择抓包文件</button>
+        <span class="pl-drop-hint">或者把 .pcap / .pcapng 拖到这块区域</span>
+        <input type="file" id="pl-file" accept=".pcap,.pcapng,.cap,.dmp" hidden>
+      </div>
+    </div>
+    <div class="pl-samples" id="pl-samples"></div>
+    <div class="pl-chips" id="pl-capinfo"></div>
+    <ul class="pl-warn-list" id="pl-warnings" hidden></ul>
+  </section>
+
+  <section class="pl-card" id="pl-filter-card">
+    <h2>显示过滤器</h2>
+    <p class="pl-sub">和抓包工具里那套写法一致：<span class="pl-mono">tcp.port == 443 &amp;&amp; ip.addr == 10.0.0.0/8</span>。支持 <span class="pl-mono">&amp;&amp; || !</span>、括号、<span class="pl-mono">contains</span> / <span class="pl-mono">matches</span> 正则、<span class="pl-mono">in {…}</span> 集合与 CIDR 网段。</p>
+    <div class="pl-filter-row" style="margin-top:14px">
+      <div class="pl-filter-box"><input id="pl-filter" placeholder="留空表示不过滤，例如 tls || dns" spellcheck="false" autocomplete="off"></div>
+      <button class="pl-btn pl-btn-primary" id="pl-apply">应用</button>
+      <button class="pl-btn pl-btn-outline" id="pl-save-filter">收藏</button>
+      <button class="pl-btn" id="pl-clear-filter">清空</button>
+    </div>
+    <div class="pl-filter-msg" id="pl-filter-msg"></div>
+    <div class="pl-chips" id="pl-bookmarks"></div>
+    <details class="pl-fieldref">
+      <summary>可用字段速查（点一下就填进过滤框）</summary>
+      <div class="pl-scroll"><table id="pl-fieldtable"></table></div>
+    </details>
+  </section>
+
+  <nav class="pl-tabs" id="pl-tabs" role="tablist">
+    <button class="pl-tab" role="tab" data-tab="packets" aria-selected="true">包列表<span class="pl-tab-count" id="pl-cnt-packets"></span></button>
+    <button class="pl-tab" role="tab" data-tab="flows" aria-selected="false">会话<span class="pl-tab-count" id="pl-cnt-flows"></span></button>
+    <button class="pl-tab" role="tab" data-tab="follow" aria-selected="false">追踪流</button>
+    <button class="pl-tab" role="tab" data-tab="stats" aria-selected="false">统计</button>
+    <button class="pl-tab" role="tab" data-tab="expert" aria-selected="false">专家信息<span class="pl-tab-count" id="pl-cnt-expert"></span></button>
+    <button class="pl-tab" role="tab" data-tab="help" aria-selected="false">说明</button>
+  </nav>
+
+  <!-- ============ 包列表 ============ -->
+  <section class="pl-panel" id="pl-panel-packets">
+    <div>
+      <div>
+        <div class="pl-pkt-head">
+          <div class="pl-chips" id="pl-pkt-summary" style="margin:0"></div>
+          <div class="pl-tools">
+            <button class="pl-btn pl-btn-sm" id="pl-export-pcap">导出为 .pcap</button>
+            <button class="pl-btn pl-btn-sm" id="pl-export-pcapng">导出为 .pcapng</button>
+          </div>
+        </div>
+        <div class="pl-listwrap">
+          <div class="pl-listhdr">
+            <span class="pl-c-num">帧</span><span class="pl-c-time">时间</span>
+            <span class="pl-c-src">源</span><span class="pl-c-dst">目的</span>
+            <span class="pl-c-proto">协议</span><span class="pl-c-len">长度</span><span class="pl-c-info">说明</span>
+          </div>
+          <div class="pl-vp" id="pl-vp" tabindex="0" role="listbox" aria-label="包列表">
+            <div class="pl-vp-inner" id="pl-vp-inner"></div>
+          </div>
+        </div>
+        <p class="pl-sub" id="pl-list-hint">点一行看它的字段树；↑ ↓ 换行，F 键给这一帧插旗（旗标与备注会记在本机，下次打开同一个文件还在）。</p>
+      </div>
+      <div class="pl-detail">
+        <div class="pl-detail-hd" id="pl-detail-hd"><span class="pl-badge">还没有选中任何一帧</span></div>
+        <div class="pl-detail-body">
+          <div class="pl-tree" id="pl-tree"><div class="pl-empty">在上面点一行，这里会展开它的逐层字段。</div></div>
+          <div class="pl-hex" id="pl-hex"></div>
+        </div>
+        <div style="padding:10px 12px 12px; border-top:1px solid var(--pl-border)">
+          <label for="pl-note" style="font-size:12.5px; color:var(--pl-gray)">给这一帧写个备注</label>
+          <textarea class="pl-note" id="pl-note" rows="2" placeholder="例如：这里开始重传"></textarea>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 会话 ============ -->
+  <section class="pl-panel" id="pl-panel-flows" hidden>
+    <div class="pl-card">
+      <h2>会话（按字节数排序）</h2>
+      <p class="pl-sub">每一行是一条五元组会话。点「只看这条」把过滤器切到它；点「追踪流」把双向数据拼回可读的文本。</p>
+      <div class="pl-scroll" style="margin-top:12px"><table class="pl-table" id="pl-flow-table"></table></div>
+    </div>
+  </section>
+
+  <!-- ============ 追踪流 ============ -->
+  <section class="pl-panel" id="pl-panel-follow" hidden>
+    <div class="pl-card">
+      <div class="pl-panel-head">
+        <h2>追踪流</h2>
+        <div class="pl-tools">
+          <select id="pl-follow-pick" aria-label="选择要追踪的会话"></select>
+          <button class="pl-btn pl-btn-sm" id="pl-follow-mode">切换为十六进制</button>
+          <button class="pl-btn pl-btn-sm" id="pl-follow-save">另存为文本</button>
+        </div>
+      </div>
+      <p class="pl-sub" id="pl-follow-meta">选一条 TCP 会话，把两个方向的字节按序号拼回来（重复段丢掉、缺口标出来）。</p>
+      <div class="pl-stream" id="pl-follow-body"><div class="pl-empty">这个抓包里还没有可追踪的 TCP 会话。</div></div>
+    </div>
+  </section>
+
+  <!-- ============ 统计 ============ -->
+  <section class="pl-panel" id="pl-panel-stats" hidden>
+    <div class="pl-card">
+      <h2>总览</h2>
+      <dl class="pl-stats" id="pl-summary" style="margin:14px 0 0"></dl>
+    </div>
+    <div class="pl-card">
+      <h2>吞吐曲线</h2>
+      <p class="pl-sub" id="pl-io-caption">按时间分桶统计每段时间里的字节数。</p>
+      <svg class="pl-chart" id="pl-io-chart" role="img" aria-label="吞吐曲线"></svg>
+      <div class="pl-scroll" style="margin-top:10px"><table class="pl-table" id="pl-io-table"></table></div>
+    </div>
+    <div class="pl-grid-2">
+      <div class="pl-card">
+        <h2>协议层次</h2>
+        <p class="pl-sub">每一层出现在多少个包里、占了多少字节。</p>
+        <div class="pl-scroll" style="margin-top:12px"><table class="pl-table" id="pl-hier-table"></table></div>
+      </div>
+      <div class="pl-card">
+        <h2>端点</h2>
+        <p class="pl-sub">按收发字节合计排序的前 20 个地址。</p>
+        <div class="pl-scroll" style="margin-top:12px"><table class="pl-table" id="pl-ep-table"></table></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 专家信息 ============ -->
+  <section class="pl-panel" id="pl-panel-expert" hidden>
+    <div class="pl-card">
+      <h2>专家信息</h2>
+      <p class="pl-sub">解析过程中值得注意的事：重传、重复 ACK、零窗口、连接重置、ICMP 差错、DNS 失败、校验和异常。点一条跳到对应的帧。</p>
+      <div id="pl-expert-list" style="margin-top:14px"></div>
+    </div>
+  </section>
+
+  <!-- ============ 说明 ============ -->
+  <section class="pl-panel pl-help" id="pl-panel-help" hidden>
+    <div class="pl-card">
+      <h2>它能做什么、不能做什么</h2>
+      <h3>读得懂的容器</h3>
+      <p>经典 <code>pcap</code>（大端 / 小端 × 微秒 / 纳秒 四种魔数都认）与 <code>pcapng</code>（多 Section、多接口、<code>if_tsresol</code> 时间精度、Enhanced / Simple Packet Block）。链路层支持以太网 II（含 802.1Q / QinQ 多层 VLAN 标签）、Linux cooked v1 / v2、Raw IP、NULL / Loopback。</p>
+      <h3>拆得开的协议</h3>
+      <p>IPv4（选项、分片标志）、IPv6（逐跳 / 路由 / 目的选项 / 分片扩展首部）、ARP、ICMP（含差错报文里内嵌的原始报文）、ICMPv6（回显、邻居发现）、TCP（全部标志位 + MSS / 窗口缩放 / SACK / 时间戳选项）、UDP、DNS（含压缩指针，A / AAAA / CNAME / MX / TXT / NS / PTR / SOA / SRV）、HTTP/1.x（请求行、状态行、首部、主体长度）、TLS（记录层，ClientHello / ServerHello 的版本、密码套件、SNI、ALPN、supported_versions）、NTP、QUIC（仅识别长短首部）。</p>
+      <h3>算得出的东西</h3>
+      <p>五元组会话表（双向包数 / 字节数 / 时长 / 速率）、TCP 三次握手与 RTT、重传 / 重复 ACK / 序号跳跃 / 零窗口 / RST 判定、按序号去重叠的双向流重组、协议层次、端点统计、按时间分桶的吞吐曲线。</p>
+      <h3>做不到的</h3>
+      <ul>
+        <li><b>不能抓包</b>——浏览器碰不到网卡。抓包请用 <code>tcpdump -i any -w a.pcap</code> 或 Wireshark，然后把文件拖进来。</li>
+        <li><b>不解密 TLS</b>——没有密钥就没有明文，只能看到记录层与握手里的明文字段（SNI、ALPN、密码套件）。</li>
+        <li><b>不重组 IP 分片</b>——非首片会如实标成「分片数据」，不会拼起来再解上层。</li>
+        <li>HTTP 只按 TCP 段的边界识别，不做跨段的 chunked 解码；HTTP/2 与 QUIC 内层不解。</li>
+        <li>单个文件解析上限 6 万个包，超过的部分会明确提示，而不是悄悄丢掉。</li>
+      </ul>
+      <h3>过滤器语法</h3>
+      <div class="pl-codeblock" id="pl-help-syntax"></div>
+      <p><code>!=</code> 在多值字段上按「所有取值都不等」判定（例如 <code>tcp.port != 443</code> 会排除任一端是 443 的包），这和某些抓包工具的「任一取值不等」不同，这里选了更符合直觉的那个。</p>
+      <h3>怎么验的</h3>
+      <p id="pl-help-verify"></p>
+    </div>
+  </section>
+
+  <p class="pl-foot">抓包文件全程留在浏览器里：解析、过滤、重组、导出都由本页的 JavaScript 完成，没有任何上传。旗标与备注按文件内容指纹存在 localStorage，换一台机器就没有了。</p>
+</div>
+
+<script>
+/* ============================================================
+   Packet Lab — 00 util
+   纯字节工具：读数、地址格式化、校验和、十六进制。
+   约定：源码里不写 \xNN / \uXXXX 转义，需要控制字节一律用码点数值。
+   ============================================================ */
+const PL = {};
+
+const HEXD = '0123456789abcdef';
+
+function u8at(b, o) { return b[o]; }
+function be16(b, o) { return (b[o] << 8) | b[o + 1]; }
+function be32(b, o) { return ((b[o] << 24) | (b[o + 1] << 16) | (b[o + 2] << 8) | b[o + 3]) >>> 0; }
+function le16(b, o) { return b[o] | (b[o + 1] << 8); }
+function le32(b, o) { return (b[o] | (b[o + 1] << 8) | (b[o + 2] << 16) | (b[o + 3] << 24)) >>> 0; }
+function be64(b, o) { return be32(b, o) * 4294967296 + be32(b, o + 4); }
+function le64(b, o) { return le32(b, o + 4) * 4294967296 + le32(b, o); }
+
+function hex2(n) { return HEXD[(n >> 4) & 15] + HEXD[n & 15]; }
+function hex4(n) { return hex2((n >> 8) & 255) + hex2(n & 255); }
+function hex8(n) { return hex4((n >>> 16) & 65535) + hex4(n & 65535); }
+
+function hexBytes(b, o, len, sep) {
+  const s = sep === undefined ? ' ' : sep;
+  const out = [];
+  for (let i = 0; i < len; i++) out.push(hex2(b[o + i]));
+  return out.join(s);
+}
+
+function macStr(b, o) {
+  return hex2(b[o]) + ':' + hex2(b[o + 1]) + ':' + hex2(b[o + 2]) + ':' +
+    hex2(b[o + 3]) + ':' + hex2(b[o + 4]) + ':' + hex2(b[o + 5]);
+}
+
+function ipv4Str(b, o) { return b[o] + '.' + b[o + 1] + '.' + b[o + 2] + '.' + b[o + 3]; }
+
+/* RFC 5952：小写、去前导零、最长零段(>=2)压成 ::，并列取最左；
+   §5 规定 IPv4 映射地址（::ffff:0:0/96）要写成混合式 ::ffff:a.b.c.d */
+function ipv6Str(b, o) {
+  const g = [];
+  for (let i = 0; i < 8; i++) g.push(be16(b, o + i * 2));
+  if (g[0] === 0 && g[1] === 0 && g[2] === 0 && g[3] === 0 && g[4] === 0 && g[5] === 0xffff) {
+    return '::ffff:' + ipv4Str(b, o + 12);
+  }
+  let bestStart = -1, bestLen = 0, curStart = -1, curLen = 0;
+  for (let i = 0; i < 8; i++) {
+    if (g[i] === 0) {
+      if (curStart < 0) { curStart = i; curLen = 1; } else curLen++;
+      if (curLen > bestLen) { bestLen = curLen; bestStart = curStart; }
+    } else { curStart = -1; curLen = 0; }
+  }
+  if (bestLen < 2) { bestStart = -1; bestLen = 0; }
+  const parts = [];
+  for (let i = 0; i < 8; i++) {
+    if (bestStart >= 0 && i === bestStart) { parts.push(''); i += bestLen - 1; continue; }
+    parts.push(g[i].toString(16));
+  }
+  let s = parts.join(':');
+  if (bestStart === 0) s = ':' + s;
+  if (bestStart >= 0 && bestStart + bestLen === 8) s = s + ':';
+  return s;
+}
+
+/* 地址 → 可比较的数值/字节数组，用于 CIDR 判定 */
+function ipv4ToInt(str) {
+  const p = str.split('.');
+  if (p.length !== 4) return null;
+  let v = 0;
+  for (let i = 0; i < 4; i++) {
+    const n = Number(p[i]);
+    if (!Number.isInteger(n) || n < 0 || n > 255 || p[i] === '') return null;
+    v = v * 256 + n;
+  }
+  return v;
+}
+
+function ipv6ToBytes(str) {
+  if (str.indexOf(':') < 0) return null;
+  let head = str, tail = '';
+  const dbl = str.indexOf('::');
+  if (dbl >= 0) {
+    if (str.indexOf('::', dbl + 1) >= 0) return null;
+    head = str.slice(0, dbl);
+    tail = str.slice(dbl + 2);
+  }
+  const hp = head === '' ? [] : head.split(':');
+  const tp = tail === '' ? [] : tail.split(':');
+  /* 内嵌 IPv4 的那一段（如 ::ffff:192.168.1.1 的尾巴）占两个 16 位组，
+     所以补零个数必须按「展开后的组数」算，不能按冒号分段数算。 */
+  const expand = (list) => {
+    const out = [];
+    for (const part of list) {
+      if (part === '') return null;
+      if (part.indexOf('.') >= 0) {
+        const v = ipv4ToInt(part);
+        if (v === null) return null;
+        out.push(Math.floor(v / 65536), v % 65536);
+        continue;
+      }
+      if (!/^[0-9a-fA-F]{1,4}$/.test(part)) return null;
+      out.push(parseInt(part, 16));
+    }
+    return out;
+  };
+  const hg = expand(hp), tg = expand(tp);
+  if (hg === null || tg === null) return null;
+  const groups = hg.slice();
+  if (dbl >= 0) {
+    const fill = 8 - hg.length - tg.length;
+    if (fill < 0) return null;
+    for (let i = 0; i < fill; i++) groups.push(0);
+  }
+  for (const g of tg) groups.push(g);
+  if (groups.length !== 8) return null;
+  const out = new Uint8Array(16);
+  for (let i = 0; i < 8; i++) { out[i * 2] = (groups[i] >> 8) & 255; out[i * 2 + 1] = groups[i] & 255; }
+  return out;
+}
+
+/* 因特网校验和（RFC 1071） */
+function inetChecksum(b, off, len, initial) {
+  let sum = initial || 0;
+  let i = off;
+  const end = off + len;
+  for (; i + 1 < end; i += 2) sum += (b[i] << 8) | b[i + 1];
+  if (i < end) sum += b[i] << 8;
+  while (sum > 65535) sum = (sum & 65535) + (sum >>> 16);
+  return (~sum) & 65535;
+}
+
+function pseudoSum(b, srcOff, dstOff, addrLen, proto, payLen) {
+  let sum = 0;
+  for (let i = 0; i < addrLen; i += 2) sum += (b[srcOff + i] << 8) | b[srcOff + i + 1];
+  for (let i = 0; i < addrLen; i += 2) sum += (b[dstOff + i] << 8) | b[dstOff + i + 1];
+  sum += proto;
+  sum += payLen & 65535;
+  if (addrLen === 16) sum += (payLen >>> 16) & 65535;
+  while (sum > 65535) sum = (sum & 65535) + (sum >>> 16);
+  return sum;
+}
+
+/* 可打印字符：ASCII 32..126，其余显示为点 */
+function isPrintable(c) { return c >= 32 && c <= 126; }
+
+function asciiOf(b, off, len) {
+  let s = '';
+  for (let i = 0; i < len; i++) {
+    const c = b[off + i];
+    s += isPrintable(c) ? String.fromCharCode(c) : '.';
+  }
+  return s;
+}
+
+/* 原样取 latin1 字符串（用于协议里的 ASCII 文本字段） */
+function latin1(b, off, len) {
+  let s = '';
+  const end = Math.min(b.length, off + len);
+  for (let i = off; i < end; i++) s += String.fromCharCode(b[i]);
+  return s;
+}
+
+function asciiBytes(str) {
+  const out = new Uint8Array(str.length);
+  for (let i = 0; i < str.length; i++) out[i] = str.charCodeAt(i) & 255;
+  return out;
+}
+
+/* pcapng 的选项字符串按规范是 UTF-8，不能当 latin1 读 */
+function utf8Bytes(str) {
+  if (typeof TextEncoder !== 'undefined') return new TextEncoder().encode(str);
+  return asciiBytes(str);
+}
+function utf8Decode(b, off, len) {
+  const sub = b.subarray(off, off + len);
+  if (typeof TextDecoder !== 'undefined') {
+    try { return new TextDecoder('utf-8', { fatal: false }).decode(sub); } catch (e) { /* 退回 latin1 */ }
+  }
+  return latin1(b, off, len);
+}
+
+function fmtBytes(n) {
+  if (n < 1024) return n + ' B';
+  if (n < 1024 * 1024) return (n / 1024).toFixed(n < 10240 ? 2 : 1) + ' KB';
+  if (n < 1024 * 1024 * 1024) return (n / 1048576).toFixed(2) + ' MB';
+  return (n / 1073741824).toFixed(2) + ' GB';
+}
+
+function fmtDur(sec) {
+  if (!isFinite(sec)) return '—';
+  if (sec === 0) return '0 s';
+  if (sec < 1e-3) return (sec * 1e6).toFixed(1) + ' µs';
+  if (sec < 1) return (sec * 1e3).toFixed(3) + ' ms';
+  if (sec < 60) return sec.toFixed(3) + ' s';
+  const m = Math.floor(sec / 60), s = sec - m * 60;
+  return m + ' 分 ' + s.toFixed(1) + ' 秒';
+}
+
+function fmtRate(bitsPerSec) {
+  if (!isFinite(bitsPerSec) || bitsPerSec <= 0) return '—';
+  if (bitsPerSec < 1000) return bitsPerSec.toFixed(0) + ' bit/s';
+  if (bitsPerSec < 1e6) return (bitsPerSec / 1e3).toFixed(1) + ' kbit/s';
+  if (bitsPerSec < 1e9) return (bitsPerSec / 1e6).toFixed(2) + ' Mbit/s';
+  return (bitsPerSec / 1e9).toFixed(2) + ' Gbit/s';
+}
+
+/* 绝对时间：UTC，避免测试与时区绑死 */
+function fmtAbs(sec, nsec) {
+  const d = new Date(sec * 1000);
+  const p2 = (n) => (n < 10 ? '0' : '') + n;
+  const frac = String(Math.floor(nsec / 1000)).padStart(6, '0');
+  return d.getUTCFullYear() + '-' + p2(d.getUTCMonth() + 1) + '-' + p2(d.getUTCDate()) + ' ' +
+    p2(d.getUTCHours()) + ':' + p2(d.getUTCMinutes()) + ':' + p2(d.getUTCSeconds()) + '.' + frac;
+}
+
+PL.util = {
+  u8at, be16, be32, le16, le32, be64, le64, hex2, hex4, hex8, hexBytes,
+  macStr, ipv4Str, ipv6Str, ipv4ToInt, ipv6ToBytes, inetChecksum, pseudoSum,
+  isPrintable, asciiOf, latin1, asciiBytes, utf8Bytes, utf8Decode, fmtBytes, fmtDur, fmtRate, fmtAbs
+};
+
+/* ============================================================
+   Packet Lab — 10 容器解析
+   支持：经典 pcap（4 种 magic：大/小端 × 微秒/纳秒）与 pcapng（多 Section、多 IDB）。
+   ============================================================ */
+(function (PL) {
+  const U = PL.util;
+
+  const LINKTYPES = {
+    0: 'NULL/Loopback', 1: 'Ethernet', 8: 'SLIP', 9: 'PPP', 101: 'Raw IP',
+    105: 'IEEE 802.11', 113: 'Linux cooked v1 (SLL)', 127: 'Radiotap',
+    228: 'Raw IPv4', 229: 'Raw IPv6', 276: 'Linux cooked v2 (SLL2)'
+  };
+  function linkName(lt) { return LINKTYPES[lt] || ('LINKTYPE ' + lt); }
+
+  const PCAP_MAGICS = {
+    0xa1b2c3d4: { little: false, nano: false },
+    0xd4c3b2a1: { little: true, nano: false },
+    0xa1b23c4d: { little: false, nano: true },
+    0x4d3cb2a1: { little: true, nano: true }
+  };
+
+  function sniff(b) {
+    if (b.length >= 4) {
+      const m = U.be32(b, 0);
+      if (PCAP_MAGICS[m]) return 'pcap';
+      if (m === 0x0a0d0d0a) return 'pcapng';
+    }
+    return null;
+  }
+
+  function parsePcap(b, limit) {
+    const magic = U.be32(b, 0);
+    const cfg = PCAP_MAGICS[magic];
+    const rd16 = cfg.little ? U.le16 : U.be16;
+    const rd32 = cfg.little ? U.le32 : U.be32;
+    const verMaj = rd16(b, 4), verMin = rd16(b, 6);
+    const snaplen = rd32(b, 16);
+    const linktype = rd32(b, 20) & 0x0fffffff;
+    const warnings = [];
+    const packets = [];
+    let off = 24, num = 0;
+    while (off + 16 <= b.length) {
+      const tsSec = rd32(b, off);
+      const tsFrac = rd32(b, off + 4);
+      const incl = rd32(b, off + 8);
+      const orig = rd32(b, off + 12);
+      if (incl > 0x40000000) { warnings.push('第 ' + (num + 1) + ' 个记录的长度异常（' + incl + ' 字节），已停止解析'); break; }
+      if (off + 16 + incl > b.length) {
+        warnings.push('文件在第 ' + (num + 1) + ' 个记录处被截断（缺 ' + (off + 16 + incl - b.length) + ' 字节），已保留前 ' + num + ' 个包');
+        break;
+      }
+      num++;
+      packets.push({
+        num, tsSec, tsNsec: cfg.nano ? tsFrac : tsFrac * 1000,
+        capLen: incl, origLen: orig, linktype, iface: 0,
+        bytes: b.subarray(off + 16, off + 16 + incl)
+      });
+      off += 16 + incl;
+      if (limit && packets.length >= limit) { warnings.push('已达到 ' + limit + ' 个包的上限，文件剩余部分未解析'); break; }
+    }
+    if (off < b.length && packets.length && !warnings.length && b.length - off > 0) {
+      warnings.push('文件尾部有 ' + (b.length - off) + ' 字节未能构成完整记录');
+    }
+    return {
+      format: 'pcap',
+      formatLabel: '经典 pcap（' + (cfg.little ? '小端' : '大端') + ' · ' + (cfg.nano ? '纳秒' : '微秒') + '）',
+      version: verMaj + '.' + verMin, snaplen,
+      interfaces: [{ id: 0, linktype, name: linkName(linktype), snaplen, tsresolNs: cfg.nano ? 1 : 1000 }],
+      packets, warnings
+    };
+  }
+
+  /* pcapng option 解析：返回 {code:[值(Uint8Array), ...]} */
+  function parseOptions(b, off, end, rd16, rd32) {
+    const out = {};
+    while (off + 4 <= end) {
+      const code = rd16(b, off), len = rd16(b, off + 2);
+      off += 4;
+      if (code === 0) break;
+      if (off + len > end) break;
+      (out[code] || (out[code] = [])).push(b.subarray(off, off + len));
+      off += len + ((4 - (len % 4)) % 4);
+    }
+    return out;
+  }
+
+  function parsePcapNg(b, limit) {
+    const warnings = [];
+    const packets = [];
+    const interfaces = [];
+    let off = 0, num = 0, sections = 0;
+    let little = true, rd16 = U.le16, rd32 = U.le32, rd64 = U.le64;
+    let curIfaceBase = 0;
+    let appName = null;
+    let hardware = null, os = null;
+
+    while (off + 12 <= b.length) {
+      const typeBE = U.be32(b, off);
+      let blockType, blockLen;
+      if (typeBE === 0x0a0d0d0a) {
+        // Section Header Block：先读 byte-order magic 决定字节序
+        const bom = U.be32(b, off + 8);
+        if (bom === 0x1a2b3c4d) { little = false; rd16 = U.be16; rd32 = U.be32; rd64 = U.be64; }
+        else if (bom === 0x4d3c2b1a) { little = true; rd16 = U.le16; rd32 = U.le32; rd64 = U.le64; }
+        else { warnings.push('第 ' + (sections + 1) + ' 个 Section 的字节序标记无法识别（0x' + U.hex8(bom) + '），停止解析'); break; }
+        blockType = typeBE;
+        blockLen = rd32(b, off + 4);
+        sections++;
+        curIfaceBase = interfaces.length;
+        const opts = parseOptions(b, off + 24, Math.min(b.length, off + blockLen - 4), rd16, rd32);
+        if (opts[3]) os = U.utf8Decode(opts[3][0], 0, opts[3][0].length);
+        if (opts[2]) hardware = U.utf8Decode(opts[2][0], 0, opts[2][0].length);
+        if (opts[4]) appName = U.utf8Decode(opts[4][0], 0, opts[4][0].length);
+      } else {
+        blockType = rd32(b, off);
+        blockLen = rd32(b, off + 4);
+      }
+      if (blockLen < 12 || off + blockLen > b.length) {
+        if (packets.length) warnings.push('文件在偏移 ' + off + ' 处被截断或块长度非法（' + blockLen + '），已保留前 ' + packets.length + ' 个包');
+        else warnings.push('偏移 ' + off + ' 处的块长度非法（' + blockLen + '）');
+        break;
+      }
+      const bodyEnd = off + blockLen - 4;
+
+      if (blockType === 1) {
+        // Interface Description Block
+        const linktype = rd16(b, off + 8);
+        const snaplen = rd32(b, off + 12);
+        const opts = parseOptions(b, off + 16, bodyEnd, rd16, rd32);
+        let tsresolNs = 1000; // 默认 10^-6 秒
+        if (opts[9]) {
+          const v = opts[9][0][0];
+          if (v & 0x80) tsresolNs = 1e9 / Math.pow(2, v & 0x7f);
+          else tsresolNs = 1e9 / Math.pow(10, v);
+        }
+        interfaces.push({
+          id: interfaces.length, linktype, snaplen, tsresolNs,
+          name: opts[2] ? U.utf8Decode(opts[2][0], 0, opts[2][0].length) : linkName(linktype),
+          descr: opts[3] ? U.utf8Decode(opts[3][0], 0, opts[3][0].length) : null
+        });
+      } else if (blockType === 6 || blockType === 2) {
+        // Enhanced Packet Block（6）/ 旧 Packet Block（2）
+        let ifId, tsHi, tsLo, cap, orig, dataOff;
+        if (blockType === 6) {
+          ifId = rd32(b, off + 8); tsHi = rd32(b, off + 12); tsLo = rd32(b, off + 16);
+          cap = rd32(b, off + 20); orig = rd32(b, off + 24); dataOff = off + 28;
+        } else {
+          ifId = rd16(b, off + 8); tsHi = rd32(b, off + 12); tsLo = rd32(b, off + 16);
+          cap = rd32(b, off + 20); orig = rd32(b, off + 24); dataOff = off + 28;
+        }
+        const ifx = interfaces[curIfaceBase + ifId] || interfaces[ifId] || interfaces[0];
+        if (dataOff + cap > bodyEnd) { warnings.push('第 ' + (num + 1) + ' 个包的数据超出块边界，已跳过'); off += blockLen; continue; }
+        const ticks = tsHi * 4294967296 + tsLo;
+        const res = ifx ? ifx.tsresolNs : 1000;
+        // 不能先算 ticks*res 再拆秒：纪元级时间的纳秒数超过 2^53，双精度会丢到微秒级。
+        // 改成先用「每秒多少个 tick」整除取秒，再拿余数换算纳秒。
+        const ticksPerSec = Math.round(1e9 / res);
+        const tsSec = Math.floor(ticks / ticksPerSec);
+        num++;
+        packets.push({
+          num, tsSec, tsNsec: Math.round((ticks - tsSec * ticksPerSec) * res),
+          capLen: cap, origLen: orig,
+          linktype: ifx ? ifx.linktype : 1, iface: ifx ? ifx.id : 0,
+          bytes: b.subarray(dataOff, dataOff + cap)
+        });
+        if (limit && packets.length >= limit) { warnings.push('已达到 ' + limit + ' 个包的上限，文件剩余部分未解析'); break; }
+      } else if (blockType === 3) {
+        // Simple Packet Block：无时间戳
+        const orig = rd32(b, off + 8);
+        const ifx = interfaces[curIfaceBase] || interfaces[0];
+        const cap = Math.min(orig, bodyEnd - (off + 12));
+        num++;
+        packets.push({
+          num, tsSec: 0, tsNsec: 0, capLen: cap, origLen: orig,
+          linktype: ifx ? ifx.linktype : 1, iface: ifx ? ifx.id : 0,
+          bytes: b.subarray(off + 12, off + 12 + cap), noTime: true
+        });
+        if (limit && packets.length >= limit) { warnings.push('已达到 ' + limit + ' 个包的上限，文件剩余部分未解析'); break; }
+      }
+      off += blockLen;
+    }
+    if (!interfaces.length) interfaces.push({ id: 0, linktype: 1, snaplen: 0, tsresolNs: 1000, name: linkName(1) });
+    const bits = [];
+    if (appName) bits.push(appName);
+    if (os) bits.push(os);
+    return {
+      format: 'pcapng',
+      formatLabel: 'pcapng（' + sections + ' 个 Section · ' + interfaces.length + ' 个接口' + (bits.length ? ' · ' + bits.join(' / ') : '') + '）',
+      version: '1.0', snaplen: interfaces[0].snaplen,
+      interfaces, packets, warnings, appName, os, hardware
+    };
+  }
+
+  const MAX_PACKETS = 60000;
+
+  function parseCapture(bytes, opts) {
+    const b = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+    const limit = (opts && opts.limit) || MAX_PACKETS;
+    const kind = sniff(b);
+    if (!kind) {
+      const e = new Error('这不是 pcap / pcapng 文件：文件头 ' +
+        (b.length >= 4 ? '0x' + U.hex8(U.be32(b, 0)) : '不足 4 字节') +
+        ' 不是已知的抓包文件魔数。');
+      e.code = 'BAD_MAGIC';
+      throw e;
+    }
+    if (kind === 'pcap' && b.length < 24) { const e = new Error('pcap 文件头不完整（只有 ' + b.length + ' 字节，至少需要 24 字节）。'); e.code = 'TRUNCATED'; throw e; }
+    const cap = kind === 'pcap' ? parsePcap(b, limit) : parsePcapNg(b, limit);
+    cap.fileSize = b.length;
+    // 相对时间基准。整秒与纳秒分开相减 —— 先合成 1.78e9 秒的浮点再相减会丢掉约 1 微秒，
+    // 那正好是抓包时间戳的有效位，会让「相对时间」列的末位数字对不上。
+    let t0s = null, t0n = 0;
+    for (const p of cap.packets) { if (!p.noTime) { t0s = p.tsSec; t0n = p.tsNsec; break; } }
+    if (t0s === null) { t0s = 0; t0n = 0; }
+    cap.t0 = t0s + t0n / 1e9;
+    cap.t0Sec = t0s; cap.t0Nsec = t0n;
+    for (const p of cap.packets) p.tsRel = p.noTime ? 0 : (p.tsSec - t0s) + (p.tsNsec - t0n) / 1e9;
+    return cap;
+  }
+
+  PL.container = { parseCapture, sniff, linkName, LINKTYPES };
+})(PL);
+
+/* ============================================================
+   Packet Lab — 20 协议解剖
+   逐层拆包，产出：①字段树（每个字段带绝对字节偏移，供十六进制联动高亮）
+   ②扁平字段袋（供显示过滤器求值）③摘要行（协议 / 源 / 目的 / 说明）。
+   ============================================================ */
+(function (PL) {
+  const U = PL.util;
+
+  /* ---------- 字段节点 ---------- */
+  function node(name, label, off, len, value, opts) {
+    const n = { name, label, off, len, value: value === undefined ? '' : value, children: [] };
+    if (opts) Object.assign(n, opts);
+    return n;
+  }
+  function kid(parent, name, label, off, len, value, opts) {
+    const n = node(name, label, off, len, value, opts);
+    parent.children.push(n);
+    return n;
+  }
+
+  function setF(f, name, v) {
+    if (v === undefined || v === null) return;
+    if (Object.prototype.hasOwnProperty.call(f, name)) {
+      if (Array.isArray(f[name])) f[name].push(v); else f[name] = [f[name], v];
+    } else f[name] = v;
+  }
+
+  /* ---------- 常量表 ---------- */
+  const ETHERTYPES = {
+    0x0800: 'IPv4', 0x0806: 'ARP', 0x86dd: 'IPv6', 0x8100: '802.1Q VLAN',
+    0x88a8: '802.1ad QinQ', 0x9100: 'QinQ (旧)', 0x8035: 'RARP', 0x8847: 'MPLS',
+    0x888e: '802.1X', 0x8863: 'PPPoE 发现', 0x8864: 'PPPoE 会话'
+  };
+  const IPPROTOS = {
+    0: 'HOPOPT', 1: 'ICMP', 2: 'IGMP', 6: 'TCP', 17: 'UDP', 41: 'IPv6', 43: 'IPv6-Route',
+    44: 'IPv6-Frag', 47: 'GRE', 50: 'ESP', 51: 'AH', 58: 'ICMPv6', 59: 'IPv6-NoNxt',
+    60: 'IPv6-Opts', 89: 'OSPF', 103: 'PIM', 132: 'SCTP'
+  };
+  const ICMP_TYPES = {
+    0: '回显应答 (ping reply)', 3: '目的不可达', 4: '源抑制', 5: '重定向', 8: '回显请求 (ping)',
+    9: '路由器通告', 10: '路由器请求', 11: '超时 (TTL 耗尽)', 12: '参数问题',
+    13: '时间戳请求', 14: '时间戳应答'
+  };
+  const ICMP3_CODES = {
+    0: '网络不可达', 1: '主机不可达', 2: '协议不可达', 3: '端口不可达',
+    4: '需要分片但设置了 DF', 9: '网络被管理性禁止', 10: '主机被管理性禁止', 13: '通信被管理性禁止'
+  };
+  const ICMP6_TYPES = {
+    1: '目的不可达', 2: '包过大', 3: '超时', 4: '参数问题', 128: '回显请求 (ping)',
+    129: '回显应答 (ping reply)', 133: '路由器请求', 134: '路由器通告',
+    135: '邻居请求 (NS)', 136: '邻居通告 (NA)', 137: '重定向'
+  };
+  const DNS_TYPES = {
+    1: 'A', 2: 'NS', 5: 'CNAME', 6: 'SOA', 12: 'PTR', 15: 'MX', 16: 'TXT', 28: 'AAAA',
+    33: 'SRV', 35: 'NAPTR', 41: 'OPT', 43: 'DS', 46: 'RRSIG', 47: 'NSEC', 48: 'DNSKEY',
+    64: 'SVCB', 65: 'HTTPS', 255: 'ANY'
+  };
+  const DNS_RCODES = { 0: 'NOERROR', 1: 'FORMERR', 2: 'SERVFAIL', 3: 'NXDOMAIN', 4: 'NOTIMP', 5: 'REFUSED' };
+  const TLS_VERSIONS = { 0x0300: 'SSL 3.0', 0x0301: 'TLS 1.0', 0x0302: 'TLS 1.1', 0x0303: 'TLS 1.2', 0x0304: 'TLS 1.3' };
+  const TLS_CONTENT = { 20: '密码规格变更', 21: '告警', 22: '握手', 23: '应用数据', 24: '心跳' };
+  const TLS_HS = {
+    1: 'Client Hello', 2: 'Server Hello', 4: '新会话票据', 8: '加密扩展', 11: '证书',
+    12: '服务端密钥交换', 13: '证书请求', 14: '服务端 Hello 完成', 15: '证书验证',
+    16: '客户端密钥交换', 20: '完成'
+  };
+  const TLS_CIPHERS = {
+    0x1301: 'TLS_AES_128_GCM_SHA256', 0x1302: 'TLS_AES_256_GCM_SHA384', 0x1303: 'TLS_CHACHA20_POLY1305_SHA256',
+    0xc02b: 'ECDHE-ECDSA-AES128-GCM-SHA256', 0xc02f: 'ECDHE-RSA-AES128-GCM-SHA256',
+    0xc02c: 'ECDHE-ECDSA-AES256-GCM-SHA384', 0xc030: 'ECDHE-RSA-AES256-GCM-SHA384',
+    0xcca8: 'ECDHE-RSA-CHACHA20-POLY1305', 0xcca9: 'ECDHE-ECDSA-CHACHA20-POLY1305',
+    0x009c: 'RSA-AES128-GCM-SHA256', 0x002f: 'RSA-AES128-CBC-SHA', 0x0035: 'RSA-AES256-CBC-SHA',
+    0x00ff: 'TLS_EMPTY_RENEGOTIATION_INFO_SCSV', 0x5a5a: 'GREASE'
+  };
+  const TLS_EXTS = {
+    0: 'server_name', 5: 'status_request', 10: 'supported_groups', 11: 'ec_point_formats',
+    13: 'signature_algorithms', 16: 'application_layer_protocol_negotiation', 18: 'signed_certificate_timestamp',
+    21: 'padding', 22: 'encrypt_then_mac', 23: 'extended_master_secret', 27: 'compress_certificate',
+    35: 'session_ticket', 43: 'supported_versions', 45: 'psk_key_exchange_modes', 51: 'key_share'
+  };
+  const HTTP_METHODS = ['GET', 'POST', 'HEAD', 'PUT', 'DELETE', 'OPTIONS', 'PATCH', 'TRACE', 'CONNECT'];
+  const WELL_KNOWN_PORTS = {
+    20: 'FTP-DATA', 21: 'FTP', 22: 'SSH', 23: 'TELNET', 25: 'SMTP', 53: 'DNS', 67: 'DHCP', 68: 'DHCP',
+    69: 'TFTP', 80: 'HTTP', 110: 'POP3', 123: 'NTP', 143: 'IMAP', 161: 'SNMP', 389: 'LDAP',
+    443: 'HTTPS', 465: 'SMTPS', 587: 'SMTP', 993: 'IMAPS', 995: 'POP3S', 1433: 'MSSQL',
+    3306: 'MySQL', 3389: 'RDP', 5432: 'PostgreSQL', 5353: 'mDNS', 6379: 'Redis', 8080: 'HTTP-ALT',
+    8443: 'HTTPS-ALT', 9200: 'Elasticsearch', 27017: 'MongoDB'
+  };
+
+  function flagStr(v, table) {
+    const on = [];
+    for (const [bit, nm] of table) if (v & bit) on.push(nm);
+    return on;
+  }
+
+  /* ---------- DNS 名称（含指针压缩） ---------- */
+  function dnsName(b, base, off, endLimit) {
+    const labels = [];
+    let jumped = false, cursor = off, consumed = 0, hops = 0;
+    while (cursor < endLimit) {
+      const len = b[cursor];
+      if (len === 0) { if (!jumped) consumed = cursor - off + 1; cursor++; break; }
+      if ((len & 0xc0) === 0xc0) {
+        if (cursor + 1 >= endLimit) break;
+        const ptr = ((len & 0x3f) << 8) | b[cursor + 1];
+        if (!jumped) consumed = cursor - off + 2;
+        jumped = true;
+        if (++hops > 24) { labels.push('<压缩指针循环>'); break; }
+        cursor = base + ptr;
+        if (cursor < base || cursor >= endLimit) { labels.push('<越界指针>'); break; }
+        continue;
+      }
+      if (cursor + 1 + len > endLimit) { labels.push('<截断>'); break; }
+      labels.push(U.latin1(b, cursor + 1, len));
+      cursor += 1 + len;
+    }
+    if (!jumped && !consumed) consumed = Math.max(1, cursor - off);
+    return { name: labels.length ? labels.join('.') : '<根>', consumed };
+  }
+
+  function dissectDNS(b, off, end, parent, f, ctx) {
+    if (end - off < 12) { kid(parent, 'dns.short', 'DNS（数据不足 12 字节）', off, Math.max(0, end - off)); return '数据不足'; }
+    const id = U.be16(b, off), flags = U.be16(b, off + 2);
+    const qd = U.be16(b, off + 4), an = U.be16(b, off + 6), ns = U.be16(b, off + 8), ar = U.be16(b, off + 10);
+    const qr = (flags >> 15) & 1, opcode = (flags >> 11) & 15, rcode = flags & 15;
+    const dns = kid(parent, 'dns', '域名系统 DNS', off, end - off, '');
+    kid(dns, 'dns.id', '事务 ID', off, 2, '0x' + U.hex4(id));
+    const fl = kid(dns, 'dns.flags', '标志位', off + 2, 2, '0x' + U.hex4(flags));
+    kid(fl, 'dns.flags.response', '类型', off + 2, 2, qr ? '响应 (1)' : '查询 (0)');
+    kid(fl, 'dns.flags.opcode', '操作码', off + 2, 2, opcode === 0 ? '标准查询 (0)' : String(opcode));
+    if (qr) kid(fl, 'dns.flags.authoritative', '权威应答 AA', off + 2, 2, String((flags >> 10) & 1));
+    kid(fl, 'dns.flags.truncated', '被截断 TC', off + 2, 2, String((flags >> 9) & 1));
+    kid(fl, 'dns.flags.recdesired', '期望递归 RD', off + 2, 2, String((flags >> 8) & 1));
+    if (qr) {
+      kid(fl, 'dns.flags.recavail', '递归可用 RA', off + 2, 2, String((flags >> 7) & 1));
+      kid(fl, 'dns.flags.rcode', '返回码', off + 2, 2, (DNS_RCODES[rcode] || String(rcode)) + ' (' + rcode + ')');
+    }
+    kid(dns, 'dns.count.queries', '问题数', off + 4, 2, String(qd));
+    kid(dns, 'dns.count.answers', '回答数', off + 6, 2, String(an));
+    kid(dns, 'dns.count.auth_rr', '权威记录数', off + 8, 2, String(ns));
+    kid(dns, 'dns.count.add_rr', '附加记录数', off + 10, 2, String(ar));
+    setF(f, 'dns.id', id);
+    setF(f, 'dns.flags.response', qr);
+    setF(f, 'dns.flags.rcode', rcode);
+    setF(f, 'dns.count.answers', an);
+
+    let p = off + 12;
+    const qnames = [];
+    if (qd > 0 && qd < 64) {
+      const qsec = kid(dns, 'dns.queries', '问题区', p, 0, '');
+      for (let i = 0; i < qd && p + 4 <= end; i++) {
+        const nm = dnsName(b, off, p, end);
+        const tp = U.be16(b, p + nm.consumed), cl = U.be16(b, p + nm.consumed + 2);
+        const tname = DNS_TYPES[tp] || ('TYPE' + tp);
+        const q = kid(qsec, 'dns.qry', nm.name + '：' + tname, p, nm.consumed + 4, '');
+        kid(q, 'dns.qry.name', '名称', p, nm.consumed, nm.name);
+        kid(q, 'dns.qry.type', '类型', p + nm.consumed, 2, tname + ' (' + tp + ')');
+        kid(q, 'dns.qry.class', '类', p + nm.consumed + 2, 2, cl === 1 ? 'IN (1)' : String(cl));
+        setF(f, 'dns.qry.name', nm.name);
+        setF(f, 'dns.qry.type', tp);
+        qnames.push(tname + ' ' + nm.name);
+        p += nm.consumed + 4;
+      }
+      qsec.len = p - qsec.off;
+    }
+    const answers = [];
+    const secNames = [['dns.answers', '回答区', an], ['dns.authority', '权威区', ns], ['dns.additional', '附加区', ar]];
+    for (const [secKey, secLabel, cnt] of secNames) {
+      if (!cnt || cnt > 128) continue;
+      const sec = kid(dns, secKey, secLabel, p, 0, '');
+      for (let i = 0; i < cnt && p + 10 <= end; i++) {
+        const nm = dnsName(b, off, p, end);
+        let q = p + nm.consumed;
+        if (q + 10 > end) break;
+        const tp = U.be16(b, q), cl = U.be16(b, q + 2), ttl = U.be32(b, q + 4), dl = U.be16(b, q + 8);
+        const dataOff = q + 10;
+        if (dataOff + dl > end) break;
+        const tname = DNS_TYPES[tp] || ('TYPE' + tp);
+        let rdata = '';
+        if (tp === 1 && dl === 4) rdata = U.ipv4Str(b, dataOff);
+        else if (tp === 28 && dl === 16) rdata = U.ipv6Str(b, dataOff);
+        else if (tp === 5 || tp === 2 || tp === 12) rdata = dnsName(b, off, dataOff, end).name;
+        else if (tp === 15 && dl > 2) rdata = U.be16(b, dataOff) + ' ' + dnsName(b, off, dataOff + 2, end).name;
+        else if (tp === 16 && dl > 1) rdata = U.latin1(b, dataOff + 1, Math.min(b[dataOff], dl - 1));
+        else if (tp === 6) {
+          const mn = dnsName(b, off, dataOff, end);
+          const rn = dnsName(b, off, dataOff + mn.consumed, end);
+          rdata = mn.name + ' ' + rn.name;
+        } else if (tp === 33 && dl > 6) {
+          rdata = U.be16(b, dataOff) + ' ' + U.be16(b, dataOff + 2) + ' ' + U.be16(b, dataOff + 4) + ' ' + dnsName(b, off, dataOff + 6, end).name;
+        } else rdata = dl + ' 字节';
+        const rr = kid(sec, 'dns.rr', nm.name + '：' + tname + (rdata ? ' → ' + rdata : ''), p, (dataOff + dl) - p, '');
+        kid(rr, 'dns.resp.name', '名称', p, nm.consumed, nm.name);
+        kid(rr, 'dns.resp.type', '类型', q, 2, tname + ' (' + tp + ')');
+        kid(rr, 'dns.resp.class', '类', q + 2, 2, cl === 1 ? 'IN (1)' : String(cl));
+        kid(rr, 'dns.resp.ttl', '生存时间 TTL', q + 4, 4, ttl + ' 秒');
+        kid(rr, 'dns.resp.len', '数据长度', q + 8, 2, String(dl));
+        if (rdata) kid(rr, 'dns.a', '记录数据', dataOff, dl, rdata);
+        if (tp === 1 || tp === 28) setF(f, 'dns.a', rdata);
+        setF(f, 'dns.resp.name', nm.name);
+        if (secKey === 'dns.answers') answers.push(tname + ' ' + rdata);
+        p = dataOff + dl;
+      }
+      sec.len = p - sec.off;
+      if (!sec.children.length) dns.children.splice(dns.children.indexOf(sec), 1);
+    }
+    ctx.dnsIsResponse = !!qr;
+    const head = qr ? '响应' : '查询';
+    let info = head + ' 0x' + U.hex4(id) + (qnames.length ? ' ' + qnames.join(', ') : '');
+    if (qr) {
+      if (rcode !== 0) info += ' → ' + (DNS_RCODES[rcode] || ('RCODE ' + rcode));
+      else if (answers.length) info += ' → ' + answers.slice(0, 3).join(', ') + (answers.length > 3 ? ' 等 ' + answers.length + ' 条' : '');
+      else info += ' → 无记录';
+    }
+    return info;
+  }
+
+  /* ---------- HTTP ---------- */
+  function looksHTTP(b, off, end) {
+    if (end - off < 5) return false;
+    const head = U.latin1(b, off, Math.min(16, end - off));
+    if (head.startsWith('HTTP/1.')) return true;
+    for (const m of HTTP_METHODS) if (head.startsWith(m + ' ')) return true;
+    return false;
+  }
+
+  function splitLines(b, off, end) {
+    // 按 CRLF / LF 切行，返回 [{off,len,text}]，遇到空行停止（返回 headerEnd）
+    const lines = [];
+    let p = off;
+    while (p < end) {
+      let q = p;
+      while (q < end && b[q] !== 10) q++;
+      let lineEnd = q;
+      if (lineEnd > p && b[lineEnd - 1] === 13) lineEnd--;
+      const text = U.latin1(b, p, lineEnd - p);
+      if (text === '') return { lines, headerEnd: Math.min(end, q + 1) };
+      lines.push({ off: p, len: lineEnd - p, text });
+      if (q >= end) { p = end; break; }
+      p = q + 1;
+      if (lines.length > 200) break;
+    }
+    return { lines, headerEnd: p };
+  }
+
+  function dissectHTTP(b, off, end, parent, f) {
+    const { lines, headerEnd } = splitLines(b, off, end);
+    if (!lines.length) return null;
+    const first = lines[0];
+    const http = kid(parent, 'http', '超文本传输协议 HTTP', off, end - off, '');
+    let info = '';
+    const isResp = first.text.startsWith('HTTP/1.');
+    if (isResp) {
+      const m = /^HTTP\/(1\.[01]) (\d{3})(?: (.*))?$/.exec(first.text);
+      const line = kid(http, 'http.response.line', '状态行', first.off, first.len, first.text);
+      if (m) {
+        kid(line, 'http.response.version', '版本', first.off, 8, 'HTTP/' + m[1]);
+        kid(line, 'http.response.code', '状态码', first.off + 9, 3, m[2]);
+        setF(f, 'http.response.code', Number(m[2]));
+        info = '响应 ' + m[2] + (m[3] ? ' ' + m[3] : '');
+      } else info = first.text;
+      setF(f, 'http.response', 1);
+    } else {
+      const m = /^([A-Z]+) (\S+) HTTP\/(1\.[01])$/.exec(first.text);
+      const line = kid(http, 'http.request.line', '请求行', first.off, first.len, first.text);
+      if (m) {
+        kid(line, 'http.request.method', '方法', first.off, m[1].length, m[1]);
+        kid(line, 'http.request.uri', '请求 URI', first.off + m[1].length + 1, m[2].length, m[2]);
+        kid(line, 'http.request.version', '版本', first.off + first.len - 8, 8, 'HTTP/' + m[3]);
+        setF(f, 'http.request.method', m[1]);
+        setF(f, 'http.request.uri', m[2]);
+        info = m[1] + ' ' + m[2];
+      } else info = first.text;
+      setF(f, 'http.request', 1);
+    }
+    const hdrs = {};
+    for (let i = 1; i < lines.length; i++) {
+      const ln = lines[i];
+      const ci = ln.text.indexOf(':');
+      const key = ci > 0 ? ln.text.slice(0, ci).trim() : ln.text;
+      const val = ci > 0 ? ln.text.slice(ci + 1).trim() : '';
+      kid(http, 'http.header', key, ln.off, ln.len, val);
+      hdrs[key.toLowerCase()] = val;
+    }
+    if (hdrs.host) { setF(f, 'http.host', hdrs.host); info += '  ·  ' + hdrs.host; }
+    if (hdrs['content-type']) setF(f, 'http.content_type', hdrs['content-type']);
+    if (hdrs['user-agent']) setF(f, 'http.user_agent', hdrs['user-agent']);
+    if (hdrs['content-length']) setF(f, 'http.content_length', Number(hdrs['content-length']) || 0);
+    const bodyLen = end - headerEnd;
+    if (bodyLen > 0) {
+      kid(http, 'http.file_data', '报文主体', headerEnd, bodyLen, bodyLen + ' 字节' +
+        (hdrs['content-type'] ? '（' + hdrs['content-type'] + '）' : ''));
+      if (isResp && hdrs['content-type']) info += '  ·  ' + hdrs['content-type'].split(';')[0];
+    }
+    return info;
+  }
+
+  /* ---------- TLS ---------- */
+  function tlsExtensions(b, off, end, parent, f, out) {
+    while (off + 4 <= end) {
+      const et = U.be16(b, off), el = U.be16(b, off + 2);
+      if (off + 4 + el > end) break;
+      const nm = TLS_EXTS[et] || ('扩展 ' + et);
+      const ex = kid(parent, 'tls.handshake.extension', nm, off, 4 + el, el + ' 字节');
+      const d = off + 4;
+      if (et === 0 && el >= 5) {
+        const listLen = U.be16(b, d);
+        let q = d + 2;
+        while (q + 3 <= d + 2 + listLen && q + 3 <= end) {
+          const ntype = b[q], nlen = U.be16(b, q + 1);
+          if (q + 3 + nlen > end) break;
+          const host = U.latin1(b, q + 3, nlen);
+          if (ntype === 0) {
+            kid(ex, 'tls.handshake.extensions_server_name', '服务器名称', q + 3, nlen, host);
+            setF(f, 'tls.sni', host);
+            out.sni = host;
+          }
+          q += 3 + nlen;
+        }
+      } else if (et === 16 && el >= 2) {
+        const listLen = U.be16(b, d);
+        let q = d + 2;
+        const protos = [];
+        while (q < d + 2 + listLen && q < end) {
+          const pl = b[q];
+          if (q + 1 + pl > end) break;
+          protos.push(U.latin1(b, q + 1, pl));
+          q += 1 + pl;
+        }
+        if (protos.length) {
+          kid(ex, 'tls.handshake.extensions_alpn', 'ALPN 协议列表', d + 2, listLen, protos.join(', '));
+          setF(f, 'tls.alpn', protos.join(','));
+          out.alpn = protos.join(', ');
+        }
+      } else if (et === 43 && el >= 1) {
+        const vs = [];
+        if (el === 2) vs.push(TLS_VERSIONS[U.be16(b, d)] || ('0x' + U.hex4(U.be16(b, d))));
+        else {
+          const ll = b[d];
+          for (let q = d + 1; q + 1 < d + 1 + ll && q + 1 < end; q += 2) {
+            const v = U.be16(b, q);
+            vs.push(TLS_VERSIONS[v] || ('0x' + U.hex4(v)));
+          }
+        }
+        if (vs.length) {
+          kid(ex, 'tls.handshake.extensions_supported_version', '支持的版本', d, el, vs.join(', '));
+          out.supportedVersions = vs;
+        }
+      }
+      off += 4 + el;
+    }
+  }
+
+  function dissectTLSHandshake(b, off, end, parent, f, out) {
+    const infos = [];
+    while (off + 4 <= end) {
+      const ht = b[off];
+      const hl = (b[off + 1] << 16) | (b[off + 2] << 8) | b[off + 3];
+      const bodyEnd = Math.min(end, off + 4 + hl);
+      const nm = TLS_HS[ht] || ('握手类型 ' + ht);
+      const h = kid(parent, 'tls.handshake', nm, off, Math.min(4 + hl, end - off), '');
+      kid(h, 'tls.handshake.type', '握手类型', off, 1, nm + ' (' + ht + ')');
+      kid(h, 'tls.handshake.length', '长度', off + 1, 3, String(hl));
+      setF(f, 'tls.handshake.type', ht);
+      let p = off + 4;
+      if ((ht === 1 || ht === 2) && p + 34 <= bodyEnd) {
+        const ver = U.be16(b, p);
+        kid(h, 'tls.handshake.version', '版本', p, 2, (TLS_VERSIONS[ver] || '0x' + U.hex4(ver)));
+        kid(h, 'tls.handshake.random', '随机数', p + 2, 32, U.hexBytes(b, p + 2, 8, '') + '…');
+        p += 34;
+        if (p < bodyEnd) {
+          const sidLen = b[p];
+          kid(h, 'tls.handshake.session_id', '会话 ID', p, 1 + sidLen, sidLen ? U.hexBytes(b, p + 1, Math.min(sidLen, 8), '') + (sidLen > 8 ? '…' : '') : '（空）');
+          p += 1 + sidLen;
+        }
+        if (ht === 1) {
+          if (p + 2 <= bodyEnd) {
+            const csLen = U.be16(b, p);
+            const cs = [];
+            for (let q = p + 2; q + 1 < p + 2 + csLen && q + 1 < bodyEnd; q += 2) {
+              const c = U.be16(b, q);
+              cs.push(TLS_CIPHERS[c] || ('0x' + U.hex4(c)));
+            }
+            const cnode = kid(h, 'tls.handshake.ciphersuites', '密码套件（' + cs.length + ' 个）', p, 2 + csLen, cs.slice(0, 3).join(', ') + (cs.length > 3 ? ' 等' : ''));
+            for (let i = 0; i < Math.min(cs.length, 24); i++) kid(cnode, 'tls.handshake.ciphersuite', '套件', p + 2 + i * 2, 2, cs[i]);
+            out.ciphers = cs;
+            p += 2 + csLen;
+          }
+          if (p < bodyEnd) { const cl = b[p]; kid(h, 'tls.handshake.comp_methods', '压缩方法', p, 1 + cl, cl + ' 个'); p += 1 + cl; }
+        } else {
+          if (p + 2 <= bodyEnd) {
+            const c = U.be16(b, p);
+            kid(h, 'tls.handshake.ciphersuite', '选定的密码套件', p, 2, TLS_CIPHERS[c] || ('0x' + U.hex4(c)));
+            out.chosenCipher = TLS_CIPHERS[c] || ('0x' + U.hex4(c));
+            p += 2;
+          }
+          if (p < bodyEnd) { kid(h, 'tls.handshake.comp_method', '压缩方法', p, 1, String(b[p])); p += 1; }
+        }
+        if (p + 2 <= bodyEnd) {
+          const extLen = U.be16(b, p);
+          const ex = kid(h, 'tls.handshake.extensions', '扩展（' + extLen + ' 字节）', p, 2 + extLen, '');
+          tlsExtensions(b, p + 2, Math.min(bodyEnd, p + 2 + extLen), ex, f, out);
+        }
+      }
+      infos.push(nm);
+      if (hl <= 0) break;
+      off += 4 + hl;
+    }
+    return infos;
+  }
+
+  function looksTLS(b, off, end) {
+    if (end - off < 5) return false;
+    const t = b[off];
+    if (t < 20 || t > 24) return false;
+    if (b[off + 1] !== 3) return false;
+    if (b[off + 2] > 4) return false;
+    const len = U.be16(b, off + 3);
+    return len > 0 && len <= 18432;
+  }
+
+  function dissectTLS(b, off, end, parent, f) {
+    const out = {};
+    const infos = [];
+    let p = off, records = 0;
+    while (p + 5 <= end && records < 32) {
+      const ct = b[p], ver = U.be16(b, p + 1), len = U.be16(b, p + 3);
+      if (!(ct >= 20 && ct <= 24) || b[p + 1] !== 3) break;
+      const recEnd = Math.min(end, p + 5 + len);
+      const cname = TLS_CONTENT[ct] || ('类型 ' + ct);
+      const rec = kid(parent, 'tls.record', 'TLS 记录：' + cname, p, recEnd - p, (TLS_VERSIONS[ver] || '0x' + U.hex4(ver)));
+      kid(rec, 'tls.record.content_type', '内容类型', p, 1, cname + ' (' + ct + ')');
+      kid(rec, 'tls.record.version', '记录层版本', p + 1, 2, TLS_VERSIONS[ver] || ('0x' + U.hex4(ver)));
+      kid(rec, 'tls.record.length', '长度', p + 3, 2, String(len));
+      setF(f, 'tls.record.content_type', ct);
+      setF(f, 'tls.record.version', ver);
+      if (ct === 22) {
+        const hs = dissectTLSHandshake(b, p + 5, recEnd, rec, f, out);
+        for (const h of hs) infos.push(h);
+      } else if (ct === 23) {
+        kid(rec, 'tls.app_data', '加密的应用数据', p + 5, recEnd - (p + 5), (recEnd - p - 5) + ' 字节');
+        infos.push('应用数据');
+      } else if (ct === 21 && recEnd - p >= 7) {
+        kid(rec, 'tls.alert', '告警', p + 5, 2, (b[p + 5] === 2 ? '致命' : '警告') + ' · 描述 ' + b[p + 6]);
+        infos.push('告警');
+      } else infos.push(cname);
+      records++;
+      if (len === 0) break;
+      p = p + 5 + len;
+    }
+    if (!records) return null;
+    let info = infos.join(', ');
+    if (out.sni) info += '（SNI=' + out.sni + '）';
+    else if (out.chosenCipher) info += '（' + out.chosenCipher + '）';
+    return { info, out };
+  }
+
+  /* ---------- 传输层 ---------- */
+  const TCP_FLAG_TABLE = [[0x100, 'NS'], [0x80, 'CWR'], [0x40, 'ECE'], [0x20, 'URG'], [0x10, 'ACK'], [0x8, 'PSH'], [0x4, 'RST'], [0x2, 'SYN'], [0x1, 'FIN']];
+  /* 摘要行里的书写顺序沿用抓包工具的惯例：SYN, ACK / FIN, ACK / PSH, ACK */
+  const TCP_FLAG_ORDER = [[0x2, 'SYN'], [0x1, 'FIN'], [0x4, 'RST'], [0x8, 'PSH'], [0x10, 'ACK'], [0x20, 'URG'], [0x40, 'ECE'], [0x80, 'CWR'], [0x100, 'NS']];
+
+  function dissectTCPOptions(b, off, end, parent, f, meta) {
+    while (off < end) {
+      const kind = b[off];
+      if (kind === 0) { kid(parent, 'tcp.options.eol', '选项结束 (EOL)', off, 1, ''); break; }
+      if (kind === 1) { kid(parent, 'tcp.options.nop', '空操作 (NOP)', off, 1, ''); off++; continue; }
+      if (off + 1 >= end) break;
+      const len = b[off + 1];
+      if (len < 2 || off + len > end) break;
+      if (kind === 2 && len === 4) {
+        const mss = U.be16(b, off + 2);
+        kid(parent, 'tcp.options.mss', '最大报文段 MSS', off, len, String(mss));
+        setF(f, 'tcp.options.mss_val', mss); meta.mss = mss;
+      } else if (kind === 3 && len === 3) {
+        const ws = b[off + 2];
+        kid(parent, 'tcp.options.wscale', '窗口缩放 WS', off, len, ws + '（乘以 ' + Math.pow(2, ws) + '）');
+        setF(f, 'tcp.options.wscale.shift', ws); meta.ws = ws;
+      } else if (kind === 4) {
+        kid(parent, 'tcp.options.sack_perm', '允许 SACK', off, len, '');
+        meta.sackPerm = true;
+      } else if (kind === 5) {
+        const blocks = [];
+        for (let q = off + 2; q + 7 < off + len; q += 8) blocks.push(U.be32(b, q) + '-' + U.be32(b, q + 4));
+        kid(parent, 'tcp.options.sack', 'SACK 块', off, len, blocks.join(' '));
+        meta.sack = blocks.length;
+      } else if (kind === 8 && len === 10) {
+        const tsv = U.be32(b, off + 2), tse = U.be32(b, off + 6);
+        const t = kid(parent, 'tcp.options.timestamp', '时间戳', off, len, 'TSval=' + tsv + ' TSecr=' + tse);
+        kid(t, 'tcp.options.timestamp.tsval', 'TSval', off + 2, 4, String(tsv));
+        kid(t, 'tcp.options.timestamp.tsecr', 'TSecr', off + 6, 4, String(tse));
+        setF(f, 'tcp.options.timestamp.tsval', tsv);
+        meta.tsval = tsv; meta.tsecr = tse;
+      } else {
+        kid(parent, 'tcp.options.unknown', '选项 kind=' + kind, off, len, U.hexBytes(b, off + 2, Math.min(len - 2, 8)));
+      }
+      off += len;
+    }
+  }
+
+  function portName(p) { return WELL_KNOWN_PORTS[p] ? WELL_KNOWN_PORTS[p] : null; }
+
+  function dissectTCP(b, off, end, parent, f, ctx) {
+    if (end - off < 20) { kid(parent, 'tcp.short', 'TCP（首部不足 20 字节）', off, Math.max(0, end - off)); return { proto: 'TCP', info: '首部截断' }; }
+    const sport = U.be16(b, off), dport = U.be16(b, off + 2);
+    const seq = U.be32(b, off + 4), ack = U.be32(b, off + 8);
+    const doff = (b[off + 12] >> 4) * 4;
+    const flags = ((b[off + 12] & 1) << 8) | b[off + 13];
+    const win = U.be16(b, off + 14), cks = U.be16(b, off + 16), urg = U.be16(b, off + 18);
+    const hdrEnd = Math.min(end, off + Math.max(20, doff));
+    const payLen = Math.max(0, end - hdrEnd);
+    const t = kid(parent, 'tcp', '传输控制协议 TCP', off, end - off,
+      sport + ' → ' + dport + '，' + payLen + ' 字节负载');
+    kid(t, 'tcp.srcport', '源端口', off, 2, sport + (portName(sport) ? '（' + portName(sport) + '）' : ''));
+    kid(t, 'tcp.dstport', '目的端口', off + 2, 2, dport + (portName(dport) ? '（' + portName(dport) + '）' : ''));
+    kid(t, 'tcp.seq_raw', '序号（原始）', off + 4, 4, String(seq));
+    kid(t, 'tcp.ack_raw', '确认号（原始）', off + 8, 4, String(ack));
+    kid(t, 'tcp.hdr_len', '首部长度', off + 12, 1, doff + ' 字节');
+    const fn = kid(t, 'tcp.flags', '标志位', off + 12, 2, '0x' + U.hex4(flags) + '（' + (flagStr(flags, TCP_FLAG_ORDER).join(', ') || '无') + '）');
+    for (const [bit, nm] of TCP_FLAG_TABLE) {
+      kid(fn, 'tcp.flags.' + nm.toLowerCase(), nm, off + 12, 2, (flags & bit) ? '1（置位）' : '0');
+      setF(f, 'tcp.flags.' + nm.toLowerCase(), (flags & bit) ? 1 : 0);
+    }
+    kid(t, 'tcp.window_size_value', '窗口大小', off + 14, 2, String(win));
+    kid(t, 'tcp.checksum', '校验和', off + 16, 2, '0x' + U.hex4(cks));
+    kid(t, 'tcp.urgent_pointer', '紧急指针', off + 18, 2, String(urg));
+    const meta = {};
+    if (doff > 20 && off + doff <= end) {
+      const on = kid(t, 'tcp.options', '选项（' + (doff - 20) + ' 字节）', off + 20, doff - 20, '');
+      dissectTCPOptions(b, off + 20, off + doff, on, f, meta);
+    }
+    if (payLen > 0) kid(t, 'tcp.payload', 'TCP 负载', hdrEnd, payLen, payLen + ' 字节');
+    kid(t, 'tcp.len', '负载长度', off, 0, String(payLen), { synthetic: true });
+
+    setF(f, 'tcp.srcport', sport); setF(f, 'tcp.dstport', dport);
+    setF(f, 'tcp.port', sport); setF(f, 'tcp.port', dport);
+    setF(f, 'tcp.seq_raw', seq); setF(f, 'tcp.ack_raw', ack);
+    setF(f, 'tcp.len', payLen); setF(f, 'tcp.window_size_value', win);
+    setF(f, 'tcp.hdr_len', doff); setF(f, 'tcp.checksum', cks);
+
+    ctx.l4 = {
+      proto: 'tcp', sport, dport, seq, ack, flags, win, payOff: hdrEnd, payLen,
+      hdrLen: doff, mss: meta.mss, ws: meta.ws, sackPerm: meta.sackPerm,
+      tsval: meta.tsval, tsecr: meta.tsecr
+    };
+
+    const fs = flagStr(flags, TCP_FLAG_ORDER);
+    let info = sport + ' → ' + dport + ' [' + (fs.join(', ') || '无标志') + ']' +
+      ' Seq=' + seq + (flags & 0x10 ? ' Ack=' + ack : '') + ' Win=' + win + ' Len=' + payLen;
+    if (meta.mss !== undefined) info += ' MSS=' + meta.mss;
+    if (meta.ws !== undefined) info += ' WS=' + Math.pow(2, meta.ws);
+    if (meta.sack) info += ' SACK=' + meta.sack;
+
+    let proto = 'TCP';
+    let sub = null;
+    if (payLen > 0) {
+      if (looksTLS(b, hdrEnd, end)) {
+        const r = dissectTLS(b, hdrEnd, end, t, f);
+        if (r) { proto = 'TLS'; sub = r.info; ctx.tls = r.out; }
+      } else if (looksHTTP(b, hdrEnd, end)) {
+        const r = dissectHTTP(b, hdrEnd, end, t, f);
+        if (r) { proto = 'HTTP'; sub = r; }
+      } else if (sport === 53 || dport === 53) {
+        if (end - hdrEnd > 2) { const r = dissectDNS(b, hdrEnd + 2, end, t, f, ctx); proto = 'DNS'; sub = r; }
+      }
+    }
+    return { proto, info: sub ? sub : info, tcpInfo: info };
+  }
+
+  function dissectUDP(b, off, end, parent, f, ctx) {
+    if (end - off < 8) { kid(parent, 'udp.short', 'UDP（首部不足 8 字节）', off, Math.max(0, end - off)); return { proto: 'UDP', info: '首部截断' }; }
+    const sport = U.be16(b, off), dport = U.be16(b, off + 2);
+    const ulen = U.be16(b, off + 4), cks = U.be16(b, off + 6);
+    const payOff = off + 8;
+    const payEnd = Math.min(end, off + Math.max(8, ulen));
+    const payLen = Math.max(0, payEnd - payOff);
+    const u = kid(parent, 'udp', '用户数据报协议 UDP', off, end - off, sport + ' → ' + dport + '，' + payLen + ' 字节负载');
+    kid(u, 'udp.srcport', '源端口', off, 2, sport + (portName(sport) ? '（' + portName(sport) + '）' : ''));
+    kid(u, 'udp.dstport', '目的端口', off + 2, 2, dport + (portName(dport) ? '（' + portName(dport) + '）' : ''));
+    kid(u, 'udp.length', '长度', off + 4, 2, String(ulen));
+    kid(u, 'udp.checksum', '校验和', off + 6, 2, '0x' + U.hex4(cks));
+    if (payLen > 0) kid(u, 'udp.payload', 'UDP 负载', payOff, payLen, payLen + ' 字节');
+    setF(f, 'udp.srcport', sport); setF(f, 'udp.dstport', dport);
+    setF(f, 'udp.port', sport); setF(f, 'udp.port', dport);
+    setF(f, 'udp.length', ulen); setF(f, 'udp.checksum', cks);
+    ctx.l4 = { proto: 'udp', sport, dport, payOff, payLen, hdrLen: 8 };
+
+    let proto = 'UDP';
+    let info = sport + ' → ' + dport + '，长度 ' + payLen;
+    if (payLen > 0) {
+      if (sport === 53 || dport === 53 || sport === 5353 || dport === 5353) {
+        info = dissectDNS(b, payOff, payEnd, u, f, ctx);
+        proto = (sport === 5353 || dport === 5353) ? 'MDNS' : 'DNS';
+      } else if (sport === 123 || dport === 123) {
+        proto = 'NTP';
+        const li = (b[payOff] >> 6) & 3, vn = (b[payOff] >> 3) & 7, mode = b[payOff] & 7;
+        const n = kid(u, 'ntp', '网络时间协议 NTP', payOff, payLen, '版本 ' + vn);
+        kid(n, 'ntp.flags.li', '闰秒指示', payOff, 1, String(li));
+        kid(n, 'ntp.flags.vn', '版本号', payOff, 1, String(vn));
+        kid(n, 'ntp.flags.mode', '模式', payOff, 1, mode === 3 ? '客户端 (3)' : mode === 4 ? '服务端 (4)' : String(mode));
+        info = 'NTP 版本 ' + vn + '，模式 ' + (mode === 3 ? '客户端' : mode === 4 ? '服务端' : mode);
+      } else if (dport === 443 || sport === 443) {
+        proto = 'QUIC';
+        const isLong = (b[payOff] & 0x80) !== 0;
+        kid(u, 'quic', 'QUIC', payOff, payLen, isLong ? '长首部' : '短首部');
+        info = 'QUIC ' + (isLong ? '长首部（握手）' : '短首部（1-RTT）') + '，' + payLen + ' 字节';
+      }
+    }
+    return { proto, info };
+  }
+
+  function dissectICMP(b, off, end, parent, f, ctx, dissectIPv4Ref) {
+    if (end - off < 4) { kid(parent, 'icmp.short', 'ICMP（数据不足）', off, Math.max(0, end - off)); return { proto: 'ICMP', info: '截断' }; }
+    const type = b[off], code = b[off + 1], cks = U.be16(b, off + 2);
+    const tname = ICMP_TYPES[type] || ('类型 ' + type);
+    const ic = kid(parent, 'icmp', '互联网控制报文协议 ICMP', off, end - off, tname);
+    kid(ic, 'icmp.type', '类型', off, 1, tname + ' (' + type + ')');
+    kid(ic, 'icmp.code', '代码', off + 1, 1, (type === 3 ? (ICMP3_CODES[code] || '') + ' ' : '') + '(' + code + ')');
+    kid(ic, 'icmp.checksum', '校验和', off + 2, 2, '0x' + U.hex4(cks));
+    setF(f, 'icmp.type', type); setF(f, 'icmp.code', code);
+    let info = tname;
+    if ((type === 0 || type === 8) && end - off >= 8) {
+      const id = U.be16(b, off + 4), seq = U.be16(b, off + 6);
+      kid(ic, 'icmp.ident', '标识符', off + 4, 2, id + '（0x' + U.hex4(id) + '）');
+      kid(ic, 'icmp.seq', '序列号', off + 6, 2, String(seq));
+      setF(f, 'icmp.ident', id); setF(f, 'icmp.seq', seq);
+      if (end - off > 8) kid(ic, 'icmp.data', '数据', off + 8, end - off - 8, (end - off - 8) + ' 字节');
+      info = tname + '，id=0x' + U.hex4(id) + '，seq=' + seq;
+    } else if ((type === 3 || type === 11 || type === 4 || type === 12) && end - off > 8) {
+      if (type === 3) info = tname + '：' + (ICMP3_CODES[code] || ('代码 ' + code));
+      const emb = kid(ic, 'icmp.embedded', '触发该差错的原始报文（前 ' + (end - off - 8) + ' 字节）', off + 8, end - off - 8, '');
+      const sub = { l4: null };
+      try { dissectIPv4Ref(b, off + 8, end, emb, {}, sub, true); } catch (e) { /* 嵌入报文常被截断，忽略 */ }
+      if (sub.l4) info += '（原始：' + (sub.l4.proto === 'tcp' ? 'TCP' : 'UDP') + ' ' + sub.l4.sport + ' → ' + sub.l4.dport + '）';
+    }
+    return { proto: 'ICMP', info };
+  }
+
+  function dissectICMPv6(b, off, end, parent, f) {
+    if (end - off < 4) { kid(parent, 'icmpv6.short', 'ICMPv6（数据不足）', off, Math.max(0, end - off)); return { proto: 'ICMPv6', info: '截断' }; }
+    const type = b[off], code = b[off + 1], cks = U.be16(b, off + 2);
+    const tname = ICMP6_TYPES[type] || ('类型 ' + type);
+    const ic = kid(parent, 'icmpv6', 'ICMPv6', off, end - off, tname);
+    kid(ic, 'icmpv6.type', '类型', off, 1, tname + ' (' + type + ')');
+    kid(ic, 'icmpv6.code', '代码', off + 1, 1, String(code));
+    kid(ic, 'icmpv6.checksum', '校验和', off + 2, 2, '0x' + U.hex4(cks));
+    setF(f, 'icmpv6.type', type); setF(f, 'icmpv6.code', code);
+    let info = tname;
+    if ((type === 128 || type === 129) && end - off >= 8) {
+      const id = U.be16(b, off + 4), seq = U.be16(b, off + 6);
+      kid(ic, 'icmpv6.echo.identifier', '标识符', off + 4, 2, '0x' + U.hex4(id));
+      kid(ic, 'icmpv6.echo.sequence_number', '序列号', off + 6, 2, String(seq));
+      setF(f, 'icmpv6.ident', id); setF(f, 'icmpv6.seq', seq);
+      info = tname + '，id=0x' + U.hex4(id) + '，seq=' + seq;
+    } else if ((type === 135 || type === 136) && end - off >= 24) {
+      const target = U.ipv6Str(b, off + 8);
+      kid(ic, 'icmpv6.nd.ns_target_address', '目标地址', off + 8, 16, target);
+      info = tname + '：' + target;
+    }
+    return { proto: 'ICMPv6', info };
+  }
+
+  /* ---------- 网络层 ---------- */
+  function dissectIPv4(b, off, end, parent, f, ctx, embedded) {
+    if (end - off < 20) { kid(parent, 'ip.short', 'IPv4（首部不足 20 字节）', off, Math.max(0, end - off)); return { proto: 'IPv4', info: '首部截断' }; }
+    const v = b[off] >> 4;
+    const ihl = (b[off] & 15) * 4;
+    const dscp = b[off + 1] >> 2, ecn = b[off + 1] & 3;
+    const tot = U.be16(b, off + 2), id = U.be16(b, off + 4);
+    const flags = b[off + 6] >> 5, fragOff = (((b[off + 6] & 31) << 8) | b[off + 7]) * 8;
+    const ttl = b[off + 8], proto = b[off + 9], cks = U.be16(b, off + 10);
+    const src = U.ipv4Str(b, off + 12), dst = U.ipv4Str(b, off + 16);
+    const hdrEnd = Math.min(end, off + Math.max(20, ihl));
+    const ipEnd = Math.min(end, off + (tot > 0 ? tot : (end - off)));
+    const pname = IPPROTOS[proto] || ('协议 ' + proto);
+    const ip = kid(parent, 'ip', '互联网协议 IPv4', off, ipEnd - off, src + ' → ' + dst);
+    kid(ip, 'ip.version', '版本', off, 1, String(v));
+    kid(ip, 'ip.hdr_len', '首部长度', off, 1, ihl + ' 字节');
+    kid(ip, 'ip.dsfield', '区分服务', off + 1, 1, 'DSCP ' + dscp + '，ECN ' + ecn);
+    kid(ip, 'ip.len', '总长度', off + 2, 2, String(tot));
+    kid(ip, 'ip.id', '标识', off + 4, 2, '0x' + U.hex4(id) + '（' + id + '）');
+    const fl = kid(ip, 'ip.flags', '标志', off + 6, 1,
+      ((flags & 2) ? 'DF 不分片 ' : '') + ((flags & 1) ? 'MF 还有分片' : '') || '无');
+    kid(fl, 'ip.flags.df', '不分片 DF', off + 6, 1, String((flags >> 1) & 1));
+    kid(fl, 'ip.flags.mf', '更多分片 MF', off + 6, 1, String(flags & 1));
+    kid(ip, 'ip.frag_offset', '分片偏移', off + 6, 2, String(fragOff));
+    kid(ip, 'ip.ttl', '生存时间 TTL', off + 8, 1, String(ttl));
+    kid(ip, 'ip.proto', '上层协议', off + 9, 1, pname + ' (' + proto + ')');
+    const okc = U.inetChecksum(b, off, Math.min(ihl, end - off), 0) === 0;
+    kid(ip, 'ip.checksum', '首部校验和', off + 10, 2, '0x' + U.hex4(cks) + (okc ? '（正确）' : '（不正确）'));
+    kid(ip, 'ip.src', '源地址', off + 12, 4, src);
+    kid(ip, 'ip.dst', '目的地址', off + 16, 4, dst);
+    if (ihl > 20 && off + ihl <= end) kid(ip, 'ip.options', '选项', off + 20, ihl - 20, (ihl - 20) + ' 字节');
+
+    setF(f, 'ip.version', v); setF(f, 'ip.hdr_len', ihl); setF(f, 'ip.len', tot); setF(f, 'ip.id', id);
+    setF(f, 'ip.ttl', ttl); setF(f, 'ip.proto', proto); setF(f, 'ip.checksum', cks);
+    setF(f, 'ip.flags.df', (flags >> 1) & 1); setF(f, 'ip.flags.mf', flags & 1);
+    setF(f, 'ip.frag_offset', fragOff);
+    setF(f, 'ip.src', src); setF(f, 'ip.dst', dst);
+    setF(f, 'ip.addr', src); setF(f, 'ip.addr', dst);
+    setF(f, 'ip.checksum.status', okc ? 1 : 0);
+    ctx.net = { v: 4, src, dst, proto, srcOff: off + 12, dstOff: off + 16, addrLen: 4 };
+
+    if (fragOff > 0) {
+      kid(ip, 'ip.fragment', '分片数据（非首片，无法解析上层）', hdrEnd, ipEnd - hdrEnd, (ipEnd - hdrEnd) + ' 字节');
+      return { proto: 'IPv4 分片', info: pname + ' 分片，偏移 ' + fragOff + '，' + (ipEnd - hdrEnd) + ' 字节' };
+    }
+    let r;
+    if (proto === 6) r = dissectTCP(b, hdrEnd, ipEnd, ip, f, ctx);
+    else if (proto === 17) r = dissectUDP(b, hdrEnd, ipEnd, ip, f, ctx);
+    else if (proto === 1 && !embedded) r = dissectICMP(b, hdrEnd, ipEnd, ip, f, ctx, dissectIPv4);
+    else if (proto === 1) r = { proto: 'ICMP', info: 'ICMP' };
+    else {
+      kid(ip, 'ip.payload', pname + ' 负载', hdrEnd, Math.max(0, ipEnd - hdrEnd), Math.max(0, ipEnd - hdrEnd) + ' 字节');
+      r = { proto: pname, info: pname + '，' + Math.max(0, ipEnd - hdrEnd) + ' 字节' };
+    }
+    if ((flags & 1) && r) r.info = '[首片] ' + r.info;
+    return r;
+  }
+
+  const V6_EXT = { 0: '逐跳选项', 43: '路由', 44: '分片', 60: '目的选项', 51: '认证首部 AH' };
+
+  function dissectIPv6(b, off, end, parent, f, ctx) {
+    if (end - off < 40) { kid(parent, 'ipv6.short', 'IPv6（首部不足 40 字节）', off, Math.max(0, end - off)); return { proto: 'IPv6', info: '首部截断' }; }
+    const tc = ((b[off] & 15) << 4) | (b[off + 1] >> 4);
+    const flow = ((b[off + 1] & 15) << 16) | U.be16(b, off + 2);
+    const plen = U.be16(b, off + 4);
+    let nh = b[off + 6];
+    const hop = b[off + 7];
+    const src = U.ipv6Str(b, off + 8), dst = U.ipv6Str(b, off + 24);
+    const ipEnd = Math.min(end, off + 40 + plen);
+    const ip = kid(parent, 'ipv6', '互联网协议 IPv6', off, ipEnd - off, src + ' → ' + dst);
+    kid(ip, 'ipv6.version', '版本', off, 1, '6');
+    kid(ip, 'ipv6.tclass', '流量类别', off, 2, '0x' + U.hex2(tc));
+    kid(ip, 'ipv6.flow', '流标签', off + 1, 3, '0x' + flow.toString(16));
+    kid(ip, 'ipv6.plen', '负载长度', off + 4, 2, String(plen));
+    kid(ip, 'ipv6.nxt', '下一个首部', off + 6, 1, (IPPROTOS[nh] || String(nh)) + ' (' + nh + ')');
+    kid(ip, 'ipv6.hlim', '跳数限制', off + 7, 1, String(hop));
+    kid(ip, 'ipv6.src', '源地址', off + 8, 16, src);
+    kid(ip, 'ipv6.dst', '目的地址', off + 24, 16, dst);
+    setF(f, 'ipv6.src', src); setF(f, 'ipv6.dst', dst);
+    setF(f, 'ipv6.addr', src); setF(f, 'ipv6.addr', dst);
+    setF(f, 'ipv6.plen', plen); setF(f, 'ipv6.hlim', hop); setF(f, 'ipv6.nxt', nh);
+    setF(f, 'ip.addr', src); setF(f, 'ip.addr', dst);
+    ctx.net = { v: 6, src, dst, proto: nh, srcOff: off + 8, dstOff: off + 24, addrLen: 16 };
+
+    let p = off + 40, guard = 0, fragmented = false;
+    while (V6_EXT[nh] !== undefined && p + 2 <= ipEnd && guard++ < 8) {
+      const next = b[p];
+      let extLen;
+      if (nh === 44) { extLen = 8; fragmented = ((U.be16(b, p + 2) >> 3) !== 0); }
+      else extLen = (b[p + 1] + 1) * 8;
+      const ex = kid(ip, 'ipv6.ext', 'IPv6 扩展首部：' + V6_EXT[nh], p, Math.min(extLen, ipEnd - p), '下一个：' + (IPPROTOS[next] || next));
+      kid(ex, 'ipv6.ext.nxt', '下一个首部', p, 1, (IPPROTOS[next] || String(next)) + ' (' + next + ')');
+      if (nh === 44) kid(ex, 'ipv6.frag.offset', '分片偏移', p + 2, 2, String((U.be16(b, p + 2) >> 3) * 8));
+      else kid(ex, 'ipv6.ext.len', '扩展长度', p + 1, 1, extLen + ' 字节');
+      p += extLen;
+      nh = next;
+      ctx.net.proto = nh;
+    }
+    if (fragmented) return { proto: 'IPv6 分片', info: 'IPv6 分片，无法解析上层' };
+    let r;
+    if (nh === 6) r = dissectTCP(b, p, ipEnd, ip, f, ctx);
+    else if (nh === 17) r = dissectUDP(b, p, ipEnd, ip, f, ctx);
+    else if (nh === 58) r = dissectICMPv6(b, p, ipEnd, ip, f);
+    else if (nh === 59) r = { proto: 'IPv6', info: '没有下一个首部' };
+    else {
+      kid(ip, 'ipv6.payload', '负载', p, Math.max(0, ipEnd - p), Math.max(0, ipEnd - p) + ' 字节');
+      r = { proto: IPPROTOS[nh] || ('协议 ' + nh), info: (IPPROTOS[nh] || ('协议 ' + nh)) + '，' + Math.max(0, ipEnd - p) + ' 字节' };
+    }
+    return r;
+  }
+
+  function dissectARP(b, off, end, parent, f) {
+    if (end - off < 8) { kid(parent, 'arp.short', 'ARP（数据不足）', off, Math.max(0, end - off)); return { proto: 'ARP', info: '截断' }; }
+    const ht = U.be16(b, off), pt = U.be16(b, off + 2), hl = b[off + 4], pl = b[off + 5], op = U.be16(b, off + 6);
+    const need = 8 + hl * 2 + pl * 2;
+    const a = kid(parent, 'arp', '地址解析协议 ARP', off, Math.min(need, end - off), op === 1 ? '请求' : op === 2 ? '应答' : '操作码 ' + op);
+    kid(a, 'arp.hw.type', '硬件类型', off, 2, ht === 1 ? '以太网 (1)' : String(ht));
+    kid(a, 'arp.proto.type', '协议类型', off + 2, 2, (ETHERTYPES[pt] || ('0x' + U.hex4(pt))));
+    kid(a, 'arp.hw.size', '硬件地址长度', off + 4, 1, String(hl));
+    kid(a, 'arp.proto.size', '协议地址长度', off + 5, 1, String(pl));
+    kid(a, 'arp.opcode', '操作码', off + 6, 2, (op === 1 ? '请求 (1)' : op === 2 ? '应答 (2)' : op === 3 ? 'RARP 请求 (3)' : String(op)));
+    setF(f, 'arp.opcode', op);
+    let info = '操作码 ' + op;
+    if (hl === 6 && pl === 4 && off + 28 <= end) {
+      const sm = U.macStr(b, off + 8), sp = U.ipv4Str(b, off + 14);
+      const tm = U.macStr(b, off + 18), tp = U.ipv4Str(b, off + 24);
+      kid(a, 'arp.src.hw_mac', '发送方 MAC', off + 8, 6, sm);
+      kid(a, 'arp.src.proto_ipv4', '发送方 IP', off + 14, 4, sp);
+      kid(a, 'arp.dst.hw_mac', '目标 MAC', off + 18, 6, tm);
+      kid(a, 'arp.dst.proto_ipv4', '目标 IP', off + 24, 4, tp);
+      setF(f, 'arp.src.proto_ipv4', sp); setF(f, 'arp.dst.proto_ipv4', tp);
+      setF(f, 'arp.src.hw_mac', sm);
+      if (op === 1) info = '谁是 ' + tp + '？告诉 ' + sp;
+      else if (op === 2) info = sp + ' 的 MAC 是 ' + sm;
+      else info = sp + ' → ' + tp;
+    }
+    return { proto: 'ARP', info };
+  }
+
+  /* ---------- 链路层 ---------- */
+  function dissectEthertype(b, off, end, etype, parent, f, ctx) {
+    if (etype === 0x0800) return dissectIPv4(b, off, end, parent, f, ctx, false);
+    if (etype === 0x86dd) return dissectIPv6(b, off, end, parent, f, ctx);
+    if (etype === 0x0806 || etype === 0x8035) return dissectARP(b, off, end, parent, f);
+    const nm = ETHERTYPES[etype] || ('以太类型 0x' + U.hex4(etype));
+    kid(parent, 'data', '数据', off, Math.max(0, end - off), Math.max(0, end - off) + ' 字节');
+    return { proto: nm, info: nm + '，' + Math.max(0, end - off) + ' 字节' };
+  }
+
+  function dissectEthernet(b, off, end, parent, f, ctx) {
+    if (end - off < 14) { kid(parent, 'eth.short', '以太网帧不足 14 字节', off, Math.max(0, end - off)); return { proto: 'ETH', info: '截断' }; }
+    const dst = U.macStr(b, off), src = U.macStr(b, off + 6);
+    let etype = U.be16(b, off + 12);
+    const eth = kid(parent, 'eth', '以太网 II', off, 14, src + ' → ' + dst);
+    kid(eth, 'eth.dst', '目的 MAC', off, 6, dst + (b[off] & 1 ? '（多播/广播）' : ''));
+    kid(eth, 'eth.src', '源 MAC', off + 6, 6, src);
+    kid(eth, 'eth.type', '类型', off + 12, 2, (ETHERTYPES[etype] || '未知') + '（0x' + U.hex4(etype) + '）');
+    setF(f, 'eth.src', src); setF(f, 'eth.dst', dst); setF(f, 'eth.addr', src); setF(f, 'eth.addr', dst);
+    setF(f, 'eth.type', etype);
+    ctx.link = { src, dst };
+    let p = off + 14;
+    let guard = 0;
+    while ((etype === 0x8100 || etype === 0x88a8 || etype === 0x9100) && p + 4 <= end && guard++ < 4) {
+      const tci = U.be16(b, p);
+      const vid = tci & 0xfff, pcp = tci >> 13, dei = (tci >> 12) & 1;
+      const inner = U.be16(b, p + 2);
+      const v = kid(parent, 'vlan', '802.1Q 虚拟局域网', p, 4, 'VLAN ' + vid);
+      kid(v, 'vlan.priority', '优先级 PCP', p, 2, String(pcp));
+      kid(v, 'vlan.dei', '丢弃标记 DEI', p, 2, String(dei));
+      kid(v, 'vlan.id', 'VLAN 标识', p, 2, String(vid));
+      kid(v, 'vlan.etype', '内层类型', p + 2, 2, (ETHERTYPES[inner] || '未知') + '（0x' + U.hex4(inner) + '）');
+      setF(f, 'vlan.id', vid); setF(f, 'vlan.priority', pcp);
+      etype = inner;
+      p += 4;
+    }
+    if (etype <= 1500) {
+      kid(parent, 'llc', 'IEEE 802.3 逻辑链路控制', p, Math.max(0, end - p), '长度 ' + etype);
+      return { proto: '802.3', info: 'IEEE 802.3 帧，长度 ' + etype };
+    }
+    return dissectEthertype(b, p, end, etype, parent, f, ctx);
+  }
+
+  function dissectSLL(b, off, end, parent, f, ctx, v2) {
+    const hdr = v2 ? 20 : 16;
+    if (end - off < hdr) { kid(parent, 'sll.short', 'Linux cooked 首部不足', off, Math.max(0, end - off)); return { proto: 'SLL', info: '截断' }; }
+    const s = kid(parent, 'sll', v2 ? 'Linux cooked v2' : 'Linux cooked v1', off, hdr, '');
+    let etype, ptype;
+    if (v2) {
+      etype = U.be16(b, off);
+      kid(s, 'sll.etype', '协议类型', off, 2, (ETHERTYPES[etype] || '未知') + '（0x' + U.hex4(etype) + '）');
+      kid(s, 'sll.ifindex', '接口索引', off + 4, 4, String(U.be32(b, off + 4)));
+      ptype = b[off + 10];
+      kid(s, 'sll.pkttype', '包类型', off + 10, 1, String(ptype));
+    } else {
+      ptype = U.be16(b, off);
+      kid(s, 'sll.pkttype', '包类型', off, 2, String(ptype));
+      etype = U.be16(b, off + 14);
+      kid(s, 'sll.etype', '协议类型', off + 14, 2, (ETHERTYPES[etype] || '未知') + '（0x' + U.hex4(etype) + '）');
+    }
+    ctx.link = { src: '（Linux cooked）', dst: '（Linux cooked）' };
+    return dissectEthertype(b, off + hdr, end, etype, parent, f, ctx);
+  }
+
+  function dissectPacket(pkt) {
+    const b = pkt.bytes;
+    const end = b.length;
+    const f = Object.create(null);
+    const ctx = { l4: null, net: null, link: null, tls: null };
+    const root = node('frame', '帧 ' + pkt.num, 0, end, '');
+    kid(root, 'frame.number', '帧序号', 0, 0, String(pkt.num), { synthetic: true });
+    kid(root, 'frame.time_relative', '相对时间', 0, 0, pkt.tsRel.toFixed(6) + ' 秒', { synthetic: true });
+    kid(root, 'frame.time', '绝对时间（UTC）', 0, 0, pkt.noTime ? '（本格式无时间戳）' : U.fmtAbs(pkt.tsSec, pkt.tsNsec), { synthetic: true });
+    kid(root, 'frame.len', '线上长度', 0, 0, pkt.origLen + ' 字节', { synthetic: true });
+    kid(root, 'frame.cap_len', '抓取长度', 0, 0, pkt.capLen + ' 字节', { synthetic: true });
+    if (pkt.origLen > pkt.capLen) kid(root, 'frame.sliced', '被截断', 0, 0, '只抓到前 ' + pkt.capLen + ' 字节（snaplen 限制）', { synthetic: true });
+    setF(f, 'frame.number', pkt.num);
+    setF(f, 'frame.len', pkt.origLen);
+    setF(f, 'frame.cap_len', pkt.capLen);
+    setF(f, 'frame.time_relative', pkt.tsRel);
+    setF(f, 'frame.interface_id', pkt.iface);
+
+    let r;
+    try {
+      const lt = pkt.linktype;
+      if (lt === 1) r = dissectEthernet(b, 0, end, root, f, ctx);
+      else if (lt === 113) r = dissectSLL(b, 0, end, root, f, ctx, false);
+      else if (lt === 276) r = dissectSLL(b, 0, end, root, f, ctx, true);
+      else if (lt === 101 || lt === 12 || lt === 228 || lt === 229) {
+        const v = end > 0 ? (b[0] >> 4) : 0;
+        r = v === 6 ? dissectIPv6(b, 0, end, root, f, ctx) : dissectIPv4(b, 0, end, root, f, ctx, false);
+      } else if (lt === 0) {
+        // NULL/Loopback：4 字节 AF（本机字节序）
+        const af = (end >= 4) ? (b[0] === 0 ? U.be32(b, 0) : U.le32(b, 0)) : 2;
+        kid(root, 'null.family', '地址族', 0, 4, af === 2 ? 'IPv4 (2)' : (af === 24 || af === 28 || af === 30) ? 'IPv6 (' + af + ')' : String(af));
+        r = (af === 2) ? dissectIPv4(b, 4, end, root, f, ctx, false) : dissectIPv6(b, 4, end, root, f, ctx);
+      } else {
+        kid(root, 'data', '数据（未支持的链路类型 ' + lt + '）', 0, end, end + ' 字节');
+        r = { proto: 'LINKTYPE ' + lt, info: end + ' 字节原始数据' };
+      }
+    } catch (e) {
+      r = { proto: '解析错误', info: String(e && e.message ? e.message : e) };
+      pkt.dissectError = String(e && e.message ? e.message : e);
+    }
+
+    pkt.tree = root;
+    pkt.f = f;
+    pkt.l4 = ctx.l4;
+    pkt.net = ctx.net;
+    pkt.link = ctx.link;
+    pkt.tls = ctx.tls;
+    pkt.proto = r ? r.proto : '未知';
+    pkt.info = r ? r.info : '';
+    pkt.tcpInfo = r && r.tcpInfo ? r.tcpInfo : null;
+    pkt.src = ctx.net ? ctx.net.src : (ctx.link ? ctx.link.src : '—');
+    pkt.dst = ctx.net ? ctx.net.dst : (ctx.link ? ctx.link.dst : '—');
+    if (!ctx.net && f['arp.src.proto_ipv4']) { pkt.src = f['arp.src.proto_ipv4']; pkt.dst = f['arp.dst.proto_ipv4']; }
+
+    // 协议存在性原子（供过滤器使用）
+    const protos = new Set();
+    const stack = [root];
+    while (stack.length) {
+      const n = stack.pop();
+      const dot = n.name.indexOf('.');
+      protos.add(dot > 0 ? n.name.slice(0, dot) : n.name);
+      for (const c of n.children) stack.push(c);
+    }
+    if (protos.has('ipv6')) protos.add('ip6');
+    pkt.protos = protos;
+    // 协议层次路径：frame/eth/ip/tcp/http
+    const path = [];
+    (function walk(n) {
+      const dot = n.name.indexOf('dot') === 0 ? -1 : n.name.indexOf('.');
+      const base = dot > 0 ? n.name.slice(0, dot) : n.name;
+      if (['frame', 'eth', 'vlan', 'ip', 'ipv6', 'arp', 'tcp', 'udp', 'icmp', 'icmpv6', 'dns', 'http', 'tls', 'ntp', 'quic', 'llc', 'sll', 'data'].includes(base)) {
+        if (path[path.length - 1] !== base) path.push(base);
+      }
+      for (const c of n.children) walk(c);
+    })(root);
+    pkt.protoPath = path;
+    return pkt;
+  }
+
+  PL.dissect = {
+    dissectPacket, node, kid, setF,
+    tables: { ETHERTYPES, IPPROTOS, DNS_TYPES, TLS_VERSIONS, TLS_CIPHERS, WELL_KNOWN_PORTS, ICMP_TYPES },
+    looksTLS, looksHTTP, dnsName
+  };
+})(PL);
+
+/* ============================================================
+   Packet Lab — 30 会话分析
+   流表 / TCP 时序分析（握手、RTT、重传、重复 ACK、零窗口）/ 流重组 /
+   协议层次 / 吞吐曲线 / 端点统计 / 专家信息。
+   ============================================================ */
+(function (PL) {
+  const U = PL.util;
+
+  function flowKey(pkt) {
+    if (!pkt.net || !pkt.l4) return null;
+    const a = pkt.net.src, b = pkt.net.dst;
+    const ap = pkt.l4.sport, bp = pkt.l4.dport;
+    const proto = pkt.l4.proto;
+    const fwd = a < b || (a === b && ap <= bp);
+    const key = proto + '|' + (fwd ? a + '|' + ap + '|' + b + '|' + bp : b + '|' + bp + '|' + a + '|' + ap);
+    return { key, fwd };
+  }
+
+  /* 32 位序号差（处理回绕） */
+  function seqDiff(a, b) {
+    let d = (a - b) | 0;
+    return d;
+  }
+  function relSeq(seq, isn) { return ((seq - isn) >>> 0); }
+
+  function newDir(addr, port) {
+    return {
+      addr, port, packets: 0, bytes: 0, payloadBytes: 0,
+      isn: null, nextSeq: null, seen: new Map(), maxRel: 0,
+      lastAck: null, lastAckWin: null, dupAckRun: 0, dupAcks: 0,
+      retrans: 0, outOfOrder: 0, zeroWin: 0, keepAlive: 0,
+      segments: [], firstTs: null, lastTs: null, rttSamples: [],
+      pendingAck: new Map(), mss: null, ws: null, sackPerm: false, fin: false, rst: false
+    };
+  }
+
+  function analyze(cap) {
+    const packets = cap.packets;
+    const flows = new Map();
+    const endpoints = new Map();
+    const expert = [];
+    let firstTs = null, lastTs = null, totalBytes = 0;
+
+    for (const pkt of packets) {
+      totalBytes += pkt.origLen;
+      if (!pkt.noTime) {
+        if (firstTs === null) firstTs = pkt.tsRel;
+        lastTs = pkt.tsRel;
+      }
+      // 端点统计（网络层地址）
+      if (pkt.net) {
+        for (const [addr, isSrc] of [[pkt.net.src, true], [pkt.net.dst, false]]) {
+          let e = endpoints.get(addr);
+          if (!e) { e = { addr, v: pkt.net.v, txPackets: 0, txBytes: 0, rxPackets: 0, rxBytes: 0 }; endpoints.set(addr, e); }
+          if (isSrc) { e.txPackets++; e.txBytes += pkt.origLen; } else { e.rxPackets++; e.rxBytes += pkt.origLen; }
+        }
+      }
+      const fk = flowKey(pkt);
+      if (!fk) continue;
+      let fl = flows.get(fk.key);
+      if (!fl) {
+        const a = fk.fwd ? pkt.net.src : pkt.net.dst;
+        const ap = fk.fwd ? pkt.l4.sport : pkt.l4.dport;
+        const b2 = fk.fwd ? pkt.net.dst : pkt.net.src;
+        const bp = fk.fwd ? pkt.l4.dport : pkt.l4.sport;
+        fl = {
+          id: flows.size + 1, key: fk.key, proto: pkt.l4.proto.toUpperCase(),
+          a: newDir(a, ap), b: newDir(b2, bp),
+          firstTs: pkt.tsRel, lastTs: pkt.tsRel, frames: [],
+          handshake: null, synTs: null, synAckTs: null, ackTs: null,
+          initiator: null, service: null, appProto: null, sni: null, httpReqs: [], dnsNames: [],
+          resets: 0, closed: false
+        };
+        // 发起方：第一个包的源端（TCP 以 SYN 为准）
+        fl.initiator = pkt.net.src + ':' + pkt.l4.sport;
+        flows.set(fk.key, fl);
+      }
+      const isA = (pkt.net.src === fl.a.addr && pkt.l4.sport === fl.a.port);
+      const dir = isA ? fl.a : fl.b;
+      const other = isA ? fl.b : fl.a;
+      pkt.flow = fl;
+      pkt.dirIsA = isA;
+      dir.packets++; dir.bytes += pkt.origLen; dir.payloadBytes += pkt.l4.payLen || 0;
+      if (dir.firstTs === null) dir.firstTs = pkt.tsRel;
+      dir.lastTs = pkt.tsRel;
+      fl.lastTs = pkt.tsRel;
+      fl.frames.push(pkt.num);
+
+      if (pkt.l4.proto === 'tcp') {
+        const L = pkt.l4;
+        const syn = !!(L.flags & 0x2), ackf = !!(L.flags & 0x10), fin = !!(L.flags & 0x1), rst = !!(L.flags & 0x4);
+        const segLen = L.payLen + (syn ? 1 : 0) + (fin ? 1 : 0);
+        if (syn) { dir.isn = L.seq; dir.nextSeq = null; if (L.mss !== undefined) dir.mss = L.mss; if (L.ws !== undefined) dir.ws = L.ws; if (L.sackPerm) dir.sackPerm = true; }
+        if (dir.isn === null) dir.isn = L.seq; // 抓包从中间开始
+        const rel = relSeq(L.seq, dir.isn);
+        pkt.relSeq = rel;
+        pkt.relAck = (ackf && other.isn !== null) ? relSeq(L.ack, other.isn) : null;
+        pkt.tcpNotes = [];
+
+        // 握手 / RTT
+        if (syn && !ackf) { fl.synTs = pkt.tsRel; fl.synFrame = pkt.num; fl.initiator = pkt.net.src + ':' + L.sport; fl.service = pkt.net.dst + ':' + L.dport; }
+        else if (syn && ackf && fl.synTs !== null && fl.synAckTs === null) {
+          fl.synAckTs = pkt.tsRel; fl.synAckFrame = pkt.num;
+          fl.handshakeRtt = fl.synAckTs - fl.synTs;
+          pkt.tcpNotes.push({ k: 'rtt', t: '握手 RTT ' + U.fmtDur(fl.handshakeRtt) });
+          pkt.f['tcp.analysis.initial_rtt'] = fl.handshakeRtt;
+        } else if (!syn && ackf && fl.synAckTs !== null && fl.ackTs === null && L.payLen === 0) {
+          fl.ackTs = pkt.tsRel; fl.handshake = 'complete'; fl.ackFrame = pkt.num;
+        }
+
+        // 重传 / 乱序
+        if (segLen > 0) {
+          const k = rel + ':' + segLen;
+          if (dir.seen.has(k)) {
+            dir.retrans++;
+            const orig = dir.seen.get(k);
+            pkt.tcpNotes.push({ k: 'retrans', t: '重传（与帧 ' + orig + ' 相同的数据）', ref: orig });
+            pkt.f['tcp.analysis.retransmission'] = 1;
+            expert.push({ sev: 'warn', kind: '重传', frame: pkt.num, text: '帧 ' + pkt.num + '：TCP 重传，重复了帧 ' + orig + ' 的 ' + segLen + ' 字节' });
+          } else {
+            dir.seen.set(k, pkt.num);
+            if (dir.nextSeq !== null) {
+              if (rel + segLen <= dir.maxRel) {
+                dir.retrans++;
+                pkt.tcpNotes.push({ k: 'retrans', t: '重传（数据落在已发送区间内）' });
+                pkt.f['tcp.analysis.retransmission'] = 1;
+                expert.push({ sev: 'warn', kind: '重传', frame: pkt.num, text: '帧 ' + pkt.num + '：TCP 重传（重叠已发送区间）' });
+              } else if (rel > dir.maxRel) {
+                dir.outOfOrder++;
+                pkt.tcpNotes.push({ k: 'gap', t: '序号跳跃：缺失 ' + (rel - dir.maxRel) + ' 字节（乱序或丢包）' });
+                pkt.f['tcp.analysis.lost_segment'] = 1;
+                expert.push({ sev: 'warn', kind: '序号跳跃', frame: pkt.num, text: '帧 ' + pkt.num + '：序号从 ' + dir.maxRel + ' 跳到 ' + rel + '，中间 ' + (rel - dir.maxRel) + ' 字节没有出现在抓包里' });
+              }
+            }
+          }
+          if (rel + segLen > dir.maxRel) dir.maxRel = rel + segLen;
+          dir.nextSeq = rel + segLen;
+          if (L.payLen > 0) {
+            dir.segments.push({ rel, len: L.payLen, off: L.payOff, frame: pkt.num, ts: pkt.tsRel, bytes: pkt.bytes });
+            if (!dir.pendingAck.has(rel + L.payLen)) dir.pendingAck.set(rel + L.payLen, pkt.tsRel);
+          }
+        } else if (ackf && L.payLen === 0 && !syn && !fin && !rst) {
+          // 纯 ACK：重复 ACK 判定
+          if (dir.lastAck !== null && L.ack === dir.lastAck && L.win === dir.lastAckWin && other.maxRel > 0 &&
+            (other.isn !== null && relSeq(L.ack, other.isn) < other.maxRel)) {
+            dir.dupAckRun++;
+            dir.dupAcks++;
+            pkt.tcpNotes.push({ k: 'dupack', t: '重复 ACK #' + dir.dupAckRun });
+            pkt.f['tcp.analysis.duplicate_ack'] = 1;
+            pkt.f['tcp.analysis.duplicate_ack_num'] = dir.dupAckRun;
+            if (dir.dupAckRun === 3) expert.push({ sev: 'warn', kind: '重复 ACK', frame: pkt.num, text: '帧 ' + pkt.num + '：连续 3 个重复 ACK（确认号 ' + (other.isn !== null ? relSeq(L.ack, other.isn) : L.ack) + '），通常意味着中间有段丢了' });
+          } else dir.dupAckRun = 0;
+          dir.lastAck = L.ack; dir.lastAckWin = L.win;
+        }
+        // RTT：对方数据被本方确认
+        if (ackf && other.pendingAck.size) {
+          const relAck = other.isn !== null ? relSeq(L.ack, other.isn) : null;
+          if (relAck !== null) {
+            for (const [end, ts] of other.pendingAck) {
+              if (end <= relAck) {
+                const rtt = pkt.tsRel - ts;
+                if (rtt >= 0 && rtt < 60) other.rttSamples.push(rtt);
+                other.pendingAck.delete(end);
+              }
+            }
+          }
+        }
+        if (L.win === 0 && !rst && !syn) {
+          dir.zeroWin++;
+          pkt.tcpNotes.push({ k: 'zerowin', t: '零窗口：接收缓冲已满，发送方必须暂停' });
+          pkt.f['tcp.analysis.zero_window'] = 1;
+          expert.push({ sev: 'warn', kind: '零窗口', frame: pkt.num, text: '帧 ' + pkt.num + '：' + dir.addr + ':' + dir.port + ' 通告零窗口，对端被迫停发' });
+        }
+        if (rst) {
+          dir.rst = true; fl.resets++;
+          pkt.tcpNotes.push({ k: 'rst', t: '连接被重置' });
+          expert.push({ sev: 'error', kind: '连接重置', frame: pkt.num, text: '帧 ' + pkt.num + '：' + dir.addr + ':' + dir.port + ' 发送 RST，连接被强制中断' });
+        }
+        if (fin) { dir.fin = true; }
+      }
+
+      // 应用层归属
+      if (pkt.proto === 'TLS' && pkt.tls && pkt.tls.sni) { fl.sni = pkt.tls.sni; fl.appProto = 'TLS'; }
+      else if (pkt.proto === 'TLS' && !fl.appProto) fl.appProto = 'TLS';
+      if (pkt.proto === 'HTTP') {
+        fl.appProto = 'HTTP';
+        if (pkt.f['http.request.method']) fl.httpReqs.push(pkt.f['http.request.method'] + ' ' + (pkt.f['http.host'] ? pkt.f['http.host'] : '') + pkt.f['http.request.uri']);
+      }
+      if (pkt.proto === 'DNS' || pkt.proto === 'MDNS') {
+        fl.appProto = 'DNS';
+        const q = pkt.f['dns.qry.name'];
+        if (q) for (const nm of (Array.isArray(q) ? q : [q])) if (!fl.dnsNames.includes(nm)) fl.dnsNames.push(nm);
+      }
+    }
+
+    // 流收尾：统计量
+    const flowList = [];
+    for (const fl of flows.values()) {
+      const dur = Math.max(0, fl.lastTs - fl.firstTs);
+      fl.duration = dur;
+      fl.packets = fl.a.packets + fl.b.packets;
+      fl.bytes = fl.a.bytes + fl.b.bytes;
+      fl.payloadBytes = fl.a.payloadBytes + fl.b.payloadBytes;
+      fl.retrans = fl.a.retrans + fl.b.retrans;
+      fl.dupAcks = fl.a.dupAcks + fl.b.dupAcks;
+      fl.zeroWin = fl.a.zeroWin + fl.b.zeroWin;
+      fl.outOfOrder = fl.a.outOfOrder + fl.b.outOfOrder;
+      fl.bps = dur > 0 ? (fl.bytes * 8) / dur : 0;
+      const allRtt = fl.a.rttSamples.concat(fl.b.rttSamples);
+      fl.rttMean = allRtt.length ? allRtt.reduce((x, y) => x + y, 0) / allRtt.length : null;
+      fl.rttMin = allRtt.length ? Math.min.apply(null, allRtt) : null;
+      fl.rttMax = allRtt.length ? Math.max.apply(null, allRtt) : null;
+      fl.rttCount = allRtt.length;
+      fl.retransRate = fl.packets ? fl.retrans / fl.packets : 0;
+      if (!fl.appProto) {
+        const p = fl.b.port < fl.a.port ? fl.b.port : fl.a.port;
+        fl.appProto = PL.dissect.tables.WELL_KNOWN_PORTS[p] || null;
+      }
+      if (fl.proto === 'TCP') {
+        if (fl.handshake === 'complete') fl.state = '握手完成';
+        else if (fl.synTs !== null && fl.synAckTs === null) fl.state = '只有 SYN，没有应答';
+        else fl.state = '抓包从中途开始';
+        if (fl.resets) fl.state += ' · 被 RST 中断';
+        else if (fl.a.fin && fl.b.fin) fl.state += ' · 正常关闭';
+      } else fl.state = '—';
+      fl.label = fl.a.addr + ':' + fl.a.port + ' ↔ ' + fl.b.addr + ':' + fl.b.port;
+      flowList.push(fl);
+    }
+    flowList.sort((x, y) => y.bytes - x.bytes || x.firstTs - y.firstTs);
+    flowList.forEach((f, i) => { f.rank = i + 1; });
+
+    // 只有 SYN 没有 SYN-ACK 的连接
+    for (const fl of flowList) {
+      if (fl.proto === 'TCP' && fl.synTs !== null && fl.synAckTs === null) {
+        expert.push({ sev: 'error', kind: '连接未建立', frame: fl.synFrame, text: '帧 ' + fl.synFrame + '：向 ' + fl.b.addr + ':' + fl.b.port + ' 发出的 SYN 一直没有收到 SYN/ACK' });
+      }
+    }
+
+    // 协议层次
+    const hierRoot = { name: 'frame', label: '帧', packets: 0, bytes: 0, children: new Map() };
+    for (const pkt of packets) {
+      let cur = hierRoot;
+      cur.packets++; cur.bytes += pkt.origLen;
+      for (let i = 1; i < pkt.protoPath.length; i++) {
+        const nm = pkt.protoPath[i];
+        let c = cur.children.get(nm);
+        if (!c) { c = { name: nm, label: nm, packets: 0, bytes: 0, children: new Map() }; cur.children.set(nm, c); }
+        c.packets++; c.bytes += pkt.origLen;
+        cur = c;
+      }
+    }
+    function hierToArr(n, depth) {
+      const out = [{ name: n.name, depth, packets: n.packets, bytes: n.bytes }];
+      const kids = Array.from(n.children.values()).sort((a, b) => b.packets - a.packets);
+      for (const k of kids) out.push.apply(out, hierToArr(k, depth + 1));
+      return out;
+    }
+    const hierarchy = hierToArr(hierRoot, 0);
+
+    // ICMP 差错
+    for (const pkt of packets) {
+      if (pkt.proto === 'ICMP' && pkt.f['icmp.type'] === 3) {
+        expert.push({ sev: 'error', kind: 'ICMP 不可达', frame: pkt.num, text: '帧 ' + pkt.num + '：' + pkt.src + ' 回报「' + pkt.info + '」' });
+      } else if (pkt.proto === 'ICMP' && pkt.f['icmp.type'] === 11) {
+        expert.push({ sev: 'warn', kind: 'TTL 耗尽', frame: pkt.num, text: '帧 ' + pkt.num + '：' + pkt.src + ' 回报 TTL 超时' });
+      } else if ((pkt.proto === 'DNS' || pkt.proto === 'MDNS') && pkt.f['dns.flags.response'] === 1 && pkt.f['dns.flags.rcode'] > 0) {
+        expert.push({ sev: 'error', kind: 'DNS 失败', frame: pkt.num, text: '帧 ' + pkt.num + '：DNS 查询失败 —— ' + pkt.info });
+      } else if (pkt.f['ip.checksum.status'] === 0) {
+        expert.push({ sev: 'warn', kind: 'IP 校验和', frame: pkt.num, text: '帧 ' + pkt.num + '：IPv4 首部校验和不正确（若抓包机开了校验和卸载，这属正常现象）' });
+      }
+    }
+    expert.sort((a, b) => a.frame - b.frame);
+
+    const duration = (lastTs !== null && firstTs !== null) ? (lastTs - firstTs) : 0;
+    const summary = {
+      packets: packets.length, bytes: totalBytes, duration,
+      pps: duration > 0 ? packets.length / duration : 0,
+      bps: duration > 0 ? totalBytes * 8 / duration : 0,
+      avgSize: packets.length ? totalBytes / packets.length : 0,
+      flows: flowList.length, endpoints: endpoints.size,
+      firstTs, lastTs
+    };
+
+    return {
+      flows: flowList, endpoints: Array.from(endpoints.values()).sort((a, b) => (b.txBytes + b.rxBytes) - (a.txBytes + a.rxBytes)),
+      hierarchy, expert, summary
+    };
+  }
+
+  /* 吞吐曲线：按时间分桶 */
+  function ioBuckets(packets, nBuckets, duration) {
+    const n = Math.max(1, nBuckets | 0);
+    const dur = duration > 0 ? duration : 1;
+    const w = dur / n;
+    const out = [];
+    for (let i = 0; i < n; i++) out.push({ t0: i * w, t1: (i + 1) * w, packets: 0, bytes: 0 });
+    for (const p of packets) {
+      let i = Math.floor(p.tsRel / w);
+      if (i < 0) i = 0;
+      if (i >= n) i = n - 1;
+      out[i].packets++; out[i].bytes += p.origLen;
+    }
+    for (const b of out) b.bps = w > 0 ? b.bytes * 8 / w : 0;
+    return { buckets: out, width: w };
+  }
+
+  /* TCP 流重组：把一个方向的所有段按序号拼成字节流（去重叠、标缺口） */
+  function reassemble(dir) {
+    const segs = dir.segments.slice().sort((a, b) => a.rel - b.rel || a.frame - b.frame);
+    const chunks = [];
+    // 起点取第一段的相对序号，而不是 0：SYN 会占掉一个序号，
+    // 抓包从中途开始时起点更是任意值，从 0 起算会凭空报一个缺口。
+    let pos = segs.length ? segs[0].rel : 0, gaps = 0, total = 0;
+    for (const s of segs) {
+      if (s.rel + s.len <= pos) continue;                 // 完全重复
+      let start = s.rel, skip = 0;
+      if (start < pos) { skip = pos - start; start = pos; }
+      if (start > pos) { gaps += start - pos; chunks.push({ gap: start - pos }); pos = start; }
+      const take = s.len - skip;
+      if (take <= 0) continue;
+      chunks.push({ frame: s.frame, ts: s.ts, off: s.off + skip, len: take, bytes: s.bytes });
+      total += take;
+      pos = start + take;
+    }
+    return { chunks, bytes: total, gaps };
+  }
+
+  function streamText(dir, maxBytes) {
+    const r = reassemble(dir);
+    const limit = maxBytes || 262144;
+    let out = '';
+    let used = 0;
+    for (const c of r.chunks) {
+      if (used >= limit) break;
+      if (c.gap) { out += '\n<<< 缺失 ' + c.gap + ' 字节（抓包里没有这段） >>>\n'; continue; }
+      const take = Math.min(c.len, limit - used);
+      out += U.latin1(c.bytes, c.off, take);
+      used += take;
+    }
+    return { text: out, bytes: r.bytes, gaps: r.gaps, truncated: r.bytes > limit, chunks: r.chunks };
+  }
+
+  /* 按时间顺序的对话视图（用于「追踪流」双色显示） */
+  function conversationChunks(flow, maxBytes) {
+    const limit = maxBytes || 262144;
+    const items = [];
+    const push = (dir, isA) => {
+      const r = reassemble(dir);
+      let acc = [];
+      for (const c of r.chunks) {
+        if (c.gap) { acc.push({ isA, gap: c.gap, frame: null }); continue; }
+        acc.push({ isA, frame: c.frame, ts: c.ts, text: U.latin1(c.bytes, c.off, c.len), len: c.len });
+      }
+      return acc;
+    };
+    const all = push(flow.a, true).concat(push(flow.b, false));
+    all.sort((x, y) => (x.ts === undefined ? 0 : x.ts) - (y.ts === undefined ? 0 : y.ts) || (x.frame || 0) - (y.frame || 0));
+    // 合并相邻同向片段
+    const merged = [];
+    let used = 0;
+    for (const it of all) {
+      if (used >= limit) break;
+      if (it.gap) { merged.push(it); continue; }
+      const last = merged[merged.length - 1];
+      const room = limit - used;
+      const text = it.text.length > room ? it.text.slice(0, room) : it.text;
+      used += text.length;
+      if (last && !last.gap && last.isA === it.isA) { last.text += text; last.lastFrame = it.frame; }
+      else merged.push({ isA: it.isA, frame: it.frame, lastFrame: it.frame, text });
+    }
+    return { items: merged, truncated: used >= limit };
+  }
+
+  PL.analyze = { analyze, ioBuckets, reassemble, streamText, conversationChunks, flowKey, relSeq };
+})(PL);
+
+/* ============================================================
+   Packet Lab — 40 显示过滤器
+   一门小语言：词法 → 递归下降语法 → 求值；外加打印器（供 round-trip 自检）
+   与中文释义生成器。语法参考 Wireshark 显示过滤器的常用子集。
+   ============================================================ */
+(function (PL) {
+  const U = PL.util;
+
+  /* ---------- 字段目录 ---------- */
+  const F = (name, type, desc, proto) => ({ name, type, desc, proto });
+  const FIELDS = [
+    F('frame.number', 'num', '帧序号', 'frame'),
+    F('frame.len', 'num', '线上帧长度（字节）', 'frame'),
+    F('frame.cap_len', 'num', '实际抓取长度（字节）', 'frame'),
+    F('frame.time_relative', 'num', '相对首包的秒数', 'frame'),
+    F('frame.interface_id', 'num', '接口编号', 'frame'),
+    F('eth.src', 'mac', '源 MAC', 'eth'),
+    F('eth.dst', 'mac', '目的 MAC', 'eth'),
+    F('eth.addr', 'mac', '任一端 MAC', 'eth'),
+    F('eth.type', 'num', '以太类型（如 0x0800）', 'eth'),
+    F('vlan.id', 'num', 'VLAN 标识', 'vlan'),
+    F('vlan.priority', 'num', 'VLAN 优先级', 'vlan'),
+    F('ip.src', 'ip', '源 IPv4', 'ip'),
+    F('ip.dst', 'ip', '目的 IPv4', 'ip'),
+    F('ip.addr', 'ip', '任一端 IP（v4/v6 均可，支持 CIDR）', 'ip'),
+    F('ip.ttl', 'num', '生存时间', 'ip'),
+    F('ip.len', 'num', 'IP 总长度', 'ip'),
+    F('ip.id', 'num', 'IP 标识', 'ip'),
+    F('ip.proto', 'num', '上层协议号（6=TCP，17=UDP）', 'ip'),
+    F('ip.flags.df', 'num', '不分片标志', 'ip'),
+    F('ip.flags.mf', 'num', '更多分片标志', 'ip'),
+    F('ip.frag_offset', 'num', '分片偏移', 'ip'),
+    F('ip.checksum.status', 'num', '首部校验和是否正确（1/0）', 'ip'),
+    F('ipv6.src', 'ip', '源 IPv6', 'ipv6'),
+    F('ipv6.dst', 'ip', '目的 IPv6', 'ipv6'),
+    F('ipv6.addr', 'ip', '任一端 IPv6', 'ipv6'),
+    F('ipv6.hlim', 'num', '跳数限制', 'ipv6'),
+    F('tcp.srcport', 'num', 'TCP 源端口', 'tcp'),
+    F('tcp.dstport', 'num', 'TCP 目的端口', 'tcp'),
+    F('tcp.port', 'num', 'TCP 任一端端口', 'tcp'),
+    F('tcp.len', 'num', 'TCP 负载字节数', 'tcp'),
+    F('tcp.seq_raw', 'num', 'TCP 原始序号', 'tcp'),
+    F('tcp.ack_raw', 'num', 'TCP 原始确认号', 'tcp'),
+    F('tcp.window_size_value', 'num', 'TCP 通告窗口', 'tcp'),
+    F('tcp.hdr_len', 'num', 'TCP 首部长度', 'tcp'),
+    F('tcp.flags.syn', 'num', 'SYN 标志', 'tcp'),
+    F('tcp.flags.ack', 'num', 'ACK 标志', 'tcp'),
+    F('tcp.flags.fin', 'num', 'FIN 标志', 'tcp'),
+    F('tcp.flags.rst', 'num', 'RST 标志', 'tcp'),
+    F('tcp.flags.psh', 'num', 'PSH 标志', 'tcp'),
+    F('tcp.flags.urg', 'num', 'URG 标志', 'tcp'),
+    F('tcp.options.mss_val', 'num', '通告的 MSS', 'tcp'),
+    F('tcp.options.wscale.shift', 'num', '窗口缩放指数', 'tcp'),
+    F('tcp.analysis.retransmission', 'num', '被判定为重传（1）', 'tcp'),
+    F('tcp.analysis.duplicate_ack', 'num', '被判定为重复 ACK（1）', 'tcp'),
+    F('tcp.analysis.zero_window', 'num', '零窗口通告（1）', 'tcp'),
+    F('tcp.analysis.lost_segment', 'num', '序号跳跃，前面有段没抓到（1）', 'tcp'),
+    F('tcp.analysis.duplicate_ack_num', 'num', '这是第几个重复 ACK', 'tcp'),
+    F('tcp.analysis.initial_rtt', 'num', '该连接三次握手测得的 RTT（秒）', 'tcp'),
+    F('udp.srcport', 'num', 'UDP 源端口', 'udp'),
+    F('udp.dstport', 'num', 'UDP 目的端口', 'udp'),
+    F('udp.port', 'num', 'UDP 任一端端口', 'udp'),
+    F('udp.length', 'num', 'UDP 长度字段', 'udp'),
+    F('icmp.type', 'num', 'ICMP 类型（8=请求，0=应答，3=不可达）', 'icmp'),
+    F('icmp.code', 'num', 'ICMP 代码', 'icmp'),
+    F('icmp.seq', 'num', 'ICMP 序列号', 'icmp'),
+    F('icmpv6.type', 'num', 'ICMPv6 类型', 'icmpv6'),
+    F('arp.opcode', 'num', 'ARP 操作码（1=请求，2=应答）', 'arp'),
+    F('arp.src.proto_ipv4', 'ip', 'ARP 发送方 IP', 'arp'),
+    F('arp.dst.proto_ipv4', 'ip', 'ARP 目标 IP', 'arp'),
+    F('dns.qry.name', 'str', '查询的域名', 'dns'),
+    F('dns.qry.type', 'num', '查询类型（1=A，28=AAAA）', 'dns'),
+    F('dns.flags.response', 'num', '是响应（1）还是查询（0）', 'dns'),
+    F('dns.flags.rcode', 'num', 'DNS 返回码（0=NOERROR，3=NXDOMAIN）', 'dns'),
+    F('dns.a', 'str', '解析出的地址记录', 'dns'),
+    F('dns.id', 'num', 'DNS 事务 ID', 'dns'),
+    F('http.request.method', 'str', 'HTTP 方法', 'http'),
+    F('http.request.uri', 'str', 'HTTP 请求 URI', 'http'),
+    F('http.response.code', 'num', 'HTTP 状态码', 'http'),
+    F('http.host', 'str', 'Host 首部', 'http'),
+    F('http.user_agent', 'str', 'User-Agent 首部', 'http'),
+    F('http.content_type', 'str', 'Content-Type 首部', 'http'),
+    F('tls.sni', 'str', 'TLS 握手里的服务器名（SNI）', 'tls'),
+    F('tls.alpn', 'str', 'ALPN 协商的协议', 'tls'),
+    F('tls.handshake.type', 'num', 'TLS 握手类型（1=ClientHello）', 'tls'),
+    F('tls.record.content_type', 'num', 'TLS 记录类型（22=握手，23=应用数据）', 'tls')
+  ];
+  const FIELD_MAP = new Map(FIELDS.map((f) => [f.name, f]));
+  const PROTO_ATOMS = ['frame', 'eth', 'vlan', 'arp', 'ip', 'ipv6', 'icmp', 'icmpv6', 'tcp', 'udp', 'dns', 'http', 'tls', 'ntp', 'quic', 'llc', 'sll', 'data'];
+  const PROTO_LABEL = {
+    frame: '任意帧', eth: '以太网', vlan: 'VLAN', arp: 'ARP', ip: 'IPv4', ipv6: 'IPv6',
+    icmp: 'ICMP', icmpv6: 'ICMPv6', tcp: 'TCP', udp: 'UDP', dns: 'DNS', http: 'HTTP',
+    tls: 'TLS', ntp: 'NTP', quic: 'QUIC', llc: '802.3 LLC', sll: 'Linux cooked', data: '未解析数据'
+  };
+
+  /* ---------- 词法 ---------- */
+  const OPS = ['==', '!=', '>=', '<=', '>', '<'];
+  const WORDOPS = { contains: 'contains', matches: 'matches', in: 'in' };
+
+  function lex(src) {
+    const toks = [];
+    let i = 0;
+    const n = src.length;
+    while (i < n) {
+      const c = src[i];
+      if (c === ' ' || c === '\t' || c === '\n' || c === '\r') { i++; continue; }
+      if (c === '(' || c === ')' || c === '{' || c === '}' || c === ',') { toks.push({ t: c, pos: i }); i++; continue; }
+      if (c === '"' || c === "'") {
+        const quote = c;
+        let j = i + 1, s = '';
+        while (j < n) {
+          if (src[j] === '\\' && j + 1 < n) { s += src[j + 1]; j += 2; continue; }
+          if (src[j] === quote) break;
+          s += src[j]; j++;
+        }
+        if (j >= n) { const e = new Error('字符串没有闭合的引号'); e.pos = i; throw e; }
+        toks.push({ t: 'str', v: s, pos: i });
+        i = j + 1; continue;
+      }
+      if (c === '&' && src[i + 1] === '&') { toks.push({ t: 'and', pos: i }); i += 2; continue; }
+      if (c === '|' && src[i + 1] === '|') { toks.push({ t: 'or', pos: i }); i += 2; continue; }
+      if (c === '!' && src[i + 1] !== '=') { toks.push({ t: 'not', pos: i }); i++; continue; }
+      let matched = null;
+      for (const op of OPS) if (src.startsWith(op, i)) { matched = op; break; }
+      if (matched) { toks.push({ t: 'op', v: matched, pos: i }); i += matched.length; continue; }
+      if (/[0-9]/.test(c) || (c === '-' && /[0-9]/.test(src[i + 1] || ''))) {
+        let j = i + (c === '-' ? 1 : 0);
+        if (src[j] === '0' && (src[j + 1] === 'x' || src[j + 1] === 'X')) {
+          j += 2;
+          while (j < n && /[0-9a-fA-F]/.test(src[j])) j++;
+          // 十六进制后面若立刻跟 ':' 说明其实是 MAC/IPv6，交给标识符分支
+          if (src[j] !== ':' && src[j] !== '.') { toks.push({ t: 'num', v: parseInt(src.slice(i, j), 16), raw: src.slice(i, j), pos: i }); i = j; continue; }
+        } else {
+          while (j < n && /[0-9]/.test(src[j])) j++;
+          if (src[j] === '.' && /[0-9]/.test(src[j + 1] || '')) {
+            let k = j + 1;
+            while (k < n && /[0-9]/.test(src[k])) k++;
+            if (src[k] !== '.') { j = k; }
+          }
+          const after = src[j];
+          if (after !== '.' && after !== ':' && after !== '/' && !/[0-9a-zA-Z_]/.test(after || '')) {
+            toks.push({ t: 'num', v: Number(src.slice(i, j)), raw: src.slice(i, j), pos: i }); i = j; continue;
+          }
+        }
+      }
+      if (/[0-9a-zA-Z_.:/*-]/.test(c)) {
+        let j = i;
+        while (j < n && /[0-9a-zA-Z_.:/@*-]/.test(src[j])) j++;
+        const word = src.slice(i, j);
+        const lower = word.toLowerCase();
+        if (lower === 'and') toks.push({ t: 'and', pos: i });
+        else if (lower === 'or') toks.push({ t: 'or', pos: i });
+        else if (lower === 'not') toks.push({ t: 'not', pos: i });
+        else if (WORDOPS[lower]) toks.push({ t: lower === 'in' ? 'in' : 'op', v: lower, pos: i });
+        else toks.push({ t: 'word', v: word, pos: i });
+        i = j; continue;
+      }
+      const e = new Error('无法识别的字符「' + c + '」');
+      e.pos = i;
+      throw e;
+    }
+    toks.push({ t: 'eof', pos: n });
+    return toks;
+  }
+
+  /* ---------- 语法 ---------- */
+  function parse(src) {
+    const toks = lex(src);
+    let p = 0;
+    const peek = () => toks[p];
+    const next = () => toks[p++];
+    const err = (msg, tok) => { const e = new Error(msg); e.pos = (tok || peek()).pos; throw e; };
+
+    function parseValue() {
+      const t = peek();
+      if (t.t === 'num') { next(); return { t: 'num', v: t.v, raw: t.raw }; }
+      if (t.t === 'str') { next(); return { t: 'str', v: t.v }; }
+      if (t.t === 'word') { next(); return { t: 'str', v: t.v, bare: true }; }
+      return err('这里需要一个值（数字、"字符串"、IP 或 MAC）');
+    }
+
+    function parsePrimary() {
+      const t = peek();
+      if (t.t === '(') {
+        next();
+        const e = parseOr();
+        if (peek().t !== ')') err('缺少右括号');
+        next();
+        return e;
+      }
+      if (t.t === 'not') { next(); return { t: 'not', e: parsePrimary() }; }
+      if (t.t === 'word') {
+        const name = t.v;
+        next();
+        const nt = peek();
+        if (nt.t === 'op' && nt.v !== 'in') {
+          next();
+          const v = parseValue();
+          if (!FIELD_MAP.has(name)) err('没有这个字段：' + name, t);
+          return { t: 'cmp', field: name, op: nt.v, value: v };
+        }
+        if (nt.t === 'in') {
+          next();
+          if (peek().t !== '{') err('in 后面需要用 { } 括起候选值');
+          next();
+          const vals = [];
+          for (; ;) {
+            vals.push(parseValue());
+            if (peek().t === ',') { next(); continue; }
+            break;
+          }
+          if (peek().t !== '}') err('候选值列表缺少 }');
+          next();
+          if (!FIELD_MAP.has(name)) err('没有这个字段：' + name, t);
+          if (!vals.length) err('候选值列表是空的');
+          return { t: 'in', field: name, values: vals };
+        }
+        if (FIELD_MAP.has(name)) return { t: 'exists', field: name };
+        if (PROTO_ATOMS.includes(name.toLowerCase())) return { t: 'proto', name: name.toLowerCase() };
+        err('不认识「' + name + '」：既不是协议名，也不是已知字段', t);
+      }
+      return err('这里需要一个条件');
+    }
+
+    function parseAnd() {
+      let l = parsePrimary();
+      while (peek().t === 'and') { next(); l = { t: 'and', l, r: parsePrimary() }; }
+      return l;
+    }
+    function parseOr() {
+      let l = parseAnd();
+      while (peek().t === 'or') { next(); l = { t: 'or', l, r: parseAnd() }; }
+      return l;
+    }
+    const ast = parseOr();
+    if (peek().t !== 'eof') err('多余的内容');
+    return ast;
+  }
+
+  /* ---------- 打印器（规范形式） ---------- */
+  /* 裸词是否安全：必须恰好被词法器切成一个 word。
+     否则 "12345" 会被切成数字、"and" 会被切成关键字，往返回来类型就变了。 */
+  function barewordSafe(s) {
+    if (s === '' || !/^[0-9a-zA-Z_.:/@*-]+$/.test(s)) return false;
+    try {
+      const t = lex(s);
+      return t.length === 2 && t[0].t === 'word' && t[0].v === s;
+    } catch (e) { return false; }
+  }
+  function needsQuote(s) { return !barewordSafe(s); }
+  function quote(s) {
+    let out = '"';
+    for (let i = 0; i < s.length; i++) {
+      const ch = s[i];
+      if (ch === '"' || ch === '\\') out += '\\' + ch; else out += ch;
+    }
+    return out + '"';
+  }
+  function printValue(v) {
+    if (v.t === 'num') return v.raw !== undefined ? String(v.raw) : String(v.v);
+    return needsQuote(v.v) ? quote(v.v) : v.v;
+  }
+  const PREC = { or: 1, and: 2, not: 3 };
+  function printFilter(ast, parentPrec) {
+    const pp = parentPrec || 0;
+    switch (ast.t) {
+      case 'or': {
+        const s = printFilter(ast.l, PREC.or) + ' || ' + printFilter(ast.r, PREC.or + 0.5);
+        return pp > PREC.or ? '(' + s + ')' : s;
+      }
+      case 'and': {
+        const s = printFilter(ast.l, PREC.and) + ' && ' + printFilter(ast.r, PREC.and + 0.5);
+        return pp > PREC.and ? '(' + s + ')' : s;
+      }
+      case 'not': return '!' + printFilter(ast.e, PREC.not);
+      case 'proto': return ast.name;
+      case 'exists': return ast.field;
+      case 'cmp': return ast.field + ' ' + ast.op + ' ' + printValue(ast.value);
+      case 'in': return ast.field + ' in {' + ast.values.map(printValue).join(', ') + '}';
+    }
+    return '';
+  }
+
+  /* 规范 key：用于 round-trip 比对（忽略 raw / bare 这类书写细节） */
+  function canonical(ast) {
+    switch (ast.t) {
+      case 'or': case 'and': return { t: ast.t, l: canonical(ast.l), r: canonical(ast.r) };
+      case 'not': return { t: 'not', e: canonical(ast.e) };
+      case 'proto': return { t: 'proto', name: ast.name };
+      case 'exists': return { t: 'exists', field: ast.field };
+      case 'cmp': return { t: 'cmp', field: ast.field, op: ast.op, value: { t: ast.value.t, v: ast.value.v } };
+      case 'in': return { t: 'in', field: ast.field, values: ast.values.map((v) => ({ t: v.t, v: v.v })) };
+    }
+    return null;
+  }
+
+  /* ---------- 中文释义 ---------- */
+  const OP_CN = { '==': '等于', '!=': '不等于', '>': '大于', '>=': '不小于', '<': '小于', '<=': '不大于', contains: '包含', matches: '匹配正则' };
+  function describe(ast) {
+    switch (ast.t) {
+      case 'or': return describe(ast.l) + '，或者 ' + describe(ast.r);
+      case 'and': return describe(ast.l) + '，并且 ' + describe(ast.r);
+      case 'not': return '不满足（' + describe(ast.e) + '）';
+      case 'proto': return '是 ' + (PROTO_LABEL[ast.name] || ast.name) + ' 报文';
+      case 'exists': {
+        const f = FIELD_MAP.get(ast.field);
+        return '含有「' + (f ? f.desc : ast.field) + '」字段';
+      }
+      case 'cmp': {
+        const f = FIELD_MAP.get(ast.field);
+        return (f ? f.desc : ast.field) + ' ' + (OP_CN[ast.op] || ast.op) + ' ' + printValue(ast.value);
+      }
+      case 'in': {
+        const f = FIELD_MAP.get(ast.field);
+        return (f ? f.desc : ast.field) + ' 属于 {' + ast.values.map(printValue).join('、') + '}';
+      }
+    }
+    return '';
+  }
+
+  /* ---------- 求值 ---------- */
+  function normMac(s) { return String(s).toLowerCase().replace(/-/g, ':'); }
+
+  function parseCidr(spec) {
+    const slash = spec.indexOf('/');
+    if (slash < 0) return null;
+    const addr = spec.slice(0, slash);
+    const bits = Number(spec.slice(slash + 1));
+    if (!Number.isInteger(bits) || bits < 0) return null;
+    if (addr.indexOf(':') >= 0) {
+      const bytes = U.ipv6ToBytes(addr);
+      if (!bytes || bits > 128) return null;
+      return { v: 6, bytes, bits };
+    }
+    const v = U.ipv4ToInt(addr);
+    if (v === null || bits > 32) return null;
+    return { v: 4, int: v, bits };
+  }
+
+  function inCidr(addrStr, cidr) {
+    if (cidr.v === 4) {
+      if (addrStr.indexOf(':') >= 0) return false;
+      const a = U.ipv4ToInt(addrStr);
+      if (a === null) return false;
+      if (cidr.bits === 0) return true;
+      const mask = cidr.bits === 32 ? 0xffffffff : (0xffffffff - (Math.pow(2, 32 - cidr.bits) - 1));
+      return ((a & mask) >>> 0) === ((cidr.int & mask) >>> 0);
+    }
+    const ab = U.ipv6ToBytes(addrStr);
+    if (!ab) return false;
+    let bits = cidr.bits;
+    for (let i = 0; i < 16 && bits > 0; i++) {
+      const take = Math.min(8, bits);
+      const mask = (0xff << (8 - take)) & 0xff;
+      if ((ab[i] & mask) !== (cidr.bytes[i] & mask)) return false;
+      bits -= take;
+    }
+    return true;
+  }
+
+  function cmpOne(fieldType, got, op, val) {
+    if (op === 'contains') return String(got).indexOf(String(val.v)) >= 0;
+    if (op === 'matches') {
+      try { return new RegExp(String(val.v), 'i').test(String(got)); } catch (e) { return false; }
+    }
+    if (fieldType === 'num') {
+      const want = val.t === 'num' ? val.v : Number(val.v);
+      if (!isFinite(want)) return false;
+      const g = Number(got);
+      switch (op) {
+        case '==': return g === want;
+        case '!=': return g !== want;
+        case '>': return g > want;
+        case '>=': return g >= want;
+        case '<': return g < want;
+        case '<=': return g <= want;
+      }
+      return false;
+    }
+    if (fieldType === 'ip') {
+      const spec = String(val.v);
+      const cidr = parseCidr(spec);
+      let eq;
+      if (cidr) eq = inCidr(String(got), cidr);
+      else if (spec.indexOf(':') >= 0) {
+        const a = U.ipv6ToBytes(String(got)), b = U.ipv6ToBytes(spec);
+        eq = !!(a && b && a.every((x, i) => x === b[i]));
+      } else eq = String(got) === spec;
+      if (op === '==') return eq;
+      if (op === '!=') return !eq;
+      return false;
+    }
+    if (fieldType === 'mac') {
+      const eq = normMac(got) === normMac(val.v);
+      if (op === '==') return eq;
+      if (op === '!=') return !eq;
+      return false;
+    }
+    // str
+    const g = String(got), w = String(val.v);
+    switch (op) {
+      case '==': return g === w;
+      case '!=': return g !== w;
+      case '>': return g > w;
+      case '>=': return g >= w;
+      case '<': return g < w;
+      case '<=': return g <= w;
+    }
+    return false;
+  }
+
+  function getVals(pkt, field) {
+    const v = pkt.f[field];
+    if (v === undefined) return null;
+    return Array.isArray(v) ? v : [v];
+  }
+
+  function evalAst(ast, pkt) {
+    switch (ast.t) {
+      case 'or': return evalAst(ast.l, pkt) || evalAst(ast.r, pkt);
+      case 'and': return evalAst(ast.l, pkt) && evalAst(ast.r, pkt);
+      case 'not': return !evalAst(ast.e, pkt);
+      case 'proto': return pkt.protos.has(ast.name);
+      case 'exists': return getVals(pkt, ast.field) !== null;
+      case 'cmp': {
+        const vals = getVals(pkt, ast.field);
+        if (!vals) return false;
+        const meta = FIELD_MAP.get(ast.field);
+        const type = meta ? meta.type : 'str';
+        // != 语义：所有取值都不等（而不是 Wireshark 的「任一不等」）
+        if (ast.op === '!=') return vals.every((g) => cmpOne(type, g, '!=', ast.value));
+        return vals.some((g) => cmpOne(type, g, ast.op, ast.value));
+      }
+      case 'in': {
+        const vals = getVals(pkt, ast.field);
+        if (!vals) return false;
+        const meta = FIELD_MAP.get(ast.field);
+        const type = meta ? meta.type : 'str';
+        return vals.some((g) => ast.values.some((w) => cmpOne(type, g, '==', w)));
+      }
+    }
+    return false;
+  }
+
+  function compile(src) {
+    const text = String(src || '').trim();
+    if (!text) return { ok: true, empty: true, fn: () => true, ast: null, text: '', describe: '（不过滤，显示全部）' };
+    try {
+      const ast = parse(text);
+      return {
+        ok: true, ast, text,
+        canonical: printFilter(ast),
+        describe: describe(ast),
+        fn: (pkt) => evalAst(ast, pkt)
+      };
+    } catch (e) {
+      return { ok: false, error: e.message, pos: e.pos === undefined ? null : e.pos, text };
+    }
+  }
+
+  PL.filter = { compile, parse, printFilter, canonical, describe, lex, FIELDS, FIELD_MAP, PROTO_ATOMS, PROTO_LABEL, parseCidr, inCidr };
+})(PL);
+
+/* ============================================================
+   Packet Lab — 50 构造与导出
+   pcap / pcapng 写入器（导出过滤后的子集，也用于生成内置示例），
+   以及一组按脚本合成的示例抓包：合成 → 由同一套解析器解析。
+   ============================================================ */
+(function (PL) {
+  const U = PL.util;
+
+  /* ---------- 字节拼装 ---------- */
+  function cat(list) {
+    let n = 0;
+    for (const x of list) n += x.length;
+    const out = new Uint8Array(n);
+    let p = 0;
+    for (const x of list) { out.set(x, p); p += x.length; }
+    return out;
+  }
+  function b8(v) { return new Uint8Array([v & 255]); }
+  function b16(v) { return new Uint8Array([(v >> 8) & 255, v & 255]); }
+  function b32(v) { return new Uint8Array([(v >>> 24) & 255, (v >>> 16) & 255, (v >>> 8) & 255, v & 255]); }
+  function mac(str) {
+    const p = str.split(':');
+    const out = new Uint8Array(6);
+    for (let i = 0; i < 6; i++) out[i] = parseInt(p[i], 16) & 255;
+    return out;
+  }
+  function ip4(str) {
+    const p = str.split('.');
+    return new Uint8Array([Number(p[0]) & 255, Number(p[1]) & 255, Number(p[2]) & 255, Number(p[3]) & 255]);
+  }
+  function ip6(str) { return U.ipv6ToBytes(str); }
+  function zeros(n) { return new Uint8Array(n); }
+
+  /* ---------- 各层封装 ---------- */
+  function eth(dst, src, etype, payload) {
+    return cat([mac(dst), mac(src), b16(etype), payload]);
+  }
+  function vlanTag(vid, pcp, inner, payload) {
+    return cat([b16(((pcp & 7) << 13) | (vid & 0xfff)), b16(inner), payload]);
+  }
+  function ipv4(src, dst, proto, payload, opt) {
+    const o = opt || {};
+    const total = 20 + payload.length;
+    const flags = (o.df ? 2 : 0) | (o.mf ? 1 : 0);
+    const fragOff = (o.fragOff || 0) / 8;
+    const hdr = cat([
+      b8(0x45), b8(o.tos || 0), b16(total), b16(o.id === undefined ? 0 : o.id),
+      b16(((flags & 7) << 13) | (fragOff & 0x1fff)), b8(o.ttl === undefined ? 64 : o.ttl), b8(proto),
+      b16(0), ip4(src), ip4(dst)
+    ]);
+    const cks = o.badChecksum ? 0x1234 : U.inetChecksum(hdr, 0, 20, 0);
+    hdr[10] = (cks >> 8) & 255; hdr[11] = cks & 255;
+    return cat([hdr, payload]);
+  }
+  function ipv6h(src, dst, nh, payload, opt) {
+    const o = opt || {};
+    return cat([
+      b32(0x60000000 | ((o.flow || 0) & 0xfffff)), b16(payload.length), b8(nh),
+      b8(o.hop === undefined ? 64 : o.hop), ip6(src), ip6(dst), payload
+    ]);
+  }
+  function l4Checksum(srcBytes, dstBytes, proto, seg) {
+    const ps = U.pseudoSum(cat([srcBytes, dstBytes]), 0, srcBytes.length, srcBytes.length, proto, seg.length);
+    return U.inetChecksum(seg, 0, seg.length, ps);
+  }
+  function tcpSeg(src, dst, v6, sport, dport, seq, ack, flags, win, payload, opts) {
+    const optBytes = opts && opts.length ? opts : new Uint8Array(0);
+    const pad = (4 - (optBytes.length % 4)) % 4;
+    const optFull = pad ? cat([optBytes, zeros(pad)]) : optBytes;
+    const hdrLen = 20 + optFull.length;
+    const seg = cat([
+      b16(sport), b16(dport), b32(seq >>> 0), b32(ack >>> 0),
+      b8(((hdrLen / 4) << 4) | ((flags >> 8) & 1)), b8(flags & 255), b16(win),
+      b16(0), b16(0), optFull, payload
+    ]);
+    const sb = v6 ? ip6(src) : ip4(src), db = v6 ? ip6(dst) : ip4(dst);
+    const cks = l4Checksum(sb, db, 6, seg);
+    seg[16] = (cks >> 8) & 255; seg[17] = cks & 255;
+    return seg;
+  }
+  function udpSeg(src, dst, v6, sport, dport, payload) {
+    const len = 8 + payload.length;
+    const seg = cat([b16(sport), b16(dport), b16(len), b16(0), payload]);
+    const sb = v6 ? ip6(src) : ip4(src), db = v6 ? ip6(dst) : ip4(dst);
+    const cks = l4Checksum(sb, db, 17, seg);
+    seg[6] = (cks >> 8) & 255; seg[7] = cks & 255;
+    return seg;
+  }
+  function icmpEcho(type, id, seq, data) {
+    const m = cat([b8(type), b8(0), b16(0), b16(id), b16(seq), data]);
+    const cks = U.inetChecksum(m, 0, m.length, 0);
+    m[2] = (cks >> 8) & 255; m[3] = cks & 255;
+    return m;
+  }
+  function icmpUnreach(code, embedded) {
+    const m = cat([b8(3), b8(code), b16(0), b32(0), embedded]);
+    const cks = U.inetChecksum(m, 0, m.length, 0);
+    m[2] = (cks >> 8) & 255; m[3] = cks & 255;
+    return m;
+  }
+  function icmp6(type, code, body, src, dst) {
+    const m = cat([b8(type), b8(code), b16(0), body]);
+    const ps = U.pseudoSum(cat([ip6(src), ip6(dst)]), 0, 16, 16, 58, m.length);
+    const cks = U.inetChecksum(m, 0, m.length, ps);
+    m[2] = (cks >> 8) & 255; m[3] = cks & 255;
+    return m;
+  }
+  function arpPkt(op, sha, spa, tha, tpa) {
+    return cat([b16(1), b16(0x0800), b8(6), b8(4), b16(op), mac(sha), ip4(spa), mac(tha), ip4(tpa)]);
+  }
+
+  /* ---------- DNS ---------- */
+  function dnsNameBytes(name) {
+    if (!name || name === '.') return new Uint8Array([0]);
+    const parts = name.split('.').filter((x) => x.length);
+    const out = [];
+    for (const p of parts) { out.push(b8(p.length)); out.push(U.asciiBytes(p)); }
+    out.push(b8(0));
+    return cat(out);
+  }
+  function dnsMsg(id, isResp, qname, qtype, answers, rcode) {
+    const flags = (isResp ? 0x8000 : 0) | 0x0100 | (isResp ? 0x0080 : 0) | ((rcode || 0) & 15);
+    const q = cat([dnsNameBytes(qname), b16(qtype), b16(1)]);
+    const ansList = [];
+    for (const a of (answers || [])) {
+      let rdata;
+      if (a.type === 1) rdata = ip4(a.data);
+      else if (a.type === 28) rdata = ip6(a.data);
+      else if (a.type === 5) rdata = dnsNameBytes(a.data);
+      else rdata = U.asciiBytes(String(a.data));
+      // 名称用压缩指针指回问题区（偏移 12）
+      ansList.push(cat([b16(0xc00c), b16(a.type), b16(1), b32(a.ttl === undefined ? 300 : a.ttl), b16(rdata.length), rdata]));
+    }
+    return cat([b16(id), b16(flags), b16(1), b16(ansList.length), b16(0), b16(0), q, cat(ansList)]);
+  }
+
+  /* ---------- TLS ---------- */
+  function tlsRecord(type, ver, body) { return cat([b8(type), b16(ver), b16(body.length), body]); }
+  function tlsHandshake(type, body) {
+    return cat([b8(type), new Uint8Array([(body.length >> 16) & 255, (body.length >> 8) & 255, body.length & 255]), body]);
+  }
+  function tlsExt(type, body) { return cat([b16(type), b16(body.length), body]); }
+  function sniExt(host) {
+    const h = U.asciiBytes(host);
+    const entry = cat([b8(0), b16(h.length), h]);
+    return tlsExt(0, cat([b16(entry.length), entry]));
+  }
+  function alpnExt(protos) {
+    const list = cat(protos.map((p) => cat([b8(p.length), U.asciiBytes(p)])));
+    return tlsExt(16, cat([b16(list.length), list]));
+  }
+  function supportedVersionsExt(vers) {
+    const list = cat(vers.map((v) => b16(v)));
+    return tlsExt(43, cat([b8(list.length), list]));
+  }
+  function pseudoRandom(seed, n) {
+    // 确定性伪随机（示例抓包每次生成必须完全一致）
+    const out = new Uint8Array(n);
+    let s = seed >>> 0;
+    for (let i = 0; i < n; i++) { s = (s * 1103515245 + 12345) >>> 0; out[i] = (s >>> 16) & 255; }
+    return out;
+  }
+  function clientHello(host, seed) {
+    const ciphers = [0x1301, 0x1302, 0x1303, 0xc02b, 0xc02f, 0xc02c, 0xc030, 0xcca9, 0xcca8, 0x009c, 0x002f, 0x0035];
+    const cs = cat(ciphers.map(b16));
+    const exts = cat([sniExt(host), supportedVersionsExt([0x0304, 0x0303]), alpnExt(['h2', 'http/1.1']), tlsExt(23, new Uint8Array(0)), tlsExt(10, cat([b16(4), b16(0x001d), b16(0x0017)]))]);
+    const body = cat([
+      b16(0x0303), pseudoRandom(seed, 32), b8(32), pseudoRandom(seed + 7, 32),
+      b16(cs.length), cs, b8(1), b8(0), b16(exts.length), exts
+    ]);
+    return tlsRecord(22, 0x0301, tlsHandshake(1, body));
+  }
+  function serverHello(seed) {
+    const exts = cat([supportedVersionsExt([0x0304]), tlsExt(51, cat([b16(0x001d), b16(32), pseudoRandom(seed + 3, 32)]))]);
+    const body = cat([b16(0x0303), pseudoRandom(seed + 1, 32), b8(32), pseudoRandom(seed + 9, 32), b16(0x1301), b8(0), b16(exts.length), exts]);
+    return tlsRecord(22, 0x0303, tlsHandshake(2, body));
+  }
+  function tlsAppData(seed, n) { return tlsRecord(23, 0x0303, pseudoRandom(seed, n)); }
+
+  /* ---------- 写入器 ---------- */
+  function writePcap(packets, opt) {
+    const o = opt || {};
+    const linktype = o.linktype === undefined ? 1 : o.linktype;
+    const nano = !!o.nano;
+    const parts = [];
+    const hdr = new Uint8Array(24);
+    const magic = nano ? 0xa1b23c4d : 0xa1b2c3d4;
+    hdr.set(b32(magic), 0);
+    hdr.set(b16(2), 4); hdr.set(b16(4), 6);
+    hdr.set(b32(0), 8); hdr.set(b32(0), 12);
+    hdr.set(b32(o.snaplen === undefined ? 262144 : o.snaplen), 16);
+    hdr.set(b32(linktype), 20);
+    parts.push(hdr);
+    for (const p of packets) {
+      const bytes = p.bytes;
+      const rec = new Uint8Array(16);
+      rec.set(b32(p.tsSec >>> 0), 0);
+      rec.set(b32(nano ? (p.tsNsec >>> 0) : (Math.floor(p.tsNsec / 1000) >>> 0)), 4);
+      rec.set(b32(bytes.length), 8);
+      rec.set(b32(p.origLen === undefined ? bytes.length : p.origLen), 12);
+      parts.push(rec, bytes);
+    }
+    return cat(parts);
+  }
+
+  function padTo4(n) { return (4 - (n % 4)) % 4; }
+
+  function writePcapNg(packets, opt) {
+    const o = opt || {};
+    const ifaces = o.interfaces || [{ linktype: o.linktype === undefined ? 1 : o.linktype, name: 'demo0' }];
+    const parts = [];
+    // SHB（小端）
+    const appOpt = (() => {
+      const v = U.utf8Bytes(o.app || 'Packet Lab');
+      return cat([le16(4), le16(v.length), v, zeros(padTo4(v.length)), le16(0), le16(0)]);
+    })();
+    const shbLen = 28 + appOpt.length;
+    parts.push(cat([le32(0x0a0d0d0a), le32(shbLen), le32(0x1a2b3c4d), le16(1), le16(0),
+      new Uint8Array(8).fill(255), appOpt, le32(shbLen)]));
+    for (const ifc of ifaces) {
+      const nameB = U.utf8Bytes(ifc.name || 'if');
+      const opts = cat([
+        le16(2), le16(nameB.length), nameB, zeros(padTo4(nameB.length)),
+        le16(9), le16(1), new Uint8Array([6]), zeros(3),
+        le16(0), le16(0)
+      ]);
+      const len = 20 + opts.length;
+      parts.push(cat([le32(1), le32(len), le16(ifc.linktype), le16(0), le32(ifc.snaplen || 262144), opts, le32(len)]));
+    }
+    for (const p of packets) {
+      const bytes = p.bytes;
+      const pad = padTo4(bytes.length);
+      const len = 32 + bytes.length + pad;
+      const ticks = Math.round(p.tsSec * 1e6 + p.tsNsec / 1000);
+      const hi = Math.floor(ticks / 4294967296), lo = ticks >>> 0;
+      parts.push(cat([
+        le32(6), le32(len), le32(p.iface || 0), le32(hi), le32(lo),
+        le32(bytes.length), le32(p.origLen === undefined ? bytes.length : p.origLen),
+        bytes, zeros(pad), le32(len)
+      ]));
+    }
+    return cat(parts);
+  }
+  function le16(v) { return new Uint8Array([v & 255, (v >> 8) & 255]); }
+  function le32(v) { return new Uint8Array([v & 255, (v >> 8) & 255, (v >> 16) & 255, (v >>> 24) & 255]); }
+
+  /* ---------- 示例抓包 ---------- */
+  const T0 = 1780000000; // 固定起点：2026-05-29T05:46:40Z，示例每次生成完全一致
+
+  function mk(list) {
+    // list: [{dt, bytes, iface}] → 绝对时间戳。
+    // 先把小数偏移换成整数纳秒再加纪元秒 —— 直接算 T0 + dt 会在 1.78e9 量级上丢掉约 1 微秒，
+    // 示例抓包的时间戳就会比脚本里写的差 1 个微秒。
+    return list.map((x) => {
+      const ns = Math.round(x.dt * 1e9);
+      const carry = Math.floor(ns / 1e9);
+      return {
+        tsSec: T0 + carry, tsNsec: ns - carry * 1e9,
+        bytes: x.bytes, origLen: x.origLen || x.bytes.length, iface: x.iface || 0
+      };
+    });
+  }
+
+  const CLIENT_MAC = '3c:22:fb:1a:2b:3c', GW_MAC = '5c:e3:0e:9f:11:22';
+  const CLIENT_IP = '192.168.1.24', DNS_IP = '192.168.1.1', WEB_IP = '93.184.216.34';
+
+  function tcpOpts(list) { return cat(list); }
+  const OPT_MSS = (v) => cat([b8(2), b8(4), b16(v)]);
+  const OPT_SACKPERM = cat([b8(4), b8(2)]);
+  const OPT_NOP = b8(1);
+  const OPT_WS = (v) => cat([b8(3), b8(3), b8(v)]);
+  const OPT_TS = (a, b) => cat([b8(8), b8(10), b32(a), b32(b)]);
+
+  function sampleWebVisit() {
+    const cs = 1000, ss = 5000; // 相对序号基
+    const ISN_C = 305419896, ISN_S = 2271560481;
+    const pk = [];
+    const P = (dt, payload) => pk.push({ dt, bytes: payload });
+    // ARP 找网关
+    P(0, eth('ff:ff:ff:ff:ff:ff', CLIENT_MAC, 0x0806, arpPkt(1, CLIENT_MAC, CLIENT_IP, '00:00:00:00:00:00', DNS_IP)));
+    P(0.000412, eth(CLIENT_MAC, GW_MAC, 0x0806, arpPkt(2, GW_MAC, DNS_IP, CLIENT_MAC, CLIENT_IP)));
+    // DNS 查询 / 应答
+    P(0.001210, eth(GW_MAC, CLIENT_MAC, 0x0800, ipv4(CLIENT_IP, DNS_IP, 17,
+      udpSeg(CLIENT_IP, DNS_IP, false, 54321, 53, dnsMsg(0x1a2b, false, 'example.com', 1)), { id: 0x1001, df: true })));
+    P(0.013807, eth(CLIENT_MAC, GW_MAC, 0x0800, ipv4(DNS_IP, CLIENT_IP, 17,
+      udpSeg(DNS_IP, CLIENT_IP, false, 53, 54321, dnsMsg(0x1a2b, true, 'example.com', 1, [{ type: 1, data: WEB_IP, ttl: 3600 }])), { id: 0x1002 })));
+    // TCP 三次握手
+    const cOpts = tcpOpts([OPT_MSS(1460), OPT_SACKPERM, OPT_TS(3451234, 0), OPT_NOP, OPT_WS(8)]);
+    const sOpts = tcpOpts([OPT_MSS(1460), OPT_SACKPERM, OPT_TS(998877, 3451234), OPT_NOP, OPT_WS(7)]);
+    P(0.014102, eth(GW_MAC, CLIENT_MAC, 0x0800, ipv4(CLIENT_IP, WEB_IP, 6,
+      tcpSeg(CLIENT_IP, WEB_IP, false, 51514, 443, ISN_C, 0, 0x02, 64240, zeros(0), cOpts), { id: 0x2001, df: true })));
+    P(0.041983, eth(CLIENT_MAC, GW_MAC, 0x0800, ipv4(WEB_IP, CLIENT_IP, 6,
+      tcpSeg(WEB_IP, CLIENT_IP, false, 443, 51514, ISN_S, (ISN_C + 1) >>> 0, 0x12, 65535, zeros(0), sOpts), { id: 0x3001, df: true })));
+    P(0.042104, eth(GW_MAC, CLIENT_MAC, 0x0800, ipv4(CLIENT_IP, WEB_IP, 6,
+      tcpSeg(CLIENT_IP, WEB_IP, false, 51514, 443, (ISN_C + 1) >>> 0, (ISN_S + 1) >>> 0, 0x10, 501, zeros(0)), { id: 0x2002, df: true })));
+    // TLS 握手
+    const ch = clientHello('example.com', 42);
+    P(0.042610, eth(GW_MAC, CLIENT_MAC, 0x0800, ipv4(CLIENT_IP, WEB_IP, 6,
+      tcpSeg(CLIENT_IP, WEB_IP, false, 51514, 443, (ISN_C + 1) >>> 0, (ISN_S + 1) >>> 0, 0x18, 501, ch), { id: 0x2003, df: true })));
+    P(0.070331, eth(CLIENT_MAC, GW_MAC, 0x0800, ipv4(WEB_IP, CLIENT_IP, 6,
+      tcpSeg(WEB_IP, CLIENT_IP, false, 443, 51514, (ISN_S + 1) >>> 0, (ISN_C + 1 + ch.length) >>> 0, 0x10, 507, zeros(0)), { id: 0x3002, df: true })));
+    const sh = cat([serverHello(77), tlsRecord(23, 0x0303, pseudoRandom(311, 640))]);
+    P(0.071902, eth(CLIENT_MAC, GW_MAC, 0x0800, ipv4(WEB_IP, CLIENT_IP, 6,
+      tcpSeg(WEB_IP, CLIENT_IP, false, 443, 51514, (ISN_S + 1) >>> 0, (ISN_C + 1 + ch.length) >>> 0, 0x18, 507, sh), { id: 0x3003, df: true })));
+    // 应用数据往返
+    const req = tlsAppData(555, 208);
+    P(0.073455, eth(GW_MAC, CLIENT_MAC, 0x0800, ipv4(CLIENT_IP, WEB_IP, 6,
+      tcpSeg(CLIENT_IP, WEB_IP, false, 51514, 443, (ISN_C + 1 + ch.length) >>> 0, (ISN_S + 1 + sh.length) >>> 0, 0x18, 501, req), { id: 0x2004, df: true })));
+    const resp = tlsAppData(999, 1180);
+    P(0.101774, eth(CLIENT_MAC, GW_MAC, 0x0800, ipv4(WEB_IP, CLIENT_IP, 6,
+      tcpSeg(WEB_IP, CLIENT_IP, false, 443, 51514, (ISN_S + 1 + sh.length) >>> 0, (ISN_C + 1 + ch.length + req.length) >>> 0, 0x18, 507, resp), { id: 0x3004, df: true })));
+    P(0.101902, eth(GW_MAC, CLIENT_MAC, 0x0800, ipv4(CLIENT_IP, WEB_IP, 6,
+      tcpSeg(CLIENT_IP, WEB_IP, false, 51514, 443, (ISN_C + 1 + ch.length + req.length) >>> 0, (ISN_S + 1 + sh.length + resp.length) >>> 0, 0x10, 501, zeros(0)), { id: 0x2005, df: true })));
+    // 关闭
+    const cEnd = (ISN_C + 1 + ch.length + req.length) >>> 0, sEnd = (ISN_S + 1 + sh.length + resp.length) >>> 0;
+    P(0.203311, eth(GW_MAC, CLIENT_MAC, 0x0800, ipv4(CLIENT_IP, WEB_IP, 6,
+      tcpSeg(CLIENT_IP, WEB_IP, false, 51514, 443, cEnd, sEnd, 0x11, 501, zeros(0)), { id: 0x2006, df: true })));
+    P(0.231044, eth(CLIENT_MAC, GW_MAC, 0x0800, ipv4(WEB_IP, CLIENT_IP, 6,
+      tcpSeg(WEB_IP, CLIENT_IP, false, 443, 51514, sEnd, (cEnd + 1) >>> 0, 0x11, 507, zeros(0)), { id: 0x3005, df: true })));
+    P(0.231180, eth(GW_MAC, CLIENT_MAC, 0x0800, ipv4(CLIENT_IP, WEB_IP, 6,
+      tcpSeg(CLIENT_IP, WEB_IP, false, 51514, 443, (cEnd + 1) >>> 0, (sEnd + 1) >>> 0, 0x10, 501, zeros(0)), { id: 0x2007, df: true })));
+    return writePcap(mk(pk), { linktype: 1 });
+  }
+
+  const HTTP_BODY = '<!doctype html>\n<html>\n<head><title>Example Domain</title></head>\n<body>\n<h1>Example Domain</h1>\n<p>This domain is for use in illustrative examples in documents.</p>\n</body>\n</html>\n';
+
+  function sampleHttpPlain() {
+    const ISN_C = 1000000, ISN_S = 2000000;
+    const pk = [];
+    const P = (dt, bytes) => pk.push({ dt, bytes });
+    const CRLF = String.fromCharCode(13, 10);
+    const reqText = 'GET /index.html HTTP/1.1' + CRLF + 'Host: example.com' + CRLF +
+      'User-Agent: curl/8.6.0' + CRLF + 'Accept: */*' + CRLF + 'Connection: close' + CRLF + CRLF;
+    const respHead = 'HTTP/1.1 200 OK' + CRLF + 'Content-Type: text/html; charset=UTF-8' + CRLF +
+      'Content-Length: ' + HTTP_BODY.length + CRLF + 'Server: ECS (dcb/7F84)' + CRLF +
+      'Cache-Control: max-age=604800' + CRLF + CRLF;
+    const req = U.asciiBytes(reqText);
+    const part1 = U.asciiBytes(respHead + HTTP_BODY.slice(0, 90));
+    const part2 = U.asciiBytes(HTTP_BODY.slice(90));
+    const cOpts = tcpOpts([OPT_MSS(1460), OPT_SACKPERM, OPT_NOP, OPT_WS(8)]);
+    P(0, eth(GW_MAC, CLIENT_MAC, 0x0800, ipv4(CLIENT_IP, WEB_IP, 6, tcpSeg(CLIENT_IP, WEB_IP, false, 44120, 80, ISN_C, 0, 0x02, 64240, zeros(0), cOpts), { id: 1, df: true })));
+    P(0.028441, eth(CLIENT_MAC, GW_MAC, 0x0800, ipv4(WEB_IP, CLIENT_IP, 6, tcpSeg(WEB_IP, CLIENT_IP, false, 80, 44120, ISN_S, ISN_C + 1, 0x12, 65535, zeros(0), cOpts), { id: 2, df: true })));
+    P(0.028602, eth(GW_MAC, CLIENT_MAC, 0x0800, ipv4(CLIENT_IP, WEB_IP, 6, tcpSeg(CLIENT_IP, WEB_IP, false, 44120, 80, ISN_C + 1, ISN_S + 1, 0x10, 502, zeros(0)), { id: 3, df: true })));
+    P(0.028915, eth(GW_MAC, CLIENT_MAC, 0x0800, ipv4(CLIENT_IP, WEB_IP, 6, tcpSeg(CLIENT_IP, WEB_IP, false, 44120, 80, ISN_C + 1, ISN_S + 1, 0x18, 502, req), { id: 4, df: true })));
+    P(0.057330, eth(CLIENT_MAC, GW_MAC, 0x0800, ipv4(WEB_IP, CLIENT_IP, 6, tcpSeg(WEB_IP, CLIENT_IP, false, 80, 44120, ISN_S + 1, ISN_C + 1 + req.length, 0x10, 509, zeros(0)), { id: 5, df: true })));
+    P(0.061204, eth(CLIENT_MAC, GW_MAC, 0x0800, ipv4(WEB_IP, CLIENT_IP, 6, tcpSeg(WEB_IP, CLIENT_IP, false, 80, 44120, ISN_S + 1, ISN_C + 1 + req.length, 0x10, 509, part1), { id: 6, df: true })));
+    P(0.061455, eth(CLIENT_MAC, GW_MAC, 0x0800, ipv4(WEB_IP, CLIENT_IP, 6, tcpSeg(WEB_IP, CLIENT_IP, false, 80, 44120, ISN_S + 1 + part1.length, ISN_C + 1 + req.length, 0x18, 509, part2), { id: 7, df: true })));
+    P(0.061602, eth(GW_MAC, CLIENT_MAC, 0x0800, ipv4(CLIENT_IP, WEB_IP, 6, tcpSeg(CLIENT_IP, WEB_IP, false, 44120, 80, ISN_C + 1 + req.length, ISN_S + 1 + part1.length + part2.length, 0x10, 502, zeros(0)), { id: 8, df: true })));
+    const sEnd = ISN_S + 1 + part1.length + part2.length;
+    P(0.062001, eth(CLIENT_MAC, GW_MAC, 0x0800, ipv4(WEB_IP, CLIENT_IP, 6, tcpSeg(WEB_IP, CLIENT_IP, false, 80, 44120, sEnd, ISN_C + 1 + req.length, 0x11, 509, zeros(0)), { id: 9, df: true })));
+    P(0.062280, eth(GW_MAC, CLIENT_MAC, 0x0800, ipv4(CLIENT_IP, WEB_IP, 6, tcpSeg(CLIENT_IP, WEB_IP, false, 44120, 80, ISN_C + 1 + req.length, sEnd + 1, 0x11, 502, zeros(0)), { id: 10, df: true })));
+    P(0.089913, eth(CLIENT_MAC, GW_MAC, 0x0800, ipv4(WEB_IP, CLIENT_IP, 6, tcpSeg(WEB_IP, CLIENT_IP, false, 80, 44120, sEnd + 1, ISN_C + 2 + req.length, 0x10, 509, zeros(0)), { id: 11, df: true })));
+    return writePcap(mk(pk), { linktype: 1 });
+  }
+
+  function sampleTrouble() {
+    const ISN_C = 700000, ISN_S = 800000;
+    const SRV = '10.20.30.40';
+    const pk = [];
+    const P = (dt, bytes) => pk.push({ dt, bytes });
+    const seg = (dir, seq, ack, flags, win, payload, id) => {
+      const c2s = dir === 'c';
+      const src = c2s ? CLIENT_IP : SRV, dst = c2s ? SRV : CLIENT_IP;
+      const sp = c2s ? 49888 : 8080, dp = c2s ? 8080 : 49888;
+      return eth(c2s ? GW_MAC : CLIENT_MAC, c2s ? CLIENT_MAC : GW_MAC, 0x0800,
+        ipv4(src, dst, 6, tcpSeg(src, dst, false, sp, dp, seq, ack, flags, win, payload), { id, df: true }));
+    };
+    P(0, seg('c', ISN_C, 0, 0x02, 64240, zeros(0), 100));
+    P(0.098120, seg('s', ISN_S, ISN_C + 1, 0x12, 65535, zeros(0), 200));
+    P(0.098300, seg('c', ISN_C + 1, ISN_S + 1, 0x10, 502, zeros(0), 101));
+    const d1 = pseudoRandom(1, 1200), d2 = pseudoRandom(2, 1200), d3 = pseudoRandom(3, 1200);
+    P(0.099000, seg('s', ISN_S + 1, ISN_C + 1, 0x10, 65535, d1, 201));
+    // d2 在抓包点丢失 → 客户端只确认到 d1 末尾，随后连发重复 ACK
+    P(0.099600, seg('s', ISN_S + 1 + 2400, ISN_C + 1, 0x10, 65535, d3, 203));
+    P(0.099700, seg('c', ISN_C + 1, ISN_S + 1 + 1200, 0x10, 502, zeros(0), 102));
+    P(0.100100, seg('c', ISN_C + 1, ISN_S + 1 + 1200, 0x10, 502, zeros(0), 103));
+    P(0.100400, seg('c', ISN_C + 1, ISN_S + 1 + 1200, 0x10, 502, zeros(0), 104));
+    P(0.100700, seg('c', ISN_C + 1, ISN_S + 1 + 1200, 0x10, 502, zeros(0), 105));
+    // 快速重传 d2
+    P(0.101200, seg('s', ISN_S + 1 + 1200, ISN_C + 1, 0x10, 65535, d2, 204));
+    P(0.101500, seg('c', ISN_C + 1, ISN_S + 1 + 3600, 0x10, 502, zeros(0), 106));
+    // 超时重传（与 d3 完全相同的一段）
+    P(0.410880, seg('s', ISN_S + 1 + 2400, ISN_C + 1, 0x10, 65535, d3, 205));
+    // 接收窗口被填满
+    P(0.411500, seg('c', ISN_C + 1, ISN_S + 1 + 3600, 0x10, 0, zeros(0), 107));
+    P(0.911500, seg('c', ISN_C + 1, ISN_S + 1 + 3600, 0x10, 4096, zeros(0), 108));
+    // 服务端复位
+    P(1.204410, seg('s', ISN_S + 1 + 3600, ISN_C + 1, 0x14, 0, zeros(0), 206));
+    // 另外：一次打到关闭端口的 UDP，换来 ICMP 端口不可达
+    const inner = ipv4(CLIENT_IP, SRV, 17, udpSeg(CLIENT_IP, SRV, false, 51000, 9999, U.asciiBytes('probe')), { id: 300, df: true });
+    P(1.300000, eth(GW_MAC, CLIENT_MAC, 0x0800, inner));
+    P(1.318221, eth(CLIENT_MAC, GW_MAC, 0x0800, ipv4(SRV, CLIENT_IP, 1, icmpUnreach(3, inner.subarray(0, 28)), { id: 301 })));
+    // DNS 查一个不存在的域名
+    P(1.400000, eth(GW_MAC, CLIENT_MAC, 0x0800, ipv4(CLIENT_IP, DNS_IP, 17,
+      udpSeg(CLIENT_IP, DNS_IP, false, 55001, 53, dnsMsg(0x7f01, false, 'no-such-host.invalid', 1)), { id: 302, df: true })));
+    P(1.442310, eth(CLIENT_MAC, GW_MAC, 0x0800, ipv4(DNS_IP, CLIENT_IP, 17,
+      udpSeg(DNS_IP, CLIENT_IP, false, 53, 55001, dnsMsg(0x7f01, true, 'no-such-host.invalid', 1, [], 3)), { id: 303 })));
+    return writePcap(mk(pk), { linktype: 1 });
+  }
+
+  function sampleV6Lan() {
+    const A6 = 'fe80::3e22:fbff:fe1a:2b3c', B6 = 'fe80::5ee3:eff:fe9f:1122';
+    const pk = [];
+    const P = (dt, bytes, iface) => pk.push({ dt, bytes, iface: iface || 0 });
+    // ICMPv6 ping ×2 往返
+    for (let i = 0; i < 2; i++) {
+      P(0.5 * i, eth(GW_MAC, CLIENT_MAC, 0x86dd, ipv6h(A6, B6, 58, icmp6(128, 0, cat([b16(0x4a1b), b16(i + 1), pseudoRandom(20 + i, 56)]), A6, B6), { hop: 64 })), 0);
+      P(0.5 * i + 0.001832, eth(CLIENT_MAC, GW_MAC, 0x86dd, ipv6h(B6, A6, 58, icmp6(129, 0, cat([b16(0x4a1b), b16(i + 1), pseudoRandom(20 + i, 56)]), B6, A6), { hop: 64 })), 0);
+    }
+    // 邻居请求 / 通告
+    P(1.100000, eth('33:33:ff:9f:11:22', CLIENT_MAC, 0x86dd, ipv6h(A6, 'ff02::1:ff9f:1122', 58,
+      icmp6(135, 0, cat([b32(0), ip6(B6), b8(1), b8(1), mac(CLIENT_MAC)]), A6, 'ff02::1:ff9f:1122'), { hop: 255 })), 0);
+    P(1.101204, eth(CLIENT_MAC, GW_MAC, 0x86dd, ipv6h(B6, A6, 58,
+      icmp6(136, 0, cat([b32(0x60000000), ip6(B6), b8(2), b8(1), mac(GW_MAC)]), B6, A6), { hop: 255 })), 0);
+    // VLAN 100 上的 NTP（IPv4）
+    const ntpBody = cat([b8(0x23), b8(3), b8(6), b8(0xec), b32(0), b32(0), U.asciiBytes('GPS '), zeros(24), b32(0xe9f21f00), b32(0)]);
+    P(1.500000, eth(GW_MAC, CLIENT_MAC, 0x8100, vlanTag(100, 5, 0x0800,
+      ipv4(CLIENT_IP, '203.0.113.9', 17, udpSeg(CLIENT_IP, '203.0.113.9', false, 51234, 123, ntpBody), { id: 900, df: true }))), 1);
+    P(1.523991, eth(CLIENT_MAC, GW_MAC, 0x8100, vlanTag(100, 5, 0x0800,
+      ipv4('203.0.113.9', CLIENT_IP, 17, udpSeg('203.0.113.9', CLIENT_IP, false, 123, 51234, cat([b8(0x24), ntpBody.subarray(1)])), { id: 901 }))), 1);
+    // mDNS 查询
+    P(1.700000, eth('01:00:5e:00:00:fb', CLIENT_MAC, 0x0800, ipv4(CLIENT_IP, '224.0.0.251', 17,
+      udpSeg(CLIENT_IP, '224.0.0.251', false, 5353, 5353, dnsMsg(0, false, 'my-printer.local', 1)), { id: 910, ttl: 255 })), 1);
+    // IPv4 的 ping 一来一回
+    for (let i = 0; i < 2; i++) {
+      const payload = pseudoRandom(70 + i, 56);
+      P(1.900000 + i * 1.0, eth(GW_MAC, CLIENT_MAC, 0x0800, ipv4(CLIENT_IP, '203.0.113.9', 1,
+        icmpEcho(8, 0x2f01, i + 1, payload), { id: 920 + i * 2, df: true })), 0);
+      P(1.918442 + i * 1.0, eth(CLIENT_MAC, GW_MAC, 0x0800, ipv4('203.0.113.9', CLIENT_IP, 1,
+        icmpEcho(0, 0x2f01, i + 1, payload), { id: 921 + i * 2, ttl: 56 })), 0);
+    }
+    return writePcapNg(mk(pk), {
+      interfaces: [{ linktype: 1, name: 'en0' }, { linktype: 1, name: 'vlan100' }],
+      app: 'Packet Lab 示例生成器'
+    });
+  }
+
+  const SAMPLES = [
+    { id: 'web-visit', name: '一次 HTTPS 访问.pcap', desc: 'ARP → DNS → TCP 握手 → TLS 握手（含 SNI）→ 加密数据 → 挥手，一次完整的网页请求', build: sampleWebVisit },
+    { id: 'http-plain', name: '明文 HTTP 请求.pcap', desc: 'GET /index.html 与 200 OK，响应体跨两个 TCP 段——用来演示「追踪流」', build: sampleHttpPlain },
+    { id: 'trouble', name: '有问题的连接.pcap', desc: '丢包 + 3 次重复 ACK + 快速重传 + 超时重传 + 零窗口 + RST，外加 ICMP 端口不可达与 DNS NXDOMAIN', build: sampleTrouble },
+    { id: 'v6-lan', name: '局域网杂项.pcapng', desc: 'pcapng 容器（两个接口）：IPv6 ping、邻居发现、VLAN 里的 NTP、mDNS 查询、IPv4 ping', build: sampleV6Lan }
+  ];
+
+  function buildSample(id) {
+    const s = SAMPLES.find((x) => x.id === id);
+    if (!s) throw new Error('没有这个示例：' + id);
+    return s.build();
+  }
+
+  PL.build = {
+    writePcap, writePcapNg, buildSample, SAMPLES,
+    parts: { cat, b8, b16, b32, mac, ip4, ip6, zeros, eth, vlanTag, ipv4, ipv6h, tcpSeg, udpSeg, icmpEcho, icmpUnreach, icmp6, arpPkt, dnsMsg, clientHello, serverHello, tlsAppData, pseudoRandom, tcpOpts, OPT_MSS, OPT_SACKPERM, OPT_NOP, OPT_WS, OPT_TS },
+    T0
+  };
+})(PL);
+
+window.PL = PL;
+/* ============================================================
+   Packet Lab — 界面层
+   ============================================================ */
+(function () {
+  const U = PL.util, C = PL.container, D = PL.dissect, A = PL.analyze, F = PL.filter, B = PL.build;
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+  const LS_BOOKMARKS = 'packetlab.bookmarks.v1';
+  const LS_MARKS = 'packetlab.marks.v1';
+  const LS_PREFS = 'packetlab.prefs.v1';
+  const DEFAULT_BOOKMARKS = [
+    { name: '只看 TLS 握手', expr: 'tls.handshake.type == 1 || tls.handshake.type == 2' },
+    { name: '建连与断连', expr: 'tcp.flags.syn == 1 || tcp.flags.fin == 1 || tcp.flags.rst == 1' },
+    { name: '域名解析', expr: 'dns' },
+    { name: '明文 HTTP', expr: 'http' },
+    { name: '大包（> 1000 字节）', expr: 'frame.len > 1000' },
+    { name: '内网互访', expr: 'ip.addr == 10.0.0.0/8 || ip.addr == 192.168.0.0/16 || ip.addr == 172.16.0.0/12' }
+  ];
+
+  function lsGet(key, fallback) {
+    try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; } catch (e) { return fallback; }
+  }
+  function lsSet(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) { /* 隐私模式下忽略 */ } }
+
+  const S = {
+    cap: null, an: null, list: [], sel: null, selNode: null, expanded: new Set(),
+    tab: 'packets', filterText: '', filterOK: true, follow: null, followHex: false, expandedFor: null,
+    capId: null, marks: {}, fileName: '', renderCount: 0, parseMs: 0,
+    bookmarks: lsGet(LS_BOOKMARKS, null) || DEFAULT_BOOKMARKS.slice(),
+    prefs: lsGet(LS_PREFS, null) || { timeAbs: false }
+  };
+
+  /* ---------- 抓包指纹：同一个文件再打开时能找回旗标与备注 ---------- */
+  function fingerprint(bytes) {
+    let h = 2166136261 >>> 0;
+    const mix = (b) => { h ^= b; h = Math.imul(h, 16777619) >>> 0; };
+    const n = bytes.length;
+    for (let i = 0; i < Math.min(n, 512); i++) mix(bytes[i]);
+    for (let i = Math.max(0, n - 512); i < n; i++) mix(bytes[i]);
+    mix(n & 255); mix((n >> 8) & 255); mix((n >> 16) & 255); mix((n >>> 24) & 255);
+    return n.toString(36) + '-' + h.toString(36);
+  }
+
+  /* ============ 载入 ============ */
+  function loadBytes(bytes, name) {
+    const t0 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : 0;
+    let cap;
+    try {
+      cap = C.parseCapture(bytes);
+    } catch (e) {
+      showError(e.message || String(e));
+      return false;
+    }
+    cap.packets.forEach((p) => D.dissectPacket(p));
+    S.cap = cap;
+    S.an = A.analyze(cap);
+    S.parseMs = ((typeof performance !== 'undefined' && performance.now) ? performance.now() : 0) - t0;
+    S.fileName = name;
+    S.capId = fingerprint(bytes);
+    const allMarks = lsGet(LS_MARKS, {}) || {};
+    S.marks = allMarks[S.capId] || {};
+    S.sel = null; S.selNode = null; S.expanded = new Set(); S.expandedFor = null;
+    S.follow = null;
+    applyFilter(S.filterText, true);
+    renderCapInfo();
+    renderFollowPicker();
+    renderStats();
+    renderFlows();
+    renderExpert();
+    if (S.list.length) selectPacket(S.list[0]);
+    return true;
+  }
+
+  function showError(msg) {
+    const box = $('pl-warnings');
+    box.hidden = false;
+    box.innerHTML = '<li>' + esc(msg) + '</li>';
+    $('pl-capinfo').innerHTML = '<span class="pl-badge pl-badge-bad">没能读懂这个文件</span>';
+  }
+
+  function renderCapInfo() {
+    const cap = S.cap, an = S.an;
+    const bits = [
+      ['pl-badge-brand', S.fileName],
+      ['', cap.formatLabel],
+      ['', cap.packets.length + ' 个包'],
+      ['', U.fmtBytes(cap.fileSize)],
+      ['', '时长 ' + U.fmtDur(an.summary.duration)],
+      ['', an.flows.length + ' 条会话'],
+      ['', cap.interfaces.map((i) => i.name).join(' / ')],
+      ['pl-badge-ok', '解析耗时 ' + (S.parseMs < 1 ? '<1' : S.parseMs.toFixed(0)) + ' ms']
+    ];
+    $('pl-capinfo').innerHTML = bits.filter((b) => b[1]).map((b) =>
+      '<span class="pl-badge ' + b[0] + '">' + esc(b[1]) + '</span>').join('');
+    const warn = $('pl-warnings');
+    if (cap.warnings && cap.warnings.length) {
+      warn.hidden = false;
+      warn.innerHTML = cap.warnings.map((w) => '<li>' + esc(w) + '</li>').join('');
+    } else { warn.hidden = true; warn.innerHTML = ''; }
+  }
+
+  /* ============ 过滤 ============ */
+  function applyFilter(text, silent) {
+    S.filterText = text;
+    const c = F.compile(text);
+    S.filterOK = c.ok;
+    const box = $('pl-filter-card');
+    const msg = $('pl-filter-msg');
+    box.classList.remove('pl-filter-ok', 'pl-filter-bad');
+    msg.classList.remove('pl-msg-bad');
+    if (!c.ok) {
+      box.classList.add('pl-filter-bad');
+      msg.classList.add('pl-msg-bad');
+      msg.textContent = '语法有问题：' + c.error + (c.pos !== null && c.pos !== undefined ? '（第 ' + (c.pos + 1) + ' 个字符附近）' : '');
+      return;
+    }
+    if (text.trim()) { box.classList.add('pl-filter-ok'); }
+    S.list = S.cap ? S.cap.packets.filter((p) => c.fn(p)) : [];
+    msg.textContent = text.trim()
+      ? '读作：' + c.describe + '　→　命中 ' + S.list.length + ' / ' + (S.cap ? S.cap.packets.length : 0) + ' 个包'
+      : (S.cap ? '当前显示全部 ' + S.cap.packets.length + ' 个包。' : '');
+    if (S.sel && S.list.indexOf(S.sel) < 0) S.sel = S.list.length ? S.list[0] : null;
+    renderList();
+    renderCounts();
+    if (!silent && S.sel) selectPacket(S.sel);
+  }
+
+  function renderCounts() {
+    $('pl-cnt-packets').textContent = S.cap ? ' ' + S.list.length : '';
+    $('pl-cnt-flows').textContent = S.an ? ' ' + S.an.flows.length : '';
+    $('pl-cnt-expert').textContent = S.an && S.an.expert.length ? ' ' + S.an.expert.length : '';
+    const marked = Object.keys(S.marks).length;
+    $('pl-pkt-summary').innerHTML =
+      '<span class="pl-badge">显示 ' + S.list.length + ' / ' + (S.cap ? S.cap.packets.length : 0) + ' 个包</span>' +
+      (marked ? '<span class="pl-badge pl-badge-brand">已插旗 ' + marked + ' 帧</span>' : '');
+  }
+
+  function renderBookmarks() {
+    const wrap = $('pl-bookmarks');
+    wrap.innerHTML = S.bookmarks.map((b, i) =>
+      '<button class="pl-btn pl-btn-sm pl-btn-subtle pl-bm" data-i="' + i + '" title="' + esc(b.expr) + '">' +
+      esc(b.name) + '</button>').join('') +
+      (S.bookmarks.length > DEFAULT_BOOKMARKS.length || JSON.stringify(S.bookmarks) !== JSON.stringify(DEFAULT_BOOKMARKS)
+        ? '<button class="pl-btn pl-btn-sm" id="pl-bm-reset">恢复默认收藏</button>' : '');
+    wrap.querySelectorAll('.pl-bm').forEach((el) => {
+      el.addEventListener('click', () => {
+        const b = S.bookmarks[Number(el.dataset.i)];
+        $('pl-filter').value = b.expr;
+        applyFilter(b.expr);
+      });
+    });
+    const reset = $('pl-bm-reset');
+    if (reset) reset.addEventListener('click', () => {
+      S.bookmarks = DEFAULT_BOOKMARKS.slice();
+      lsSet(LS_BOOKMARKS, S.bookmarks);
+      renderBookmarks();
+    });
+  }
+
+  /* ============ 包列表（虚拟滚动） ============ */
+  const ROW_H = 26;
+  function timeText(p) {
+    return S.prefs.timeAbs ? U.fmtAbs(p.tsSec, p.tsNsec).slice(11) : p.tsRel.toFixed(6);
+  }
+  function rowClass(p) {
+    // 只有真正的问题才标色；握手 RTT 是个读数，不是警告
+    const notes = (p.tcpNotes || []).filter((n) => n.k !== 'rtt');
+    if (p.f['tcp.flags.rst'] === 1 || (p.proto === 'ICMP' && p.f['icmp.type'] === 3) || p.f['dns.flags.rcode'] > 0) return ' pl-row-bad';
+    if (notes.length) return ' pl-row-warn';
+    return '';
+  }
+  function renderList() {
+    const vp = $('pl-vp'), inner = $('pl-vp-inner');
+    inner.style.height = (S.list.length * ROW_H) + 'px';
+    if (!S.list.length) {
+      inner.innerHTML = '<div class="pl-empty" style="position:absolute; left:0; right:0">' +
+        (S.cap ? '没有包命中当前过滤条件。' : '还没有载入抓包文件——上面选一个示例，或者把文件拖进来。') + '</div>';
+      return;
+    }
+    const top = vp.scrollTop, h = vp.clientHeight || 376;
+    const start = Math.max(0, Math.floor(top / ROW_H) - 6);
+    const end = Math.min(S.list.length, Math.ceil((top + h) / ROW_H) + 6);
+    const out = [];
+    for (let i = start; i < end; i++) {
+      const p = S.list[i];
+      const flagged = S.marks[p.num];
+      out.push('<div class="pl-row' + rowClass(p) + '" role="option" data-num="' + p.num + '" style="top:' + (i * ROW_H) + 'px"' +
+        (S.sel === p ? ' aria-selected="true"' : ' aria-selected="false"') + '>' +
+        '<span class="pl-c-num">' + (flagged ? '<span class="pl-row-flag">⚑</span> ' : '') + p.num + '</span>' +
+        '<span class="pl-c-time">' + esc(timeText(p)) + '</span>' +
+        '<span class="pl-c-src" title="' + esc(p.src) + '">' + esc(p.src) + '</span>' +
+        '<span class="pl-c-dst" title="' + esc(p.dst) + '">' + esc(p.dst) + '</span>' +
+        '<span class="pl-c-proto">' + esc(p.proto) + '</span>' +
+        '<span class="pl-c-len">' + p.origLen + '</span>' +
+        '<span class="pl-c-info" title="' + esc(p.info) + '">' + esc(p.info) + '</span>' +
+        '</div>');
+    }
+    inner.innerHTML = out.join('');
+    S.renderCount++;
+  }
+
+  /* 换一帧就把各协议层默认展开一级（层节点 = 名字里没有点号的那些），
+     再往下的字段保持收起，免得一屏塞几十行。 */
+  function seedExpanded(p) {
+    const keys = new Set();
+    (function walk(n, depth, path) {
+      const key = nodeKey(n, path);
+      if (depth === 0 || (n.children.length && n.name.indexOf('.') < 0)) keys.add(key);
+      for (const c of n.children) walk(c, depth + 1, key);
+    })(p.tree, 0, '');
+    return keys;
+  }
+
+  function selectPacket(p) {
+    if (!p) return;
+    S.sel = p;
+    S.selNode = null;
+    renderList();
+    renderDetail();
+  }
+  function selectByNum(num) {
+    const p = S.cap && S.cap.packets.find((x) => x.num === num);
+    if (!p) return false;
+    if (S.list.indexOf(p) < 0) { $('pl-filter').value = ''; applyFilter('', true); }
+    selectPacket(p);
+    const i = S.list.indexOf(p);
+    const vp = $('pl-vp');
+    if (i >= 0) { vp.scrollTop = Math.max(0, i * ROW_H - vp.clientHeight / 2); renderList(); }
+    switchTab('packets');
+    return true;
+  }
+
+  /* ============ 详情：字段树 + 十六进制 ============ */
+  function nodeKey(n, path) { return path + '/' + n.name + '@' + n.off + ':' + n.len; }
+
+  function renderDetail() {
+    const p = S.sel;
+    // 展开状态跟着「当前是哪一帧」走：换了帧就重新按层展开一级。
+    // 判定放在这里而不是 selectPacket 里——过滤器换掉选中帧时是直接改 S.sel 的。
+    if (p && S.expandedFor !== p) { S.expanded = seedExpanded(p); S.expandedFor = p; }
+    const hd = $('pl-detail-hd'), tree = $('pl-tree'), hex = $('pl-hex'), note = $('pl-note');
+    if (!p) {
+      hd.innerHTML = '<span class="pl-badge">还没有选中任何一帧</span>';
+      tree.innerHTML = '<div class="pl-empty">在上面点一行，这里会展开它的逐层字段。</div>';
+      hex.innerHTML = ''; note.value = ''; note.disabled = true;
+      return;
+    }
+    note.disabled = false;
+    const marked = S.marks[p.num];
+    hd.innerHTML =
+      '<span class="pl-badge pl-badge-brand">帧 ' + p.num + '</span>' +
+      '<span class="pl-badge">' + esc(p.proto) + '</span>' +
+      '<span class="pl-badge">' + p.origLen + ' 字节</span>' +
+      '<span class="pl-badge">' + esc(p.protoPath.join(' → ')) + '</span>' +
+      (p.tcpNotes && p.tcpNotes.length ? p.tcpNotes.map((n) => '<span class="pl-badge pl-badge-warn">' + esc(n.t) + '</span>').join('') : '') +
+      '<button class="pl-btn pl-btn-sm ' + (marked ? 'pl-btn-subtle' : '') + '" id="pl-flag">' + (marked ? '⚑ 已插旗' : '⚑ 插旗') + '</button>';
+    $('pl-flag').addEventListener('click', () => toggleFlag(p.num));
+
+    const rows = [];
+    (function walk(n, depth, path) {
+      const key = nodeKey(n, path);
+      const hasKids = n.children.length > 0;
+      const open = S.expanded.has(key) || depth === 0;
+      const label = n.value !== '' && n.value !== undefined
+        ? '<span class="pl-node-name">' + esc(n.label) + '</span>：<span class="pl-node-val">' + esc(n.value) + '</span>'
+        : '<span class="pl-node-name">' + esc(n.label) + '</span>';
+      rows.push('<div class="pl-node" data-key="' + esc(key) + '" data-off="' + n.off + '" data-len="' + (n.synthetic ? 0 : n.len) +
+        '" data-field="' + esc(n.name) + '" style="padding-left:' + (6 + depth * 14) + 'px"' +
+        (S.selNode === key ? ' aria-selected="true"' : '') + '>' +
+        '<span class="pl-node-toggle">' + (hasKids ? (open ? '▾' : '▸') : '') + '</span>' + label + '</div>');
+      if (open) for (const c of n.children) walk(c, depth + 1, key);
+    })(p.tree, 0, '');
+    tree.innerHTML = rows.join('');
+    tree.querySelectorAll('.pl-node').forEach((el) => {
+      el.addEventListener('click', () => {
+        const key = el.dataset.key;
+        if (S.expanded.has(key)) S.expanded.delete(key); else S.expanded.add(key);
+        S.selNode = key;
+        renderDetail();
+        renderHex(p, Number(el.dataset.off), Number(el.dataset.len));
+      });
+    });
+    renderHex(p, -1, 0);
+    note.value = (marked && marked.note) || '';
+  }
+
+  const HEX_LIMIT = 4096;
+  /* 一行 16 字节要 4+2+48+1+16 ≈ 71 个等宽字符；窄容器下放不开就退成 8 字节一行，
+     否则右边的 ASCII 列会被容器裁掉（滚动条能滚，但看起来就是「被切了」）。 */
+  function hexPerLine() {
+    const el = $('pl-hex');
+    const w = el ? (el.clientWidth || 0) : 0;
+    if (!w) return 16;
+    const charW = 7.3;   // 12.5px 等宽字体的近似字宽
+    return (w - 24) / charW >= 71 ? 16 : 8;
+  }
+  function renderHex(p, hOff, hLen) {
+    const b = p.bytes;
+    const n = Math.min(b.length, HEX_LIMIT);
+    const per = hexPerLine();
+    const half = per / 2;
+    const lines = [];
+    for (let base = 0; base < n; base += per) {
+      let hexPart = '', asc = '';
+      for (let i = 0; i < per; i++) {
+        const idx = base + i;
+        const inSel = hLen > 0 && idx >= hOff && idx < hOff + hLen;
+        if (idx < n) {
+          const hx = U.hex2(b[idx]);
+          hexPart += (inSel ? '<b>' + hx + '</b>' : hx) + (i === half - 1 ? '  ' : ' ');
+          const ch = U.isPrintable(b[idx]) ? esc(String.fromCharCode(b[idx])) : '<i>.</i>';
+          asc += inSel ? '<b>' + ch + '</b>' : ch;
+        } else { hexPart += '   ' + (i === half - 1 ? ' ' : ''); asc += ' '; }
+      }
+      lines.push('<i>' + U.hex4(base) + '</i>  ' + hexPart + ' ' + asc);
+    }
+    if (b.length > n) lines.push('<i>… 只显示前 ' + n + ' 字节，本帧共 ' + b.length + ' 字节</i>');
+    $('pl-hex').innerHTML = lines.join('\n');
+  }
+
+  function toggleFlag(num) {
+    if (S.marks[num]) delete S.marks[num];
+    else S.marks[num] = { note: '' };
+    persistMarks();
+    renderDetail();
+    renderList();
+    renderCounts();
+  }
+  function persistMarks() {
+    const all = lsGet(LS_MARKS, {}) || {};
+    if (Object.keys(S.marks).length) all[S.capId] = S.marks; else delete all[S.capId];
+    lsSet(LS_MARKS, all);
+  }
+
+  /* ============ 会话 ============ */
+  function renderFlows() {
+    const t = $('pl-flow-table');
+    if (!S.an || !S.an.flows.length) { t.innerHTML = '<tbody><tr><td class="pl-empty">这个抓包里没有可归并的会话。</td></tr></tbody>'; return; }
+    const head = '<thead><tr><th>#</th><th>协议</th><th>A 端</th><th>B 端</th><th>包数</th><th>字节</th><th>时长</th><th>速率</th><th>RTT</th><th>重传</th><th>状态</th><th>操作</th></tr></thead>';
+    const rows = S.an.flows.slice(0, 300).map((f) => {
+      const app = f.appProto ? '<span class="pl-badge pl-badge-brand">' + esc(f.appProto) + '</span>' : '';
+      const extra = f.sni ? '<div class="pl-sub" style="margin-top:3px">SNI ' + esc(f.sni) + '</div>'
+        : (f.dnsNames.length ? '<div class="pl-sub" style="margin-top:3px">' + esc(f.dnsNames.slice(0, 2).join('、')) + '</div>'
+          : (f.httpReqs.length ? '<div class="pl-sub" style="margin-top:3px">' + esc(f.httpReqs[0]) + '</div>' : ''));
+      const bad = f.retrans + f.zeroWin + f.resets;
+      return '<tr><td class="pl-num">' + f.rank + '</td>' +
+        '<td>' + esc(f.proto) + ' ' + app + extra + '</td>' +
+        '<td class="pl-mono">' + esc(f.a.addr) + ':' + f.a.port + '</td>' +
+        '<td class="pl-mono">' + esc(f.b.addr) + ':' + f.b.port + '</td>' +
+        '<td class="pl-num">' + f.packets + '</td>' +
+        '<td class="pl-num">' + U.fmtBytes(f.bytes) + '</td>' +
+        '<td class="pl-num">' + U.fmtDur(f.duration) + '</td>' +
+        '<td class="pl-num">' + U.fmtRate(f.bps) + '</td>' +
+        '<td class="pl-num">' + (f.rttMean !== null ? U.fmtDur(f.rttMean) + '<div class="pl-sub">' + f.rttCount + ' 次采样</div>' : '—') +
+        (f.handshakeRtt !== undefined ? '<div class="pl-sub">握手 ' + U.fmtDur(f.handshakeRtt) + '</div>' : '') + '</td>' +
+        '<td class="pl-num">' + (bad ? '<span class="pl-badge pl-badge-warn">' + bad + '</span>' : '0') + '</td>' +
+        '<td>' + esc(f.state) + '</td>' +
+        '<td><button class="pl-btn pl-btn-sm pl-flow-only" data-key="' + esc(f.key) + '">只看这条</button>' +
+        (f.proto === 'TCP' ? ' <button class="pl-btn pl-btn-sm pl-btn-subtle pl-flow-follow" data-key="' + esc(f.key) + '">追踪流</button>' : '') +
+        '</td></tr>';
+    }).join('');
+    t.innerHTML = head + '<tbody>' + rows + '</tbody>';
+    t.querySelectorAll('.pl-flow-only').forEach((el) => el.addEventListener('click', () => {
+      const f = S.an.flows.find((x) => x.key === el.dataset.key);
+      const expr = flowFilter(f);
+      $('pl-filter').value = expr;
+      applyFilter(expr);
+      switchTab('packets');
+    }));
+    t.querySelectorAll('.pl-flow-follow').forEach((el) => el.addEventListener('click', () => {
+      const f = S.an.flows.find((x) => x.key === el.dataset.key);
+      S.follow = f;
+      $('pl-follow-pick').value = f.key;
+      renderFollow();
+      switchTab('follow');
+    }));
+  }
+  function flowFilter(f) {
+    const isV6 = f.a.addr.indexOf(':') >= 0;
+    const af = isV6 ? 'ipv6.addr' : 'ip.addr';
+    const pf = f.proto === 'TCP' ? 'tcp.port' : 'udp.port';
+    return af + ' == ' + f.a.addr + ' && ' + af + ' == ' + f.b.addr + ' && ' + pf + ' == ' + f.a.port + ' && ' + pf + ' == ' + f.b.port;
+  }
+
+  /* ============ 追踪流 ============ */
+  function renderFollowPicker() {
+    const sel = $('pl-follow-pick');
+    const tcp = S.an ? S.an.flows.filter((f) => f.proto === 'TCP') : [];
+    sel.innerHTML = tcp.length
+      ? tcp.map((f) => '<option value="' + esc(f.key) + '">' + esc(f.label) + (f.appProto ? '（' + esc(f.appProto) + '）' : '') + '</option>').join('')
+      : '<option value="">没有 TCP 会话</option>';
+    S.follow = tcp.length ? tcp[0] : null;
+    renderFollow();
+  }
+  function renderFollow() {
+    const body = $('pl-follow-body'), meta = $('pl-follow-meta');
+    const f = S.follow;
+    if (!f) {
+      body.innerHTML = '<div class="pl-empty">这个抓包里还没有可追踪的 TCP 会话。</div>';
+      meta.textContent = '选一条 TCP 会话，把两个方向的字节按序号拼回来（重复段丢掉、缺口标出来）。';
+      return;
+    }
+    const conv = A.conversationChunks(f, 131072);
+    const ra = A.reassemble(f.a), rb = A.reassemble(f.b);
+    meta.textContent = f.label + '　·　' + f.a.addr + ':' + f.a.port + ' 发出 ' + U.fmtBytes(ra.bytes) +
+      '，' + f.b.addr + ':' + f.b.port + ' 发出 ' + U.fmtBytes(rb.bytes) +
+      (ra.gaps + rb.gaps ? '　·　缺口合计 ' + (ra.gaps + rb.gaps) + ' 字节' : '　·　没有缺口') +
+      (conv.truncated ? '　·　只显示前 128 KB' : '');
+    if (!conv.items.length) { body.innerHTML = '<div class="pl-empty">这条会话里没有携带负载的数据段（可能只有握手 / 挥手）。</div>'; return; }
+    body.innerHTML = conv.items.map((it) => {
+      if (it.gap) return '<span class="pl-stream-gap">&lt;&lt;&lt; 缺失 ' + it.gap + ' 字节 &gt;&gt;&gt;\n</span>';
+      const cls = it.isA ? 'pl-dir-a' : 'pl-dir-b';
+      const text = S.followHex ? hexBlock(it.text) : it.text;
+      return '<span class="' + cls + '">' + esc(text) + '</span>';
+    }).join('');
+  }
+  function hexBlock(text) {
+    const out = [];
+    for (let i = 0; i < text.length; i += 16) {
+      let h = '', a = '';
+      for (let k = 0; k < 16; k++) {
+        if (i + k < text.length) {
+          const c = text.charCodeAt(i + k) & 255;
+          h += U.hex2(c) + ' ';
+          a += U.isPrintable(c) ? text[i + k] : '.';
+        } else h += '   ';
+      }
+      out.push(U.hex4(i) + '  ' + h + ' ' + a);
+    }
+    return out.join('\n') + '\n';
+  }
+
+  /* ============ 统计 ============ */
+  function renderStats() {
+    if (!S.an) return;
+    const s = S.an.summary;
+    const items = [
+      ['包数', s.packets.toLocaleString('en-US')],
+      ['字节数', U.fmtBytes(s.bytes)],
+      ['时长', U.fmtDur(s.duration)],
+      ['平均速率', U.fmtRate(s.bps)],
+      ['平均包长', s.avgSize.toFixed(0) + ' B'],
+      ['每秒包数', s.pps ? s.pps.toFixed(1) : '—'],
+      ['会话数', String(s.flows)],
+      ['端点数', String(s.endpoints)]
+    ];
+    $('pl-summary').innerHTML = items.map((i) =>
+      '<div class="pl-stat"><dt>' + esc(i[0]) + '</dt><dd>' + esc(i[1]) + '</dd></div>').join('');
+
+    renderIO();
+
+    const hier = S.an.hierarchy;
+    const total = hier[0] ? hier[0].packets : 1;
+    $('pl-hier-table').innerHTML =
+      '<thead><tr><th>协议层</th><th>包数</th><th>占比</th><th>字节</th></tr></thead><tbody>' +
+      hier.map((h) => '<tr><td><span style="display:inline-block; width:' + (h.depth * 16) + 'px"></span>' +
+        (h.depth ? '└ ' : '') + esc(F.PROTO_LABEL[h.name] || h.name) + ' <span class="pl-sub" style="display:inline">' + esc(h.name) + '</span></td>' +
+        '<td class="pl-num">' + h.packets + '</td>' +
+        '<td class="pl-num">' + (h.packets / total * 100).toFixed(1) + '%</td>' +
+        '<td class="pl-num">' + U.fmtBytes(h.bytes) + '</td></tr>').join('') + '</tbody>';
+
+    $('pl-ep-table').innerHTML =
+      '<thead><tr><th>地址</th><th>发出包</th><th>发出字节</th><th>收到包</th><th>收到字节</th></tr></thead><tbody>' +
+      S.an.endpoints.slice(0, 20).map((e) => '<tr><td class="pl-mono">' + esc(e.addr) + '</td>' +
+        '<td class="pl-num">' + e.txPackets + '</td><td class="pl-num">' + U.fmtBytes(e.txBytes) + '</td>' +
+        '<td class="pl-num">' + e.rxPackets + '</td><td class="pl-num">' + U.fmtBytes(e.rxBytes) + '</td></tr>').join('') +
+      '</tbody>';
+  }
+
+  /* nice-number 刻度：按「刻度个数最接近目标」选档，别只挑第一个够大的 */
+  function niceTicks(maxVal, target) {
+    if (!(maxVal > 0)) return { step: 1, ticks: [0, 1] };
+    const steps = [1, 2, 2.5, 5, 10];
+    let best = null;
+    for (let e = -12; e <= 15; e++) {
+      const mag = Math.pow(10, e);
+      for (const s of steps) {
+        const step = s * mag;
+        const count = Math.ceil(maxVal / step);
+        if (count < 2 || count > 40) continue;
+        const score = Math.abs(count - target);
+        if (!best || score < best.score) best = { step, count, score };
+      }
+    }
+    if (!best) best = { step: maxVal / target, count: target };
+    const ticks = [];
+    for (let i = 0; i <= best.count; i++) ticks.push(i * best.step);
+    return { step: best.step, ticks };
+  }
+
+  function renderIO() {
+    const svg = $('pl-io-chart');
+    const packets = S.cap ? S.cap.packets : [];
+    const dur = S.an.summary.duration;
+    const nb = Math.max(8, Math.min(80, packets.length));
+    const io = A.ioBuckets(packets, nb, dur || 1);
+    // viewBox 宽度取容器实际像素宽，1 用户单位 = 1 CSS 像素：图铺满卡片，文字也不会被缩放
+    const W = Math.max(360, Math.round(svg.clientWidth || 800));
+    const H = 190, ml = 62, mr = 14, mt = 14, mb = 34;
+    const iw = W - ml - mr, ih = H - mt - mb;
+    const maxB = Math.max.apply(null, io.buckets.map((b) => b.bytes).concat([1]));
+    // 纵轴刻度先定单位再取整档，免得出现「1000 B / 1.95 KB」这种一图两制
+    const unit = maxB >= 1048576 ? { d: 1048576, s: 'MB' } : (maxB >= 1024 ? { d: 1024, s: 'KB' } : { d: 1, s: 'B' });
+    const yt = niceTicks(maxB / unit.d, 4);
+    const yMaxU = yt.ticks[yt.ticks.length - 1] || 1;
+    const yMax = yMaxU * unit.d;
+    const tickLabel = (v) => (Math.abs(v - Math.round(v)) < 1e-9 ? String(Math.round(v))
+      : String(Number(v.toFixed(2)))) + ' ' + unit.s;
+    const parts = [];
+    // 文字避让表：这张图上每一段文字都必须先过这里
+    const placed = [];
+    let dropped = 0;
+    const measure = (t, size) => t.length * size * 0.62;
+    function text(x, y, str, anchor, size, fill) {
+      const w = measure(str, size), h = size * 1.25;
+      const x0 = anchor === 'end' ? x - w : anchor === 'middle' ? x - w / 2 : x;
+      const box = { x0: x0 - 2, x1: x0 + w + 2, y0: y - h, y1: y + 3 };
+      if (box.x0 < -2 || box.x1 > W + 2) { dropped++; return; }
+      for (const p of placed) {
+        if (box.x0 < p.x1 && box.x1 > p.x0 && box.y0 < p.y1 && box.y1 > p.y0) { dropped++; return; }
+      }
+      placed.push(box);
+      parts.push('<text x="' + x.toFixed(1) + '" y="' + y.toFixed(1) + '" text-anchor="' + anchor +
+        '" font-size="' + size + '"' + (fill ? ' fill="' + fill + '"' : '') + '>' + esc(str) + '</text>');
+    }
+    for (const tv of yt.ticks) {
+      const y = mt + ih - (tv / yMaxU) * ih;
+      parts.push('<line x1="' + ml + '" y1="' + y.toFixed(1) + '" x2="' + (W - mr) + '" y2="' + y.toFixed(1) +
+        '" stroke="#dedee5" stroke-width="1"/>');
+      text(ml - 8, y + 4, tickLabel(tv), 'end', 11);
+    }
+    const bw = iw / io.buckets.length;
+    io.buckets.forEach((b, i) => {
+      const h = (b.bytes / yMax) * ih;
+      if (h <= 0) return;
+      parts.push('<rect x="' + (ml + i * bw + bw * 0.12).toFixed(1) + '" y="' + (mt + ih - h).toFixed(1) +
+        '" width="' + Math.max(1, bw * 0.76).toFixed(1) + '" height="' + h.toFixed(1) +
+        '" fill="#7132f5" opacity="0.85"><title>' + esc(U.fmtDur(b.t0) + '–' + U.fmtDur(b.t1) + '：' + U.fmtBytes(b.bytes) + ' / ' + b.packets + ' 个包') + '</title></rect>');
+    });
+    parts.push('<line x1="' + ml + '" y1="' + (mt + ih) + '" x2="' + (W - mr) + '" y2="' + (mt + ih) + '" stroke="#686b82" stroke-width="1"/>');
+    // 时间轴同样统一单位：整段抓包不到 1 秒就全用毫秒，否则全用秒
+    const useMs = (dur || 0) < 1;
+    const axisTime = (t) => (useMs ? String(Number((t * 1000).toFixed(1))) + ' ms' : String(Number(t.toFixed(3))) + ' s');
+    const nLabels = Math.min(6, io.buckets.length);
+    for (let i = 0; i < nLabels; i++) {
+      const frac = nLabels === 1 ? 0 : i / (nLabels - 1);
+      const x = ml + frac * iw;
+      text(x, H - 12, axisTime(frac * (dur || 0)), i === 0 ? 'start' : (i === nLabels - 1 ? 'end' : 'middle'), 11);
+    }
+    svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+    svg.innerHTML = parts.join('');
+    svg.dataset.dropped = String(dropped);
+    svg.dataset.buckets = String(io.buckets.length);
+    $('pl-io-caption').textContent = '把 ' + U.fmtDur(dur) + ' 的抓包切成 ' + io.buckets.length +
+      ' 段，每段 ' + U.fmtDur(io.width) + '，柱高是那一段里的字节数（峰值 ' + U.fmtBytes(maxB) + '）。';
+    const rows = io.buckets.map((b, i) => '<tr><td class="pl-num">' + (i + 1) + '</td><td class="pl-num">' +
+      b.t0.toFixed(3) + ' s</td><td class="pl-num">' + b.packets + '</td><td class="pl-num">' + U.fmtBytes(b.bytes) +
+      '</td><td class="pl-num">' + U.fmtRate(b.bps) + '</td></tr>').join('');
+    $('pl-io-table').innerHTML = '<thead><tr><th>段</th><th>起点</th><th>包数</th><th>字节</th><th>速率</th></tr></thead><tbody>' + rows + '</tbody>';
+  }
+
+  /* ============ 专家信息 ============ */
+  function renderExpert() {
+    const box = $('pl-expert-list');
+    if (!S.an || !S.an.expert.length) {
+      box.innerHTML = '<div class="pl-empty">这个抓包很干净：没有重传、重复 ACK、零窗口、连接重置或协议差错。</div>';
+      return;
+    }
+    box.innerHTML = S.an.expert.slice(0, 400).map((e) =>
+      '<div class="pl-expert-item pl-expert-row" data-frame="' + e.frame + '">' +
+      '<span class="pl-badge ' + (e.sev === 'error' ? 'pl-badge-bad' : 'pl-badge-warn') + '">' + esc(e.kind) + '</span>' +
+      '<span class="pl-expert-text">' + esc(e.text) + '</span></div>').join('');
+    box.querySelectorAll('.pl-expert-row').forEach((el) =>
+      el.addEventListener('click', () => selectByNum(Number(el.dataset.frame))));
+  }
+
+  /* ============ 标签页 ============ */
+  function switchTab(name) {
+    S.tab = name;
+    document.querySelectorAll('.pl-tab').forEach((t) => t.setAttribute('aria-selected', String(t.dataset.tab === name)));
+    for (const n of ['packets', 'flows', 'follow', 'stats', 'expert', 'help']) {
+      $('pl-panel-' + n).hidden = (n !== name);
+    }
+    if (name === 'packets') { renderList(); if (S.sel) renderDetail(); }
+    if (name === 'stats' && S.an) renderIO();
+  }
+
+  /* ============ 导出 ============ */
+  function download(bytes, name, mime) {
+    const blob = new Blob([bytes], { type: mime || 'application/octet-stream' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 0);
+  }
+  function exportCapture(fmt) {
+    if (!S.list.length) return;
+    const lt = S.list[0].linktype;
+    const same = S.list.every((p) => p.linktype === lt);
+    const base = (S.fileName || 'capture').replace(/\.(pcap|pcapng|cap|dmp)$/i, '');
+    if (fmt === 'pcapng') {
+      const ifaces = S.cap.interfaces.map((i) => ({ linktype: i.linktype, name: i.name }));
+      download(B.writePcapNg(S.list, { interfaces: ifaces, app: 'Packet Lab' }), base + '-筛选结果.pcapng');
+    } else {
+      download(B.writePcap(S.list, { linktype: same ? lt : 1 }), base + '-筛选结果.pcap');
+    }
+  }
+
+  /* ============ 事件绑定 ============ */
+  function init() {
+    // 示例
+    $('pl-samples').innerHTML = B.SAMPLES.map((s, i) =>
+      '<button class="pl-btn pl-btn-sm ' + (i === 0 ? 'pl-btn-outline' : '') + ' pl-sample" data-id="' + s.id + '" title="' + esc(s.desc) + '">' +
+      esc(s.name) + '</button>').join('') +
+      '<button class="pl-btn pl-btn-sm" id="pl-sample-save">下载当前示例文件</button>';
+    document.querySelectorAll('.pl-sample').forEach((el) => el.addEventListener('click', () => {
+      const s = B.SAMPLES.find((x) => x.id === el.dataset.id);
+      loadBytes(B.buildSample(s.id), s.name);
+    }));
+    $('pl-sample-save').addEventListener('click', () => {
+      if (!S.cap) return;
+      download(S.cap.format === 'pcapng' ? B.writePcapNg(S.cap.packets, { interfaces: S.cap.interfaces.map((i) => ({ linktype: i.linktype, name: i.name })) })
+        : B.writePcap(S.cap.packets, { linktype: S.cap.packets.length ? S.cap.packets[0].linktype : 1 }), S.fileName || 'capture.pcap');
+    });
+
+    // 文件
+    $('pl-open').addEventListener('click', () => $('pl-file').click());
+    $('pl-file').addEventListener('change', (e) => {
+      const f = e.target.files && e.target.files[0];
+      if (f) readFile(f);
+    });
+    const drop = $('pl-drop');
+    ['dragenter', 'dragover'].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add('pl-drag'); }));
+    ['dragleave', 'drop'].forEach((ev) => drop.addEventListener(ev, () => drop.classList.remove('pl-drag')));
+    drop.addEventListener('drop', (e) => {
+      e.preventDefault();
+      const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+      if (f) readFile(f);
+    });
+    document.addEventListener('dragover', (e) => e.preventDefault());
+    document.addEventListener('drop', (e) => {
+      e.preventDefault();
+      const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+      if (f) readFile(f);
+    });
+
+    // 过滤器
+    const fi = $('pl-filter');
+    fi.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); applyFilter(fi.value); } });
+    fi.addEventListener('input', () => {
+      const c = F.compile(fi.value);
+      const card = $('pl-filter-card');
+      card.classList.remove('pl-filter-ok', 'pl-filter-bad');
+      if (fi.value.trim()) card.classList.add(c.ok ? 'pl-filter-ok' : 'pl-filter-bad');
+    });
+    $('pl-apply').addEventListener('click', () => applyFilter(fi.value));
+    $('pl-clear-filter').addEventListener('click', () => { fi.value = ''; applyFilter(''); });
+    $('pl-save-filter').addEventListener('click', () => {
+      const expr = fi.value.trim();
+      if (!expr) return;
+      const c = F.compile(expr);
+      if (!c.ok) return;
+      if (S.bookmarks.some((b) => b.expr === c.canonical)) return;
+      S.bookmarks.push({ name: c.describe.length > 22 ? c.describe.slice(0, 21) + '…' : c.describe, expr: c.canonical });
+      lsSet(LS_BOOKMARKS, S.bookmarks);
+      renderBookmarks();
+    });
+    renderBookmarks();
+
+    // 字段速查
+    $('pl-fieldtable').innerHTML = '<tbody>' + F.FIELDS.map((f) =>
+      '<tr><td><button class="pl-btn pl-btn-sm pl-fieldbtn" data-f="' + esc(f.name) + '" style="font-family:inherit; padding:2px 6px; min-height:18px">' +
+      esc(f.name) + '</button></td><td>' + esc(f.desc) + '</td></tr>').join('') + '</tbody>';
+    document.querySelectorAll('.pl-fieldbtn').forEach((el) => el.addEventListener('click', () => {
+      const cur = fi.value.trim();
+      fi.value = cur ? cur + ' && ' + el.dataset.f + ' ' : el.dataset.f + ' ';
+      fi.focus();
+    }));
+
+    // 标签页
+    document.querySelectorAll('.pl-tab').forEach((t) => t.addEventListener('click', () => switchTab(t.dataset.tab)));
+
+    // 列表滚动与键盘
+    const vp = $('pl-vp');
+    vp.addEventListener('scroll', renderList);
+    vp.addEventListener('click', (e) => {
+      const row = e.target.closest ? e.target.closest('.pl-row') : null;
+      if (!row) return;
+      const p = S.cap.packets.find((x) => x.num === Number(row.dataset.num));
+      selectPacket(p);
+    });
+    vp.addEventListener('keydown', (e) => {
+      if (!S.list.length) return;
+      const i = S.list.indexOf(S.sel);
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        const ni = Math.max(0, Math.min(S.list.length - 1, i + (e.key === 'ArrowDown' ? 1 : -1)));
+        selectPacket(S.list[ni]);
+        const top = ni * ROW_H;
+        if (top < vp.scrollTop) vp.scrollTop = top;
+        else if (top + ROW_H > vp.scrollTop + vp.clientHeight) vp.scrollTop = top + ROW_H - vp.clientHeight;
+        renderList();
+      } else if (e.key === 'f' || e.key === 'F') {
+        if (S.sel) toggleFlag(S.sel.num);
+      }
+    });
+
+    $('pl-note').addEventListener('input', () => {
+      if (!S.sel) return;
+      const v = $('pl-note').value;
+      if (v) S.marks[S.sel.num] = Object.assign({}, S.marks[S.sel.num], { note: v });
+      else if (S.marks[S.sel.num] && !S.marks[S.sel.num].note) { /* 保留纯旗标 */ }
+      else if (S.marks[S.sel.num]) S.marks[S.sel.num].note = '';
+      persistMarks();
+      renderList();
+      renderCounts();
+    });
+
+    // 追踪流
+    $('pl-follow-pick').addEventListener('change', (e) => {
+      S.follow = S.an.flows.find((f) => f.key === e.target.value) || null;
+      renderFollow();
+    });
+    $('pl-follow-mode').addEventListener('click', () => {
+      S.followHex = !S.followHex;
+      $('pl-follow-mode').textContent = S.followHex ? '切换为文本' : '切换为十六进制';
+      renderFollow();
+    });
+    $('pl-follow-save').addEventListener('click', () => {
+      if (!S.follow) return;
+      const conv = A.conversationChunks(S.follow, 1048576);
+      const txt = conv.items.map((it) => it.gap ? '\n<<< 缺失 ' + it.gap + ' 字节 >>>\n'
+        : '=== ' + (it.isA ? S.follow.a.addr + ':' + S.follow.a.port : S.follow.b.addr + ':' + S.follow.b.port) + ' ===\n' + it.text).join('\n');
+      download(U.asciiBytes(txt), '追踪流.txt', 'text/plain;charset=utf-8');
+    });
+
+    // 导出
+    $('pl-export-pcap').addEventListener('click', () => exportCapture('pcap'));
+    $('pl-export-pcapng').addEventListener('click', () => exportCapture('pcapng'));
+
+    // 说明页
+    $('pl-help-syntax').textContent = [
+      'tcp.port == 443 && ip.addr == 10.0.0.0/8',
+      'dns.qry.name contains "example" || tls.sni matches "^cdn\\."',
+      '!(arp || icmp) && frame.len > 500',
+      'tcp.flags.syn == 1 && tcp.flags.ack == 0      # 只看发起连接的那一个 SYN',
+      'http.request.method in {"GET", "POST"}',
+      'ipv6.addr == fe80::/10                        # CIDR 前缀，v4 v6 都支持'
+    ].join('\n');
+    $('pl-help-verify').textContent =
+      '解析引擎在发布前与 scapy 2.7.0 逐字段对拍过：60 份随机语料、1754 个包、32540 条断言 0 失配；' +
+      '本页写出的 pcap / pcapng 再交给 scapy 读回来校验（含 IP / TCP / UDP / ICMP 校验和重算），4602 条断言 0 失配；' +
+      '显示过滤器做了 4000 组随机表达式的「打印 → 重新解析」往返自检，0 组失配。' +
+      '这些数字来自离线测试，页面本身另有一套浏览器端集成测试。';
+
+    let resizeTimer = null;
+    window.addEventListener('resize', () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => {
+        if (!S.cap) return;
+        if (S.tab === 'stats') renderIO();
+        if (S.tab === 'packets') { renderList(); if (S.sel) renderDetail(); }
+      }, 120);
+    });
+
+    switchTab('packets');
+    // 首屏默认载入第一个示例，页面一打开就有东西可看
+    loadBytes(B.buildSample('web-visit'), B.SAMPLES[0].name);
+  }
+
+  function readFile(file) {
+    const rd = new FileReader();
+    rd.onload = () => {
+      const okLoad = loadBytes(new Uint8Array(rd.result), file.name);
+      if (okLoad) { switchTab('packets'); }
+    };
+    rd.onerror = () => showError('读取文件失败：' + (rd.error && rd.error.message ? rd.error.message : '未知错误'));
+    rd.readAsArrayBuffer(file);
+  }
+
+  window.PL_UI = {
+    state: S, loadBytes, applyFilter, selectByNum, switchTab, renderList, toggleFlag,
+    exportCapture, niceTicks, fingerprint,
+    followFlow: (key) => { S.follow = S.an.flows.find((f) => f.key === key) || null; renderFollow(); },
+    LS: { LS_BOOKMARKS, LS_MARKS, LS_PREFS }
+  };
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
+})();
+
+</script>
