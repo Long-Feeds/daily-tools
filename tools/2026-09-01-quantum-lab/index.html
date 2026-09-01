@@ -1,0 +1,2062 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>量子线路实验室 · 浏览器里的态向量模拟器</title>
+<meta name="description" content="拖出一条量子线路，实时看到态向量、概率分布、布洛赫球与线路酉矩阵。支持 OpenQASM 2.0 导入导出、中途测量与经典条件门，纯前端零安装。">
+<style>
+[hidden]{display:none!important}
+
+:root{
+  --ql-canvas:#0b0b0b;
+  --ql-surface:#212121;
+  --ql-surface-2:#2a2a2a;
+  --ql-line:#353535;
+  --ql-line-soft:#212121;
+  --ql-ink:#ffffff;
+  --ql-silver:#b9b9b9;
+  --ql-gray:#797979;
+  --ql-red:#f36458;
+  --ql-blue:#0052ef;
+  --ql-blue-soft:#55beff;
+  --ql-green:#19d600;
+  --ql-magenta:#f500ff;
+  --ql-sans:"Inter","Helvetica Neue",Helvetica,Arial,"Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  --ql-mono:ui-monospace,"SF Mono","IBM Plex Mono",Menlo,Consolas,monospace;
+}
+
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0;background:var(--ql-canvas);color:var(--ql-ink);
+  font-family:var(--ql-sans);font-size:16px;line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+}
+a{color:var(--ql-silver);text-decoration:none}
+a:hover{color:var(--ql-blue-soft)}
+:focus-visible{outline:2px solid var(--ql-blue);outline-offset:2px}
+
+/* ---------- 外壳 ---------- */
+.ql-wrap{max-width:1440px;margin:0 auto;padding:0 32px}
+@media (max-width:640px){.ql-wrap{padding:0 16px}}
+.ql-top{
+  border-bottom:1px solid var(--ql-line-soft);
+  position:sticky;top:0;z-index:20;
+  background:rgba(11,11,11,.86);backdrop-filter:blur(10px);
+}
+.ql-top-in{display:flex;align-items:center;gap:16px;padding:12px 0;flex-wrap:wrap}
+.ql-back{font-size:15px;letter-spacing:-.15px}
+.ql-mark{
+  margin-left:auto;font-family:var(--ql-mono);font-size:11px;letter-spacing:.14em;
+  color:var(--ql-gray);
+}
+.ql-dot{display:inline-block;width:6px;height:6px;border-radius:99999px;background:var(--ql-green);margin-right:6px;vertical-align:1px}
+
+.ql-hero{padding:40px 0 24px;border-bottom:1px solid var(--ql-line-soft)}
+.ql-hero h1{
+  margin:0;font-size:clamp(34px,5.4vw,54px);font-weight:400;line-height:1.02;
+  letter-spacing:-.038em;
+}
+.ql-hero h1 em{font-style:normal;color:var(--ql-gray)}
+.ql-hero p{
+  margin:14px 0 0;max-width:64ch;color:var(--ql-silver);font-size:16px;letter-spacing:-.16px;
+}
+.ql-kicker{
+  font-family:var(--ql-mono);font-size:11px;letter-spacing:.16em;color:var(--ql-green);
+  margin:0 0 14px;
+}
+
+/* ---------- 标签页 ---------- */
+.ql-tabs{display:flex;gap:6px;padding:14px 0;flex-wrap:wrap;border-bottom:1px solid var(--ql-line-soft)}
+.ql-tab{
+  appearance:none;border:1px solid transparent;background:transparent;color:var(--ql-silver);
+  font-family:var(--ql-sans);font-size:13px;letter-spacing:-.13px;
+  padding:7px 15px;border-radius:99999px;cursor:pointer;min-width:64px;
+}
+.ql-tab:hover{background:var(--ql-blue);color:#fff}
+.ql-tab[aria-selected="true"]{background:#fff;color:var(--ql-canvas)}
+
+.ql-panel{padding:26px 0 72px}
+
+/* ---------- 通用元件 ---------- */
+.ql-card{background:var(--ql-surface);border:1px solid var(--ql-line);border-radius:6px;padding:20px;min-width:0}
+.ql-card.ql-flush{padding:0;overflow:hidden}
+.ql-h{font-size:20px;font-weight:400;letter-spacing:-.2px;margin:0 0 4px}
+.ql-sub{font-size:13px;color:var(--ql-gray);letter-spacing:-.13px;margin:0 0 16px}
+.ql-label{
+  display:block;font-family:var(--ql-mono);font-size:11px;letter-spacing:.13em;
+  color:var(--ql-gray);margin:0 0 6px;text-transform:none;
+}
+.ql-btn{
+  appearance:none;font-family:var(--ql-sans);font-size:14px;letter-spacing:-.14px;
+  padding:8px 16px;border-radius:99999px;cursor:pointer;border:1px solid var(--ql-line);
+  background:var(--ql-surface-2);color:var(--ql-silver);min-width:56px;min-height:34px;
+}
+.ql-btn:hover{background:var(--ql-blue);border-color:var(--ql-blue);color:#fff}
+.ql-btn-primary{background:var(--ql-red);border-color:var(--ql-red);color:#fff}
+.ql-btn-primary:hover{background:var(--ql-blue);border-color:var(--ql-blue)}
+.ql-btn-ghost{background:transparent}
+.ql-input,.ql-select,.ql-area{
+  font-family:var(--ql-mono);font-size:13px;
+  background:var(--ql-canvas);color:var(--ql-ink);
+  border:1px solid var(--ql-line);border-radius:3px;padding:8px 10px;
+  min-width:104px;min-height:34px;width:100%;
+}
+.ql-select{font-family:var(--ql-sans);cursor:pointer}
+.ql-input:focus,.ql-area:focus,.ql-select:focus{border-color:var(--ql-blue);background:#072227}
+.ql-area{width:100%;min-height:280px;line-height:1.55;resize:vertical;white-space:pre}
+.ql-row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
+.ql-field{min-width:0;flex:0 0 auto;width:132px}
+.ql-note{font-size:12.5px;color:var(--ql-gray);letter-spacing:-.13px;line-height:1.55}
+.ql-pill{
+  display:inline-block;font-family:var(--ql-mono);font-size:11px;letter-spacing:.1em;
+  padding:3px 10px;border-radius:99999px;background:var(--ql-surface-2);color:var(--ql-silver);
+  border:1px solid var(--ql-line);
+}
+.ql-pill-on{background:#fff;color:var(--ql-canvas);border-color:#fff}
+.ql-err{
+  border-left:2px solid var(--ql-red);background:rgba(243,100,88,.09);
+  padding:9px 12px;border-radius:0 5px 5px 0;font-size:13px;color:#ffb3ac;margin:0 0 8px;
+  font-family:var(--ql-mono);line-height:1.5;
+}
+.ql-okline{
+  border-left:2px solid var(--ql-green);background:rgba(25,214,0,.07);
+  padding:9px 12px;border-radius:0 5px 5px 0;font-size:13px;color:#a8e8a0;
+  font-family:var(--ql-mono);
+}
+
+.ql-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+table.ql-tbl{border-collapse:collapse;width:100%;font-size:13px}
+table.ql-tbl th,table.ql-tbl td{
+  text-align:left;padding:7px 12px;border-bottom:1px solid var(--ql-line-soft);
+  white-space:nowrap;
+}
+table.ql-tbl th{
+  font-family:var(--ql-mono);font-size:11px;letter-spacing:.1em;color:var(--ql-gray);
+  font-weight:400;text-transform:none;border-bottom:1px solid var(--ql-line);
+}
+table.ql-tbl td{color:var(--ql-silver)}
+table.ql-tbl td.ql-mono{font-family:var(--ql-mono);color:var(--ql-ink)}
+table.ql-tbl tr:hover td{background:rgba(255,255,255,.03)}
+
+/* ---------- 线路面板 ---------- */
+.ql-lab{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,430px);gap:20px;align-items:start}
+@media (max-width:1080px){.ql-lab{grid-template-columns:minmax(0,1fr)}}
+
+.ql-toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin:0 0 16px}
+.ql-palette{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 12px}
+.ql-gate{
+  appearance:none;cursor:pointer;border:1px solid var(--ql-line);background:var(--ql-surface-2);
+  color:var(--ql-silver);border-radius:5px;padding:7px 4px;
+  min-width:56px;min-height:40px;
+  font-family:var(--ql-mono);font-size:14px;letter-spacing:0;line-height:1.15;
+}
+.ql-gate small{display:block;font-size:9px;color:var(--ql-gray);letter-spacing:.04em;margin-top:2px}
+.ql-gate:hover{background:var(--ql-blue);border-color:var(--ql-blue);color:#fff}
+.ql-gate:hover small{color:rgba(255,255,255,.8)}
+.ql-gate[aria-pressed="true"]{background:#fff;border-color:#fff;color:var(--ql-canvas)}
+.ql-gate[aria-pressed="true"] small{color:#555}
+
+.ql-hint{
+  font-family:var(--ql-mono);font-size:12px;color:var(--ql-gray);letter-spacing:-.05px;
+  min-height:20px;margin:0 0 10px;line-height:1.5;
+}
+.ql-hint b{color:var(--ql-green);font-weight:400}
+
+.ql-circuit-scroll{overflow-x:auto;border:1px solid var(--ql-line);border-radius:6px;background:var(--ql-canvas)}
+#ql-svg{display:block}
+.ql-cell{fill:transparent;cursor:pointer}
+.ql-cell:hover{fill:rgba(0,82,239,.22)}
+.ql-wire{stroke:var(--ql-line);stroke-width:1}
+.ql-crail{stroke:var(--ql-line);stroke-width:1}
+.ql-qlabel{fill:var(--ql-silver);font-family:var(--ql-mono);font-size:12px}
+.ql-gbox{fill:var(--ql-surface-2);stroke:var(--ql-line);stroke-width:1;cursor:pointer}
+.ql-gbox:hover{stroke:var(--ql-red);fill:#3a2320}
+.ql-gtext{fill:var(--ql-ink);font-family:var(--ql-mono);font-size:14px;text-anchor:middle;pointer-events:none}
+.ql-gparam{fill:var(--ql-gray);font-family:var(--ql-mono);font-size:9px;text-anchor:middle;pointer-events:none}
+.ql-ctrl{fill:var(--ql-ink)}
+.ql-link{stroke:var(--ql-ink);stroke-width:1.4}
+.ql-barrier{stroke:var(--ql-gray);stroke-width:1;stroke-dasharray:3 3}
+.ql-mbox{fill:#12261a;stroke:var(--ql-green);stroke-width:1;cursor:pointer}
+.ql-mtext{fill:var(--ql-green);font-family:var(--ql-mono);font-size:12px;text-anchor:middle;pointer-events:none}
+.ql-pendmark{fill:none;stroke:var(--ql-red);stroke-width:1.5;stroke-dasharray:4 3}
+
+.ql-stat{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 0}
+
+/* ---------- 读数 ---------- */
+.ql-sub-tabs{display:flex;gap:4px;flex-wrap:wrap;padding:0 0 14px;border-bottom:1px solid var(--ql-line-soft);margin:0 0 16px}
+.ql-sub-tab{
+  appearance:none;border:1px solid var(--ql-line);background:transparent;color:var(--ql-silver);
+  font-size:12px;padding:6px 13px;border-radius:99999px;cursor:pointer;min-width:56px;min-height:30px;
+  font-family:var(--ql-sans);letter-spacing:-.12px;
+}
+.ql-sub-tab:hover{background:var(--ql-blue);border-color:var(--ql-blue);color:#fff}
+.ql-sub-tab[aria-selected="true"]{background:var(--ql-line);border-color:var(--ql-gray);color:#fff}
+
+.ql-bars{display:flex;flex-direction:column;gap:5px}
+.ql-bar-row{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:center;font-size:12px}
+.ql-bar-key{font-family:var(--ql-mono);color:var(--ql-ink);white-space:nowrap}
+.ql-bar-track{display:block;background:var(--ql-surface-2);height:14px;border-radius:3px;overflow:hidden;min-width:0}
+/* display:block 是必须的：span 默认 inline，inline 元素忽略 width/height，
+   条形会整条不可见（本轮人工看图才发现，DOM 断言全绿） */
+.ql-bar-fill{display:block;height:100%;min-width:1px;background:var(--ql-blue-soft);border-radius:3px 0 0 3px}
+.ql-bar-fill.ql-bar-alt{background:var(--ql-green)}
+.ql-bar-val{font-family:var(--ql-mono);color:var(--ql-silver);white-space:nowrap;font-size:11px}
+
+.ql-phase-chip{display:inline-block;width:11px;height:11px;border-radius:99999px;vertical-align:-1px;margin-right:6px;border:1px solid rgba(255,255,255,.25)}
+
+.ql-bloch-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(158px,1fr));gap:12px}
+.ql-bloch{border:1px solid var(--ql-line);border-radius:6px;padding:10px;background:var(--ql-canvas);min-width:0}
+.ql-bloch h4{margin:0 0 6px;font-size:12px;font-weight:400;color:var(--ql-ink);font-family:var(--ql-mono)}
+.ql-bloch dl{margin:8px 0 0;display:grid;grid-template-columns:auto 1fr;gap:2px 8px;font-size:11px}
+.ql-bloch dt{color:var(--ql-gray);font-family:var(--ql-mono);text-transform:none}
+.ql-bloch dd{margin:0;color:var(--ql-silver);font-family:var(--ql-mono);text-align:right}
+.ql-sphere{display:block;margin:0 auto}
+.ql-sph-out{fill:rgba(255,255,255,.025);stroke:#4a4a4a;stroke-width:1}
+.ql-sph-eq{fill:none;stroke:#333;stroke-width:1}
+.ql-sph-ax{stroke:#3d3d3d;stroke-width:1}
+.ql-sph-axlbl{fill:var(--ql-gray);font-family:var(--ql-mono);font-size:9px;text-anchor:middle}
+.ql-sph-vec{stroke:var(--ql-red);stroke-width:2;stroke-linecap:round}
+.ql-sph-tip{fill:var(--ql-red)}
+
+.ql-mat{border-collapse:collapse;font-family:var(--ql-mono);font-size:10px}
+.ql-mat th{
+  color:var(--ql-gray);font-weight:400;padding:2px 5px;font-size:9px;
+  letter-spacing:.04em;text-transform:none;white-space:nowrap;
+}
+.ql-mat td{padding:0;border:1px solid var(--ql-canvas)}
+.ql-mcell{width:100%;height:100%;min-width:26px;min-height:26px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:9px;white-space:nowrap;padding:2px 3px}
+
+.ql-preset-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(268px,1fr));gap:14px}
+.ql-preset{
+  border:1px solid var(--ql-line);border-radius:6px;padding:16px;background:var(--ql-surface);
+  display:flex;flex-direction:column;gap:8px;min-width:0;
+}
+.ql-preset h3{margin:0;font-size:17px;font-weight:400;letter-spacing:-.2px}
+.ql-preset p{margin:0;font-size:13px;color:var(--ql-silver);line-height:1.55;flex:1}
+
+.ql-saved{display:flex;flex-direction:column;gap:8px}
+.ql-saved-item{
+  display:flex;gap:10px;align-items:center;flex-wrap:wrap;
+  border:1px solid var(--ql-line);border-radius:5px;padding:10px 14px;background:var(--ql-canvas);
+}
+.ql-saved-item strong{font-weight:400;font-size:14px}
+.ql-saved-meta{font-family:var(--ql-mono);font-size:11px;color:var(--ql-gray);margin-right:auto}
+
+.ql-doc{max-width:78ch}
+.ql-doc h3{font-size:22px;font-weight:400;letter-spacing:-.3px;margin:32px 0 8px}
+.ql-doc h3:first-child{margin-top:0}
+.ql-doc p,.ql-doc li{font-size:14.5px;color:var(--ql-silver);line-height:1.65;letter-spacing:-.14px}
+.ql-doc code{font-family:var(--ql-mono);font-size:12.5px;background:var(--ql-surface);padding:2px 6px;border-radius:3px;color:var(--ql-blue-soft)}
+.ql-doc ul{padding-left:20px}
+
+.ql-grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
+.ql-foot{border-top:1px solid var(--ql-line-soft);padding:22px 0 40px;color:var(--ql-gray);font-size:12.5px}
+</style>
+</head>
+<body>
+
+<header class="ql-top">
+  <div class="ql-wrap ql-top-in">
+    <a class="ql-back" href="../../">← 返回工具集</a>
+    <span class="ql-mark"><span class="ql-dot"></span>态向量模拟器 · 纯前端</span>
+  </div>
+</header>
+
+<div class="ql-wrap">
+  <section class="ql-hero">
+    <p class="ql-kicker">QUANTUM CIRCUIT LAB</p>
+    <h1>量子线路实验室<em>。</em></h1>
+    <p>在浏览器里搭一条量子线路，实时看到<strong>态向量、概率分布、布洛赫球和线路酉矩阵</strong>。支持中途测量、经典条件门与 OpenQASM 2.0 双向导入导出。零安装、零后端 —— 不用装 Qiskit，也不用注册任何账号。</p>
+  </section>
+
+  <nav class="ql-tabs" role="tablist" aria-label="功能分区">
+    <button class="ql-tab" id="ql-tab-lab"     role="tab" aria-selected="true"  aria-controls="ql-panel-lab">线路</button>
+    <button class="ql-tab" id="ql-tab-qasm"    role="tab" aria-selected="false" aria-controls="ql-panel-qasm">QASM</button>
+    <button class="ql-tab" id="ql-tab-presets" role="tab" aria-selected="false" aria-controls="ql-panel-presets">算法库</button>
+    <button class="ql-tab" id="ql-tab-saved"   role="tab" aria-selected="false" aria-controls="ql-panel-saved">我的线路</button>
+    <button class="ql-tab" id="ql-tab-about"   role="tab" aria-selected="false" aria-controls="ql-panel-about">说明</button>
+  </nav>
+
+  <!-- ================= 线路 ================= -->
+  <section class="ql-panel" id="ql-panel-lab" role="tabpanel" aria-labelledby="ql-tab-lab">
+    <div class="ql-lab">
+      <div class="ql-card ql-flush">
+        <div style="padding:20px 20px 0">
+          <h2 class="ql-h">线路编辑器</h2>
+          <p class="ql-sub">选一个门，再点线路图上的格子放下去。点已有的门可以删掉它。</p>
+
+          <div class="ql-toolbar">
+            <div class="ql-field" style="width:118px">
+              <label class="ql-label" for="ql-nq">量子比特数</label>
+              <select class="ql-select" id="ql-nq"></select>
+            </div>
+            <div class="ql-field" id="ql-param-wrap" hidden style="width:154px">
+              <label class="ql-label" for="ql-param0">参数 θ（可写 pi/4）</label>
+              <input class="ql-input" id="ql-param0" value="pi/4" spellcheck="false">
+            </div>
+            <div class="ql-field" id="ql-param-wrap1" hidden style="width:132px">
+              <label class="ql-label" for="ql-param1">参数 φ</label>
+              <input class="ql-input" id="ql-param1" value="0" spellcheck="false">
+            </div>
+            <div class="ql-field" id="ql-param-wrap2" hidden style="width:132px">
+              <label class="ql-label" for="ql-param2">参数 λ</label>
+              <input class="ql-input" id="ql-param2" value="0" spellcheck="false">
+            </div>
+            <button class="ql-btn" id="ql-undo" type="button">撤销</button>
+            <button class="ql-btn" id="ql-clear" type="button">清空</button>
+          </div>
+
+          <label class="ql-label">门面板</label>
+          <div class="ql-palette" id="ql-palette" role="group" aria-label="量子门面板"></div>
+          <p class="ql-hint" id="ql-hint"></p>
+        </div>
+
+        <div class="ql-circuit-scroll" id="ql-circuit-scroll">
+          <svg id="ql-svg" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="量子线路图"></svg>
+        </div>
+
+        <div style="padding:14px 20px 20px">
+          <div class="ql-stat" id="ql-stat"></div>
+          <div id="ql-lab-err" style="margin-top:12px"></div>
+        </div>
+      </div>
+
+      <div class="ql-card">
+        <h2 class="ql-h">读数</h2>
+        <p class="ql-sub" id="ql-readout-sub">末态由线路的酉部分决定；测量与条件门在「测量」页里生效。</p>
+        <div class="ql-sub-tabs" role="tablist" aria-label="读数视图">
+          <button class="ql-sub-tab" id="ql-rt-amp"    role="tab" aria-selected="true"  aria-controls="ql-view-amp">振幅</button>
+          <button class="ql-sub-tab" id="ql-rt-prob"   role="tab" aria-selected="false" aria-controls="ql-view-prob">概率</button>
+          <button class="ql-sub-tab" id="ql-rt-bloch"  role="tab" aria-selected="false" aria-controls="ql-view-bloch">布洛赫球</button>
+          <button class="ql-sub-tab" id="ql-rt-matrix" role="tab" aria-selected="false" aria-controls="ql-view-matrix">酉矩阵</button>
+          <button class="ql-sub-tab" id="ql-rt-shots"  role="tab" aria-selected="false" aria-controls="ql-view-shots">测量</button>
+        </div>
+
+        <div id="ql-view-amp" role="tabpanel" aria-labelledby="ql-rt-amp">
+          <div class="ql-row" style="margin:0 0 12px">
+            <label style="display:flex;gap:8px;align-items:center;font-size:13px;color:var(--ql-silver);cursor:pointer">
+              <input type="checkbox" id="ql-amp-all" style="width:18px;height:18px;min-width:18px;min-height:18px;accent-color:#0052ef">
+              显示全部基态（含振幅为 0 的）
+            </label>
+          </div>
+          <div class="ql-scroll"><table class="ql-tbl" id="ql-amp-tbl"></table></div>
+          <p class="ql-note" id="ql-amp-note" style="margin-top:10px"></p>
+        </div>
+
+        <div id="ql-view-prob" role="tabpanel" aria-labelledby="ql-rt-prob" hidden>
+          <div class="ql-bars" id="ql-prob-bars"></div>
+          <p class="ql-note" id="ql-prob-note" style="margin-top:12px"></p>
+        </div>
+
+        <div id="ql-view-bloch" role="tabpanel" aria-labelledby="ql-rt-bloch" hidden>
+          <div class="ql-bloch-grid" id="ql-bloch-grid"></div>
+          <p class="ql-note" style="margin-top:12px">纠缠熵为 0 表示该比特处于纯态（与其余比特无纠缠）；为 1 表示它与其余部分最大纠缠，此时布洛赫矢量缩到球心。</p>
+        </div>
+
+        <div id="ql-view-matrix" role="tabpanel" aria-labelledby="ql-rt-matrix" hidden>
+          <div class="ql-scroll" id="ql-matrix-box"></div>
+          <p class="ql-note" id="ql-matrix-note" style="margin-top:12px"></p>
+        </div>
+
+        <div id="ql-view-shots" role="tabpanel" aria-labelledby="ql-rt-shots" hidden>
+          <div class="ql-row" style="margin:0 0 14px">
+            <div class="ql-field" style="width:118px">
+              <label class="ql-label" for="ql-shots">采样次数</label>
+              <input class="ql-input" id="ql-shots" value="1024" inputmode="numeric">
+            </div>
+            <div class="ql-field" style="width:118px">
+              <label class="ql-label" for="ql-seed">随机种子</label>
+              <input class="ql-input" id="ql-seed" value="7" inputmode="numeric">
+            </div>
+            <button class="ql-btn ql-btn-primary" id="ql-run-shots" type="button">运行</button>
+          </div>
+          <div class="ql-bars" id="ql-shot-bars"></div>
+          <div class="ql-scroll" style="margin-top:14px"><table class="ql-tbl" id="ql-shot-tbl"></table></div>
+          <p class="ql-note" id="ql-shot-note" style="margin-top:10px"></p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= QASM ================= -->
+  <section class="ql-panel" id="ql-panel-qasm" role="tabpanel" aria-labelledby="ql-tab-qasm" hidden>
+    <div class="ql-grid2">
+      <div class="ql-card">
+        <h2 class="ql-h">OpenQASM 2.0</h2>
+        <p class="ql-sub">线路的文本形式。可以直接粘贴别处的 QASM 进来，也可以把这里的代码贴回 Qiskit。</p>
+        <label class="ql-label" for="ql-qasm">源码</label>
+        <textarea class="ql-area" id="ql-qasm" spellcheck="false" autocapitalize="off" autocomplete="off"></textarea>
+        <div class="ql-row" style="margin-top:12px">
+          <button class="ql-btn ql-btn-primary" id="ql-qasm-import" type="button">导入到线路</button>
+          <button class="ql-btn" id="ql-qasm-export" type="button">从线路生成</button>
+          <button class="ql-btn" id="ql-qasm-copy" type="button">复制</button>
+        </div>
+        <div id="ql-qasm-msg" style="margin-top:14px"></div>
+      </div>
+      <div class="ql-card">
+        <h2 class="ql-h">支持的语法</h2>
+        <p class="ql-sub">OpenQASM 2.0 的一个子集，覆盖日常手写线路够用的部分。</p>
+        <div class="ql-scroll">
+          <table class="ql-tbl">
+            <thead><tr><th>写法</th><th>含义</th></tr></thead>
+            <tbody>
+              <tr><td class="ql-mono">qreg q[3];</td><td>声明 3 个量子比特</td></tr>
+              <tr><td class="ql-mono">creg c[3];</td><td>声明 3 个经典比特</td></tr>
+              <tr><td class="ql-mono">h q[0];</td><td>对单个比特作用门</td></tr>
+              <tr><td class="ql-mono">h q;</td><td>对整个寄存器广播</td></tr>
+              <tr><td class="ql-mono">cx q[0],q[1];</td><td>控制位在前，目标位在后</td></tr>
+              <tr><td class="ql-mono">rz(pi/4) q[0];</td><td>带参数的门，参数可写表达式</td></tr>
+              <tr><td class="ql-mono">measure q[0] -&gt; c[0];</td><td>测量到经典位</td></tr>
+              <tr><td class="ql-mono">reset q[0];</td><td>把比特重置回 |0&gt;</td></tr>
+              <tr><td class="ql-mono">barrier q;</td><td>栅栏（只影响排版）</td></tr>
+              <tr><td class="ql-mono">if (c==2) x q[1];</td><td>经典条件门</td></tr>
+              <tr><td class="ql-mono">// 注释</td><td>行注释与 /* 块注释 */</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="ql-note" style="margin-top:14px">参数表达式支持 <code style="font-family:var(--ql-mono)">pi</code>、四则运算、括号、<code style="font-family:var(--ql-mono)">^</code> 以及 sin / cos / tan / exp / ln / sqrt。导出时非 qelib1 标准的门会连同它的 <code style="font-family:var(--ql-mono)">gate</code> 定义一起写出，方便别的工具直接加载。</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= 算法库 ================= -->
+  <section class="ql-panel" id="ql-panel-presets" role="tabpanel" aria-labelledby="ql-tab-presets" hidden>
+    <h2 class="ql-h">算法库</h2>
+    <p class="ql-sub">量子计算里最经典的那几条线路，点开就能跑、能改。</p>
+    <div class="ql-preset-grid" id="ql-preset-grid"></div>
+  </section>
+
+  <!-- ================= 我的线路 ================= -->
+  <section class="ql-panel" id="ql-panel-saved" role="tabpanel" aria-labelledby="ql-tab-saved" hidden>
+    <div class="ql-grid2">
+      <div class="ql-card">
+        <h2 class="ql-h">保存当前线路</h2>
+        <p class="ql-sub">存在这台浏览器的 localStorage 里，不上传任何地方。</p>
+        <div class="ql-row">
+          <div class="ql-field" style="width:220px">
+            <label class="ql-label" for="ql-save-name">名称</label>
+            <input class="ql-input" id="ql-save-name" placeholder="我的贝尔态" maxlength="40">
+          </div>
+          <button class="ql-btn ql-btn-primary" id="ql-save" type="button">保存</button>
+        </div>
+        <div id="ql-save-msg" style="margin-top:14px"></div>
+      </div>
+      <div class="ql-card">
+        <h2 class="ql-h">已保存</h2>
+        <p class="ql-sub" id="ql-saved-sub">还没有保存过线路。</p>
+        <div class="ql-saved" id="ql-saved-list"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= 说明 ================= -->
+  <section class="ql-panel" id="ql-panel-about" role="tabpanel" aria-labelledby="ql-tab-about" hidden>
+    <div class="ql-doc">
+      <h3>门速查表</h3>
+      <p>下表就是本工具支持的全部门。表里出现的每一个都真的能放进线路、能算、能导出成 QASM。</p>
+    </div>
+    <div class="ql-scroll" style="margin:16px 0 0">
+      <table class="ql-tbl" id="ql-gate-table">
+        <thead><tr><th>记号</th><th>名称</th><th>比特数</th><th>参数</th><th>QASM 写法</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div class="ql-doc">
+      <h3>数值口径</h3>
+      <ul>
+        <li><strong>比特序</strong>：小端。q0 是振幅下标的最低位，基态标签写作 |q<sub>n-1</sub> … q<sub>1</sub> q<sub>0</sub>&gt;，与 Qiskit 一致。</li>
+        <li><strong>全局相位</strong>：保留。RZ 用 diag(e<sup>-iθ/2</sup>, e<sup>+iθ/2</sup>)，不是 diag(1, e<sup>iθ</sup>) —— 后者是相位门 P，两者只差全局相位，但在受控形式下差别是物理的。</li>
+        <li><strong>受控门参数序</strong>：控制位写在前面，目标位写在最后。三比特门同理，如 <code>ccx q[0],q[1],q[2]</code> 的目标是 q[2]。</li>
+        <li><strong>测量</strong>：会真的塌缩。中途测量后的经典位可用 <code>if (c==V)</code> 控制后续的门；「振幅 / 概率 / 布洛赫 / 酉矩阵」四个读数只看线路的酉部分，「测量」页才走完整的塌缩流程。</li>
+        <li><strong>结果分布</strong>：测量页同时给出采样频率和<strong>精确概率</strong> —— 后者由穷举所有测量分支算出，不含采样噪声。</li>
+        <li>本工具的引擎与 <strong>Qiskit 2.5</strong> 和 <strong>quantum-circuit</strong> 两套独立实现逐振幅对拍过（含全局相位）。</li>
+      </ul>
+
+      <h3>做不到的</h3>
+      <ul>
+        <li>最多 10 个量子比特（态向量 1024 项）。再多在浏览器里就不合适了。</li>
+        <li>没有噪声模型：不做退相干、门误差、读出误差，跑的是理想量子计算机。</li>
+        <li>不支持 QASM 里的 <code>gate</code> 自定义门定义 —— 导入时会被跳过（名字若是内置门则静默忽略该定义）。也不支持 OpenQASM 3。</li>
+        <li>酉矩阵视图只在 ≤ 4 比特时展示（16×16）；更多比特时矩阵有 2<sup>n</sup>×2<sup>n</sup> 项，看不过来。</li>
+        <li>经典条件只支持「整个经典寄存器等于某个整数」这一种形式，这也是 OpenQASM 2.0 本身的限制。</li>
+      </ul>
+
+      <h3>怎么读布洛赫球</h3>
+      <p>球面上的每一点是一个单比特纯态：北极 |0&gt;、南极 |1&gt;、赤道上是各种叠加态。当一个比特和别人纠缠时，它自己就不再是纯态了，矢量会缩进球内部 —— 缩到球心就是最大纠缠（贝尔态里的任一比特正是如此）。</p>
+    </div>
+  </section>
+
+  <footer class="ql-foot">
+    每日工具集 · 量子线路实验室 —— 全部计算在你的浏览器里完成，线路只存在本机 localStorage。
+  </footer>
+</div>
+
+<script id="ql-engine">/* 量子线路实验室 — 计算内核
+ *
+ * 约定（与 Qiskit 完全一致，便于对拍）：
+ *  - 比特序小端：q0 是振幅下标的最低位。基态标签写作 |q_{n-1} ... q_1 q_0>。
+ *  - 受控门的 q 数组里控制位在前、目标位在最后（如 cx(control, target)）。
+ *  - rz/crz 带全局相位（diag(e^{-i0/2}, e^{+i0/2})），与 Qiskit 的 RZGate 相同。
+ */
+(function (root) {
+  'use strict';
+
+  var PI = Math.PI;
+  var EPS = 1e-12;
+
+  // ---------------------------------------------------------------- 门目录
+  // 2x2 复矩阵按 [a.re,a.im, b.re,b.im, c.re,c.im, d.re,d.im] 展平。
+  function m2(a, b, c, d) { return [a[0], a[1], b[0], b[1], c[0], c[1], d[0], d[1]]; }
+  var R2 = Math.SQRT1_2;
+
+  function mI() { return m2([1, 0], [0, 0], [0, 0], [1, 0]); }
+  function mX() { return m2([0, 0], [1, 0], [1, 0], [0, 0]); }
+  function mY() { return m2([0, 0], [0, -1], [0, 1], [0, 0]); }
+  function mZ() { return m2([1, 0], [0, 0], [0, 0], [-1, 0]); }
+  function mH() { return m2([R2, 0], [R2, 0], [R2, 0], [-R2, 0]); }
+  function mPhase(t) { return m2([1, 0], [0, 0], [0, 0], [Math.cos(t), Math.sin(t)]); }
+  function mSX(s) { // s=+1 -> sx, s=-1 -> sxdg
+    return m2([0.5, 0.5 * s], [0.5, -0.5 * s], [0.5, -0.5 * s], [0.5, 0.5 * s]);
+  }
+  function mRX(t) {
+    var c = Math.cos(t / 2), s = Math.sin(t / 2);
+    return m2([c, 0], [0, -s], [0, -s], [c, 0]);
+  }
+  function mRY(t) {
+    var c = Math.cos(t / 2), s = Math.sin(t / 2);
+    return m2([c, 0], [-s, 0], [s, 0], [c, 0]);
+  }
+  function mRZ(t) {
+    return m2([Math.cos(t / 2), -Math.sin(t / 2)], [0, 0], [0, 0], [Math.cos(t / 2), Math.sin(t / 2)]);
+  }
+  function mU(th, ph, la) {
+    var c = Math.cos(th / 2), s = Math.sin(th / 2);
+    return m2(
+      [c, 0],
+      [-s * Math.cos(la), -s * Math.sin(la)],
+      [s * Math.cos(ph), s * Math.sin(ph)],
+      [c * Math.cos(ph + la), c * Math.sin(ph + la)]
+    );
+  }
+
+  // kind: 'u' 单比特酉门(可带控制位) | 'swap' | 'iswap' | 'measure' | 'reset' | 'barrier'
+  // np: 参数个数; nc: 控制位个数; nt: 目标位个数
+  var GATES = {
+    id:    { kind: 'u', label: 'I',   name: '恒等',        np: 0, nc: 0, nt: 1, qasm: 'id',    m: mI },
+    x:     { kind: 'u', label: 'X',   name: '泡利 X（非）', np: 0, nc: 0, nt: 1, qasm: 'x',     m: mX },
+    y:     { kind: 'u', label: 'Y',   name: '泡利 Y',      np: 0, nc: 0, nt: 1, qasm: 'y',     m: mY },
+    z:     { kind: 'u', label: 'Z',   name: '泡利 Z',      np: 0, nc: 0, nt: 1, qasm: 'z',     m: mZ },
+    h:     { kind: 'u', label: 'H',   name: '阿达马',      np: 0, nc: 0, nt: 1, qasm: 'h',     m: mH },
+    s:     { kind: 'u', label: 'S',   name: '相位 S',      np: 0, nc: 0, nt: 1, qasm: 's',     m: function () { return mPhase(PI / 2); } },
+    sdg:   { kind: 'u', label: 'S†',  name: 'S 逆',        np: 0, nc: 0, nt: 1, qasm: 'sdg',   m: function () { return mPhase(-PI / 2); } },
+    t:     { kind: 'u', label: 'T',   name: '相位 T',      np: 0, nc: 0, nt: 1, qasm: 't',     m: function () { return mPhase(PI / 4); } },
+    tdg:   { kind: 'u', label: 'T†',  name: 'T 逆',        np: 0, nc: 0, nt: 1, qasm: 'tdg',   m: function () { return mPhase(-PI / 4); } },
+    sx:    { kind: 'u', label: '√X',  name: 'X 平方根',    np: 0, nc: 0, nt: 1, qasm: 'sx',    m: function () { return mSX(1); } },
+    sxdg:  { kind: 'u', label: '√X†', name: 'X 平方根逆',  np: 0, nc: 0, nt: 1, qasm: 'sxdg',  m: function () { return mSX(-1); } },
+    rx:    { kind: 'u', label: 'RX',  name: '绕 X 旋转',   np: 1, nc: 0, nt: 1, qasm: 'rx',    m: mRX },
+    ry:    { kind: 'u', label: 'RY',  name: '绕 Y 旋转',   np: 1, nc: 0, nt: 1, qasm: 'ry',    m: mRY },
+    rz:    { kind: 'u', label: 'RZ',  name: '绕 Z 旋转',   np: 1, nc: 0, nt: 1, qasm: 'rz',    m: mRZ },
+    p:     { kind: 'u', label: 'P',   name: '相位门',      np: 1, nc: 0, nt: 1, qasm: 'p',     m: mPhase },
+    u:     { kind: 'u', label: 'U',   name: '通用单比特',  np: 3, nc: 0, nt: 1, qasm: 'u3',    m: mU },
+    cx:    { kind: 'u', label: 'X',   name: '受控非',      np: 0, nc: 1, nt: 1, qasm: 'cx',    m: mX },
+    cy:    { kind: 'u', label: 'Y',   name: '受控 Y',      np: 0, nc: 1, nt: 1, qasm: 'cy',    m: mY },
+    cz:    { kind: 'u', label: 'Z',   name: '受控 Z',      np: 0, nc: 1, nt: 1, qasm: 'cz',    m: mZ },
+    ch:    { kind: 'u', label: 'H',   name: '受控阿达马',  np: 0, nc: 1, nt: 1, qasm: 'ch',    m: mH },
+    csx:   { kind: 'u', label: '√X',  name: '受控 √X',     np: 0, nc: 1, nt: 1, qasm: 'csx',   m: function () { return mSX(1); } },
+    crx:   { kind: 'u', label: 'RX',  name: '受控 RX',     np: 1, nc: 1, nt: 1, qasm: 'crx',   m: mRX },
+    cry:   { kind: 'u', label: 'RY',  name: '受控 RY',     np: 1, nc: 1, nt: 1, qasm: 'cry',   m: mRY },
+    crz:   { kind: 'u', label: 'RZ',  name: '受控 RZ',     np: 1, nc: 1, nt: 1, qasm: 'crz',   m: mRZ },
+    cp:    { kind: 'u', label: 'P',   name: '受控相位',    np: 1, nc: 1, nt: 1, qasm: 'cp',    m: mPhase },
+    ccx:   { kind: 'u', label: 'X',   name: '托佛利（双控非）', np: 0, nc: 2, nt: 1, qasm: 'ccx', m: mX },
+    swap:  { kind: 'swap',  label: '×', name: '交换',      np: 0, nc: 0, nt: 2, qasm: 'swap' },
+    cswap: { kind: 'swap',  label: '×', name: '弗雷德金（受控交换）', np: 0, nc: 1, nt: 2, qasm: 'cswap' },
+    iswap: { kind: 'iswap', label: 'i×', name: 'iSWAP',    np: 0, nc: 0, nt: 2, qasm: 'iswap' },
+    measure: { kind: 'measure', label: 'M', name: '测量',  np: 0, nc: 0, nt: 1, qasm: 'measure' },
+    reset:   { kind: 'reset',   label: '|0>', name: '重置', np: 0, nc: 0, nt: 1, qasm: 'reset' },
+    barrier: { kind: 'barrier', label: '', name: '栅栏',   np: 0, nc: 0, nt: 1, qasm: 'barrier' }
+  };
+
+  var GATE_IDS = Object.keys(GATES);
+
+  function gateArity(g) { var G = GATES[g]; return G.nc + G.nt; }
+
+  // ------------------------------------------------------------- 线路模型
+  // circuit = { nq, nc, ops: [ {g, q:[...], p:[...], c:int|null, cond:int|null} ] }
+  function emptyCircuit(nq, ncl) {
+    return { nq: nq || 3, nc: ncl == null ? (nq || 3) : ncl, ops: [] };
+  }
+  function cloneCircuit(c) {
+    return {
+      nq: c.nq, nc: c.nc,
+      ops: c.ops.map(function (o) {
+        var n = { g: o.g, q: o.q.slice(), p: (o.p || []).slice(), c: o.c == null ? null : o.c, cond: o.cond == null ? null : o.cond };
+        if (o.minCol) n.minCol = o.minCol;
+        return n;
+      })
+    };
+  }
+
+  /** 结构自检：返回错误字符串数组（空数组=合法）。 */
+  function validate(circ) {
+    var errs = [];
+    if (!(circ.nq >= 1 && circ.nq <= 10)) errs.push('量子比特数必须在 1 到 10 之间');
+    circ.ops.forEach(function (o, i) {
+      var G = GATES[o.g];
+      if (!G) { errs.push('第 ' + (i + 1) + ' 步：未知的门 "' + o.g + '"'); return; }
+      var need = G.kind === 'barrier' ? o.q.length : gateArity(o.g);
+      if (o.q.length !== need) errs.push('第 ' + (i + 1) + ' 步：' + o.g + ' 需要 ' + need + ' 个比特，收到 ' + o.q.length + ' 个');
+      var seen = {};
+      for (var k = 0; k < o.q.length; k++) {
+        var qq = o.q[k];
+        if (!(qq >= 0 && qq < circ.nq)) errs.push('第 ' + (i + 1) + ' 步：比特下标 ' + qq + ' 越界（0 到 ' + (circ.nq - 1) + '）');
+        if (seen[qq]) errs.push('第 ' + (i + 1) + ' 步：' + o.g + ' 的比特重复（q[' + qq + ']）');
+        seen[qq] = 1;
+      }
+      if ((o.p || []).length !== G.np) errs.push('第 ' + (i + 1) + ' 步：' + o.g + ' 需要 ' + G.np + ' 个参数');
+      (o.p || []).forEach(function (v) { if (!isFinite(v)) errs.push('第 ' + (i + 1) + ' 步：参数不是有限数'); });
+      if (G.kind === 'measure' && !(o.c >= 0 && o.c < circ.nc)) errs.push('第 ' + (i + 1) + ' 步：经典位下标 ' + o.c + ' 越界');
+      if (o.cond != null && !(o.cond >= 0 && o.cond < (1 << circ.nc))) errs.push('第 ' + (i + 1) + ' 步：条件值超出经典寄存器范围');
+    });
+    return errs;
+  }
+
+  function hasMeasurement(circ) {
+    return circ.ops.some(function (o) { return o.g === 'measure'; });
+  }
+  function isUnitaryOnly(circ) {
+    return !circ.ops.some(function (o) { return o.g === 'measure' || o.g === 'reset' || o.cond != null; });
+  }
+
+  // --------------------------------------------------------------- 态向量
+  function newState(nq) {
+    var N = 1 << nq;
+    var st = { nq: nq, re: new Float64Array(N), im: new Float64Array(N) };
+    st.re[0] = 1;
+    return st;
+  }
+  function cloneState(st) {
+    return { nq: st.nq, re: st.re.slice(), im: st.im.slice() };
+  }
+  function basisState(nq, k) {
+    var st = { nq: nq, re: new Float64Array(1 << nq), im: new Float64Array(1 << nq) };
+    st.re[k] = 1;
+    return st;
+  }
+
+  function ctrlMask(qs, n) {
+    var mask = 0;
+    for (var i = 0; i < n; i++) mask |= (1 << qs[i]);
+    return mask;
+  }
+
+  function apply1(st, m, t, cmask) {
+    var re = st.re, im = st.im, N = re.length, tb = 1 << t;
+    var ar = m[0], ai = m[1], br = m[2], bi = m[3], cr = m[4], ci = m[5], dr = m[6], di = m[7];
+    for (var i = 0; i < N; i++) {
+      if (i & tb) continue;
+      if ((i & cmask) !== cmask) continue;
+      var j = i | tb;
+      var x0r = re[i], x0i = im[i], x1r = re[j], x1i = im[j];
+      re[i] = ar * x0r - ai * x0i + br * x1r - bi * x1i;
+      im[i] = ar * x0i + ai * x0r + br * x1i + bi * x1r;
+      re[j] = cr * x0r - ci * x0i + dr * x1r - di * x1i;
+      im[j] = cr * x0i + ci * x0r + dr * x1i + di * x1r;
+    }
+  }
+
+  function applySwap(st, a, b, cmask) {
+    var re = st.re, im = st.im, N = re.length, ab = 1 << a, bb = 1 << b;
+    for (var i = 0; i < N; i++) {
+      if (!(i & ab) || (i & bb)) continue;          // 只处理 a=1,b=0 的一半
+      if ((i & cmask) !== cmask) continue;
+      var j = (i & ~ab) | bb;
+      var tr = re[i], ti = im[i];
+      re[i] = re[j]; im[i] = im[j];
+      re[j] = tr; im[j] = ti;
+    }
+  }
+
+  function applyISwap(st, a, b) {
+    var re = st.re, im = st.im, N = re.length, ab = 1 << a, bb = 1 << b;
+    for (var i = 0; i < N; i++) {
+      if (!(i & ab) || (i & bb)) continue;
+      var j = (i & ~ab) | bb;
+      // |a=1,b=0> 与 |a=0,b=1> 互换并各乘 i
+      var pr = re[i], pi = im[i], qr = re[j], qi = im[j];
+      re[i] = -qi; im[i] = qr;
+      re[j] = -pi; im[j] = pr;
+    }
+  }
+
+  /** 对态向量施加一个酉操作（measure/reset/barrier 在此处被忽略）。 */
+  function applyOp(st, op) {
+    var G = GATES[op.g];
+    if (!G || G.kind === 'measure' || G.kind === 'reset' || G.kind === 'barrier') return;
+    if (G.kind === 'u') {
+      var cm = ctrlMask(op.q, G.nc);
+      apply1(st, G.m.apply(null, op.p || []), op.q[G.nc], cm);
+    } else if (G.kind === 'swap') {
+      applySwap(st, op.q[G.nc], op.q[G.nc + 1], ctrlMask(op.q, G.nc));
+    } else if (G.kind === 'iswap') {
+      applyISwap(st, op.q[0], op.q[1]);
+    }
+  }
+
+  /** 只跑酉部分（忽略测量/重置/条件），返回末态。 */
+  function runUnitary(circ) {
+    var st = newState(circ.nq);
+    for (var i = 0; i < circ.ops.length; i++) {
+      var o = circ.ops[i];
+      if (o.cond != null) continue;
+      applyOp(st, o);
+    }
+    return st;
+  }
+
+  function probabilities(st) {
+    var N = st.re.length, p = new Float64Array(N);
+    for (var i = 0; i < N; i++) p[i] = st.re[i] * st.re[i] + st.im[i] * st.im[i];
+    return p;
+  }
+
+  function norm2(st) {
+    var s = 0;
+    for (var i = 0; i < st.re.length; i++) s += st.re[i] * st.re[i] + st.im[i] * st.im[i];
+    return s;
+  }
+
+  /** 单比特约化密度矩阵的布洛赫矢量 (x, y, z)。 */
+  function bloch(st, k) {
+    var re = st.re, im = st.im, N = re.length, kb = 1 << k;
+    var x = 0, y = 0, z = 0;
+    for (var i = 0; i < N; i++) {
+      var p = re[i] * re[i] + im[i] * im[i];
+      z += (i & kb) ? -p : p;
+      if (i & kb) continue;
+      var j = i | kb;
+      x += 2 * (re[i] * re[j] + im[i] * im[j]);
+      y += 2 * (re[i] * im[j] - im[i] * re[j]);
+    }
+    return { x: x, y: y, z: z };
+  }
+
+  function blochReport(st, k) {
+    var b = bloch(st, k);
+    var r = Math.sqrt(b.x * b.x + b.y * b.y + b.z * b.z);
+    r = Math.min(1, r);
+    var l0 = (1 + r) / 2, l1 = (1 - r) / 2;
+    var ent = 0;
+    [l0, l1].forEach(function (l) { if (l > 1e-14) ent -= l * Math.log2(l); });
+    return { x: b.x, y: b.y, z: b.z, r: r, purity: (1 + r * r) / 2, entropy: ent, p1: (1 - b.z) / 2 };
+  }
+
+  /** 线路整体酉矩阵：返回 {n, re:Float64Array(n*n), im:...}，列优先按输入基态。 */
+  function unitaryMatrix(circ) {
+    var N = 1 << circ.nq;
+    var re = new Float64Array(N * N), im = new Float64Array(N * N);
+    for (var col = 0; col < N; col++) {
+      var st = basisState(circ.nq, col);
+      for (var i = 0; i < circ.ops.length; i++) {
+        var o = circ.ops[i];
+        if (o.cond != null) continue;
+        applyOp(st, o);
+      }
+      for (var row = 0; row < N; row++) {
+        re[row * N + col] = st.re[row];
+        im[row * N + col] = st.im[row];
+      }
+    }
+    return { n: N, re: re, im: im };
+  }
+
+  // ------------------------------------------------------- 测量与结果分布
+  function projectInPlace(st, q, val) {
+    var re = st.re, im = st.im, N = re.length, qb = 1 << q, s = 0;
+    for (var i = 0; i < N; i++) {
+      var keep = ((i & qb) ? 1 : 0) === val;
+      if (!keep) { re[i] = 0; im[i] = 0; }
+      else s += re[i] * re[i] + im[i] * im[i];
+    }
+    if (s > EPS) {
+      var f = 1 / Math.sqrt(s);
+      for (var k = 0; k < N; k++) { re[k] *= f; im[k] *= f; }
+    }
+    return s;
+  }
+
+  function prob1(st, q) {
+    var re = st.re, im = st.im, N = re.length, qb = 1 << q, s = 0;
+    for (var i = 0; i < N; i++) if (i & qb) s += re[i] * re[i] + im[i] * im[i];
+    return s;
+  }
+
+  /** 若线路里没有显式 measure，则在末尾对所有比特补一次测量。 */
+  function withDefaultMeasure(circ) {
+    if (hasMeasurement(circ)) return circ;
+    var c2 = cloneCircuit(circ);
+    if (c2.nc < c2.nq) c2.nc = c2.nq;
+    for (var q = 0; q < circ.nq; q++) c2.ops.push({ g: 'measure', q: [q], p: [], c: q, cond: null });
+    return c2;
+  }
+
+  /**
+   * 精确结果分布：穷举所有测量分支（含中途测量、重置、经典条件），
+   * 返回 Map<经典寄存器整数, 概率>。这是理论值，不含采样噪声。
+   */
+  function exactOutcomes(circ, opts) {
+    var c = (opts && opts.raw) ? circ : withDefaultMeasure(circ);
+    var out = new Map();
+    var branches = 0;
+    var LIMIT = (opts && opts.limit) || 200000;
+
+    function walk(idx, st, creg, w) {
+      if (w < 1e-15) return;
+      for (var k = idx; k < c.ops.length; k++) {
+        var op = c.ops[k];
+        if (op.cond != null && creg !== op.cond) continue;
+        var G = GATES[op.g];
+        if (G.kind === 'barrier') continue;
+        if (G.kind === 'measure' || G.kind === 'reset') {
+          if (++branches > LIMIT) throw new Error('测量分支过多，无法精确枚举');
+          var q = op.q[0];
+          var p1 = prob1(st, q), p0 = 1 - p1;
+          if (p1 > 1e-15) {
+            var s1 = cloneState(st);
+            projectInPlace(s1, q, 1);
+            if (G.kind === 'reset') apply1(s1, mX(), q, 0);
+            walk(k + 1, s1, G.kind === 'measure' ? (creg | (1 << op.c)) : creg, w * p1);
+          }
+          if (p0 > 1e-15) {
+            var s0 = cloneState(st);
+            projectInPlace(s0, q, 0);
+            walk(k + 1, s0, G.kind === 'measure' ? (creg & ~(1 << op.c)) : creg, w * p0);
+          }
+          return;
+        }
+        applyOp(st, op);
+      }
+      out.set(creg, (out.get(creg) || 0) + w);
+    }
+
+    walk(0, newState(c.nq), 0, 1);
+    return { dist: out, nc: c.nc };
+  }
+
+  function mulberry32(seed) {
+    var a = seed >>> 0;
+    return function () {
+      a = (a + 0x6D2B79F5) >>> 0;
+      var t = a;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  /** 轨迹式采样：真的一枪一枪跑，含塌缩与经典条件。 */
+  function sampleCounts(circ, shots, seed) {
+    var c = withDefaultMeasure(circ);
+    var rnd = mulberry32(seed >>> 0);
+    var counts = new Map();
+    for (var s = 0; s < shots; s++) {
+      var st = newState(c.nq), creg = 0;
+      for (var k = 0; k < c.ops.length; k++) {
+        var op = c.ops[k];
+        if (op.cond != null && creg !== op.cond) continue;
+        var G = GATES[op.g];
+        if (G.kind === 'barrier') continue;
+        if (G.kind === 'measure' || G.kind === 'reset') {
+          var q = op.q[0];
+          var p1 = prob1(st, q);
+          var bit = rnd() < p1 ? 1 : 0;
+          projectInPlace(st, q, bit);
+          if (G.kind === 'reset') { if (bit) apply1(st, mX(), q, 0); }
+          else creg = bit ? (creg | (1 << op.c)) : (creg & ~(1 << op.c));
+          continue;
+        }
+        applyOp(st, op);
+      }
+      counts.set(creg, (counts.get(creg) || 0) + 1);
+    }
+    return { counts: counts, nc: c.nc, shots: shots };
+  }
+
+  function bits(v, n) {
+    var s = '';
+    for (var i = n - 1; i >= 0; i--) s += ((v >> i) & 1);
+    return s;
+  }
+
+  // ------------------------------------------------------------- 布局分列
+  /** 贪心分列：每个操作放进「它横跨的比特区间都空着」的最早一列。
+   *  op.minCol 是编辑器点击落位时记下的最小列号（纯排版信息，不参与计算）。 */
+  function layout(circ) {
+    var cols = [];
+    var last = [];               // last[q] = 该比特上已占用的最大列号
+    for (var z = 0; z < circ.nq; z++) last[z] = -1;
+    circ.ops.forEach(function (op, idx) {
+      var lo, hi;
+      if (op.g === 'barrier') { lo = 0; hi = circ.nq - 1; }
+      else { lo = Math.min.apply(null, op.q); hi = Math.max.apply(null, op.q); }
+      // 起点取 minCol 与「本操作横跨的每根线上已用最大列 + 1」的较大者：
+      // 既保证同列不重叠，也保证画面上的先后与执行顺序一致。
+      var col = Math.max(0, op.minCol | 0);
+      for (var q = lo; q <= hi; q++) col = Math.max(col, last[q] + 1);
+      for (var q2 = lo; q2 <= hi; q2++) last[q2] = col;
+      if (!cols[col]) cols[col] = [];
+      cols[col].push({ op: op, index: idx, lo: lo, hi: hi });
+    });
+    for (var i = 0; i < cols.length; i++) if (!cols[i]) cols[i] = [];
+    return cols;
+  }
+
+  // --------------------------------------------------------- 角度显示工具
+  var PI_FRACS = [
+    [1, 1], [1, 2], [1, 3], [1, 4], [1, 6], [1, 8], [1, 12], [1, 16],
+    [2, 3], [3, 4], [3, 2], [2, 1], [5, 4], [4, 3], [5, 6], [5, 2], [3, 8], [5, 8], [7, 8], [7, 4], [7, 6], [3, 1], [4, 1]
+  ];
+  /** 把角度写成 pi 的简单分数（找不到就给 4 位小数）。 */
+  function fmtAngle(t) {
+    if (Math.abs(t) < 1e-12) return '0';
+    var sign = t < 0 ? '-' : '';
+    var a = Math.abs(t);
+    for (var i = 0; i < PI_FRACS.length; i++) {
+      var n = PI_FRACS[i][0], d = PI_FRACS[i][1];
+      if (Math.abs(a - (n * PI) / d) < 1e-9) {
+        var top = n === 1 ? 'π' : n + 'π';
+        return sign + (d === 1 ? top : top + '/' + d);
+      }
+    }
+    return sign + a.toFixed(4).replace(/0+$/, '').replace(/\.$/, '');
+  }
+  function fmtNum(v, d) {
+    if (Math.abs(v) < 5e-5) return '0';
+    return v.toFixed(d == null ? 4 : d);
+  }
+  /** 复数写成 a+bi，绝对值极小的部分直接省掉。 */
+  function fmtComplex(re, im, d) {
+    d = d == null ? 4 : d;
+    var sr = Math.abs(re) < 5e-5 ? 0 : re, si = Math.abs(im) < 5e-5 ? 0 : im;
+    if (sr === 0 && si === 0) return '0';
+    if (si === 0) return sr.toFixed(d);
+    if (sr === 0) return (si === 1 ? '' : si === -1 ? '-' : si.toFixed(d)) + 'i';
+    return sr.toFixed(d) + (si < 0 ? '−' : '+') + Math.abs(si).toFixed(d) + 'i';
+  }
+
+  // ---------------------------------------------------------- QASM 表达式
+  function evalExpr(src) {
+    var s = String(src), i = 0;
+    function ws() { while (i < s.length && /\s/.test(s[i])) i++; }
+    function expr() {
+      var v = term();
+      for (;;) {
+        ws();
+        if (s[i] === '+') { i++; v += term(); }
+        else if (s[i] === '-') { i++; v -= term(); }
+        else return v;
+      }
+    }
+    function term() {
+      var v = unary();
+      for (;;) {
+        ws();
+        if (s[i] === '*') { i++; v *= unary(); }
+        else if (s[i] === '/') { i++; v /= unary(); }
+        else return v;
+      }
+    }
+    function unary() {
+      ws();
+      if (s[i] === '-') { i++; return -unary(); }
+      if (s[i] === '+') { i++; return unary(); }
+      return power();
+    }
+    function power() {
+      var v = atom();
+      ws();
+      if (s[i] === '^') { i++; return Math.pow(v, unary()); }
+      return v;
+    }
+    function atom() {
+      ws();
+      if (s[i] === '(') { i++; var v = expr(); ws(); if (s[i] !== ')') throw new Error('括号不匹配'); i++; return v; }
+      var idm = /^[a-zA-Z_][a-zA-Z0-9_]*/.exec(s.slice(i));
+      if (idm) {
+        var id = idm[0]; i += id.length; ws();
+        if (id === 'pi' || id === 'PI') return PI;
+        if (id === 'e' && s[i] !== '(') return Math.E;
+        if (s[i] !== '(') throw new Error('未知的符号 "' + id + '"');
+        i++; var arg = expr(); ws();
+        if (s[i] !== ')') throw new Error('括号不匹配'); i++;
+        switch (id) {
+          case 'sin': return Math.sin(arg);
+          case 'cos': return Math.cos(arg);
+          case 'tan': return Math.tan(arg);
+          case 'exp': return Math.exp(arg);
+          case 'ln': return Math.log(arg);
+          case 'sqrt': return Math.sqrt(arg);
+          default: throw new Error('不支持的函数 "' + id + '"');
+        }
+      }
+      var num = /^\d+(\.\d*)?([eE][-+]?\d+)?|^\.\d+([eE][-+]?\d+)?/.exec(s.slice(i));
+      if (num) { i += num[0].length; return parseFloat(num[0]); }
+      throw new Error('无法解析的表达式片段 "' + s.slice(i, i + 8) + '"');
+    }
+    var out = expr();
+    ws();
+    if (i < s.length) throw new Error('表达式尾部有多余内容 "' + s.slice(i) + '"');
+    if (!isFinite(out)) throw new Error('表达式结果不是有限数');
+    return out;
+  }
+
+  // ------------------------------------------------------------ QASM 解析
+  var QASM_ALIAS = { u3: 'u', u: 'u', cnot: 'cx', toffoli: 'ccx', fredkin: 'cswap', u1: 'p', cu1: 'cp', not: 'x' };
+
+  function parseQasm(src) {
+    var errors = [];
+    var text = String(src == null ? '' : src);
+    // 去掉块注释
+    text = text.replace(/\/\*[\s\S]*?\*\//g, ' ');
+    // 剥离 gate 定义块：本工具的门集是内置的，凡名字已知就忽略该定义（导出的
+    // QASM 为了在别的工具里也能跑，会给非 qelib1 的门带上标准定义）。
+    text = text.replace(/\bgate\s+([A-Za-z_][A-Za-z0-9_]*)([^{;]*)\{([^}]*)\}/g, function (whole, name) {
+      var known = GATES[QASM_ALIAS[name.toLowerCase()] || name.toLowerCase()];
+      if (!known) errors.push({ line: 0, msg: '暂不支持自定义 gate 定义（' + name + '）' });
+      return whole.replace(/[^\n]/g, ' ');
+    });
+    var lines = text.split('\n');
+    var stmts = [];
+    var buf = '', startLine = 1;
+    for (var li = 0; li < lines.length; li++) {
+      var line = lines[li].replace(/\/\/.*$/, '');
+      if (!buf.trim()) startLine = li + 1;
+      buf += ' ' + line;
+      while (buf.indexOf(';') >= 0) {
+        var idx = buf.indexOf(';');
+        var st = buf.slice(0, idx).trim();
+        buf = buf.slice(idx + 1);
+        if (st) stmts.push({ text: st, line: startLine });
+        startLine = li + 1;
+      }
+    }
+    if (buf.trim()) errors.push({ line: lines.length, msg: '语句缺少结尾分号：' + buf.trim().slice(0, 30) });
+
+    var qregs = {}, cregs = {}, nq = 0, ncl = 0, ops = [];
+
+    function resolveQ(tok) {
+      tok = tok.trim();
+      var m = /^([a-zA-Z_][a-zA-Z0-9_]*)\s*\[\s*(\d+)\s*\]$/.exec(tok);
+      if (m) {
+        var r = qregs[m[1]];
+        if (!r) throw new Error('未声明的量子寄存器 "' + m[1] + '"');
+        var k = parseInt(m[2], 10);
+        if (k >= r.size) throw new Error('下标越界：' + m[1] + '[' + k + ']，该寄存器只有 ' + r.size + ' 位');
+        return [r.base + k];
+      }
+      var r2 = qregs[tok];
+      if (!r2) throw new Error('未知的量子比特 "' + tok + '"');
+      var all = [];
+      for (var i = 0; i < r2.size; i++) all.push(r2.base + i);
+      return all;
+    }
+    function resolveC(tok) {
+      tok = tok.trim();
+      var m = /^([a-zA-Z_][a-zA-Z0-9_]*)\s*\[\s*(\d+)\s*\]$/.exec(tok);
+      if (m) {
+        var r = cregs[m[1]];
+        if (!r) throw new Error('未声明的经典寄存器 "' + m[1] + '"');
+        var k = parseInt(m[2], 10);
+        if (k >= r.size) throw new Error('下标越界：' + m[1] + '[' + k + ']');
+        return [r.base + k];
+      }
+      var r2 = cregs[tok];
+      if (!r2) throw new Error('未知的经典位 "' + tok + '"');
+      var all = [];
+      for (var i = 0; i < r2.size; i++) all.push(r2.base + i);
+      return all;
+    }
+
+    stmts.forEach(function (S) {
+      var t = S.text.replace(/\s+/g, ' ').trim();
+      try {
+        if (/^OPENQASM/i.test(t)) return;
+        if (/^include\b/i.test(t)) return;
+        if (/^gate\b/i.test(t)) throw new Error('暂不支持自定义 gate 定义');
+        var mq = /^qreg\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\[\s*(\d+)\s*\]$/i.exec(t);
+        if (mq) {
+          var sz = parseInt(mq[2], 10);
+          if (sz < 1) throw new Error('寄存器长度必须为正');
+          qregs[mq[1]] = { base: nq, size: sz };
+          nq += sz;
+          return;
+        }
+        var mc = /^creg\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\[\s*(\d+)\s*\]$/i.exec(t);
+        if (mc) {
+          var sz2 = parseInt(mc[2], 10);
+          cregs[mc[1]] = { base: ncl, size: sz2 };
+          ncl += sz2;
+          return;
+        }
+        var cond = null;
+        var mif = /^if\s*\(\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*==\s*(\d+)\s*\)\s*(.+)$/i.exec(t);
+        if (mif) {
+          if (!cregs[mif[1]]) throw new Error('条件里引用了未声明的经典寄存器 "' + mif[1] + '"');
+          cond = parseInt(mif[2], 10);
+          t = mif[3].trim();
+        }
+        var mm = /^measure\s+(.+?)\s*->\s*(.+)$/i.exec(t);
+        if (mm) {
+          var qs = resolveQ(mm[1]), cs = resolveC(mm[2]);
+          if (qs.length !== cs.length) throw new Error('measure 两侧宽度不一致（' + qs.length + ' 对 ' + cs.length + '）');
+          for (var i = 0; i < qs.length; i++) ops.push({ g: 'measure', q: [qs[i]], p: [], c: cs[i], cond: cond });
+          return;
+        }
+        var mr = /^reset\s+(.+)$/i.exec(t);
+        if (mr) {
+          resolveQ(mr[1]).forEach(function (q) { ops.push({ g: 'reset', q: [q], p: [], c: null, cond: cond }); });
+          return;
+        }
+        var mb = /^barrier\s*(.*)$/i.exec(t);
+        if (mb) {
+          var qs2 = [];
+          if (mb[1].trim()) mb[1].split(',').forEach(function (x) { qs2 = qs2.concat(resolveQ(x)); });
+          else for (var z = 0; z < nq; z++) qs2.push(z);
+          if (qs2.length) ops.push({ g: 'barrier', q: qs2, p: [], c: null, cond: null });
+          return;
+        }
+        var mg = /^([a-zA-Z_][a-zA-Z0-9_]*)\s*(\(([^)]*)\))?\s+(.+)$/.exec(t);
+        if (!mg) throw new Error('无法识别的语句');
+        var name = mg[1].toLowerCase();
+        var gid = QASM_ALIAS[name] || name;
+        if (!GATES[gid]) throw new Error('不支持的门 "' + mg[1] + '"');
+        var G = GATES[gid];
+        var params = [];
+        if (mg[3] != null && mg[3].trim()) {
+          params = splitTop(mg[3]).map(function (e) { return evalExpr(e); });
+        }
+        if (params.length !== G.np) throw new Error(mg[1] + ' 需要 ' + G.np + ' 个参数，收到 ' + params.length + ' 个');
+        var args = splitTop(mg[4]).map(function (a) { return resolveQ(a); });
+        var need = gateArity(gid);
+        if (args.length !== need) throw new Error(mg[1] + ' 需要 ' + need + ' 个比特，收到 ' + args.length + ' 个');
+        var width = 1;
+        args.forEach(function (a) { if (a.length > 1) width = Math.max(width, a.length); });
+        args.forEach(function (a) {
+          if (a.length !== 1 && a.length !== width) throw new Error('寄存器宽度不匹配，无法广播');
+        });
+        for (var w = 0; w < width; w++) {
+          var qq = args.map(function (a) { return a.length === 1 ? a[0] : a[w]; });
+          var uniq = {};
+          var dup = false;
+          qq.forEach(function (x) { if (uniq[x]) dup = true; uniq[x] = 1; });
+          if (dup) throw new Error(mg[1] + ' 的比特参数重复');
+          ops.push({ g: gid, q: qq, p: params.slice(), c: null, cond: cond });
+        }
+      } catch (e) {
+        errors.push({ line: S.line, msg: e.message });
+      }
+    });
+
+    if (nq === 0 && errors.length === 0) errors.push({ line: 1, msg: '没有声明任何 qreg' });
+    if (nq > 10) errors.push({ line: 1, msg: '本工具最多支持 10 个量子比特，收到 ' + nq + ' 个' });
+    var circ = { nq: Math.max(1, Math.min(10, nq)), nc: Math.max(ncl, 0), ops: nq > 0 && nq <= 10 ? ops : [] };
+    if (circ.nc === 0) circ.nc = circ.nq;
+    return { circuit: circ, errors: errors };
+  }
+
+  /** 按顶层逗号切分（括号内的逗号不切）。 */
+  function splitTop(s) {
+    var out = [], depth = 0, cur = '';
+    for (var i = 0; i < s.length; i++) {
+      var ch = s[i];
+      if (ch === '(' || ch === '[') depth++;
+      else if (ch === ')' || ch === ']') depth--;
+      if (ch === ',' && depth === 0) { out.push(cur); cur = ''; }
+      else cur += ch;
+    }
+    if (cur.trim()) out.push(cur);
+    return out.map(function (x) { return x.trim(); }).filter(function (x) { return x.length; });
+  }
+
+  // ------------------------------------------------------------ QASM 输出
+  function angleSrc(t) {
+    if (Math.abs(t) < 1e-12) return '0';
+    for (var i = 0; i < PI_FRACS.length; i++) {
+      var n = PI_FRACS[i][0], d = PI_FRACS[i][1];
+      if (Math.abs(Math.abs(t) - (n * PI) / d) < 1e-9) {
+        var sign = t < 0 ? '-' : '';
+        var top = n === 1 ? 'pi' : n + '*pi';
+        return sign + (d === 1 ? top : top + '/' + d);
+      }
+    }
+    return realSrc(t);
+  }
+
+  /** 十进制字面量，取「能精确回读的最短小数位数」——避免导出 QASM 时把角度截精度。
+   *  刻意不产生科学计数法：QASM 2.0 的 real 文法要求带小数点。 */
+  function realSrc(t) {
+    if (Number.isInteger(t) && Math.abs(t) < 1e15) return t.toFixed(1);
+    // 双精度要 17 位有效数字才必然可回读；小数点后的位数还得补上前导零的个数。
+    var lead = Math.max(0, -Math.floor(Math.log10(Math.abs(t))));
+    var max = Math.min(100, 17 + lead);
+    for (var d = 1; d <= max; d++) {
+      var s = t.toFixed(d);
+      if (Number(s) === t) return s;
+    }
+    return t.toFixed(max);
+  }
+
+  // 原始 qelib1.inc 真正定义的门（Qiskit 的严格 QASM2 解析器就认这些）。
+  // 之外的门导出时会连标准定义一起写出，保证别的工具也能加载。
+  var QELIB1 = {
+    u3: 1, u2: 1, u1: 1, cx: 1, id: 1, x: 1, y: 1, z: 1, h: 1, s: 1, sdg: 1, t: 1, tdg: 1,
+    rx: 1, ry: 1, rz: 1, cz: 1, cy: 1, ch: 1, ccx: 1, crz: 1, cu1: 1, cu3: 1
+  };
+  var GATE_DEFS = {
+    p: 'gate p(lambda) q { u1(lambda) q; }',
+    cp: 'gate cp(lambda) a,b { cu1(lambda) a,b; }',
+    sx: 'gate sx a { sdg a; h a; sdg a; }',
+    sxdg: 'gate sxdg a { s a; h a; s a; }',
+    swap: 'gate swap a,b { cx a,b; cx b,a; cx a,b; }',
+    cswap: 'gate cswap a,b,c { cx c,b; ccx a,b,c; cx c,b; }',
+    iswap: 'gate iswap a,b { s a; s b; h a; cx a,b; cx b,a; h b; }',
+    csx: 'gate csx a,b { h b; cu1(pi/2) a,b; h b; }',
+    crx: 'gate crx(theta) a,b { u1(pi/2) b; cx a,b; u3(-theta/2,0,0) b; cx a,b; u3(theta/2,-pi/2,0) b; }',
+    cry: 'gate cry(theta) a,b { u3(theta/2,0,0) b; cx a,b; u3(-theta/2,0,0) b; cx a,b; }'
+  };
+
+  function printQasm(circ) {
+    var L = ['OPENQASM 2.0;', 'include "qelib1.inc";', ''];
+    var used = {}, defs = [];
+    circ.ops.forEach(function (o) {
+      var q = GATES[o.g] && GATES[o.g].qasm;
+      if (q && !QELIB1[q] && GATE_DEFS[q] && !used[q]) { used[q] = 1; defs.push(GATE_DEFS[q]); }
+    });
+    if (defs.length) L = L.concat(defs, ['']);
+    L.push('qreg q[' + circ.nq + '];');
+    if (circ.nc > 0) L.push('creg c[' + circ.nc + '];');
+    L.push('');
+    circ.ops.forEach(function (o) {
+      var G = GATES[o.g];
+      var pre = o.cond != null ? 'if (c==' + o.cond + ') ' : '';
+      if (o.g === 'measure') { L.push(pre + 'measure q[' + o.q[0] + '] -> c[' + o.c + '];'); return; }
+      if (o.g === 'reset') { L.push(pre + 'reset q[' + o.q[0] + '];'); return; }
+      if (o.g === 'barrier') { L.push('barrier ' + o.q.map(function (q) { return 'q[' + q + ']'; }).join(',') + ';'); return; }
+      var ps = (o.p && o.p.length) ? '(' + o.p.map(angleSrc).join(',') + ')' : '';
+      L.push(pre + G.qasm + ps + ' ' + o.q.map(function (q) { return 'q[' + q + ']'; }).join(',') + ';');
+    });
+    return L.join('\n') + '\n';
+  }
+
+  // --------------------------------------------------------------- 预置库
+  function op(g, q, p, c, cond) { return { g: g, q: q, p: p || [], c: c == null ? null : c, cond: cond == null ? null : cond }; }
+
+  function qftOps(n) {
+    var ops = [];
+    for (var j = n - 1; j >= 0; j--) {
+      ops.push(op('h', [j]));
+      for (var k = j - 1; k >= 0; k--) ops.push(op('cp', [k, j], [PI / Math.pow(2, j - k)]));
+    }
+    for (var i = 0; i < Math.floor(n / 2); i++) ops.push(op('swap', [i, n - 1 - i]));
+    return ops;
+  }
+
+  var PRESETS = [
+    {
+      id: 'bell', title: '贝尔态 Φ+', tag: '纠缠',
+      desc: '两比特最大纠缠态 (|00> + |11>)/√2。测量任一比特，另一比特立刻确定——这是纠缠最短的证明。',
+      circuit: { nq: 2, nc: 2, ops: [op('h', [0]), op('cx', [0, 1])] }
+    },
+    {
+      id: 'ghz', title: 'GHZ 三体纠缠', tag: '纠缠',
+      desc: '(|000> + |111>)/√2。三个比特要么全 0 要么全 1，任何单比特的约化态都是完全混合的。',
+      circuit: { nq: 3, nc: 3, ops: [op('h', [0]), op('cx', [0, 1]), op('cx', [1, 2])] }
+    },
+    {
+      id: 'teleport', title: '量子隐形传态', tag: '协议',
+      desc: 'q0 上的未知态经一对纠缠比特 + 两个经典比特传到 q2。用到中途测量与经典条件门，末态 q2 = 原始态。',
+      circuit: {
+        nq: 3, nc: 2,
+        ops: [
+          op('ry', [0], [PI / 3]), op('barrier', [0, 1, 2]),
+          op('h', [1]), op('cx', [1, 2]), op('barrier', [0, 1, 2]),
+          op('cx', [0, 1]), op('h', [0]),
+          op('measure', [0], [], 0), op('measure', [1], [], 1), op('barrier', [0, 1, 2]),
+          op('x', [2], [], null, 2), op('z', [2], [], null, 1), op('x', [2], [], null, 3), op('z', [2], [], null, 3)
+        ]
+      }
+    },
+    {
+      id: 'superdense', title: '超密编码', tag: '协议',
+      desc: '预共享一对纠缠比特后，只发送 1 个量子比特就能传 2 个经典比特。这里编码的是 "10"。',
+      circuit: {
+        nq: 2, nc: 2,
+        ops: [op('h', [0]), op('cx', [0, 1]), op('barrier', [0, 1]), op('z', [0]), op('barrier', [0, 1]), op('cx', [0, 1]), op('h', [0]),
+          op('measure', [0], [], 0), op('measure', [1], [], 1)]
+      }
+    },
+    {
+      id: 'deutsch', title: 'Deutsch–Jozsa（平衡）', tag: '算法',
+      desc: '一次询问就判断黑箱函数是常数还是平衡。平衡函数下末态测得的一定不是全 0。',
+      circuit: {
+        nq: 4, nc: 3,
+        ops: [op('x', [3]), op('h', [0]), op('h', [1]), op('h', [2]), op('h', [3]),
+          op('barrier', [0, 1, 2, 3]), op('cx', [0, 3]), op('cx', [2, 3]), op('barrier', [0, 1, 2, 3]),
+          op('h', [0]), op('h', [1]), op('h', [2]),
+          op('measure', [0], [], 0), op('measure', [1], [], 1), op('measure', [2], [], 2)]
+      }
+    },
+    {
+      id: 'bv', title: 'Bernstein–Vazirani', tag: '算法',
+      desc: '一次询问就读出黑箱里藏的比特串 s（这里 s = 101）。经典算法要问 3 次。',
+      circuit: {
+        nq: 4, nc: 3,
+        ops: [op('x', [3]), op('h', [0]), op('h', [1]), op('h', [2]), op('h', [3]),
+          op('barrier', [0, 1, 2, 3]), op('cx', [0, 3]), op('cx', [2, 3]), op('barrier', [0, 1, 2, 3]),
+          op('h', [0]), op('h', [1]), op('h', [2]),
+          op('measure', [0], [], 0), op('measure', [1], [], 1), op('measure', [2], [], 2)]
+      }
+    },
+    {
+      id: 'grover', title: 'Grover 搜索（标记 |11>）', tag: '算法',
+      desc: '两比特里找一个被标记的解。一次 Grover 迭代后振幅全部集中到 |11>，测量必中。',
+      circuit: {
+        nq: 2, nc: 2,
+        ops: [op('h', [0]), op('h', [1]), op('barrier', [0, 1]),
+          op('cz', [0, 1]), op('barrier', [0, 1]),
+          op('h', [0]), op('h', [1]), op('x', [0]), op('x', [1]), op('cz', [0, 1]), op('x', [0]), op('x', [1]), op('h', [0]), op('h', [1])]
+      }
+    },
+    {
+      id: 'qft3', title: '量子傅里叶变换（3 比特）', tag: '算法',
+      desc: 'QFT 把计算基映到相位。对 |101> 做 QFT，八个基态等概率但相位按等差旋转。',
+      circuit: { nq: 3, nc: 3, ops: [op('x', [0]), op('x', [2])].concat(qftOps(3)) }
+    },
+    {
+      id: 'phaseest', title: '相位反冲', tag: '概念',
+      desc: '受控门作用在本征态上，本征相位被"踢"回控制比特。这里 T 门的 π/4 被读进 q0 的相对相位。',
+      circuit: { nq: 2, nc: 2, ops: [op('h', [0]), op('x', [1]), op('cp', [0, 1], [PI / 4]), op('h', [0])] }
+    },
+    {
+      id: 'wstate', title: 'W 态（三体）', tag: '纠缠',
+      desc: '(|001> + |010> + |100>)/√3。和 GHZ 不同：丢掉一个比特后剩下的两个仍然纠缠。',
+      circuit: {
+        nq: 3, nc: 3,
+        ops: [op('ry', [0], [2 * Math.acos(1 / Math.sqrt(3))]),
+          op('ch', [0, 1]), op('cx', [1, 2]), op('cx', [0, 1]), op('x', [0])]
+      }
+    }
+  ];
+
+  var API = {
+    PI: PI, GATES: GATES, GATE_IDS: GATE_IDS, PRESETS: PRESETS,
+    emptyCircuit: emptyCircuit, cloneCircuit: cloneCircuit, validate: validate,
+    hasMeasurement: hasMeasurement, isUnitaryOnly: isUnitaryOnly, withDefaultMeasure: withDefaultMeasure,
+    newState: newState, runUnitary: runUnitary, probabilities: probabilities, norm2: norm2,
+    bloch: bloch, blochReport: blochReport, unitaryMatrix: unitaryMatrix,
+    exactOutcomes: exactOutcomes, sampleCounts: sampleCounts, mulberry32: mulberry32,
+    layout: layout, bits: bits, gateArity: gateArity,
+    fmtAngle: fmtAngle, fmtNum: fmtNum, fmtComplex: fmtComplex, angleSrc: angleSrc,
+    evalExpr: evalExpr, parseQasm: parseQasm, printQasm: printQasm, qftOps: qftOps, op: op
+  };
+
+  if (typeof module !== 'undefined' && module.exports) module.exports = API;
+  if (root) root.QL = API;
+})(typeof window !== 'undefined' ? window : (typeof globalThis !== 'undefined' ? globalThis : null));
+</script>
+<script>
+(function () {
+  'use strict';
+  var QL = window.QL;
+  var $ = function (id) { return document.getElementById(id); };
+  var MAXQ = 10;
+  var STORE_KEY = 'ql.circuits.v1';
+
+  // ------------------------------------------------------------ 状态
+  var circ = QL.cloneCircuit(QL.PRESETS[0].circuit);
+  var undoStack = [];
+  var activeGate = 'h';
+  var pending = null;      // {g, q:[], col}
+  var view = 'amp';
+  var lastShots = null;
+  var showAllAmp = false;
+
+  var PALETTE = ['h', 'x', 'y', 'z', 's', 'sdg', 't', 'tdg', 'sx', 'sxdg', 'id',
+    'rx', 'ry', 'rz', 'p', 'u',
+    'cx', 'cy', 'cz', 'ch', 'csx', 'crx', 'cry', 'crz', 'cp',
+    'swap', 'iswap', 'ccx', 'cswap',
+    'measure', 'reset', 'barrier'];
+
+  function snapshot() {
+    undoStack.push(JSON.stringify(circ));
+    if (undoStack.length > 60) undoStack.shift();
+  }
+
+  // ------------------------------------------------------------ 顶层标签页
+  var TABS = ['lab', 'qasm', 'presets', 'saved', 'about'];
+  function showTab(name) {
+    TABS.forEach(function (t) {
+      var tab = $('ql-tab-' + t), panel = $('ql-panel-' + t);
+      var on = t === name;
+      tab.setAttribute('aria-selected', on ? 'true' : 'false');
+      panel.hidden = !on;
+    });
+    if (name === 'qasm') $('ql-qasm').value = QL.printQasm(circ);
+    if (name === 'saved') renderSaved();
+  }
+  TABS.forEach(function (t) {
+    $('ql-tab-' + t).addEventListener('click', function () { showTab(t); });
+  });
+
+  var RVIEWS = ['amp', 'prob', 'bloch', 'matrix', 'shots'];
+  function showView(v) {
+    view = v;
+    RVIEWS.forEach(function (x) {
+      var on = x === v;
+      $('ql-rt-' + x).setAttribute('aria-selected', on ? 'true' : 'false');
+      $('ql-view-' + x).hidden = !on;
+    });
+    render();
+  }
+  RVIEWS.forEach(function (v) {
+    $('ql-rt-' + v).addEventListener('click', function () { showView(v); });
+  });
+
+  // ------------------------------------------------------------ 门面板
+  function buildPalette() {
+    var frag = document.createDocumentFragment();
+    PALETTE.forEach(function (g) {
+      var G = QL.GATES[g];
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'ql-gate';
+      b.id = 'ql-gate-' + g;
+      b.setAttribute('aria-pressed', g === activeGate ? 'true' : 'false');
+      b.setAttribute('data-gate', g);
+      b.title = G.name + (G.nc ? '（' + G.nc + ' 个控制位）' : '');
+      var lbl = G.kind === 'barrier' ? '‖' : (G.nc ? '·'.repeat(G.nc) + G.label : G.label);
+      b.innerHTML = '<span>' + esc(lbl) + '</span><small>' + esc(g) + '</small>';
+      b.addEventListener('click', function () { selectGate(g); });
+      frag.appendChild(b);
+    });
+    $('ql-palette').appendChild(frag);
+  }
+
+  function selectGate(g) {
+    activeGate = g;
+    pending = null;
+    PALETTE.forEach(function (x) { $('ql-gate-' + x).setAttribute('aria-pressed', x === g ? 'true' : 'false'); });
+    var np = QL.GATES[g].np;
+    $('ql-param-wrap').hidden = np < 1;
+    $('ql-param-wrap1').hidden = np < 2;
+    $('ql-param-wrap2').hidden = np < 3;
+    renderHint();
+    drawCircuit();
+  }
+
+  function readParams() {
+    var G = QL.GATES[activeGate];
+    var out = [], errs = [];
+    for (var i = 0; i < G.np; i++) {
+      var raw = $('ql-param' + i).value;
+      try { out.push(QL.evalExpr(raw)); }
+      catch (e) { errs.push('参数 ' + (i + 1) + ' 无法解析：' + e.message); out.push(0); }
+    }
+    return { params: out, errors: errs };
+  }
+
+  function renderHint() {
+    var G = QL.GATES[activeGate];
+    var need = G.kind === 'barrier' ? 1 : QL.gateArity(activeGate);
+    var h = $('ql-hint');
+    if (pending) {
+      var got = pending.q.length, total = QL.gateArity(pending.g);
+      var role = got < QL.GATES[pending.g].nc ? '控制位' : '目标位';
+      h.innerHTML = '正在放置 <b>' + esc(pending.g) + '</b>：已选 ' + got + '/' + total +
+        ' 个比特，请点击第 ' + (got + 1) + ' 个（' + role + '）。按 Esc 取消。';
+      return;
+    }
+    if (need === 1) {
+      h.innerHTML = '已选 <b>' + esc(activeGate) + '</b>（' + esc(G.name) + '）。点击线路图上的空格子放下它。';
+    } else {
+      h.innerHTML = '已选 <b>' + esc(activeGate) + '</b>（' + esc(G.name) + '）：需要点 ' + need + ' 个比特，' +
+        (G.nc ? '先点 ' + G.nc + ' 个控制位，再点目标位。' : '依次点两个比特。');
+    }
+  }
+
+  // ------------------------------------------------------------ 线路图
+  var GUT = 66, CW = 52, RH = 52, PAD_T = 18, PAD_B = 20, BOX = 34;
+
+  function drawCircuit() {
+    var svg = $('ql-svg');
+    var cols = QL.layout(circ);
+    var ncols = Math.max(cols.length + 3, 8);
+    var W = GUT + ncols * CW + 14;
+    var railY = PAD_T + circ.nq * RH + 8;
+    var hasC = circ.ops.some(function (o) { return o.g === 'measure'; });
+    var H = railY + (hasC ? 16 : 0) + PAD_B;
+    svg.setAttribute('width', W);
+    svg.setAttribute('height', H);
+    svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+
+    var p = [];
+    var rowY = function (q) { return PAD_T + q * RH + RH / 2; };
+
+    // 线 + 标签
+    for (var q = 0; q < circ.nq; q++) {
+      var y = rowY(q);
+      p.push('<text class="ql-qlabel" x="8" y="' + (y + 4) + '">q' + q + ' |0&gt;</text>');
+      p.push('<line class="ql-wire" x1="' + GUT + '" y1="' + y + '" x2="' + (GUT + ncols * CW) + '" y2="' + y + '"/>');
+    }
+    if (hasC) {
+      p.push('<text class="ql-qlabel" x="8" y="' + (railY + 4) + '">c</text>');
+      p.push('<line class="ql-crail" x1="' + GUT + '" y1="' + (railY - 1.5) + '" x2="' + (GUT + ncols * CW) + '" y2="' + (railY - 1.5) + '"/>');
+      p.push('<line class="ql-crail" x1="' + GUT + '" y1="' + (railY + 1.5) + '" x2="' + (GUT + ncols * CW) + '" y2="' + (railY + 1.5) + '"/>');
+    }
+
+    // 可点击的空格子
+    for (var c = 0; c < ncols; c++) {
+      for (var q2 = 0; q2 < circ.nq; q2++) {
+        p.push('<rect class="ql-cell" id="ql-cell-' + q2 + '-' + c + '" data-q="' + q2 + '" data-col="' + c +
+          '" x="' + (GUT + c * CW) + '" y="' + (PAD_T + q2 * RH) + '" width="' + CW + '" height="' + RH + '"><title>q' + q2 + ' · 第 ' + (c + 1) + ' 列</title></rect>');
+      }
+    }
+
+    // 门
+    cols.forEach(function (col, ci) {
+      var cx = GUT + ci * CW + CW / 2;
+      col.forEach(function (item) {
+        var op = item.op, G = QL.GATES[op.g], idx = item.index;
+        if (G.kind === 'barrier') {
+          p.push('<line class="ql-barrier" x1="' + cx + '" y1="' + (PAD_T + 4) + '" x2="' + cx + '" y2="' + (PAD_T + circ.nq * RH - 4) + '"/>');
+          p.push('<rect class="ql-cell" data-del="' + idx + '" x="' + (cx - 6) + '" y="' + (PAD_T + 2) + '" width="12" height="' + (circ.nq * RH - 4) + '"><title>栅栏（点击删除）</title></rect>');
+          return;
+        }
+        if (G.kind === 'measure' || G.kind === 'reset') {
+          var y0 = rowY(op.q[0]);
+          if (G.kind === 'measure' && hasC) {
+            p.push('<line class="ql-crail" x1="' + cx + '" y1="' + (y0 + BOX / 2) + '" x2="' + cx + '" y2="' + railY + '"/>');
+          }
+          p.push('<rect class="ql-mbox" data-del="' + idx + '" x="' + (cx - BOX / 2) + '" y="' + (y0 - BOX / 2) + '" width="' + BOX + '" height="' + BOX + '" rx="4"><title>' + esc(G.name) + '（点击删除）</title></rect>');
+          p.push('<text class="ql-mtext" x="' + cx + '" y="' + (y0 + 4) + '">' + (G.kind === 'measure' ? 'M' : '|0&gt;') + '</text>');
+          if (G.kind === 'measure') p.push('<text class="ql-gparam" x="' + cx + '" y="' + (y0 + BOX / 2 + 10) + '">c' + op.c + '</text>');
+          return;
+        }
+        // 受控连线
+        var ys = op.q.map(rowY);
+        if (op.q.length > 1) {
+          p.push('<line class="ql-link" x1="' + cx + '" y1="' + Math.min.apply(null, ys) + '" x2="' + cx + '" y2="' + Math.max.apply(null, ys) + '"/>');
+        }
+        for (var k = 0; k < G.nc; k++) {
+          p.push('<circle class="ql-ctrl" cx="' + cx + '" cy="' + rowY(op.q[k]) + '" r="4.5"/>');
+          p.push('<rect class="ql-cell" data-del="' + idx + '" x="' + (cx - 9) + '" y="' + (rowY(op.q[k]) - 9) + '" width="18" height="18"><title>控制位（点击删除整个门）</title></rect>');
+        }
+        if (G.kind === 'swap' || G.kind === 'iswap') {
+          for (var s = G.nc; s < op.q.length; s++) {
+            var ysw = rowY(op.q[s]);
+            p.push('<text class="ql-gtext" x="' + cx + '" y="' + (ysw + 6) + '" style="font-size:18px">' + (G.kind === 'iswap' ? '⊗' : '✕') + '</text>');
+            p.push('<rect class="ql-cell" data-del="' + idx + '" x="' + (cx - 11) + '" y="' + (ysw - 11) + '" width="22" height="22"><title>' + esc(G.name) + '（点击删除）</title></rect>');
+          }
+          return;
+        }
+        var ty = rowY(op.q[G.nc]);
+        // 格子只有 52px 宽，参数标注会被截短（如 u 的三个角度），完整值放进悬停提示
+        var tip = G.name + (op.p && op.p.length ? '(' + op.p.map(QL.fmtAngle).join(', ') + ')' : '') +
+          ' · q' + op.q.join(',q') + '（点击删除）';
+        p.push('<rect class="ql-gbox" data-del="' + idx + '" x="' + (cx - BOX / 2) + '" y="' + (ty - BOX / 2) + '" width="' + BOX + '" height="' + BOX + '" rx="4"><title>' + esc(tip) + '</title></rect>');
+        p.push('<text class="ql-gtext" x="' + cx + '" y="' + (ty + 5) + '">' + esc(G.label) + '</text>');
+        if (G.np) {
+          p.push('<text class="ql-gparam" x="' + cx + '" y="' + (ty + BOX / 2 + 10) + '">' + esc(shortParam(op.p)) + '</text>');
+        }
+        if (op.cond != null) {
+          p.push('<text class="ql-gparam" x="' + cx + '" y="' + (ty - BOX / 2 - 4) + '" style="fill:var(--ql-green)">c=' + op.cond + '</text>');
+        }
+      });
+    });
+
+    // 待完成的多比特门标记
+    if (pending) {
+      pending.q.forEach(function (q3) {
+        p.push('<rect class="ql-pendmark" x="' + (GUT + pending.col * CW + 5) + '" y="' + (PAD_T + q3 * RH + 5) + '" width="' + (CW - 10) + '" height="' + (RH - 10) + '" rx="4"/>');
+      });
+    }
+
+    svg.innerHTML = p.join('');
+    svg.querySelectorAll('[data-del]').forEach(function (el) {
+      el.addEventListener('click', function (ev) {
+        ev.stopPropagation();
+        snapshot();
+        circ.ops.splice(Number(el.getAttribute('data-del')), 1);
+        pending = null;
+        render();
+      });
+    });
+    svg.querySelectorAll('.ql-cell[data-q]').forEach(function (el) {
+      el.addEventListener('click', function () {
+        onCellClick(Number(el.getAttribute('data-q')), Number(el.getAttribute('data-col')));
+      });
+    });
+  }
+
+  function shortParam(ps) {
+    var s = ps.map(function (v) { return QL.fmtAngle(v); }).join(',');
+    if (s.length > 7) s = s.slice(0, 6) + '…';
+    return s;
+  }
+
+  function onCellClick(q, col) {
+    var g = pending ? pending.g : activeGate;
+    var G = QL.GATES[g];
+    var need = G.kind === 'barrier' ? 1 : QL.gateArity(g);
+
+    if (need === 1) {
+      var pr = readParams();
+      if (pr.errors.length) { showLabError(pr.errors); return; }
+      snapshot();
+      var qs = G.kind === 'barrier' ? allQubits() : [q];
+      circ.ops.push({ g: g, q: qs, p: pr.params, c: G.kind === 'measure' ? Math.min(q, circ.nc - 1) : null, cond: null, minCol: col });
+      pending = null;
+      render();
+      return;
+    }
+    if (!pending) pending = { g: g, q: [], col: col };
+    if (pending.q.indexOf(q) >= 0) { pending = null; renderHint(); drawCircuit(); return; }
+    pending.q.push(q);
+    if (pending.q.length === need) {
+      var pr2 = readParams();
+      if (pr2.errors.length) { showLabError(pr2.errors); pending = null; render(); return; }
+      snapshot();
+      circ.ops.push({ g: pending.g, q: pending.q.slice(), p: pr2.params, c: null, cond: null, minCol: pending.col });
+      pending = null;
+    }
+    render();
+  }
+
+  function allQubits() {
+    var a = [];
+    for (var i = 0; i < circ.nq; i++) a.push(i);
+    return a;
+  }
+
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && pending) { pending = null; renderHint(); drawCircuit(); }
+  });
+
+  // ------------------------------------------------------------ 读数
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  function phaseColor(ph) {
+    var deg = ((ph * 180 / Math.PI) % 360 + 360) % 360;
+    return 'hsl(' + deg.toFixed(1) + ',82%,58%)';
+  }
+
+  function showLabError(list) {
+    var box = $('ql-lab-err');
+    box.innerHTML = list.map(function (m) { return '<div class="ql-err">' + esc(m) + '</div>'; }).join('');
+  }
+
+  function render() {
+    var errs = QL.validate(circ);
+    if (errs.length) { showLabError(errs); } else { $('ql-lab-err').innerHTML = ''; }
+    drawCircuit();
+    renderHint();
+    renderStat();
+    if (errs.length) return;
+    if (view === 'amp') renderAmp();
+    else if (view === 'prob') renderProb();
+    else if (view === 'bloch') renderBloch();
+    else if (view === 'matrix') renderMatrix();
+    else if (view === 'shots') renderShots();
+  }
+
+  function renderStat() {
+    var cols = QL.layout(circ);
+    var gates = circ.ops.filter(function (o) { return o.g !== 'barrier'; }).length;
+    var st = QL.validate(circ).length ? null : QL.runUnitary(circ);
+    var chips = [
+      ['比特', circ.nq],
+      ['门数', gates],
+      ['深度', cols.length],
+      ['基态数', Math.pow(2, circ.nq)]
+    ];
+    if (st) chips.push(['模长平方', QL.norm2(st).toFixed(9)]);
+    var html = chips.map(function (c) {
+      return '<span class="ql-pill">' + esc(c[0]) + ' ' + esc(String(c[1])) + '</span>';
+    }).join('');
+    if (QL.hasMeasurement(circ)) html += '<span class="ql-pill ql-pill-on">含测量</span>';
+    if (circ.ops.some(function (o) { return o.cond != null; })) html += '<span class="ql-pill ql-pill-on">含经典条件</span>';
+    $('ql-stat').innerHTML = html;
+    $('ql-readout-sub').textContent = QL.hasMeasurement(circ)
+      ? '本线路含测量：下面四个视图只算酉部分（忽略测量与条件门），完整的塌缩流程在「测量」页。'
+      : '末态由线路的酉部分决定；测量与条件门在「测量」页里生效。';
+  }
+
+  function renderAmp() {
+    var st = QL.runUnitary(circ);
+    var pr = QL.probabilities(st);
+    var rows = [];
+    var hidden = 0;
+    for (var i = 0; i < pr.length; i++) {
+      if (!showAllAmp && pr[i] < 1e-12) { hidden++; continue; }
+      rows.push(i);
+    }
+    var CAP = 64, capped = false;
+    if (rows.length > CAP) { rows = rows.slice(0, CAP); capped = true; }
+    var html = '<thead><tr><th>基态</th><th>振幅</th><th>概率</th><th>相位</th></tr></thead><tbody>';
+    rows.forEach(function (i) {
+      var re = st.re[i], im = st.im[i];
+      var ph = Math.atan2(im, re);
+      var phTxt = pr[i] < 1e-12 ? '—' : (ph * 180 / Math.PI).toFixed(1) + '°';
+      html += '<tr data-basis="' + QL.bits(i, circ.nq) + '">' +
+        '<td class="ql-mono">|' + QL.bits(i, circ.nq) + '&gt;</td>' +
+        '<td class="ql-mono">' + esc(QL.fmtComplex(re, im)) + '</td>' +
+        '<td class="ql-mono">' + (pr[i] * 100).toFixed(4) + '%</td>' +
+        '<td class="ql-mono">' + (pr[i] < 1e-12 ? '' : '<span class="ql-phase-chip" style="background:' + phaseColor(ph) + '"></span>') + phTxt + '</td></tr>';
+    });
+    html += '</tbody>';
+    $('ql-amp-tbl').innerHTML = html;
+    var note = [];
+    if (hidden) note.push('已隐藏 ' + hidden + ' 个振幅为 0 的基态。');
+    if (capped) note.push('只列出前 ' + CAP + ' 行。');
+    note.push('相位是该基态振幅的辐角；给整个态乘一个相位不改变任何测量结果。');
+    $('ql-amp-note').textContent = note.join(' ');
+  }
+
+  function barRow(key, frac, valText, alt) {
+    return '<div class="ql-bar-row"><span class="ql-bar-key">' + esc(key) + '</span>' +
+      '<span class="ql-bar-track"><span class="ql-bar-fill' + (alt ? ' ql-bar-alt' : '') + '" style="width:' + (Math.max(0, Math.min(1, frac)) * 100).toFixed(3) + '%"></span></span>' +
+      '<span class="ql-bar-val">' + esc(valText) + '</span></div>';
+  }
+
+  function renderProb() {
+    var pr = QL.probabilities(QL.runUnitary(circ));
+    var items = [];
+    for (var i = 0; i < pr.length; i++) if (pr[i] > 1e-12) items.push([i, pr[i]]);
+    items.sort(function (a, b) { return b[1] - a[1]; });
+    var capped = items.length > 32;
+    var shown = capped ? items.slice(0, 32) : items;
+    $('ql-prob-bars').innerHTML = shown.map(function (it) {
+      return barRow('|' + QL.bits(it[0], circ.nq) + '>', it[1], (it[1] * 100).toFixed(3) + '%');
+    }).join('') || '<p class="ql-note">没有非零概率的基态。</p>';
+    $('ql-prob-note').textContent = '共 ' + items.length + ' 个基态有非零概率' +
+      (capped ? '，按概率降序只显示前 32 个。' : '。') + ' 总概率 ' +
+      items.reduce(function (s, x) { return s + x[1]; }, 0).toFixed(9) + '。';
+  }
+
+  function renderBloch() {
+    var st = QL.runUnitary(circ);
+    var html = '';
+    for (var q = 0; q < circ.nq; q++) {
+      var b = QL.blochReport(st, q);
+      html += '<div class="ql-bloch" data-q="' + q + '"><h4>q' + q + '</h4>' + sphereSVG(b) +
+        '<dl>' +
+        '<dt>&lt;X&gt;</dt><dd data-k="x">' + QL.fmtNum(b.x, 3) + '</dd>' +
+        '<dt>&lt;Y&gt;</dt><dd data-k="y">' + QL.fmtNum(b.y, 3) + '</dd>' +
+        '<dt>&lt;Z&gt;</dt><dd data-k="z">' + QL.fmtNum(b.z, 3) + '</dd>' +
+        '<dt>P(1)</dt><dd data-k="p1">' + (b.p1 * 100).toFixed(2) + '%</dd>' +
+        '<dt>纯度</dt><dd data-k="purity">' + b.purity.toFixed(3) + '</dd>' +
+        '<dt>纠缠熵</dt><dd data-k="entropy">' + b.entropy.toFixed(3) + '</dd>' +
+        '</dl></div>';
+    }
+    $('ql-bloch-grid').innerHTML = html;
+  }
+
+  function sphereSVG(b) {
+    var S = 122, R = 44, cx = S / 2, cy = S / 2 + 2;
+    // 等轴测投影：x 向右下、y 向右上、z 向上
+    var px = cx + R * (b.x * 0.82 + b.y * 0.82);
+    var py = cy + R * (b.x * 0.40 - b.y * 0.40 - b.z);
+    var p = [];
+    p.push('<circle class="ql-sph-out" cx="' + cx + '" cy="' + cy + '" r="' + R + '"/>');
+    p.push('<ellipse class="ql-sph-eq" cx="' + cx + '" cy="' + cy + '" rx="' + R + '" ry="' + (R * 0.4) + '"/>');
+    p.push('<line class="ql-sph-ax" x1="' + cx + '" y1="' + (cy - R) + '" x2="' + cx + '" y2="' + (cy + R) + '"/>');
+    p.push('<line class="ql-sph-ax" x1="' + (cx - R * 0.82) + '" y1="' + (cy - R * 0.4) + '" x2="' + (cx + R * 0.82) + '" y2="' + (cy + R * 0.4) + '"/>');
+    p.push('<line class="ql-sph-ax" x1="' + (cx - R * 0.82) + '" y1="' + (cy + R * 0.4) + '" x2="' + (cx + R * 0.82) + '" y2="' + (cy - R * 0.4) + '"/>');
+    p.push('<text class="ql-sph-axlbl" x="' + cx + '" y="' + (cy - R - 3) + '">z</text>');
+    p.push('<text class="ql-sph-axlbl" x="' + (cx + R * 0.82 + 5) + '" y="' + (cy + R * 0.4 + 4) + '">x</text>');
+    p.push('<text class="ql-sph-axlbl" x="' + (cx + R * 0.82 + 5) + '" y="' + (cy - R * 0.4 + 2) + '">y</text>');
+    p.push('<line class="ql-sph-vec" x1="' + cx + '" y1="' + cy + '" x2="' + px.toFixed(2) + '" y2="' + py.toFixed(2) + '"/>');
+    p.push('<circle class="ql-sph-tip" cx="' + px.toFixed(2) + '" cy="' + py.toFixed(2) + '" r="3.4"/>');
+    return '<svg class="ql-sphere" width="' + S + '" height="' + (S + 4) + '" viewBox="0 0 ' + S + ' ' + (S + 4) + '" aria-hidden="true">' + p.join('') + '</svg>';
+  }
+
+  function renderMatrix() {
+    var box = $('ql-matrix-box'), note = $('ql-matrix-note');
+    if (circ.nq > 4) {
+      box.innerHTML = '<p class="ql-note">当前 ' + circ.nq + ' 个比特，酉矩阵有 ' +
+        Math.pow(2, circ.nq) + '×' + Math.pow(2, circ.nq) + ' = ' + Math.pow(4, circ.nq) + ' 项，超出了可读范围。把比特数降到 4 或以下即可查看。</p>';
+      note.textContent = '';
+      return;
+    }
+    var U = QL.unitaryMatrix(circ), n = U.n;
+    // 右栏只有 ~390px 可用：4×4 写得下完整复数，8×8 只写模长，16×16 纯靠颜色。
+    var mode = n <= 4 ? 'full' : (n <= 8 ? 'mag' : 'color');
+    var minW = mode === 'color' ? 20 : (mode === 'mag' ? 32 : 56);
+    var h = '<table class="ql-mat" id="ql-mat-tbl" data-mode="' + mode + '"><thead><tr><th></th>';
+    for (var c = 0; c < n; c++) h += '<th>' + QL.bits(c, circ.nq) + '</th>';
+    h += '</tr></thead><tbody>';
+    for (var r = 0; r < n; r++) {
+      h += '<tr><th>' + QL.bits(r, circ.nq) + '</th>';
+      for (var c2 = 0; c2 < n; c2++) {
+        var re = U.re[r * n + c2], im = U.im[r * n + c2];
+        var mag = Math.hypot(re, im);
+        var zero = mag < 1e-9;
+        var bg = zero ? 'transparent' : phaseColor(Math.atan2(im, re));
+        var op = zero ? 0 : (0.18 + 0.82 * mag);
+        var txt = zero ? '' : (mode === 'full' ? QL.fmtComplex(re, im, 2) : (mode === 'mag' ? mag.toFixed(2) : ''));
+        var full = QL.bits(r, circ.nq) + ' ← ' + QL.bits(c2, circ.nq) + ' = ' + (zero ? '0' : QL.fmtComplex(re, im, 4));
+        h += '<td data-r="' + r + '" data-c="' + c2 + '" title="' + esc(full) + '">' +
+          '<span class="ql-mcell" style="min-width:' + minW + 'px;background:' + bg + ';opacity:' + op.toFixed(3) + '">' +
+          esc(txt) + '</span></td>';
+      }
+      h += '</tr>';
+    }
+    h += '</tbody></table>';
+    box.innerHTML = h;
+    note.textContent = '行是输出基态、列是输入基态；格子颜色代表相位（色相）与模长（不透明度），鼠标悬停可看精确值。' +
+      (mode === 'mag' ? ' 8×8 放不下完整复数，格子里写的是模长。' : mode === 'color' ? ' 16×16 只留颜色，数值请看悬停提示。' : '');
+  }
+
+  function renderShots() {
+    var eff = QL.withDefaultMeasure(circ);
+    var exact;
+    try { exact = QL.exactOutcomes(circ); }
+    catch (e) { $('ql-shot-note').textContent = e.message; return; }
+    var nc = exact.nc;
+    var keys = new Set();
+    exact.dist.forEach(function (v, k) { if (v > 1e-12) keys.add(k); });
+    if (lastShots) lastShots.counts.forEach(function (v, k) { keys.add(k); });
+    var rows = Array.from(keys).sort(function (a, b) {
+      var pa = exact.dist.get(a) || 0, pb = exact.dist.get(b) || 0;
+      return pb - pa || a - b;
+    });
+    var capped = rows.length > 32;
+    var shown = capped ? rows.slice(0, 32) : rows;
+
+    $('ql-shot-bars').innerHTML = shown.map(function (k) {
+      var p = exact.dist.get(k) || 0;
+      var f = lastShots ? (lastShots.counts.get(k) || 0) / lastShots.shots : null;
+      return barRow(QL.bits(k, nc), f == null ? p : f, f == null ? (p * 100).toFixed(2) + '%' : (f * 100).toFixed(2) + '%', f != null);
+    }).join('') || '<p class="ql-note">没有可测量的结果。</p>';
+
+    var h = '<thead><tr><th>结果 c</th><th>次数</th><th>频率</th><th>精确概率</th></tr></thead><tbody>';
+    shown.forEach(function (k) {
+      var p = exact.dist.get(k) || 0;
+      var cnt = lastShots ? (lastShots.counts.get(k) || 0) : null;
+      h += '<tr data-key="' + QL.bits(k, nc) + '">' +
+        '<td class="ql-mono">' + QL.bits(k, nc) + '</td>' +
+        '<td class="ql-mono">' + (cnt == null ? '—' : cnt) + '</td>' +
+        '<td class="ql-mono">' + (cnt == null ? '—' : ((cnt / lastShots.shots) * 100).toFixed(2) + '%') + '</td>' +
+        '<td class="ql-mono">' + (p * 100).toFixed(4) + '%</td></tr>';
+    });
+    h += '</tbody>';
+    $('ql-shot-tbl').innerHTML = h;
+
+    var mq = eff.ops.filter(function (o) { return o.g === 'measure'; });
+    $('ql-shot-note').textContent =
+      (QL.hasMeasurement(circ) ? '线路里显式写了 ' + mq.length + ' 个测量。' : '线路里没有测量，已自动在末尾对全部 ' + circ.nq + ' 个比特各加一次测量。') +
+      ' 结果按经典寄存器读出（左边是 c' + (nc - 1) + '，右边是 c0）。「精确概率」由穷举全部测量分支算得，不含采样噪声。' +
+      (capped ? ' 结果超过 32 项，只显示概率最高的 32 个。' : '');
+  }
+
+  $('ql-run-shots').addEventListener('click', function () {
+    var shots = Math.max(1, Math.min(200000, parseInt($('ql-shots').value, 10) || 1024));
+    var seed = parseInt($('ql-seed').value, 10);
+    if (!isFinite(seed)) seed = 7;
+    $('ql-shots').value = shots;
+    $('ql-seed').value = seed;
+    lastShots = QL.sampleCounts(circ, shots, seed);
+    renderShots();
+  });
+
+  $('ql-amp-all').addEventListener('change', function () { showAllAmp = this.checked; renderAmp(); });
+
+  // ------------------------------------------------------------ 工具条
+  (function () {
+    var sel = $('ql-nq');
+    for (var i = 1; i <= MAXQ; i++) {
+      var o = document.createElement('option');
+      o.value = String(i); o.textContent = i + ' 个比特';
+      sel.appendChild(o);
+    }
+    sel.addEventListener('change', function () {
+      var n = parseInt(sel.value, 10);
+      snapshot();
+      circ.ops = circ.ops.filter(function (op) {
+        return op.q.every(function (q) { return q < n; }) && (op.c == null || op.c < n);
+      });
+      circ.ops.forEach(function (op) { if (op.g === 'barrier') op.q = op.q.filter(function (q) { return q < n; }); });
+      circ.ops = circ.ops.filter(function (op) { return op.q.length > 0; });
+      circ.nq = n;
+      circ.nc = n;
+      lastShots = null;
+      pending = null;
+      render();
+    });
+  })();
+
+  $('ql-undo').addEventListener('click', function () {
+    if (!undoStack.length) return;
+    circ = JSON.parse(undoStack.pop());
+    pending = null; lastShots = null;
+    syncNq();
+    render();
+  });
+  $('ql-clear').addEventListener('click', function () {
+    snapshot();
+    circ.ops = [];
+    pending = null; lastShots = null;
+    render();
+  });
+
+  function syncNq() { $('ql-nq').value = String(circ.nq); }
+
+  // ------------------------------------------------------------ QASM
+  $('ql-qasm-export').addEventListener('click', function () {
+    $('ql-qasm').value = QL.printQasm(circ);
+    $('ql-qasm-msg').innerHTML = '<div class="ql-okline">已从当前线路生成 ' + circ.ops.length + ' 条语句。</div>';
+  });
+  $('ql-qasm-import').addEventListener('click', function () {
+    var res = QL.parseQasm($('ql-qasm').value);
+    if (res.errors.length) {
+      $('ql-qasm-msg').innerHTML = res.errors.slice(0, 12).map(function (e) {
+        return '<div class="ql-err">' + (e.line ? '第 ' + e.line + ' 行：' : '') + esc(e.msg) + '</div>';
+      }).join('');
+      return;
+    }
+    var errs2 = QL.validate(res.circuit);
+    if (errs2.length) {
+      $('ql-qasm-msg').innerHTML = errs2.map(function (m) { return '<div class="ql-err">' + esc(m) + '</div>'; }).join('');
+      return;
+    }
+    snapshot();
+    circ = res.circuit;
+    pending = null; lastShots = null;
+    syncNq();
+    $('ql-qasm-msg').innerHTML = '<div class="ql-okline">导入成功：' + circ.nq + ' 个比特、' + circ.ops.length + ' 个操作。</div>';
+    render();
+  });
+  $('ql-qasm-copy').addEventListener('click', function () {
+    var ta = $('ql-qasm');
+    ta.select();
+    var ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(ta.value).then(function () {}, function () {});
+      ok = true;
+    }
+    $('ql-qasm-msg').innerHTML = '<div class="ql-okline">' + (ok ? '已复制到剪贴板。' : '复制失败，请手动全选复制。') + '</div>';
+  });
+
+  // ------------------------------------------------------------ 算法库
+  (function () {
+    var html = QL.PRESETS.map(function (p, i) {
+      return '<article class="ql-preset" data-preset="' + esc(p.id) + '">' +
+        '<span class="ql-pill" style="align-self:flex-start">' + esc(p.tag) + '</span>' +
+        '<h3>' + esc(p.title) + '</h3>' +
+        '<p>' + esc(p.desc) + '</p>' +
+        '<div><button class="ql-btn ql-btn-primary" type="button" id="ql-load-' + esc(p.id) + '">载入线路</button></div>' +
+        '</article>';
+    }).join('');
+    $('ql-preset-grid').innerHTML = html;
+    QL.PRESETS.forEach(function (p) {
+      $('ql-load-' + p.id).addEventListener('click', function () {
+        snapshot();
+        circ = QL.cloneCircuit(p.circuit);
+        pending = null; lastShots = null;
+        syncNq();
+        showTab('lab');
+        render();
+      });
+    });
+  })();
+
+  // ------------------------------------------------------------ 我的线路
+  function loadSaved() {
+    try {
+      var raw = localStorage.getItem(STORE_KEY);
+      var arr = raw ? JSON.parse(raw) : [];
+      return Array.isArray(arr) ? arr : [];
+    } catch (e) { return []; }
+  }
+  function writeSaved(arr) {
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(arr)); return true; }
+    catch (e) { return false; }
+  }
+  function renderSaved() {
+    var arr = loadSaved();
+    $('ql-saved-sub').textContent = arr.length ? '共 ' + arr.length + ' 条，存在本机浏览器里。' : '还没有保存过线路。';
+    $('ql-saved-list').innerHTML = arr.map(function (item, i) {
+      return '<div class="ql-saved-item" data-saved="' + i + '">' +
+        '<strong>' + esc(item.name) + '</strong>' +
+        '<span class="ql-saved-meta">' + item.circuit.nq + ' 比特 · ' + item.circuit.ops.length + ' 操作</span>' +
+        '<button class="ql-btn" type="button" data-act="load" data-i="' + i + '">载入</button>' +
+        '<button class="ql-btn ql-btn-ghost" type="button" data-act="del" data-i="' + i + '">删除</button>' +
+        '</div>';
+    }).join('');
+    $('ql-saved-list').querySelectorAll('button[data-act]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var arr2 = loadSaved(), i = Number(b.getAttribute('data-i'));
+        if (b.getAttribute('data-act') === 'load') {
+          snapshot();
+          circ = QL.cloneCircuit(arr2[i].circuit);
+          pending = null; lastShots = null;
+          syncNq(); showTab('lab'); render();
+        } else {
+          arr2.splice(i, 1);
+          writeSaved(arr2);
+          renderSaved();
+        }
+      });
+    });
+  }
+  $('ql-save').addEventListener('click', function () {
+    var name = ($('ql-save-name').value || '').trim();
+    if (!name) {
+      $('ql-save-msg').innerHTML = '<div class="ql-err">请先起个名字。</div>';
+      return;
+    }
+    var arr = loadSaved();
+    arr.unshift({ name: name, circuit: QL.cloneCircuit(circ), at: Date.now() });
+    if (arr.length > 60) arr.length = 60;
+    var ok = writeSaved(arr);
+    $('ql-save-msg').innerHTML = ok
+      ? '<div class="ql-okline">已保存「' + esc(name) + '」。</div>'
+      : '<div class="ql-err">保存失败：浏览器存储不可用或已满。</div>';
+    $('ql-save-name').value = '';
+    renderSaved();
+  });
+
+  // ------------------------------------------------------------ 门速查表
+  (function () {
+    var tb = document.querySelector('#ql-gate-table tbody');
+    tb.innerHTML = QL.GATE_IDS.map(function (g) {
+      var G = QL.GATES[g];
+      var n = G.kind === 'barrier' ? '全部' : String(QL.gateArity(g));
+      var ps = G.np === 0 ? '—' : ['θ', 'φ', 'λ'].slice(0, G.np).join(', ');
+      var qs = g === 'measure' ? 'measure q[0] -> c[0];'
+        : g === 'reset' ? 'reset q[0];'
+        : g === 'barrier' ? 'barrier q;'
+        : G.qasm + (G.np ? '(' + ['0.5', '0.5', '0.5'].slice(0, G.np).join(',') + ')' : '') + ' ' +
+          Array.from({ length: QL.gateArity(g) }, function (_, i) { return 'q[' + i + ']'; }).join(',') + ';';
+      return '<tr data-gate="' + esc(g) + '"><td class="ql-mono">' + esc(G.kind === 'barrier' ? '‖' : (G.nc ? '·'.repeat(G.nc) + G.label : G.label)) + '</td>' +
+        '<td>' + esc(G.name) + '</td><td class="ql-mono">' + n + '</td><td class="ql-mono">' + esc(ps) + '</td>' +
+        '<td class="ql-mono">' + esc(qs) + '</td></tr>';
+    }).join('');
+  })();
+
+  // ------------------------------------------------------------ 启动
+  buildPalette();
+  selectGate('h');
+  syncNq();
+  render();
+
+  window.__qlState = function () { return { circ: circ, view: view, lastShots: lastShots }; };
+})();
+</script>
+</body>
+</html>
