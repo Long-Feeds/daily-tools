@@ -429,12 +429,18 @@ export default async ({ page, toolURL, screenshot, assert }) => {
   const restored = await page.evaluate(() => [...document.querySelectorAll('.ol-tab')].find((b) => b.getAttribute('aria-selected') === 'true').id);
   A(restored === 'ol-tab-passes', `刷新后应恢复到离开时的分区，实得 ${restored}`);
 
-  /* ---------- 11. 零页面错误 + 截图 ---------- */
+  /* ---------- 11. 截图（首页卡片用地面轨迹图，比表单更有说服力） ---------- */
   await page.click('#ol-tab-track');
   await page.waitForSelector('#ol-map');
-  await page.click('#ol-tab-elements');
-  await page.waitForSelector('#ol-elem-grid');
-  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.locator('#ol-map-figure').scrollIntoViewIfNeeded();
+  await page.evaluate(() => {
+    const r = document.getElementById('ol-map-figure').getBoundingClientRect();
+    window.scrollBy(0, r.top - Math.max(0, (window.innerHeight - r.height) / 2));
+  });
+  await page.waitForFunction(() => {
+    const r = document.getElementById('ol-map-figure').getBoundingClientRect();
+    return r.top > -5 && r.bottom < window.innerHeight + 5;
+  });
   await screenshot('thumb.png');
   console.log(`  轨道力学工作台：${n} 条断言通过`);
 };
