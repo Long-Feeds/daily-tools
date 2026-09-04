@@ -1,0 +1,3420 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>轨道力学工作台 · Orbit Lab</title>
+<meta name="description" content="粘一段两行根数（TLE）就地算轨道：完整 SGP4/SDP4 传播、地面轨迹、过境预报与天空图、Δv 机动计算。纯前端、零上传。">
+<style>
+/* ---- 必写守卫：作者 CSS 与 UA 的 [hidden] 同特异性，靠后即胜出 ---- */
+[hidden]{display:none!important}
+
+/* ===== BMW M 设计语言：纯黑画布 / 白色重字重 + 极细正文 / M 三色条 / 零圆角 ===== */
+:root{
+  --ol-canvas:#000; --ol-soft:#0d0d0d; --ol-card:#1a1a1a; --ol-elev:#262626; --ol-carbon:#2b2b2b;
+  --ol-hair:#3c3c3c; --ol-hair-soft:#262626;
+  --ol-ink:#fff; --ol-body:#bbb; --ol-strong:#e6e6e6; --ol-muted:#7e7e7e;
+  --ol-m1:#0066b1; --ol-m2:#1c69d4; --ol-m3:#e22718;
+  --ol-warn:#f4b400; --ol-ok:#0fa336;
+  --ol-sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  --ol-mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+  --ol-xxs:4px; --ol-xs:8px; --ol-sm:12px; --ol-md:16px; --ol-lg:24px; --ol-xl:40px; --ol-xxl:64px;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0; background:var(--ol-canvas); color:var(--ol-body);
+  font-family:var(--ol-sans); font-weight:300; font-size:16px; line-height:1.5;
+}
+.ol-wrap{max-width:1440px; margin:0 auto; padding:0 var(--ol-lg)}
+h1,h2,h3,h4{color:var(--ol-ink); font-weight:700; margin:0; letter-spacing:-.5px}
+h1{font-size:clamp(34px,6vw,72px); line-height:1.02}
+h2{font-size:clamp(22px,3vw,32px); line-height:1.15}
+h3{font-size:20px; line-height:1.3; letter-spacing:0}
+h4{font-size:15px; line-height:1.3; letter-spacing:1.5px; color:var(--ol-strong)}
+p{margin:0 0 var(--ol-sm)}
+a{color:var(--ol-ink)}
+code,.ol-mono{font-family:var(--ol-mono)}
+
+/* --- M 三色条：本系统唯一的装饰元素 --- */
+.ol-stripe{height:4px; background:linear-gradient(90deg,var(--ol-m1) 0 33.33%,var(--ol-m2) 33.33% 66.66%,var(--ol-m3) 66.66% 100%)}
+.ol-stripe-sm{height:3px; width:52px; margin-bottom:var(--ol-sm);
+  background:linear-gradient(90deg,var(--ol-m1) 0 33.33%,var(--ol-m2) 33.33% 66.66%,var(--ol-m3) 66.66% 100%)}
+
+/* --- 顶栏 --- */
+.ol-nav{height:64px; display:flex; align-items:center; gap:var(--ol-lg); border-bottom:1px solid var(--ol-hair-soft)}
+.ol-back{color:var(--ol-ink); text-decoration:none; font-size:14px; font-weight:700; letter-spacing:1.5px; white-space:nowrap}
+.ol-back:hover{color:var(--ol-m2)}
+.ol-brand{font-size:14px; font-weight:700; letter-spacing:1.5px; color:var(--ol-ink)}
+.ol-nav-meta{margin-left:auto; font-size:12px; letter-spacing:.5px; color:var(--ol-muted); text-align:right}
+
+/* --- 英雄区 --- */
+.ol-hero{padding:var(--ol-xxl) 0 var(--ol-xl)}
+.ol-eyebrow{font-size:12px; font-weight:700; letter-spacing:1.5px; color:var(--ol-muted); margin-bottom:var(--ol-sm)}
+.ol-lede{max-width:70ch; color:var(--ol-strong); font-size:17px; margin-top:var(--ol-md)}
+.ol-lede b{color:var(--ol-ink); font-weight:700}
+
+/* --- 面板 / 卡片 --- */
+.ol-card{background:var(--ol-card); padding:var(--ol-lg); min-width:0}
+.ol-card-soft{background:var(--ol-soft); padding:var(--ol-lg); min-width:0}
+.ol-carbon{background:var(--ol-carbon)}
+.ol-sec{padding:var(--ol-xl) 0; border-top:1px solid var(--ol-hair-soft)}
+.ol-sec:first-child{border-top:0}
+
+/* --- 表单控件（零圆角、方形、白描边） --- */
+label{display:block; font-size:12px; letter-spacing:.5px; color:var(--ol-muted); margin-bottom:var(--ol-xxs)}
+input,select,textarea,button{font-family:inherit; font-size:14px; color:var(--ol-ink); border-radius:0}
+input[type=text],input[type=number],input[type=datetime-local],select,textarea{
+  width:100%; min-width:112px; background:var(--ol-elev); border:1px solid var(--ol-hair);
+  padding:10px 12px; min-height:42px; font-weight:400;
+}
+textarea{font-family:var(--ol-mono); font-size:12.5px; line-height:1.55; resize:vertical; min-height:96px; white-space:pre; overflow-x:auto}
+input:focus,select:focus,textarea:focus{outline:2px solid var(--ol-m2); outline-offset:-2px; border-color:var(--ol-m2)}
+select{appearance:none; background-image:linear-gradient(45deg,transparent 50%,var(--ol-body) 50%),linear-gradient(135deg,var(--ol-body) 50%,transparent 50%);
+  background-position:calc(100% - 16px) 19px,calc(100% - 11px) 19px; background-size:5px 5px,5px 5px; background-repeat:no-repeat; padding-right:34px}
+input[type=datetime-local]{min-width:176px}
+input[type=range]{width:100%; min-width:120px; accent-color:var(--ol-m2); height:24px; padding:0; background:transparent; border:0; min-height:24px}
+input[type=checkbox]{width:18px; height:18px; min-width:18px; min-height:18px; accent-color:var(--ol-m2); vertical-align:middle}
+.ol-check{display:inline-flex; align-items:center; gap:var(--ol-xs); font-size:13px; color:var(--ol-body); margin:0}
+button{
+  background:transparent; border:1px solid var(--ol-ink); color:var(--ol-ink);
+  font-size:13px; font-weight:700; letter-spacing:1.5px; padding:12px 22px; min-width:96px; min-height:44px; cursor:pointer;
+}
+button:hover{background:var(--ol-ink); color:#000}
+button.ol-btn-quiet{border-color:var(--ol-hair); color:var(--ol-body); font-weight:400; letter-spacing:.5px; min-width:64px; padding:10px 14px}
+button.ol-btn-quiet:hover{border-color:var(--ol-ink); background:transparent; color:var(--ol-ink)}
+button:disabled{opacity:.4; cursor:not-allowed}
+.ol-btnrow{display:flex; flex-wrap:wrap; gap:var(--ol-xs); margin-top:var(--ol-sm)}
+.ol-field{min-width:0}
+.ol-fields{display:grid; gap:var(--ol-sm); grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); align-items:end}
+
+/* --- 电文输入区 --- */
+.ol-source{display:grid; grid-template-columns:minmax(0,1.35fr) minmax(0,1fr); gap:var(--ol-lg); padding-bottom:var(--ol-xl)}
+.ol-status-row{display:flex; justify-content:space-between; gap:var(--ol-sm); padding:9px 0; border-bottom:1px solid var(--ol-hair-soft); font-size:13px; min-width:0}
+.ol-status-row:last-child{border-bottom:0}
+.ol-status-row span:first-child{color:var(--ol-muted); white-space:nowrap}
+.ol-status-row span:last-child{color:var(--ol-strong); font-family:var(--ol-mono); text-align:right; word-break:break-all}
+.ol-badge{display:inline-block; padding:3px 9px; font-size:11px; letter-spacing:1px; font-weight:700; border:1px solid var(--ol-hair); color:var(--ol-body)}
+.ol-badge-ok{border-color:var(--ol-ok); color:var(--ol-ok)}
+.ol-badge-warn{border-color:var(--ol-warn); color:var(--ol-warn)}
+.ol-badge-bad{border-color:var(--ol-m3); color:var(--ol-m3)}
+.ol-alert{border-left:3px solid var(--ol-m3); background:var(--ol-soft); padding:var(--ol-sm) var(--ol-md); color:var(--ol-strong); font-size:14px; margin-top:var(--ol-sm)}
+.ol-alert-warn{border-left-color:var(--ol-warn)}
+
+/* --- 分区 tab --- */
+.ol-tabs{display:flex; gap:var(--ol-lg); border-bottom:1px solid var(--ol-hair); overflow-x:auto; scrollbar-width:thin}
+.ol-tab{background:none; border:0; border-bottom:3px solid transparent; color:var(--ol-muted);
+  font-size:14px; font-weight:700; letter-spacing:1.5px; padding:14px 0; min-width:0; min-height:44px; white-space:nowrap; cursor:pointer}
+.ol-tab:hover{background:none; color:var(--ol-strong)}
+.ol-tab[aria-selected=true]{color:var(--ol-ink); border-bottom-color:var(--ol-m2)}
+
+/* --- 数据格 --- */
+.ol-grid{display:grid; gap:1px; background:transparent; grid-template-columns:repeat(auto-fit,minmax(168px,1fr))}
+.ol-cell{background:var(--ol-soft); padding:var(--ol-md); min-width:0; box-shadow:0 0 0 1px var(--ol-hair-soft)}
+.ol-cell dt{font-size:11.5px; letter-spacing:.4px; color:var(--ol-muted); margin-bottom:6px}
+.ol-cell dd{margin:0; font-family:var(--ol-mono); font-size:19px; color:var(--ol-ink); font-weight:400; word-break:break-word}
+.ol-cell dd small{font-size:12px; color:var(--ol-muted); font-family:var(--ol-sans); margin-left:3px}
+.ol-cell-note{font-size:11.5px; color:var(--ol-muted); margin-top:4px; line-height:1.35}
+
+/* --- 表格 --- */
+.ol-tablewrap{overflow-x:auto; -webkit-overflow-scrolling:touch}
+table{border-collapse:collapse; width:100%; font-size:13px}
+.ol-tablewrap table{width:auto; min-width:100%}
+th,td{text-align:left; padding:9px 12px; border-bottom:1px solid var(--ol-hair-soft); white-space:nowrap}
+th{color:var(--ol-muted); font-weight:700; font-size:11.5px; letter-spacing:.5px; border-bottom:1px solid var(--ol-hair)}
+td{color:var(--ol-strong); font-family:var(--ol-mono); font-size:12.5px}
+td.ol-td-text{font-family:var(--ol-sans); white-space:normal; color:var(--ol-body)}
+tbody tr:hover{background:var(--ol-soft)}
+tbody tr.ol-row-sel{background:var(--ol-elev)}
+tbody tr.ol-row-click{cursor:pointer}
+
+/* --- 图 --- */
+.ol-figure{background:var(--ol-soft); padding:var(--ol-md); min-width:0}
+.ol-figure svg{display:block; width:100%; height:auto}
+.ol-figcap{font-size:12px; color:var(--ol-muted); margin-top:var(--ol-xs); line-height:1.45}
+.ol-legend{display:flex; flex-wrap:wrap; gap:var(--ol-md); font-size:12px; color:var(--ol-body); margin-top:var(--ol-xs)}
+.ol-legend i{display:inline-block; width:22px; height:3px; vertical-align:middle; margin-right:6px}
+
+/* --- 两栏 --- */
+.ol-two{display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:var(--ol-lg); align-items:start}
+.ol-two-wide{display:grid; grid-template-columns:minmax(0,1.6fr) minmax(0,1fr); gap:var(--ol-lg); align-items:start}
+.ol-stack{display:grid; gap:var(--ol-lg); min-width:0; align-content:start}
+
+/* --- 说明列表 --- */
+.ol-notes h3{margin-top:var(--ol-lg)}
+.ol-notes ul{margin:var(--ol-xs) 0 0; padding-left:20px}
+.ol-notes li{margin-bottom:var(--ol-xs); color:var(--ol-body); font-size:14px}
+.ol-notes li b{color:var(--ol-strong); font-weight:700}
+.ol-kv{font-family:var(--ol-mono); color:var(--ol-ink)}
+
+footer{border-top:1px solid var(--ol-hair-soft); margin-top:var(--ol-xxl); padding:var(--ol-xl) 0 var(--ol-xxl); color:var(--ol-muted); font-size:13px}
+footer a{color:var(--ol-body)}
+
+@media (max-width:900px){
+  .ol-source,.ol-two,.ol-two-wide{grid-template-columns:minmax(0,1fr)}
+  .ol-hero{padding:var(--ol-xl) 0 var(--ol-lg)}
+  .ol-sec{padding:var(--ol-lg) 0}
+  .ol-wrap{padding:0 var(--ol-md)}
+  .ol-tabs{gap:var(--ol-md)}
+}
+@media (prefers-reduced-motion:no-preference){
+  .ol-tab,button,a{transition:color .15s ease,background-color .15s ease,border-color .15s ease}
+}
+</style>
+</head>
+<body>
+<div class="ol-wrap">
+  <header class="ol-nav">
+    <a class="ol-back" href="../../">← 返回工具集</a>
+    <span class="ol-brand">ORBIT LAB</span>
+    <span class="ol-nav-meta" id="ol-navmeta">SGP4 / SDP4 引擎在本页内 · 零上传</span>
+  </header>
+</div>
+<div class="ol-stripe"></div>
+
+<div class="ol-wrap">
+  <section class="ol-hero">
+    <div class="ol-eyebrow">ORBITAL MECHANICS WORKBENCH</div>
+    <h1>轨道力学工作台</h1>
+    <p class="ol-lede">粘一段<b>两行根数（TLE）</b>进来，这一页当场把它变成能用的东西：<b>完整 SGP4/SDP4</b> 传播（近地 + 深空共振分支都在）、地面轨迹与晨昏线、你所在城市的<b>过境预报与天空图</b>、多普勒频移，以及一套 Δv 机动计算器。引擎全部写在本页，不联网、不上传、不依赖任何后端。</p>
+  </section>
+
+  <section class="ol-source">
+    <div class="ol-stack">
+      <div class="ol-field">
+        <label for="ol-sat">卫星（内置电文快照，或在下面粘你自己的）</label>
+        <select id="ol-sat"></select>
+      </div>
+      <div class="ol-field">
+        <label for="ol-tle">两行根数 TLE（可带名称行；也可一次粘多组，用下拉切换）</label>
+        <textarea id="ol-tle" rows="4" spellcheck="false" autocapitalize="off" autocorrect="off"></textarea>
+        <div class="ol-btnrow">
+          <button id="ol-parse" type="button">解析</button>
+          <button id="ol-save" class="ol-btn-quiet" type="button">存入我的库</button>
+          <button id="ol-clear" class="ol-btn-quiet" type="button">清空自存</button>
+        </div>
+      </div>
+    </div>
+    <div class="ol-card" id="ol-statusbox">
+      <div class="ol-stripe-sm"></div>
+      <h4>解析结果</h4>
+      <div id="ol-status"></div>
+      <div id="ol-status-alert"></div>
+    </div>
+  </section>
+</div>
+
+<div class="ol-wrap">
+  <nav class="ol-tabs" role="tablist" aria-label="功能分区">
+    <button class="ol-tab" id="ol-tab-elements" role="tab" aria-selected="true" aria-controls="ol-panel-elements" type="button">轨道根数</button>
+    <button class="ol-tab" id="ol-tab-track" role="tab" aria-selected="false" aria-controls="ol-panel-track" type="button">地面轨迹</button>
+    <button class="ol-tab" id="ol-tab-passes" role="tab" aria-selected="false" aria-controls="ol-panel-passes" type="button">过境预报</button>
+    <button class="ol-tab" id="ol-tab-dv" role="tab" aria-selected="false" aria-controls="ol-panel-dv" type="button">机动 Δv</button>
+    <button class="ol-tab" id="ol-tab-notes" role="tab" aria-selected="false" aria-controls="ol-panel-notes" type="button">说明与验证</button>
+  </nav>
+
+  <main>
+    <section class="ol-sec" id="ol-panel-elements" role="tabpanel" aria-labelledby="ol-tab-elements"></section>
+    <section class="ol-sec" id="ol-panel-track" role="tabpanel" aria-labelledby="ol-tab-track" hidden></section>
+    <section class="ol-sec" id="ol-panel-passes" role="tabpanel" aria-labelledby="ol-tab-passes" hidden></section>
+    <section class="ol-sec" id="ol-panel-dv" role="tabpanel" aria-labelledby="ol-tab-dv" hidden></section>
+    <section class="ol-sec" id="ol-panel-notes" role="tabpanel" aria-labelledby="ol-tab-notes" hidden></section>
+  </main>
+
+  <footer>
+    <div class="ol-stripe-sm"></div>
+    <p>内置电文为 <span class="ol-kv" id="ol-snapdate"></span> 从 Celestrak 取的快照，只用于示例；要算准就去 <a href="https://celestrak.org/NORAD/elements/" rel="noopener">Celestrak</a> 或 <a href="https://www.space-track.org/" rel="noopener">Space-Track</a> 取当天的电文粘进来。</p>
+    <p>本页不发起任何网络请求，你粘进来的电文只存在你自己的浏览器里（localStorage）。</p>
+  </footer>
+</div>
+
+<script id="ol-engine">/* ===================================================================
+   轨道力学工作台 · 引擎
+   SGP4/SDP4 部分按 Vallado 参考实现（NORAD Spacetrack Report #3 修订版，
+   即 python-sgp4 / SGP4.cpp 的同一套公式）逐行移植到本页；判决用官方
+   验证集 tcppver.out（33 颗星、700 行期望输出，覆盖全部深空分支）。
+   其余（坐标系、观测几何、日照、过境搜索、二体机动）为本页自写。
+   =================================================================== */
+var OL = {};
+(function (OL) {
+'use strict';
+
+var pi = Math.PI, twopi = 2.0 * pi, deg2rad = pi / 180.0, rad2deg = 180.0 / pi;
+
+/** Python 语义的取模：除数为正时结果恒非负（JS 的 % 会给负数）。 */
+function pymod(a, b) { var r = a % b; return r < 0 ? r + b : r; }
+/** C 语义的 fmod（符号随被除数）——就是 JS 的 %。 */
+function jsfmod(a, b) { return a % b; }
+function copysign(a, b) { return b < 0 ? -Math.abs(a) : Math.abs(a); }
+
+function dpper(satrec, inclo, init, ep, inclp, nodep, argpp, mp, opsmode) {
+  let alfdp, betdp, cosip, cosop, dalf, dbet, e3, ee2, f2, f3, pe, peo, pgh, pgho, ph, pho, pinc, pinco, pl, plo, se2, se3, sel, ses, sgh2, sgh3, sgh4, sghl, sghs, sh2, sh3, shll, shs, si2, si3, sil, sinip, sinop, sinzf, sis, sl2, sl3, sl4, sll, sls, t, xgh2, xgh3, xgh4, xh2, xh3, xi2, xi3, xl2, xl3, xl4, xls, xnoh, zel, zes, zf, zm, zmol, zmos, znl, zns;
+
+  // Copy satellite attributes into local variables for convenience
+  // and symmetry in writing formulae.
+
+  e3 = satrec.e3;
+  ee2 = satrec.ee2;
+  peo = satrec.peo;
+  pgho = satrec.pgho;
+  pho = satrec.pho;
+  pinco = satrec.pinco;
+  plo = satrec.plo;
+  se2 = satrec.se2;
+  se3 = satrec.se3;
+  sgh2 = satrec.sgh2;
+  sgh3 = satrec.sgh3;
+  sgh4 = satrec.sgh4;
+  sh2 = satrec.sh2;
+  sh3 = satrec.sh3;
+  si2 = satrec.si2;
+  si3 = satrec.si3;
+  sl2 = satrec.sl2;
+  sl3 = satrec.sl3;
+  sl4 = satrec.sl4;
+  t = satrec.t;
+  xgh2 = satrec.xgh2;
+  xgh3 = satrec.xgh3;
+  xgh4 = satrec.xgh4;
+  xh2 = satrec.xh2;
+  xh3 = satrec.xh3;
+  xi2 = satrec.xi2;
+  xi3 = satrec.xi3;
+  xl2 = satrec.xl2;
+  xl3 = satrec.xl3;
+  xl4 = satrec.xl4;
+  zmol = satrec.zmol;
+  zmos = satrec.zmos;
+
+  // ---------------------- constants -----------------------------
+  zns   = 1.19459e-5;
+  zes   = 0.01675;
+  znl   = 1.5835218e-4;
+  zel   = 0.05490;
+
+  // --------------- calculate time varying periodics -----------
+  zm    = zmos + zns * t;
+  // be sure that the initial call has time set to zero
+  if (init == 'y') {
+    zm = zmos;
+  }
+  zf    = zm + 2.0 * zes * Math.sin(zm);
+  sinzf = Math.sin(zf);
+  f2    =  0.5 * sinzf * sinzf - 0.25;
+  f3    = -0.5 * sinzf * Math.cos(zf);
+  ses   = se2* f2 + se3 * f3;
+  sis   = si2 * f2 + si3 * f3;
+  sls   = sl2 * f2 + sl3 * f3 + sl4 * sinzf;
+  sghs  = sgh2 * f2 + sgh3 * f3 + sgh4 * sinzf;
+  shs   = sh2 * f2 + sh3 * f3;
+  zm    = zmol + znl * t;
+  if (init == 'y') {
+    zm = zmol;
+  }
+  zf    = zm + 2.0 * zel * Math.sin(zm);
+  sinzf = Math.sin(zf);
+  f2    =  0.5 * sinzf * sinzf - 0.25;
+  f3    = -0.5 * sinzf * Math.cos(zf);
+  sel   = ee2 * f2 + e3 * f3;
+  sil   = xi2 * f2 + xi3 * f3;
+  sll   = xl2 * f2 + xl3 * f3 + xl4 * sinzf;
+  sghl  = xgh2 * f2 + xgh3 * f3 + xgh4 * sinzf;
+  shll  = xh2 * f2 + xh3 * f3;
+  pe    = ses + sel;
+  pinc  = sis + sil;
+  pl    = sls + sll;
+  pgh   = sghs + sghl;
+  ph    = shs + shll;
+
+  if (init == 'n') {
+
+    pe    = pe - peo;
+    pinc  = pinc - pinco;
+    pl    = pl - plo;
+    pgh   = pgh - pgho;
+    ph    = ph - pho;
+    inclp = inclp + pinc;
+    ep    = ep + pe;
+    sinip = Math.sin(inclp);
+    cosip = Math.cos(inclp);
+
+
+    if (inclp >= 0.2) {
+
+      ph /= sinip;
+      pgh -= cosip * ph;
+      argpp += pgh;
+      nodep += ph;
+      mp += pl;
+
+    }
+    else {
+
+  // ---- apply periodics with lyddane modification ----
+      sinop  = Math.sin(nodep);
+      cosop  = Math.cos(nodep);
+      alfdp  = sinip * sinop;
+      betdp  = sinip * cosop;
+      dalf   =  ph * cosop + pinc * cosip * sinop;
+      dbet   = -ph * sinop + pinc * cosip * cosop;
+      alfdp  = alfdp + dalf;
+      betdp  = betdp + dbet;
+      nodep  = ((nodep >= 0.0) ? (pymod(nodep, twopi)) : (-(pymod(-nodep, twopi))));
+  // sgp4fix for afspc written intrinsic functions
+  // nodep used without a trigonometric function ahead
+      if (nodep < 0.0 && opsmode == 'a') {
+        nodep = nodep + twopi;
+      }
+      xls = mp + argpp + pl + pgh + (cosip - pinc * sinip) * nodep;
+      xnoh   = nodep;
+      nodep  = Math.atan2(alfdp, betdp);
+  // sgp4fix for afspc written intrinsic functions
+  // nodep used without a trigonometric function ahead
+      if (nodep < 0.0 && opsmode == 'a') {
+        nodep = nodep + twopi;
+      }
+      if (Math.abs(xnoh - nodep) > pi) {
+        if (nodep < xnoh) {
+          nodep = nodep + twopi;
+        }
+        else {
+          nodep = nodep - twopi;
+        }
+      }
+      mp += pl;
+      argpp = xls - mp - cosip * nodep;
+
+    }
+  }
+  return [ep, inclp, nodep, argpp, mp];
+
+
+}
+
+function dscom(epoch, ep, argpp, tc, inclp, nodep, np, e3, ee2, peo, pgho, pho, pinco, plo, se2, se3, sgh2, sgh3, sgh4, sh2, sh3, si2, si3, sl2, sl3, sl4, xgh2, xgh3, xgh4, xh2, xh3, xi2, xi3, xl2, xl3, xl4, zmol, zmos) {
+  let a1, a10, a2, a3, a4, a5, a6, a7, a8, a9, betasq, c1l, c1ss, cc, cnodm, cosim, cosomm, ctem, day, em, emsq, gam, nm, rtemsq, s1, s2, s3, s4, s5, s6, s7, sinim, sinomm, snodm, ss1, ss2, ss3, ss4, ss5, ss6, ss7, stem, sz1, sz11, sz12, sz13, sz2, sz21, sz22, sz23, sz3, sz31, sz32, sz33, x1, x2, x3, x4, x5, x6, x7, x8, xnodce, xnoi, z1, z11, z12, z13, z2, z21, z22, z23, z3, z31, z32, z33, zcosg, zcosgl, zcosgs, zcosh, zcoshl, zcosi, zcosil, zcosis, zel, zes, zsing, zsingl, zsings, zsinh, zsinhl, zsini, zsinil, zsinis, zx, zy;
+
+  // -------------------------- constants -------------------------
+  zes     =  0.01675;
+  zel     =  0.05490;
+  c1ss    =  2.9864797e-6;
+  c1l     =  4.7968065e-7;
+  zsinis  =  0.39785416;
+  zcosis  =  0.91744867;
+  zcosgs  =  0.1945905;
+  zsings  = -0.98088458;
+
+  // --------------------- local variables ------------------------
+  nm     = np;
+  em     = ep;
+  snodm  = Math.sin(nodep);
+  cnodm  = Math.cos(nodep);
+  sinomm = Math.sin(argpp);
+  cosomm = Math.cos(argpp);
+  sinim  = Math.sin(inclp);
+  cosim  = Math.cos(inclp);
+  emsq   = em * em;
+  betasq = 1.0 - emsq;
+  rtemsq = Math.sqrt(betasq);
+
+  // ----------------- initialize lunar solar terms ---------------
+  peo    = 0.0;
+  pinco  = 0.0;
+  plo    = 0.0;
+  pgho   = 0.0;
+  pho    = 0.0;
+  day    = epoch + 18261.5 + tc / 1440.0;
+  xnodce = pymod((4.5236020 - 9.2422029e-4 * day), twopi);
+  stem   = Math.sin(xnodce);
+  ctem   = Math.cos(xnodce);
+  zcosil = 0.91375164 - 0.03568096 * ctem;
+  zsinil = Math.sqrt(1.0 - zcosil * zcosil);
+  zsinhl = 0.089683511 * stem / zsinil;
+  zcoshl = Math.sqrt(1.0 - zsinhl * zsinhl);
+  gam    = 5.8351514 + 0.0019443680 * day;
+  zx     = 0.39785416 * stem / zsinil;
+  zy     = zcoshl * ctem + 0.91744867 * zsinhl * stem;
+  zx     = Math.atan2(zx, zy);
+  zx     = gam + zx - xnodce;
+  zcosgl = Math.cos(zx);
+  zsingl = Math.sin(zx);
+
+  // ------------------------- do solar terms ---------------------
+  zcosg = zcosgs;
+  zsing = zsings;
+  zcosi = zcosis;
+  zsini = zsinis;
+  zcosh = cnodm;
+  zsinh = snodm;
+  cc    = c1ss;
+  xnoi  = 1.0 / nm;
+
+  for (const lsflg of [1, 2]) {
+
+    a1  =   zcosg * zcosh + zsing * zcosi * zsinh;
+    a3  =  -zsing * zcosh + zcosg * zcosi * zsinh;
+    a7  =  -zcosg * zsinh + zsing * zcosi * zcosh;
+    a8  =   zsing * zsini;
+    a9  =   zsing * zsinh + zcosg * zcosi * zcosh;
+    a10 =   zcosg * zsini;
+    a2  =   cosim * a7 + sinim * a8;
+    a4  =   cosim * a9 + sinim * a10;
+    a5  =  -sinim * a7 + cosim * a8;
+    a6  =  -sinim * a9 + cosim * a10;
+
+    x1  =  a1 * cosomm + a2 * sinomm;
+    x2  =  a3 * cosomm + a4 * sinomm;
+    x3  = -a1 * sinomm + a2 * cosomm;
+    x4  = -a3 * sinomm + a4 * cosomm;
+    x5  =  a5 * sinomm;
+    x6  =  a6 * sinomm;
+    x7  =  a5 * cosomm;
+    x8  =  a6 * cosomm;
+
+    z31 = 12.0 * x1 * x1 - 3.0 * x3 * x3;
+    z32 = 24.0 * x1 * x2 - 6.0 * x3 * x4;
+    z33 = 12.0 * x2 * x2 - 3.0 * x4 * x4;
+    z1  =  3.0 *  (a1 * a1 + a2 * a2) + z31 * emsq;
+    z2  =  6.0 *  (a1 * a3 + a2 * a4) + z32 * emsq;
+    z3  =  3.0 *  (a3 * a3 + a4 * a4) + z33 * emsq;
+    z11 = -6.0 * a1 * a5 + emsq *  (-24.0 * x1 * x7-6.0 * x3 * x5);
+    z12 = -6.0 *  (a1 * a6 + a3 * a5) + emsq * (-24.0 * (x2 * x7 + x1 * x8) - 6.0 * (x3 * x6 + x4 * x5));
+    z13 = -6.0 * a3 * a6 + emsq * (-24.0 * x2 * x8 - 6.0 * x4 * x6);
+    z21 =  6.0 * a2 * a5 + emsq * (24.0 * x1 * x5 - 6.0 * x3 * x7);
+    z22 =  6.0 *  (a4 * a5 + a2 * a6) + emsq * (24.0 * (x2 * x5 + x1 * x6) - 6.0 * (x4 * x7 + x3 * x8));
+    z23 =  6.0 * a4 * a6 + emsq * (24.0 * x2 * x6 - 6.0 * x4 * x8);
+    z1  = z1 + z1 + betasq * z31;
+    z2  = z2 + z2 + betasq * z32;
+    z3  = z3 + z3 + betasq * z33;
+    s3  = cc * xnoi;
+    s2  = -0.5 * s3 / rtemsq;
+    s4  = s3 * rtemsq;
+    s1  = -15.0 * em * s4;
+    s5  = x1 * x3 + x2 * x4;
+    s6  = x2 * x3 + x1 * x4;
+    s7  = x2 * x4 - x1 * x3;
+
+  // ----------------------- do lunar terms -------------------
+    if (lsflg == 1) {
+
+      ss1   = s1;
+      ss2   = s2;
+      ss3   = s3;
+      ss4   = s4;
+      ss5   = s5;
+      ss6   = s6;
+      ss7   = s7;
+      sz1   = z1;
+      sz2   = z2;
+      sz3   = z3;
+      sz11  = z11;
+      sz12  = z12;
+      sz13  = z13;
+      sz21  = z21;
+      sz22  = z22;
+      sz23  = z23;
+      sz31  = z31;
+      sz32  = z32;
+      sz33  = z33;
+      zcosg = zcosgl;
+      zsing = zsingl;
+      zcosi = zcosil;
+      zsini = zsinil;
+      zcosh = zcoshl * cnodm + zsinhl * snodm;
+      zsinh = snodm * zcoshl - cnodm * zsinhl;
+      cc    = c1l;
+
+    }
+  }
+  zmol = pymod((4.7199672 + 0.22997150  * day - gam), twopi);
+  zmos = pymod((6.2565837 + 0.017201977 * day), twopi);
+
+  // ------------------------ do solar terms ----------------------
+  se2  =   2.0 * ss1 * ss6;
+  se3  =   2.0 * ss1 * ss7;
+  si2  =   2.0 * ss2 * sz12;
+  si3  =   2.0 * ss2 * (sz13 - sz11);
+  sl2  =  -2.0 * ss3 * sz2;
+  sl3  =  -2.0 * ss3 * (sz3 - sz1);
+  sl4  =  -2.0 * ss3 * (-21.0 - 9.0 * emsq) * zes;
+  sgh2 =   2.0 * ss4 * sz32;
+  sgh3 =   2.0 * ss4 * (sz33 - sz31);
+  sgh4 = -18.0 * ss4 * zes;
+  sh2  =  -2.0 * ss2 * sz22;
+  sh3  =  -2.0 * ss2 * (sz23 - sz21);
+
+  // ------------------------ do lunar terms ----------------------
+  ee2  =   2.0 * s1 * s6;
+  e3   =   2.0 * s1 * s7;
+  xi2  =   2.0 * s2 * z12;
+  xi3  =   2.0 * s2 * (z13 - z11);
+  xl2  =  -2.0 * s3 * z2;
+  xl3  =  -2.0 * s3 * (z3 - z1);
+  xl4  =  -2.0 * s3 * (-21.0 - 9.0 * emsq) * zel;
+  xgh2 =   2.0 * s4 * z32;
+  xgh3 =   2.0 * s4 * (z33 - z31);
+  xgh4 = -18.0 * s4 * zel;
+  xh2  =  -2.0 * s2 * z22;
+  xh3  =  -2.0 * s2 * (z23 - z21);
+
+  return [snodm, cnodm, sinim,  cosim, sinomm, cosomm,day,   e3,     ee2,   em, emsq,  gam,   peo,    pgho,  pho, pinco, plo,   rtemsq, se2,   se3, sgh2,  sgh3,  sgh4,   sh2,   sh3, si2,   si3,   sl2,    sl3,   sl4, s1,    s2,    s3,     s4,    s5, s6,    s7,    ss1,    ss2,   ss3, ss4,   ss5,   ss6,    ss7,   sz1, sz2,   sz3,   sz11,   sz12,  sz13, sz21,  sz22,  sz23,   sz31,  sz32, sz33,  xgh2,  xgh3,   xgh4,  xh2, xh3,   xi2,   xi3,    xl2,   xl3, xl4,   nm,    z1,     z2,    z3, z11,   z12,   z13,    z21,   z22, z23,   z31,   z32,    z33,   zmol, zmos];
+
+
+}
+
+function dsinit(xke, cosim, emsq, argpo, s1, s2, s3, s4, s5, sinim, ss1, ss2, ss3, ss4, ss5, sz1, sz3, sz11, sz13, sz21, sz23, sz31, sz33, t, tc, gsto, mo, mdot, no, nodeo, nodedot, xpidot, z1, z3, z11, z13, z21, z23, z31, z33, ecco, eccsq, em, argpm, inclm, mm, nm, nodem, irez, atime, d2201, d2211, d3210, d3222, d4410, d4422, d5220, d5232, d5421, d5433, dedt, didt, dmdt, dnodt, domdt, del1, del2, del3, xfact, xlamo, xli, xni) {
+  let ainv2, aonv, cosisq, dndt, emo, emsqo, eoc, f220, f221, f311, f321, f322, f330, f441, f442, f522, f523, f542, f543, g200, g201, g211, g300, g310, g322, g410, g422, g520, g521, g532, g533, q22, q31, q33, root22, root32, root44, root52, root54, rptim, ses, sghl, sghs, sgs, shll, shs, sini2, sis, sls, temp, temp1, theta, x2o3, xno2, znl, zns;
+
+  q22    = 1.7891679e-6;
+  q31    = 2.1460748e-6;
+  q33    = 2.2123015e-7;
+  root22 = 1.7891679e-6;
+  root44 = 7.3636953e-9;
+  root54 = 2.1765803e-9;
+  rptim  = 4.37526908801129966e-3;  // equates to 7.29211514668855e-5 rad/sec
+  root32 = 3.7393792e-7;
+  root52 = 1.1428639e-7;
+  x2o3   = 2.0 / 3.0;
+  znl    = 1.5835218e-4;
+  zns    = 1.19459e-5;
+
+  // sgp4fix identify constants and allow alternate values
+  // just xke is used here so pass it in rather than have multiple calls
+  // xke = whichconst.xke
+
+  // -------------------- deep space initialization ------------
+  irez = 0;
+  if ((0.0034906585 < nm) && (nm < 0.0052359877)) {
+    irez = 1;
+  }
+  if ((8.26e-3 <= nm) && (nm <= 9.24e-3) && em >= 0.5) {
+    irez = 2;
+
+  // ------------------------ do solar terms -------------------
+  }
+  ses  =  ss1 * zns * ss5;
+  sis  =  ss2 * zns * (sz11 + sz13);
+  sls  = -zns * ss3 * (sz1 + sz3 - 14.0 - 6.0 * emsq);
+  sghs =  ss4 * zns * (sz31 + sz33 - 6.0);
+  shs  = -zns * ss2 * (sz21 + sz23);
+  // sgp4fix for 180 deg incl
+  if (inclm < 5.2359877e-2 || inclm > pi - 5.2359877e-2) {
+    shs = 0.0;
+  }
+  if (sinim != 0.0) {
+    shs = shs / sinim;
+  }
+  sgs  = sghs - cosim * shs;
+
+  // ------------------------- do lunar terms ------------------
+  dedt = ses + s1 * znl * s5;
+  didt = sis + s2 * znl * (z11 + z13);
+  dmdt = sls - znl * s3 * (z1 + z3 - 14.0 - 6.0 * emsq);
+  sghl = s4 * znl * (z31 + z33 - 6.0);
+  shll = -znl * s2 * (z21 + z23);
+  // sgp4fix for 180 deg incl
+  if (inclm < 5.2359877e-2 || inclm > pi - 5.2359877e-2) {
+    shll = 0.0;
+  }
+  domdt = sgs + sghl;
+  dnodt = shs;
+  if (sinim != 0.0) {
+
+    domdt = domdt - cosim / sinim * shll;
+    dnodt = dnodt + shll / sinim;
+
+
+  // ----------- calculate deep space resonance effects --------
+  }
+  dndt   = 0.0;
+  theta  = pymod((gsto + tc * rptim), twopi);
+  em     = em + dedt * t;
+  inclm  = inclm + didt * t;
+  argpm  = argpm + domdt * t;
+  nodem  = nodem + dnodt * t;
+  mm     = mm + dmdt * t;
+
+  // -------------- initialize the resonance terms -------------
+  if (irez != 0) {
+
+    aonv = Math.pow(nm / xke, x2o3);
+
+  // ---------- geopotential resonance for 12 hour orbits ------
+    if (irez == 2) {
+
+      cosisq = cosim * cosim;
+      emo    = em;
+      em     = ecco;
+      emsqo  = emsq;
+      emsq   = eccsq;
+      eoc    = em * emsq;
+      g201   = -0.306 - (em - 0.64) * 0.440;
+
+      if (em <= 0.65) {
+
+        g211 =    3.616  -  13.2470 * em +  16.2900 * emsq;
+        g310 =  -19.302  + 117.3900 * em - 228.4190 * emsq +  156.5910 * eoc;
+        g322 =  -18.9068 + 109.7927 * em - 214.6334 * emsq +  146.5816 * eoc;
+        g410 =  -41.122  + 242.6940 * em - 471.0940 * emsq +  313.9530 * eoc;
+        g422 = -146.407  + 841.8800 * em - 1629.014 * emsq + 1083.4350 * eoc;
+        g520 = -532.114  + 3017.977 * em - 5740.032 * emsq + 3708.2760 * eoc;
+
+      }
+      else {
+
+        g211 =   -72.099 +   331.819 * em -   508.738 * emsq +   266.724 * eoc;
+        g310 =  -346.844 +  1582.851 * em -  2415.925 * emsq +  1246.113 * eoc;
+        g322 =  -342.585 +  1554.908 * em -  2366.899 * emsq +  1215.972 * eoc;
+        g410 = -1052.797 +  4758.686 * em -  7193.992 * emsq +  3651.957 * eoc;
+        g422 = -3581.690 + 16178.110 * em - 24462.770 * emsq + 12422.520 * eoc;
+        if (em > 0.715) {
+          g520 =-5149.66 + 29936.92 * em - 54087.36 * emsq + 31324.56 * eoc;
+        }
+        else {
+          g520 = 1464.74 -  4664.75 * em +  3763.64 * emsq;
+
+        }
+      }
+      if (em < 0.7) {
+
+        g533 = -919.22770 + 4988.6100 * em - 9064.7700 * emsq + 5542.21  * eoc;
+        g521 = -822.71072 + 4568.6173 * em - 8491.4146 * emsq + 5337.524 * eoc;
+        g532 = -853.66600 + 4690.2500 * em - 8624.7700 * emsq + 5341.4  * eoc;
+
+      }
+      else {
+
+        g533 =-37995.780 + 161616.52 * em - 229838.20 * emsq + 109377.94 * eoc;
+        g521 =-51752.104 + 218913.95 * em - 309468.16 * emsq + 146349.42 * eoc;
+        g532 =-40023.880 + 170470.89 * em - 242699.48 * emsq + 115605.82 * eoc;
+
+      }
+      sini2=  sinim * sinim;
+      f220 =  0.75 * (1.0 + 2.0 * cosim+cosisq);
+      f221 =  1.5 * sini2;
+      f321 =  1.875 * sinim  *  (1.0 - 2.0 * cosim - 3.0 * cosisq);
+      f322 = -1.875 * sinim  *  (1.0 + 2.0 * cosim - 3.0 * cosisq);
+      f441 = 35.0 * sini2 * f220;
+      f442 = 39.3750 * sini2 * sini2;
+      f522 =  9.84375 * sinim * (sini2 * (1.0 - 2.0 * cosim- 5.0 * cosisq) + 0.33333333 * (-2.0 + 4.0 * cosim + 6.0 * cosisq) );
+      f523 = sinim * (4.92187512 * sini2 * (-2.0 - 4.0 * cosim + 10.0 * cosisq) + 6.56250012 * (1.0+2.0 * cosim - 3.0 * cosisq));
+      f542 = 29.53125 * sinim * (2.0 - 8.0 * cosim+cosisq * (-12.0 + 8.0 * cosim + 10.0 * cosisq));
+      f543 = 29.53125 * sinim * (-2.0 - 8.0 * cosim+cosisq * (12.0 + 8.0 * cosim - 10.0 * cosisq));
+      xno2  =  nm * nm;
+      ainv2 =  aonv * aonv;
+      temp1 =  3.0 * xno2 * ainv2;
+      temp  =  temp1 * root22;
+      d2201 =  temp * f220 * g201;
+      d2211 =  temp * f221 * g211;
+      temp1 =  temp1 * aonv;
+      temp  =  temp1 * root32;
+      d3210 =  temp * f321 * g310;
+      d3222 =  temp * f322 * g322;
+      temp1 =  temp1 * aonv;
+      temp  =  2.0 * temp1 * root44;
+      d4410 =  temp * f441 * g410;
+      d4422 =  temp * f442 * g422;
+      temp1 =  temp1 * aonv;
+      temp  =  temp1 * root52;
+      d5220 =  temp * f522 * g520;
+      d5232 =  temp * f523 * g532;
+      temp  =  2.0 * temp1 * root54;
+      d5421 =  temp * f542 * g521;
+      d5433 =  temp * f543 * g533;
+      xlamo =  pymod((mo + nodeo + nodeo-theta - theta), twopi);
+      xfact =  mdot + dmdt + 2.0 * (nodedot + dnodt - rptim) - no;
+      em    = emo;
+      emsq  = emsqo;
+
+  // ---------------- synchronous resonance terms --------------
+    }
+    if (irez == 1) {
+
+      g200  = 1.0 + emsq * (-2.5 + 0.8125 * emsq);
+      g310  = 1.0 + 2.0 * emsq;
+      g300  = 1.0 + emsq * (-6.0 + 6.60937 * emsq);
+      f220  = 0.75 * (1.0 + cosim) * (1.0 + cosim);
+      f311  = 0.9375 * sinim * sinim * (1.0 + 3.0 * cosim) - 0.75 * (1.0 + cosim);
+      f330  = 1.0 + cosim;
+      f330  = 1.875 * f330 * f330 * f330;
+      del1  = 3.0 * nm * nm * aonv * aonv;
+      del2  = 2.0 * del1 * f220 * g200 * q22;
+      del3  = 3.0 * del1 * f330 * g300 * q33 * aonv;
+      del1  = del1 * f311 * g310 * q31 * aonv;
+      xlamo = pymod((mo + nodeo + argpo - theta), twopi);
+      xfact = mdot + xpidot - rptim + dmdt + domdt + dnodt - no;
+
+  // ------------ for sgp4, initialize the integrator ----------
+    }
+    xli   = xlamo;
+    xni   = no;
+    atime = 0.0;
+    nm    = no + dndt;
+
+  }
+  return [em,    argpm,  inclm, mm, nm,    nodem, irez, atime, d2201, d2211,  d3210, d3222, d4410, d4422, d5220,  d5232, d5421, d5433, dedt,  didt, dmdt,  dndt, dnodt, domdt, del1,   del2,  del3, xfact, xlamo, xli,    xni];
+
+
+}
+
+function dspace(irez, d2201, d2211, d3210, d3222, d4410, d4422, d5220, d5232, d5421, d5433, dedt, del1, del2, del3, didt, dmdt, dnodt, domdt, argpo, argpdot, t, tc, gsto, xfact, xlamo, no, atime, em, argpm, inclm, xli, mm, xni, nodem, nm) {
+  let delt, dndt, fasx2, fasx4, fasx6, ft, g22, g32, g44, g52, g54, iretn, rptim, step2, stepn, stepp, theta, x2li, x2omi, xl, xldot, xnddt, xndt, xomi;
+
+  fasx2 = 0.13130908;
+  fasx4 = 2.8843198;
+  fasx6 = 0.37448087;
+  g22   = 5.7686396;
+  g32   = 0.95240898;
+  g44   = 1.8014998;
+  g52   = 1.0508330;
+  g54   = 4.4108898;
+  rptim = 4.37526908801129966e-3;  // equates to 7.29211514668855e-5 rad/sec
+  stepp =    720.0;
+  stepn =   -720.0;
+  step2 = 259200.0;
+
+  // ----------- calculate deep space resonance effects -----------
+  dndt   = 0.0;
+  theta  = pymod((gsto + tc * rptim), twopi);
+  em     = em + dedt * t;
+
+  inclm  = inclm + didt * t;
+  argpm  = argpm + domdt * t;
+  nodem  = nodem + dnodt * t;
+  mm     = mm + dmdt * t;
+
+  ft    = 0.0;
+  if (irez != 0) {
+
+  // sgp4fix streamline check
+    if (atime == 0.0 || t * atime <= 0.0 || Math.abs(t) < Math.abs(atime)) {
+
+      atime  = 0.0;
+      xni    = no;
+      xli    = xlamo;
+
+  // sgp4fix move check outside loop
+    }
+    if (t > 0.0) {
+      delt = stepp;
+    }
+    else {
+      delt = stepn;
+
+    }
+    iretn = 381;  // added for do loop
+  // iret  =   0; # added for loop
+    while (iretn == 381) {
+
+  // ------------------- dot terms calculated -------------
+  // ----------- near - synchronous resonance terms -------
+      if (irez != 2) {
+
+        xndt  = del1 * Math.sin(xli - fasx2) + del2 * Math.sin(2.0 * (xli - fasx4)) + del3 * Math.sin(3.0 * (xli - fasx6));
+        xldot = xni + xfact;
+        xnddt = del1 * Math.cos(xli - fasx2) + 2.0 * del2 * Math.cos(2.0 * (xli - fasx4)) + 3.0 * del3 * Math.cos(3.0 * (xli - fasx6));
+        xnddt = xnddt * xldot;
+
+      }
+      else {
+
+  // --------- near - half-day resonance terms --------
+        xomi  = argpo + argpdot * atime;
+        x2omi = xomi + xomi;
+        x2li  = xli + xli;
+        xndt  = (d2201 * Math.sin(x2omi + xli - g22) + d2211 * Math.sin(xli - g22) + d3210 * Math.sin(xomi + xli - g32)  + d3222 * Math.sin(-xomi + xli - g32)+ d4410 * Math.sin(x2omi + x2li - g44)+ d4422 * Math.sin(x2li - g44) + d5220 * Math.sin(xomi + xli - g52)  + d5232 * Math.sin(-xomi + xli - g52)+ d5421 * Math.sin(xomi + x2li - g54) + d5433 * Math.sin(-xomi + x2li - g54));
+        xldot = xni + xfact;
+        xnddt = (d2201 * Math.cos(x2omi + xli - g22) + d2211 * Math.cos(xli - g22) + d3210 * Math.cos(xomi + xli - g32) + d3222 * Math.cos(-xomi + xli - g32) + d5220 * Math.cos(xomi + xli - g52) + d5232 * Math.cos(-xomi + xli - g52) + 2.0 * (d4410 * Math.cos(x2omi + x2li - g44) + d4422 * Math.cos(x2li - g44) + d5421 * Math.cos(xomi + x2li - g54) + d5433 * Math.cos(-xomi + x2li - g54)));
+        xnddt = xnddt * xldot;
+
+  // ----------------------- integrator -------------------
+  // sgp4fix move end checks to end of routine
+      }
+      if (Math.abs(t - atime) >= stepp) {
+  // iret  = 0;
+        iretn = 381;
+
+      }
+      else {
+        ft    = t - atime;
+        iretn = 0;
+
+      }
+      if (iretn == 381) {
+
+        xli   = xli + xldot * delt + xndt * step2;
+        xni   = xni + xndt * delt + xnddt * step2;
+        atime = atime + delt;
+
+      }
+    }
+    nm = xni + xndt * ft + xnddt * ft * ft * 0.5;
+    xl = xli + xldot * ft + xndt * ft * ft * 0.5;
+    if (irez != 1) {
+      mm   = xl - 2.0 * nodem + 2.0 * theta;
+      dndt = nm - no;
+
+    }
+    else {
+      mm   = xl - nodem - argpm + theta;
+      dndt = nm - no;
+
+    }
+    nm = no + dndt;
+
+  }
+  return [atime, em,    argpm,  inclm, xli, mm,    xni,   nodem,  dndt,  nm];
+
+
+}
+
+function initl(xke, j2, ecco, epoch, inclo, no, method, opsmode) {
+  let adel, ainv, ak, ao, c1, c1p2p, con41, con42, cosio, cosio2, d1, del_, ds70, eccsq, fk5r, gsto, omeosq, po, posq, rp, rteosq, sinio, tfrac, thgr70, ts70, x2o3;
+
+  // sgp4fix use old way of finding gst
+
+  // ----------------------- earth constants ----------------------
+  // sgp4fix identify constants and allow alternate values
+  // only xke and j2 are used here so pass them in directly
+  // tumin, mu, radiusearthkm, xke, j2, j3, j4, j3oj2 = whichconst
+  x2o3   = 2.0 / 3.0;
+
+  // ------------- calculate auxillary epoch quantities ----------
+  eccsq  = ecco * ecco;
+  omeosq = 1.0 - eccsq;
+  rteosq = Math.sqrt(omeosq);
+  cosio  = Math.cos(inclo);
+  cosio2 = cosio * cosio;
+
+  // ------------------ un-kozai the mean motion -----------------
+  ak    = Math.pow(xke / no, x2o3);
+  d1    = 0.75 * j2 * (3.0 * cosio2 - 1.0) / (rteosq * omeosq);
+  del_  = d1 / (ak * ak);
+  adel  = ak * (1.0 - del_ * del_ - del_ * (1.0 / 3.0 + 134.0 * del_ * del_ / 81.0));
+  del_  = d1/(adel * adel);
+  no    = no / (1.0 + del_);
+
+  ao    = Math.pow(xke / no, x2o3);
+  sinio = Math.sin(inclo);
+  po    = ao * omeosq;
+  con42 = 1.0 - 5.0 * cosio2;
+  con41 = -con42-cosio2-cosio2;
+  ainv  = 1.0 / ao;
+  posq  = po * po;
+  rp    = ao * (1.0 - ecco);
+  method = 'n';
+
+  // sgp4fix modern approach to finding sidereal time
+  if (opsmode == 'a') {
+
+  // sgp4fix use old way of finding gst
+  // count integer number of days from 0 jan 1970
+    ts70  = epoch - 7305.0;
+    ds70 = Math.floor(ts70 + 1.0e-8);
+    tfrac = ts70 - ds70;
+  // find greenwich location at epoch
+    c1    = 1.72027916940703639e-2;
+    thgr70= 1.7321343856509374;
+    fk5r  = 5.07551419432269442e-15;
+    c1p2p = c1 + twopi;
+    gsto  = pymod((thgr70 + c1*ds70 + c1p2p*tfrac + ts70*ts70*fk5r), twopi);
+    if (gsto < 0.0) {
+      gsto = gsto + twopi;
+
+    }
+  }
+  else {
+    gsto = gstime(epoch + 2433281.5);
+
+  }
+  return [no, method, ainv,  ao,    con41,  con42, cosio, cosio2,eccsq, omeosq, posq, rp,    rteosq,sinio , gsto];
+
+
+}
+
+function sgp4init(whichconst, opsmode, satn, epoch, xbstar, xndot, xnddot, xecco, xargpo, xinclo, xmo, xno_kozai, xnodeo, satrec) {
+  let ainv, ao, argpm, cc1sq, cc2, cc3, cnodm, coef, coef1, con42, cosim, cosio, cosio2, cosio4, cosomm, day, delmotemp, dndt, eccsq, eeta, em, emsq, etasq, gam, inclm, method, mm, nm, nodem, omeosq, perige, pinvsq, posq, psisq, qzms24, qzms24temp, qzms2t, qzms2ttemp, rp, rtemsq, rteosq, s1, s2, s3, s4, s5, s6, s7, sfour, sinim, sinio, sinomm, snodm, ss, ss1, ss2, ss3, ss4, ss5, ss6, ss7, sz1, sz11, sz12, sz13, sz2, sz21, sz22, sz23, sz3, sz31, sz32, sz33, tc, temp, temp1, temp2, temp3, temp4, tsi, x2o3, xhdot1, xpidot, z1, z11, z12, z13, z2, z21, z22, z23, z3, z31, z32, z33;
+
+  temp4    =   1.5e-12;
+
+  // ----------- set all near earth variables to zero ------------
+  satrec.isimp   = 0;   satrec.method = 'n'; satrec.aycof    = 0.0;
+  satrec.con41   = 0.0; satrec.cc1    = 0.0; satrec.cc4      = 0.0;
+  satrec.cc5     = 0.0; satrec.d2     = 0.0; satrec.d3       = 0.0;
+  satrec.d4      = 0.0; satrec.delmo  = 0.0; satrec.eta      = 0.0;
+  satrec.argpdot = 0.0; satrec.omgcof = 0.0; satrec.sinmao   = 0.0;
+  satrec.t       = 0.0; satrec.t2cof  = 0.0; satrec.t3cof    = 0.0;
+  satrec.t4cof   = 0.0; satrec.t5cof  = 0.0; satrec.x1mth2   = 0.0;
+  satrec.x7thm1  = 0.0; satrec.mdot   = 0.0; satrec.nodedot  = 0.0;
+  satrec.xlcof   = 0.0; satrec.xmcof  = 0.0; satrec.nodecf   = 0.0;
+
+  // ----------- set all deep space variables to zero ------------
+  satrec.irez  = 0;   satrec.d2201 = 0.0; satrec.d2211 = 0.0;
+  satrec.d3210 = 0.0; satrec.d3222 = 0.0; satrec.d4410 = 0.0;
+  satrec.d4422 = 0.0; satrec.d5220 = 0.0; satrec.d5232 = 0.0;
+  satrec.d5421 = 0.0; satrec.d5433 = 0.0; satrec.dedt  = 0.0;
+  satrec.del1  = 0.0; satrec.del2  = 0.0; satrec.del3  = 0.0;
+  satrec.didt  = 0.0; satrec.dmdt  = 0.0; satrec.dnodt = 0.0;
+  satrec.domdt = 0.0; satrec.e3    = 0.0; satrec.ee2   = 0.0;
+  satrec.peo   = 0.0; satrec.pgho  = 0.0; satrec.pho   = 0.0;
+  satrec.pinco = 0.0; satrec.plo   = 0.0; satrec.se2   = 0.0;
+  satrec.se3   = 0.0; satrec.sgh2  = 0.0; satrec.sgh3  = 0.0;
+  satrec.sgh4  = 0.0; satrec.sh2   = 0.0; satrec.sh3   = 0.0;
+  satrec.si2   = 0.0; satrec.si3   = 0.0; satrec.sl2   = 0.0;
+  satrec.sl3   = 0.0; satrec.sl4   = 0.0; satrec.gsto  = 0.0;
+  satrec.xfact = 0.0; satrec.xgh2  = 0.0; satrec.xgh3  = 0.0;
+  satrec.xgh4  = 0.0; satrec.xh2   = 0.0; satrec.xh3   = 0.0;
+  satrec.xi2   = 0.0; satrec.xi3   = 0.0; satrec.xl2   = 0.0;
+  satrec.xl3   = 0.0; satrec.xl4   = 0.0; satrec.xlamo = 0.0;
+  satrec.zmol  = 0.0; satrec.zmos  = 0.0; satrec.atime = 0.0;
+  satrec.xli   = 0.0; satrec.xni   = 0.0;
+
+  // ------------------------ earth constants -----------------------
+  // sgp4fix identify constants and allow alternate values
+  // this is now the only call for the constants
+  [satrec.tumin, satrec.mu, satrec.radiusearthkm, satrec.xke, satrec.j2, satrec.j3, satrec.j4, satrec.j3oj2] = whichconst;
+
+  // -------------------------------------------------------------------------
+
+  // The SGP4 library has changed `satn` from an integer to a string.
+  // But to avoid breaking our API contract with existing Python code,
+  // we are still willing to accept an integer.
+  satrec.error = 0;
+  satrec.operationmode = opsmode;
+  satrec.satnum_str = satn;
+  satrec.classification = 'U';  // so attribute is not missing in Python
+
+  satrec.bstar   = xbstar;
+  // sgp4fix allow additional parameters in the struct
+  satrec.ndot    = xndot;
+  satrec.nddot   = xnddot;
+  satrec.ecco    = xecco;
+  satrec.argpo   = xargpo;
+  satrec.inclo   = xinclo;
+  satrec.mo	    = xmo;
+  // sgp4fix rename variables to clarify which mean motion is intended
+  satrec.no_kozai= xno_kozai;
+  satrec.nodeo   = xnodeo;
+
+  // single averaged mean elements
+  satrec.am = 0.0;
+  satrec.em = 0.0;
+  satrec.im = 0.0;
+  satrec.Om = 0.0;
+  satrec.mm = 0.0;
+  satrec.nm = 0.0;
+
+  // ------------------------ earth constants ----------------------- */
+  // sgp4fix identify constants and allow alternate values no longer needed
+  // getgravconst( whichconst, tumin, mu, radiusearthkm, xke, j2, j3, j4, j3oj2 );
+  ss     = 78.0 / satrec.radiusearthkm + 1.0;
+  // sgp4fix use multiply for speed instead of pow
+  qzms2ttemp = (120.0 - 78.0) / satrec.radiusearthkm;
+  qzms2t = qzms2ttemp * qzms2ttemp * qzms2ttemp * qzms2ttemp;
+  x2o3   =  2.0 / 3.0;
+
+  satrec.init = 'y';
+  satrec.t	 = 0.0;
+
+  // sgp4fix remove satn as it is not needed in initl
+  [satrec.no_unkozai, method, ainv, ao, satrec.con41, con42, cosio, cosio2, eccsq, omeosq, posq, rp, rteosq, sinio, satrec.gsto] = initl( satrec.xke, satrec.j2, satrec.ecco, epoch, satrec.inclo, satrec.no_kozai, satrec.method, satrec.operationmode );
+  satrec.a    = Math.pow( satrec.no_unkozai*satrec.tumin , (-2.0/3.0) );
+  satrec.alta = satrec.a*(1.0 + satrec.ecco) - 1.0;
+  satrec.altp = satrec.a*(1.0 - satrec.ecco) - 1.0;
+
+
+  if (omeosq >= 0.0 || satrec.no_unkozai >= 0.0) {
+
+    satrec.isimp = 0;
+    if (rp < 220.0 / satrec.radiusearthkm + 1.0) {
+      satrec.isimp = 1;
+    }
+    sfour  = ss;
+    qzms24 = qzms2t;
+    perige = (rp - 1.0) * satrec.radiusearthkm;
+
+  // - for perigees below 156 km, s and qoms2t are altered -
+    if (perige < 156.0) {
+
+      sfour = perige - 78.0;
+      if (perige < 98.0) {
+        sfour = 20.0;
+  // sgp4fix use multiply for speed instead of pow
+      }
+      qzms24temp =  (120.0 - sfour) / satrec.radiusearthkm;
+      qzms24 = qzms24temp * qzms24temp * qzms24temp * qzms24temp;
+      sfour  = sfour / satrec.radiusearthkm + 1.0;
+
+    }
+    pinvsq = 1.0 / posq;
+
+    tsi  = 1.0 / (ao - sfour);
+    satrec.eta  = ao * satrec.ecco * tsi;
+    etasq = satrec.eta * satrec.eta;
+    eeta  = satrec.ecco * satrec.eta;
+    psisq = Math.abs(1.0 - etasq);
+    coef  = qzms24 * Math.pow(tsi, 4.0);
+    coef1 = coef / Math.pow(psisq, 3.5);
+    cc2   = coef1 * satrec.no_unkozai * (ao * (1.0 + 1.5 * etasq + eeta * (4.0 + etasq)) + 0.375 * satrec.j2 * tsi / psisq * satrec.con41 * (8.0 + 3.0 * etasq * (8.0 + etasq)));
+    satrec.cc1   = satrec.bstar * cc2;
+    cc3   = 0.0;
+    if (satrec.ecco > 1.0e-4) {
+      cc3 = -2.0 * coef * tsi * satrec.j3oj2 * satrec.no_unkozai * sinio / satrec.ecco;
+    }
+    satrec.x1mth2 = 1.0 - cosio2;
+    satrec.cc4    = 2.0* satrec.no_unkozai * coef1 * ao * omeosq * (satrec.eta * (2.0 + 0.5 * etasq) + satrec.ecco * (0.5 + 2.0 * etasq) - satrec.j2 * tsi / (ao * psisq) * (-3.0 * satrec.con41 * (1.0 - 2.0 * eeta + etasq * (1.5 - 0.5 * eeta)) + 0.75 * satrec.x1mth2 * (2.0 * etasq - eeta * (1.0 + etasq)) * Math.cos(2.0 * satrec.argpo)));
+    satrec.cc5 = 2.0 * coef1 * ao * omeosq * (1.0 + 2.75 * (etasq + eeta) + eeta * etasq);
+    cosio4 = cosio2 * cosio2;
+    temp1  = 1.5 * satrec.j2 * pinvsq * satrec.no_unkozai;
+    temp2  = 0.5 * temp1 * satrec.j2 * pinvsq;
+    temp3  = -0.46875 * satrec.j4 * pinvsq * pinvsq * satrec.no_unkozai;
+    satrec.mdot     = satrec.no_unkozai + 0.5 * temp1 * rteosq * satrec.con41 + 0.0625 * temp2 * rteosq * (13.0 - 78.0 * cosio2 + 137.0 * cosio4);
+    satrec.argpdot  = (-0.5 * temp1 * con42 + 0.0625 * temp2 * (7.0 - 114.0 * cosio2 + 395.0 * cosio4) + temp3 * (3.0 - 36.0 * cosio2 + 49.0 * cosio4));
+    xhdot1            = -temp1 * cosio;
+    satrec.nodedot = xhdot1 + (0.5 * temp2 * (4.0 - 19.0 * cosio2) + 2.0 * temp3 * (3.0 - 7.0 * cosio2)) * cosio;
+    xpidot            =  satrec.argpdot+ satrec.nodedot;
+    satrec.omgcof   = satrec.bstar * cc3 * Math.cos(satrec.argpo);
+    satrec.xmcof    = 0.0;
+    if (satrec.ecco > 1.0e-4) {
+      satrec.xmcof = -x2o3 * coef * satrec.bstar / eeta;
+    }
+    satrec.nodecf = 3.5 * omeosq * xhdot1 * satrec.cc1;
+    satrec.t2cof   = 1.5 * satrec.cc1;
+  // sgp4fix for divide by zero with xinco = 180 deg
+    if (Math.abs(cosio+1.0) > 1.5e-12) {
+      satrec.xlcof = -0.25 * satrec.j3oj2 * sinio * (3.0 + 5.0 * cosio) / (1.0 + cosio);
+    }
+    else {
+      satrec.xlcof = -0.25 * satrec.j3oj2 * sinio * (3.0 + 5.0 * cosio) / temp4;
+    }
+    satrec.aycof   = -0.5 * satrec.j3oj2 * sinio;
+  // sgp4fix use multiply for speed instead of pow
+    delmotemp = 1.0 + satrec.eta * Math.cos(satrec.mo);
+    satrec.delmo   = delmotemp * delmotemp * delmotemp;
+    satrec.sinmao  = Math.sin(satrec.mo);
+    satrec.x7thm1  = 7.0 * cosio2 - 1.0;
+
+  // --------------- deep space initialization -------------
+    if (2*pi / satrec.no_unkozai >= 225.0) {
+
+      satrec.method = 'd';
+      satrec.isimp  = 1;
+      tc    =  0.0;
+      inclm = satrec.inclo;
+
+      [snodm, cnodm, sinim, cosim, sinomm, cosomm, day, satrec.e3, satrec.ee2, em, emsq, gam, satrec.peo, satrec.pgho, satrec.pho, satrec.pinco, satrec.plo, rtemsq, satrec.se2, satrec.se3, satrec.sgh2, satrec.sgh3, satrec.sgh4, satrec.sh2, satrec.sh3, satrec.si2, satrec.si3, satrec.sl2, satrec.sl3, satrec.sl4, s1, s2, s3, s4, s5, s6, s7, ss1, ss2, ss3, ss4, ss5, ss6, ss7, sz1, sz2, sz3, sz11, sz12, sz13, sz21, sz22, sz23, sz31, sz32, sz33, satrec.xgh2, satrec.xgh3, satrec.xgh4, satrec.xh2, satrec.xh3, satrec.xi2, satrec.xi3, satrec.xl2, satrec.xl3, satrec.xl4, nm, z1, z2, z3, z11, z12, z13, z21, z22, z23, z31, z32, z33, satrec.zmol, satrec.zmos] = dscom( epoch, satrec.ecco, satrec.argpo, tc, satrec.inclo, satrec.nodeo, satrec.no_unkozai, satrec.e3, satrec.ee2, satrec.peo,  satrec.pgho,   satrec.pho, satrec.pinco, satrec.plo,        satrec.se2, satrec.se3, satrec.sgh2, satrec.sgh3,   satrec.sgh4, satrec.sh2,  satrec.sh3,    satrec.si2, satrec.si3, satrec.sl2,  satrec.sl3,    satrec.sl4, satrec.xgh2, satrec.xgh3,   satrec.xgh4, satrec.xh2, satrec.xh3,  satrec.xi2,    satrec.xi3,  satrec.xl2, satrec.xl3,  satrec.xl4, satrec.zmol, satrec.zmos );
+      [satrec.ecco, satrec.inclo, satrec.nodeo, satrec.argpo, satrec.mo] = dpper( satrec, inclm, satrec.init, satrec.ecco, satrec.inclo, satrec.nodeo, satrec.argpo, satrec.mo, satrec.operationmode );
+
+      argpm  = 0.0;
+      nodem  = 0.0;
+      mm     = 0.0;
+
+      [em, argpm, inclm, mm, nm, nodem, satrec.irez, satrec.atime, satrec.d2201, satrec.d2211, satrec.d3210, satrec.d3222, satrec.d4410, satrec.d4422, satrec.d5220, satrec.d5232, satrec.d5421, satrec.d5433, satrec.dedt, satrec.didt, satrec.dmdt, dndt, satrec.dnodt, satrec.domdt, satrec.del1, satrec.del2, satrec.del3, satrec.xfact, satrec.xlamo, satrec.xli, satrec.xni] = dsinit( satrec.xke, cosim, emsq, satrec.argpo, s1, s2, s3, s4, s5, sinim, ss1, ss2, ss3, ss4, ss5, sz1, sz3, sz11, sz13, sz21, sz23, sz31, sz33, satrec.t, tc, satrec.gsto, satrec.mo, satrec.mdot, satrec.no_unkozai, satrec.nodeo, satrec.nodedot, xpidot, z1, z3, z11, z13, z21, z23, z31, z33, satrec.ecco, eccsq, em, argpm, inclm, mm, nm, nodem, satrec.irez,  satrec.atime, satrec.d2201, satrec.d2211, satrec.d3210, satrec.d3222 , satrec.d4410, satrec.d4422, satrec.d5220, satrec.d5232, satrec.d5421, satrec.d5433, satrec.dedt,  satrec.didt, satrec.dmdt,  satrec.dnodt, satrec.domdt, satrec.del1,  satrec.del2,  satrec.del3,  satrec.xfact, satrec.xlamo, satrec.xli,   satrec.xni );
+
+  // ----------- set variables if not deep space -----------
+    }
+    if (satrec.isimp != 1) {
+
+      cc1sq          = satrec.cc1 * satrec.cc1;
+      satrec.d2    = 4.0 * ao * tsi * cc1sq;
+      temp           = satrec.d2 * tsi * satrec.cc1 / 3.0;
+      satrec.d3    = (17.0 * ao + sfour) * temp;
+      satrec.d4    = 0.5 * temp * ao * tsi * (221.0 * ao + 31.0 * sfour) * satrec.cc1;
+      satrec.t3cof = satrec.d2 + 2.0 * cc1sq;
+      satrec.t4cof = 0.25 * (3.0 * satrec.d3 + satrec.cc1 * (12.0 * satrec.d2 + 10.0 * cc1sq));
+      satrec.t5cof = 0.2 * (3.0 * satrec.d4 + 12.0 * satrec.cc1 * satrec.d3 + 6.0 * satrec.d2 * satrec.d2 + 15.0 * cc1sq * (2.0 * satrec.d2 + cc1sq));
+
+    }
+  }
+  sgp4(satrec, 0.0, whichconst);
+
+  satrec.init = 'n';
+
+  // sgp4fix return boolean. satrec.error contains any error codes
+  return true;
+
+
+
+}
+
+function sgp4(satrec, tsince, whichconst=null) {
+  let _mr, am, argpdf, argpm, argpp, atime, axnl, aynl, betal, cnod, cos2u, coseo1, cosi, cosim, cosip, cosisq, cossu, cosu, delm, delmtemp, delomg, dndt, ecose, el2, em, emsq, eo1, ep, esine, inclm, ktr, mm, mp, mrt, mvt, nm, nodedf, nodem, nodep, pl, r, rdotl, rl, rvdot, rvdotl, sin2u, sineo1, sini, sinim, sinip, sinsu, sinu, snod, su, t2, t3, t4, tc, tem5, temp, temp1, temp2, temp4, tempa, tempe, templ, twopi, u, ux, uy, uz, v, vkmpersec, vx, vy, vz, x2o3, xinc, xincp, xl, xli, xlm, xmdf, xmx, xmy, xni, xnode;
+
+  mrt = 0.0;
+
+  temp4 =   1.5e-12;
+  twopi = 2.0 * pi;
+  x2o3  = 2.0 / 3.0;
+  // sgp4fix identify constants and allow alternate values
+  // tumin, mu, radiusearthkm, xke, j2, j3, j4, j3oj2 = whichconst
+  vkmpersec     = satrec.radiusearthkm * satrec.xke/60.0;
+
+  // --------------------- clear sgp4 error flag -----------------
+  satrec.t     = tsince;
+  satrec.error = 0;
+  satrec.error_message = null;
+
+  // ------- update for secular gravity and atmospheric drag -----
+  xmdf    = satrec.mo + satrec.mdot * satrec.t;
+  argpdf  = satrec.argpo + satrec.argpdot * satrec.t;
+  nodedf  = satrec.nodeo + satrec.nodedot * satrec.t;
+  argpm   = argpdf;
+  mm      = xmdf;
+  t2      = satrec.t * satrec.t;
+  nodem   = nodedf + satrec.nodecf * t2;
+  tempa   = 1.0 - satrec.cc1 * satrec.t;
+  tempe   = satrec.bstar * satrec.cc4 * satrec.t;
+  templ   = satrec.t2cof * t2;
+
+  if (satrec.isimp != 1) {
+
+    delomg = satrec.omgcof * satrec.t;
+  // sgp4fix use mutliply for speed instead of pow
+    delmtemp =  1.0 + satrec.eta * Math.cos(xmdf);
+    delm   = satrec.xmcof * (delmtemp * delmtemp * delmtemp - satrec.delmo);
+    temp   = delomg + delm;
+    mm     = xmdf + temp;
+    argpm  = argpdf - temp;
+    t3     = t2 * satrec.t;
+    t4     = t3 * satrec.t;
+    tempa  = tempa - satrec.d2 * t2 - satrec.d3 * t3 - satrec.d4 * t4;
+    tempe  = tempe + satrec.bstar * satrec.cc5 * (Math.sin(mm) - satrec.sinmao);
+    templ  = templ + satrec.t3cof * t3 + t4 * (satrec.t4cof + satrec.t * satrec.t5cof);
+
+  }
+  nm    = satrec.no_unkozai;
+  em    = satrec.ecco;
+  inclm = satrec.inclo;
+  if (satrec.method == 'd') {
+
+    tc = satrec.t;
+    [atime, em, argpm, inclm, xli, mm, xni, nodem, dndt, nm] = dspace( satrec.irez, satrec.d2201, satrec.d2211, satrec.d3210, satrec.d3222, satrec.d4410, satrec.d4422, satrec.d5220, satrec.d5232, satrec.d5421, satrec.d5433, satrec.dedt,  satrec.del1, satrec.del2,  satrec.del3,  satrec.didt, satrec.dmdt,  satrec.dnodt, satrec.domdt, satrec.argpo, satrec.argpdot, satrec.t, tc, satrec.gsto, satrec.xfact, satrec.xlamo, satrec.no_unkozai, satrec.atime, em, argpm, inclm, satrec.xli, mm, satrec.xni, nodem, nm );
+
+  }
+  if (nm <= 0.0) {
+
+    satrec.error_message = (`mean motion ${nm} is less than zero`);
+    satrec.error = 2;
+  // sgp4fix add return
+    return [false, false];
+
+  }
+  am = Math.pow((satrec.xke / nm),x2o3) * tempa * tempa;
+  nm = satrec.xke / Math.pow(am, 1.5);
+  em = em - tempe;
+
+  // fix tolerance for error recognition
+  // sgp4fix am is fixed from the previous nm check
+  if (em >= 1.0 || em < -0.001) {  // || (am < 0.95)
+
+    satrec.error_message = (`mean eccentricity ${em} not within range 0.0 <= e < 1.0`);
+    satrec.error = 1;
+  // sgp4fix to return if there is an error in eccentricity
+    return [false, false];
+
+  // sgp4fix fix tolerance to avoid a divide by zero
+  }
+  if (em < 1.0e-6) {
+    em  = 1.0e-6;
+  }
+  mm     = mm + satrec.no_unkozai * templ;
+  xlm    = mm + argpm + nodem;
+  emsq   = em * em;
+  temp   = 1.0 - emsq;
+
+  nodem  = ((nodem >= 0.0) ? (pymod(nodem, twopi)) : (-(pymod(-nodem, twopi))));
+  argpm  = pymod(argpm, twopi);
+  xlm    = pymod(xlm, twopi);
+  mm     = pymod((xlm - argpm - nodem), twopi);
+
+  // sgp4fix recover singly averaged mean elements
+  satrec.am = am;
+  satrec.em = em;
+  satrec.im = inclm;
+  satrec.Om = nodem;
+  satrec.om = argpm;
+  satrec.mm = mm;
+  satrec.nm = nm;
+
+  // ----------------- compute extra mean quantities -------------
+  sinim = Math.sin(inclm);
+  cosim = Math.cos(inclm);
+
+  // -------------------- add lunar-solar periodics --------------
+  ep     = em;
+  xincp  = inclm;
+  argpp  = argpm;
+  nodep  = nodem;
+  mp     = mm;
+  sinip  = sinim;
+  cosip  = cosim;
+  if (satrec.method == 'd') {
+
+    [ep, xincp, nodep, argpp, mp] = dpper( satrec, satrec.inclo, 'n', ep, xincp, nodep, argpp, mp, satrec.operationmode );
+    if (xincp < 0.0) {
+
+      xincp  = -xincp;
+      nodep = nodep + pi;
+      argpp  = argpp - pi;
+
+    }
+    if (ep < 0.0 || ep > 1.0) {
+
+      satrec.error_message = (`perturbed eccentricity ${ep} not within range 0.0 <= e <= 1.0`);
+      satrec.error = 3;
+  // sgp4fix add return
+      return [false, false];
+
+  // -------------------- long period periodics ------------------
+    }
+  }
+  if (satrec.method == 'd') {
+
+    sinip =  Math.sin(xincp);
+    cosip =  Math.cos(xincp);
+    satrec.aycof = -0.5*satrec.j3oj2*sinip;
+  // sgp4fix for divide by zero for xincp = 180 deg
+    if (Math.abs(cosip+1.0) > 1.5e-12) {
+      satrec.xlcof = -0.25 * satrec.j3oj2 * sinip * (3.0 + 5.0 * cosip) / (1.0 + cosip);
+    }
+    else {
+      satrec.xlcof = -0.25 * satrec.j3oj2 * sinip * (3.0 + 5.0 * cosip) / temp4;
+
+    }
+  }
+  axnl = ep * Math.cos(argpp);
+  temp = 1.0 / (am * (1.0 - ep * ep));
+  aynl = ep* Math.sin(argpp) + temp * satrec.aycof;
+  xl   = mp + argpp + nodep + temp * satrec.xlcof * axnl;
+
+  // --------------------- solve kepler's equation ---------------
+  u    = pymod((xl - nodep), twopi);
+  eo1  = u;
+  tem5 = 9999.9;
+  ktr = 1;
+  // sgp4fix for kepler iteration
+  // the following iteration needs better limits on corrections
+  while (Math.abs(tem5) >= 1.0e-12 && ktr <= 10) {
+
+    sineo1 = Math.sin(eo1);
+    coseo1 = Math.cos(eo1);
+    tem5   = 1.0 - coseo1 * axnl - sineo1 * aynl;
+    tem5   = (u - aynl * coseo1 + axnl * sineo1 - eo1) / tem5;
+    if (Math.abs(tem5) >= 0.95) {
+      tem5 = ((tem5 > 0.0) ? (0.95) : (-0.95));
+    }
+    eo1    = eo1 + tem5;
+    ktr = ktr + 1;
+
+  // ------------- short period preliminary quantities -----------
+  }
+  ecose = axnl*coseo1 + aynl*sineo1;
+  esine = axnl*sineo1 - aynl*coseo1;
+  el2   = axnl*axnl + aynl*aynl;
+  pl    = am*(1.0-el2);
+  if (pl < 0.0) {
+
+    satrec.error_message = (`semilatus rectum ${pl} is less than zero`);
+    satrec.error = 4;
+  // sgp4fix add return
+    return [false, false];
+
+  }
+  else {
+
+    rl     = am * (1.0 - ecose);
+    rdotl  = Math.sqrt(am) * esine/rl;
+    rvdotl = Math.sqrt(pl) / rl;
+    betal  = Math.sqrt(1.0 - el2);
+    temp   = esine / (1.0 + betal);
+    sinu   = am / rl * (sineo1 - aynl - axnl * temp);
+    cosu   = am / rl * (coseo1 - axnl + aynl * temp);
+    su     = Math.atan2(sinu, cosu);
+    sin2u  = (cosu + cosu) * sinu;
+    cos2u  = 1.0 - 2.0 * sinu * sinu;
+    temp   = 1.0 / pl;
+    temp1  = 0.5 * satrec.j2 * temp;
+    temp2  = temp1 * temp;
+
+  // -------------- update for short period periodics ------------
+    if (satrec.method == 'd') {
+
+      cosisq                 = cosip * cosip;
+      satrec.con41  = 3.0*cosisq - 1.0;
+      satrec.x1mth2 = 1.0 - cosisq;
+      satrec.x7thm1 = 7.0*cosisq - 1.0;
+
+    }
+    mrt   = rl * (1.0 - 1.5 * temp2 * betal * satrec.con41) + 0.5 * temp1 * satrec.x1mth2 * cos2u;
+    su    = su - 0.25 * temp2 * satrec.x7thm1 * sin2u;
+    xnode = nodep + 1.5 * temp2 * cosip * sin2u;
+    xinc  = xincp + 1.5 * temp2 * cosip * sinip * cos2u;
+    mvt   = rdotl - nm * temp1 * satrec.x1mth2 * sin2u / satrec.xke;
+    rvdot = rvdotl + nm * temp1 * (satrec.x1mth2 * cos2u + 1.5 * satrec.con41) / satrec.xke;
+
+  // --------------------- orientation vectors -------------------
+    sinsu =  Math.sin(su);
+    cossu =  Math.cos(su);
+    snod  =  Math.sin(xnode);
+    cnod  =  Math.cos(xnode);
+    sini  =  Math.sin(xinc);
+    cosi  =  Math.cos(xinc);
+    xmx   = -snod * cosi;
+    xmy   =  cnod * cosi;
+    ux    =  xmx * sinsu + cnod * cossu;
+    uy    =  xmy * sinsu + snod * cossu;
+    uz    =  sini * sinsu;
+    vx    =  xmx * cossu - cnod * sinsu;
+    vy    =  xmy * cossu - snod * sinsu;
+    vz    =  sini * cossu;
+
+  // --------- position and velocity (in km and km/sec) ----------
+    _mr = mrt * satrec.radiusearthkm;
+    r = [_mr * ux, _mr * uy, _mr * uz];
+    v = [(mvt * ux + rvdot * vx) * vkmpersec, (mvt * uy + rvdot * vy) * vkmpersec, (mvt * uz + rvdot * vz) * vkmpersec];
+
+  // sgp4fix for decaying satellites
+  }
+  if (mrt < 1.0) {
+
+    satrec.error_message = (`mrt ${mrt} is less than 1.0 indicating the satellite has decayed`);
+    satrec.error = 6;
+
+  }
+  return [r, v];
+
+
+}
+
+function gstime(jdut1) {
+  let _gstime, temp, tut1;
+
+  tut1 = (jdut1 - 2451545.0) / 36525.0;
+  temp = -6.2e-6* tut1 * tut1 * tut1 + 0.093104 * tut1 * tut1 + (876600.0*3600 + 8640184.812866) * tut1 + 67310.54841;  // sec
+  temp = pymod((temp * deg2rad / 240.0), twopi);  // 360/86400 = 1/240, to deg, to rad
+
+  // ------------------------ check quadrants ---------------------
+  if (temp < 0.0) {
+    temp += twopi;
+
+  }
+  return temp;
+
+  // The routine was originally marked private, so make it available under
+  // the old name for compatibility:
+  _gstime = gstime;
+
+
+}
+
+function mag(x) {
+  return Math.sqrt(x[0]*x[0] + x[1]*x[1] + x[2]*x[2]);
+
+
+}
+
+function cross(vec1, vec2, outvec) {
+  outvec[0]= vec1[1]*vec2[2] - vec1[2]*vec2[1];
+  outvec[1]= vec1[2]*vec2[0] - vec1[0]*vec2[2];
+  outvec[2]= vec1[0]*vec2[1] - vec1[1]*vec2[0];
+
+
+}
+
+function dot(x, y) {
+  return (x[0]*y[0] + x[1]*y[1] + x[2]*y[2]);
+
+
+}
+
+function angle(vec1, vec2) {
+  let magv1, magv2, small, temp, undefined;
+
+  small     = 0.00000001;
+  undefined = 999999.1;
+
+  magv1 = mag(vec1);
+  magv2 = mag(vec2);
+
+  if (magv1*magv2 > small*small) {
+
+    temp= dot(vec1,vec2) / (magv1*magv2);
+    if (Math.abs(temp) > 1.0) {
+      temp = copysign(1.0, temp);
+    }
+    return Math.acos( temp );
+
+  }
+  else {
+    return undefined;
+
+
+  }
+}
+
+function newtonnu(ecc, nu) {
+  let cose, e0, m, sine, small;
+
+  // ---------------------  implementation   ---------------------
+  e0= 999999.9;
+  m = 999999.9;
+  small = 0.00000001;
+
+  // --------------------------- circular ------------------------
+  if (Math.abs(ecc) < small) {
+
+    m = nu;
+    e0= nu;
+
+  }
+  else {
+  // ---------------------- elliptical -----------------------
+    if (ecc < 1.0-small) {
+
+      sine= ( Math.sqrt( 1.0 -ecc*ecc ) * Math.sin(nu) ) / ( 1.0 +ecc*Math.cos(nu) );
+      cose= ( ecc + Math.cos(nu) ) / ( 1.0  + ecc*Math.cos(nu) );
+      e0  = Math.atan2( sine,cose );
+      m   = e0 - ecc*Math.sin(e0);
+
+    }
+    else {
+  // -------------------- hyperbolic  --------------------
+      if (ecc > 1.0 + small) {
+
+        if (ecc > 1.0 && Math.abs(nu)+0.00001 < pi-Math.acos(1.0 /ecc)) {
+
+          sine= ( Math.sqrt( ecc*ecc-1.0  ) * Math.sin(nu) ) / ( 1.0  + ecc*Math.cos(nu) );
+          e0  = Math.asinh( sine );
+          m   = ecc*Math.sinh(e0) - e0;
+
+        }
+      }
+      else {
+  // ----------------- parabolic ---------------------
+        if (Math.abs(nu) < 168.0*pi/180.0) {
+
+          e0= Math.tan( nu*0.5  );
+          m = e0 + (e0*e0*e0)/3.0;
+
+        }
+      }
+    }
+  }
+  if (ecc < 1.0) {
+
+    m = jsfmod( m,2.0 *pi );
+    if (m < 0.0) {
+      m = m + 2.0 *pi;
+    }
+    e0 = jsfmod( e0,2.0 *pi );
+
+  }
+  return [e0, m];
+
+
+
+}
+
+function rv2coe(r, v, mu) {
+  let a, arglat, argp, c1, e, ebar, ecc, halfpi, hbar, hk, incl, infinite, lonper, m, magh, magn, magr, magv, nbar, nu, omega, p, rdotv, small, sme, temp, truelon, twopi, typeorbit, undefined;
+
+  hbar = [null, null, null];
+  nbar = [null, null, null];
+  ebar = [null, null, null];
+  typeorbit = [null, null, null];
+
+  twopi  = 2.0 * pi;
+  halfpi = 0.5 * pi;
+  small  = 0.00000001;
+  undefined = 999999.1;
+  infinite  = 999999.9;
+
+  // -------------------------  implementation   -----------------
+  magr = mag( r );
+  magv = mag( v );
+
+  // ------------------  find h n and e vectors   ----------------
+  cross( r,v, hbar );
+  magh = mag( hbar );
+  if (magh > small) {
+
+    nbar[0]= -hbar[1];
+    nbar[1]=  hbar[0];
+    nbar[2]=   0.0;
+    magn = mag( nbar );
+    c1 = magv*magv - mu /magr;
+    rdotv = dot( r,v );
+    for (let i = 0; i < 3; i++) {
+      ebar[i]= (c1*r[i] - rdotv*v[i])/mu;
+    }
+    ecc = mag( ebar );
+
+  // ------------  find a e and semi-latus rectum   ----------
+    sme= ( magv*magv*0.5  ) - ( mu /magr );
+    if (Math.abs( sme ) > small) {
+      a= -mu  / (2.0 *sme);
+    }
+    else {
+      a= infinite;
+    }
+    p = magh*magh/mu;
+
+  // -----------------  find inclination   -------------------
+    hk= hbar[2]/magh;
+    incl= Math.acos( hk );
+
+  // --------  determine type of orbit for later use  --------
+  // ------ elliptical, parabolic, hyperbolic inclined -------
+    typeorbit = 'ei';
+    if (ecc < small) {
+
+  // ----------------  circular equatorial ---------------
+      if (incl < small || Math.abs(incl-pi) < small) {
+        typeorbit = 'ce';
+      }
+      else {
+  // --------------  circular inclined ---------------
+        typeorbit = 'ci';
+
+      }
+    }
+    else {
+
+  // - elliptical, parabolic, hyperbolic equatorial --
+      if (incl < small || Math.abs(incl-pi) < small) {
+        typeorbit = 'ee';
+
+  // ----------  find longitude of ascending node ------------
+      }
+    }
+    if (magn > small) {
+
+      temp= nbar[0] / magn;
+      if (Math.abs(temp) > 1.0) {
+        temp = copysign(1.0, temp);
+      }
+      omega= Math.acos( temp );
+      if (nbar[1] < 0.0) {
+        omega= twopi - omega;
+
+      }
+    }
+    else {
+      omega= undefined;
+
+  // ---------------- find argument of perigee ---------------
+    }
+    if (typeorbit == 'ei') {
+
+      argp = angle( nbar,ebar);
+      if (ebar[2] < 0.0) {
+        argp= twopi - argp;
+
+      }
+    }
+    else {
+      argp= undefined;
+
+  // ------------  find true anomaly at epoch    -------------
+    }
+    if (typeorbit[0] == 'e') {
+
+      nu =  angle( ebar,r);
+      if (rdotv < 0.0) {
+        nu= twopi - nu;
+
+      }
+    }
+    else {
+      nu= undefined;
+
+  // ----  find argument of latitude - circular inclined -----
+    }
+    if (typeorbit == 'ci') {
+
+      arglat = angle( nbar,r );
+      if (r[2] < 0.0) {
+        arglat= twopi - arglat;
+      }
+      m = arglat;
+
+    }
+    else {
+      arglat= undefined;
+
+  // -- find longitude of perigee - elliptical equatorial ----
+    }
+    if (ecc > small && typeorbit == 'ee') {
+
+      temp= ebar[0]/ecc;
+      if (Math.abs(temp) > 1.0) {
+        temp = copysign(1.0, temp);
+      }
+      lonper= Math.acos( temp );
+      if (ebar[1] < 0.0) {
+        lonper= twopi - lonper;
+      }
+      if (incl > halfpi) {
+        lonper= twopi - lonper;
+
+      }
+    }
+    else {
+      lonper= undefined;
+
+  // -------- find true longitude - circular equatorial ------
+    }
+    if (magr > small && typeorbit == 'ce') {
+
+      temp= r[0]/magr;
+      if (Math.abs(temp) > 1.0) {
+        temp = copysign(1.0, temp);
+      }
+      truelon= Math.acos( temp );
+      if (r[1] < 0.0) {
+        truelon= twopi - truelon;
+      }
+      if (incl > halfpi) {
+        truelon= twopi - truelon;
+      }
+      m = truelon;
+
+    }
+    else {
+      truelon= undefined;
+
+  // ------------ find mean anomaly for all orbits -----------
+    }
+    if (typeorbit[0] == 'e') {
+      [e, m] = newtonnu(ecc, nu);
+
+    }
+  }
+  else {
+    p    = undefined;
+    a    = undefined;
+    ecc  = undefined;
+    incl = undefined;
+    omega= undefined;
+    argp = undefined;
+    nu   = undefined;
+    m    = undefined;
+    arglat = undefined;
+    truelon= undefined;
+    lonper = undefined;
+
+  }
+  return [p, a, ecc, incl, omega, argp, nu, m, arglat, truelon, lonper];
+
+
+}
+
+
+/* ------------------------- 地球引力模型 ------------------------- */
+function getgravconst(w) {
+  var mu, radiusearthkm, xke, tumin, j2, j3, j4;
+  if (w === 'wgs72old') {
+    mu = 398600.79964; radiusearthkm = 6378.135; xke = 0.0743669161;
+    j2 = 0.001082616; j3 = -0.00000253881; j4 = -0.00000165597;
+  } else if (w === 'wgs84') {
+    mu = 398600.5; radiusearthkm = 6378.137;
+    xke = 60.0 / Math.sqrt(radiusearthkm * radiusearthkm * radiusearthkm / mu);
+    j2 = 0.00108262998905; j3 = -0.00000253215306; j4 = -0.00000161098761;
+  } else {                                   // wgs72（SGP4 默认，TLE 就是按它拟合的）
+    mu = 398600.8; radiusearthkm = 6378.135;
+    xke = 60.0 / Math.sqrt(radiusearthkm * radiusearthkm * radiusearthkm / mu);
+    j2 = 0.001082616; j3 = -0.00000253881; j4 = -0.00000165597;
+  }
+  tumin = 1.0 / xke;
+  return [tumin, mu, radiusearthkm, xke, j2, j3, j4, j3 / j2];
+}
+
+/* --------------------------- 儒略日 ---------------------------- */
+function jday(year, mon, day, hr, minute, sec) {
+  var jd = 367.0 * year
+    - Math.floor(7 * (year + Math.floor((mon + 9) / 12.0)) * 0.25)
+    + Math.floor(275 * mon / 9.0) + day + 1721013.5;
+  var fr = (sec + minute * 60.0 + hr * 3600.0) / 86400.0;
+  return [jd, fr];
+}
+
+function invjday(jd) {                       // 反算历日（Vallado invjday）
+  var temp = jd - 2415019.5;
+  var tu = temp / 365.25;
+  var year = 1900 + Math.trunc(tu);
+  var leapyrs = Math.trunc((year - 1901) * 0.25);
+  // 官方实现的微调：+8.64e-7 秒，让整点输出不落在 ...59.9999999 上
+  var days = temp - ((year - 1900) * 365.0 + leapyrs) + 0.00000000001;
+  if (days < 1.0) { year -= 1; leapyrs = Math.trunc((year - 1901) * 0.25); days = temp - ((year - 1900) * 365.0 + leapyrs); }
+  var md = days2mdhms(year, days);
+  return [year, md[0], md[1], md[2], md[3], md[4] - 0.00000086400];
+}
+
+function days2mdhms(year, days) {
+  var lmonth = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  if (year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0)) lmonth[1] = 29;
+  var dayofyr = Math.floor(days);
+  var i = 0, inttemp = 0;
+  while (dayofyr > inttemp + lmonth[i] && i < 11) { inttemp += lmonth[i]; i++; }
+  var mon = i + 1, day = dayofyr - inttemp;
+  var temp = (days - dayofyr) * 24.0;
+  var hr = Math.floor(temp); temp = (temp - hr) * 60.0;
+  var minute = Math.floor(temp);
+  var sec = (temp - minute) * 60.0;
+  return [mon, day, hr, minute, sec];
+}
+
+/* ------------------------- TLE 解析 ---------------------------- */
+var ALPHA5 = 'ABCDEFGHJKLMNPQRSTUVWXYZ';        // 去掉 I 和 O
+function alpha5ToNumber(s) {
+  s = s.trim();
+  if (!s) return NaN;
+  var c = s[0], k = ALPHA5.indexOf(c.toUpperCase());
+  if (k >= 0) return (k + 10) * 10000 + parseInt(s.slice(1), 10);
+  return parseInt(s, 10);
+}
+
+/** TLE 行校验和：前 68 位数字求和 + 减号计 1，模 10。 */
+function tleChecksum(line) {
+  var sum = 0;
+  for (var i = 0; i < 68 && i < line.length; i++) {
+    var ch = line[i];
+    if (ch >= '0' && ch <= '9') sum += ch.charCodeAt(0) - 48;
+    else if (ch === '-') sum += 1;
+  }
+  return sum % 10;
+}
+
+function padLine(l) { return l.length >= 69 ? l : l + ' '.repeat(69 - l.length); }
+
+/** 解析两行根数，返回 satrec（未初始化）+ 原始字段，出错抛 Error。 */
+function parseTLE(l1raw, l2raw, name) {
+  var l1 = padLine(l1raw.replace(/[\r\n]+$/, '')), l2 = padLine(l2raw.replace(/[\r\n]+$/, ''));
+  if (l1[0] !== '1' || l2[0] !== '2') throw new Error('两行根数必须分别以 1 和 2 开头');
+  if (l1raw.trim().length < 68 || l2raw.trim().length < 68) throw new Error('TLE 行长度不足 68 位');
+  var f = {};
+  f.satnumStr = l1.slice(2, 7).trim();
+  f.satnum = alpha5ToNumber(f.satnumStr);
+  f.classification = l1[7] === ' ' ? 'U' : l1[7];
+  f.intldesg = l1.slice(9, 17).trim();
+  f.epochyr2 = parseInt(l1.slice(18, 20), 10);
+  f.epochdays = parseFloat(l1.slice(20, 32));
+  f.ndot = parseFloat(l1.slice(33, 43));
+  f.nddot = parseFloat(l1[44] + '.' + l1.slice(45, 50)) * Math.pow(10, parseInt(l1.slice(50, 52), 10) || 0);
+  f.bstar = parseFloat(l1[53] + '.' + l1.slice(54, 59)) * Math.pow(10, parseInt(l1.slice(59, 61), 10) || 0);
+  f.ephtype = l1[62];
+  f.elnum = parseInt(l1.slice(64, 68), 10);
+  f.inclo = parseFloat(l2.slice(8, 16));
+  f.nodeo = parseFloat(l2.slice(17, 25));
+  f.ecco = parseFloat('0.' + l2.slice(26, 33).replace(/ /g, '0'));
+  f.argpo = parseFloat(l2.slice(34, 42));
+  f.mo = parseFloat(l2.slice(43, 51));
+  f.no_kozai_revday = parseFloat(l2.slice(52, 63));
+  f.revnum = parseInt(l2.slice(63, 68), 10);
+  var bad = [];
+  ['epochdays', 'ndot', 'nddot', 'bstar', 'inclo', 'nodeo', 'ecco', 'argpo', 'mo', 'no_kozai_revday']
+    .forEach(function (k) { if (!isFinite(f[k])) bad.push(k); });
+  if (bad.length) throw new Error('这几个字段读不出数值：' + bad.join('、'));
+  if (f.no_kozai_revday <= 0) throw new Error('平均运动必须为正');
+  if (f.ecco < 0 || f.ecco >= 1) throw new Error('偏心率必须落在 [0, 1)');
+  f.checksum1 = { given: parseInt(l1[68], 10), want: tleChecksum(l1) };
+  f.checksum2 = { given: parseInt(l2[68], 10), want: tleChecksum(l2) };
+  f.name = (name || '').trim();
+  f.line1 = l1raw.replace(/[\r\n]+$/, ''); f.line2 = l2raw.replace(/[\r\n]+$/, '');
+  return f;
+}
+
+/** 从 parseTLE 的字段初始化一个可传播的 satrec。 */
+function satrecFromFields(f, whichconst, opsmode) {
+  var gc = getgravconst(whichconst || 'wgs72');
+  var xpdotp = 1440.0 / (2.0 * pi);
+  var year = f.epochyr2 < 57 ? f.epochyr2 + 2000 : f.epochyr2 + 1900;
+  var md = days2mdhms(year, f.epochdays);
+  var jd = jday(year, md[0], md[1], md[2], md[3], md[4]);
+  var satrec = {};
+  satrec.satnum = f.satnum; satrec.satnumStr = f.satnumStr;
+  satrec.classification = f.classification; satrec.intldesg = f.intldesg;
+  satrec.epochyr = year; satrec.epochdays = f.epochdays;
+  satrec.jdsatepoch = jd[0]; satrec.jdsatepochF = jd[1];
+  satrec.ndot = f.ndot / (xpdotp * 1440.0);
+  satrec.nddot = f.nddot / (xpdotp * 1440.0 * 1440.0);
+  satrec.elnum = f.elnum; satrec.revnum = f.revnum; satrec.ephtype = f.ephtype;
+  satrec.name = f.name; satrec.line1 = f.line1; satrec.line2 = f.line2;
+  var epoch = jd[0] + jd[1] - 2433281.5;
+  sgp4init(gc, opsmode || 'i', f.satnumStr, epoch, f.bstar, satrec.ndot, satrec.nddot,
+    f.ecco, f.argpo * deg2rad, f.inclo * deg2rad, f.mo * deg2rad,
+    f.no_kozai_revday / xpdotp, f.nodeo * deg2rad, satrec);
+  satrec.whichconst = whichconst || 'wgs72';
+  return satrec;
+}
+
+function twoline2rv(l1, l2, whichconst, opsmode, name) {
+  return satrecFromFields(parseTLE(l1, l2, name), whichconst, opsmode);
+}
+
+/** 传播到距历元 tsince 分钟。返回 {r, v, error, message}（TEME 系，km / km·s⁻¹）。 */
+function propagate(satrec, tsince) {
+  var rv = sgp4(satrec, tsince);
+  return { r: rv[0], v: rv[1], error: satrec.error, message: satrec.error_message || null };
+}
+
+/** 传播到某个儒略日（jd + fr 两段以保精度）。 */
+function propagateJd(satrec, jd, fr) {
+  var tsince = ((jd - satrec.jdsatepoch) + (fr - satrec.jdsatepochF)) * 1440.0;
+  return propagate(satrec, tsince);
+}
+
+OL.pymod = pymod; OL.jsfmod = jsfmod;
+OL.getgravconst = getgravconst; OL.jday = jday; OL.invjday = invjday; OL.days2mdhms = days2mdhms;
+OL.parseTLE = parseTLE; OL.satrecFromFields = satrecFromFields; OL.twoline2rv = twoline2rv;
+OL.propagate = propagate; OL.propagateJd = propagateJd; OL.gstime = gstime;
+OL.tleChecksum = tleChecksum; OL.alpha5ToNumber = alpha5ToNumber;
+OL.sgp4init = sgp4init; OL.sgp4 = sgp4;
+OL.rv2coe = rv2coe; OL.newtonnu = newtonnu;
+OL.DEG = rad2deg; OL.RAD = deg2rad;
+
+
+/* ==================================================================
+   坐标系 / 观测几何 / 日照 / 过境搜索 / 二体机动 —— 本页自写
+   ================================================================== */
+
+/* --------------------------- 时间 ------------------------------ */
+var JD_UNIX = 2440587.5;                       // 1970-01-01T00:00Z 的儒略日
+function jdFromMs(ms) { return ms / 86400000 + JD_UNIX; }
+function msFromJd(jd) { return (jd - JD_UNIX) * 86400000; }
+function jdFromDate(d) { return jdFromMs(d.getTime()); }
+function dateFromJd(jd) { return new Date(Math.round(msFromJd(jd))); }
+
+/* --------------------- TEME → 地固系 (ECEF) --------------------- */
+/** SGP4 输出在 TEME 系；绕 z 轴转 GMST(1982) 即得 PEF/ITRF（忽略极移，量级 < 15 m）。 */
+function teme2ecef(r, v, jdut1) {
+  var theta = gstime(jdut1);
+  var st = Math.sin(theta), ct = Math.cos(theta);
+  var rx = ct * r[0] + st * r[1], ry = -st * r[0] + ct * r[1], rz = r[2];
+  // 地球自转角速率：与 GMST 多项式一致（AIAA 2006-6753 附录 C）
+  var t = (jdut1 - 2451545.0) / 36525.0;
+  var dg = 8640184.812866 + (0.093104 * 2.0 + (-6.2e-6 * 3.0) * t) * t;
+  var omega = (1.0 + dg / (86400.0 * 36525.0)) * twopi / 86400.0;   // rad/s
+  var out = { r: [rx, ry, rz], theta: theta, omega: omega };
+  if (v) {
+    var vx = ct * v[0] + st * v[1], vy = -st * v[0] + ct * v[1], vz = v[2];
+    // v_PEF = R·v_TEME + (0,0,-ω) × r_PEF
+    out.v = [vx + omega * ry, vy - omega * rx, vz];
+  }
+  return out;
+}
+
+/* ----------------------- WGS-84 大地坐标 ------------------------ */
+var WGS84_A = 6378.137, WGS84_F = 1.0 / 298.257223563;
+var WGS84_B = WGS84_A * (1 - WGS84_F), WGS84_E2 = WGS84_F * (2 - WGS84_F);
+var WGS84_EP2 = (WGS84_A * WGS84_A - WGS84_B * WGS84_B) / (WGS84_B * WGS84_B);
+
+/** 地固直角坐标 → 纬度/经度/大地高（Bowring 初值 + 迭代收敛，极点安全）。 */
+function ecef2geodetic(x, y, z) {
+  var lon = Math.atan2(y, x);
+  var p = Math.sqrt(x * x + y * y);
+  if (p < 1e-9) {                              // 正好在极轴上
+    return { lat: (z >= 0 ? 1 : -1) * pi / 2, lon: lon, alt: Math.abs(z) - WGS84_B };
+  }
+  var th = Math.atan2(z * WGS84_A, p * WGS84_B);
+  var lat = Math.atan2(z + WGS84_EP2 * WGS84_B * Math.pow(Math.sin(th), 3),
+                       p - WGS84_E2 * WGS84_A * Math.pow(Math.cos(th), 3));
+  var N, alt;
+  for (var i = 0; i < 6; i++) {                // 高轨道上 Bowring 一次不够，迭代到收敛
+    var s = Math.sin(lat);
+    N = WGS84_A / Math.sqrt(1 - WGS84_E2 * s * s);
+    alt = p / Math.cos(lat) - N;
+    var latNew = Math.atan2(z, p * (1 - WGS84_E2 * N / (N + alt)));
+    if (Math.abs(latNew - lat) < 1e-14) { lat = latNew; break; }
+    lat = latNew;
+  }
+  var s2 = Math.sin(lat);
+  N = WGS84_A / Math.sqrt(1 - WGS84_E2 * s2 * s2);
+  alt = p / Math.cos(lat) - N;
+  return { lat: lat, lon: lon, alt: alt };
+}
+
+/** 纬度/经度(弧度)/高度(km) → 地固直角坐标。 */
+function geodetic2ecef(lat, lon, alt) {
+  var s = Math.sin(lat), c = Math.cos(lat);
+  var N = WGS84_A / Math.sqrt(1 - WGS84_E2 * s * s);
+  return [(N + alt) * c * Math.cos(lon), (N + alt) * c * Math.sin(lon), (N * (1 - WGS84_E2) + alt) * s];
+}
+
+/** 站心地平坐标：方位角(自北顺时针)/仰角/斜距/距离变化率。 */
+function lookAngles(site, rEcef, vEcef) {
+  var sr = geodetic2ecef(site.lat, site.lon, site.alt || 0);
+  var dx = rEcef[0] - sr[0], dy = rEcef[1] - sr[1], dz = rEcef[2] - sr[2];
+  var sla = Math.sin(site.lat), cla = Math.cos(site.lat);
+  var slo = Math.sin(site.lon), clo = Math.cos(site.lon);
+  var S = sla * clo * dx + sla * slo * dy - cla * dz;   // 南
+  var E = -slo * dx + clo * dy;                         // 东
+  var Z = cla * clo * dx + cla * slo * dy + sla * dz;   // 天顶
+  var rng = Math.sqrt(dx * dx + dy * dy + dz * dz);
+  var el = Math.asin(Z / rng);
+  var az = Math.atan2(E, -S); if (az < 0) az += twopi;
+  var rr = null;
+  if (vEcef) rr = (dx * vEcef[0] + dy * vEcef[1] + dz * vEcef[2]) / rng;
+  return { az: az, el: el, range: rng, rangeRate: rr };
+}
+
+/* --------------------------- 太阳 ------------------------------ */
+/** 低精度太阳位置（Vallado 算法 29，±0.01°），返回 MOD/TEME 近似的直角坐标 km。 */
+function sunEci(jd) {
+  var T = (jd - 2451545.0) / 36525.0;
+  var lamM = 280.460 + 36000.771 * T;
+  var M = (357.5291092 + 35999.05034 * T) * deg2rad;
+  var lam = (lamM + 1.914666471 * Math.sin(M) + 0.019994643 * Math.sin(2 * M)) * deg2rad;
+  var rAU = 1.000140612 - 0.016708617 * Math.cos(M) - 0.000139589 * Math.cos(2 * M);
+  var eps = (23.439291 - 0.0130042 * T) * deg2rad;
+  var AU = 149597870.7;
+  return [rAU * Math.cos(lam) * AU, rAU * Math.cos(eps) * Math.sin(lam) * AU, rAU * Math.sin(eps) * Math.sin(lam) * AU];
+}
+
+/** 太阳直射点（用于晨昏线）。 */
+function subsolar(jd) {
+  var s = sunEci(jd);
+  var e = teme2ecef(s, null, jd);
+  var g = ecef2geodetic(e.r[0], e.r[1], e.r[2]);
+  return { lat: g.lat, lon: g.lon };
+}
+
+/** 观测点看到的太阳仰角（判断天黑没黑）。 */
+function sunElevation(jd, site) {
+  var s = sunEci(jd);
+  var e = teme2ecef(s, null, jd);
+  return lookAngles(site, e.r, null).el;
+}
+
+var SUN_R = 696000.0;                          // 太阳半径 km
+/** 圆锥本影/半影判定（Vallado shadow）。返回 'sunlit' | 'penumbra' | 'umbra'。 */
+function shadowState(rSat, rSun) {
+  var dot = rSat[0] * rSun[0] + rSat[1] * rSun[1] + rSat[2] * rSun[2];
+  if (dot >= 0) return 'sunlit';
+  var magSat = Math.sqrt(rSat[0] * rSat[0] + rSat[1] * rSat[1] + rSat[2] * rSat[2]);
+  var magSun = Math.sqrt(rSun[0] * rSun[0] + rSun[1] * rSun[1] + rSun[2] * rSun[2]);
+  var cosAng = -dot / (magSat * magSun);
+  cosAng = Math.max(-1, Math.min(1, cosAng));
+  var ang = Math.acos(cosAng);
+  var satHoriz = magSat * Math.cos(ang), satVert = magSat * Math.sin(ang);
+  var aPen = Math.atan((SUN_R + WGS84_A) / magSun);     // 半影锥半角
+  var aUmb = Math.atan((SUN_R - WGS84_A) / magSun);     // 本影锥半角
+  var penVert = Math.tan(aPen) * (WGS84_A / Math.sin(aPen) + satHoriz);
+  if (satVert > penVert) return 'sunlit';
+  var umbVert = Math.tan(aUmb) * (WGS84_A / Math.sin(aUmb) - satHoriz);
+  return satVert <= umbVert ? 'umbra' : 'penumbra';
+}
+
+/* ------------------------ 一次观测快照 -------------------------- */
+/** 给定卫星与站点，算出某时刻的全部观测量。site.lat/lon 为弧度，alt 为 km。 */
+function observe(satrec, site, jd) {
+  var p = propagateJd(satrec, jd, 0);
+  if (!Array.isArray(p.r)) return { error: p.error, message: p.message };
+  var e = teme2ecef(p.r, p.v, jd);
+  var g = ecef2geodetic(e.r[0], e.r[1], e.r[2]);
+  var out = {
+    jd: jd, rTeme: p.r, vTeme: p.v, rEcef: e.r, vEcef: e.v,
+    lat: g.lat, lon: g.lon, alt: g.alt, error: 0,
+    speed: Math.sqrt(p.v[0] * p.v[0] + p.v[1] * p.v[1] + p.v[2] * p.v[2]),
+    gmst: e.theta
+  };
+  var rSun = sunEci(jd);
+  out.shadow = shadowState(p.r, rSun);
+  if (site) {
+    var la = lookAngles(site, e.r, e.v);
+    out.az = la.az; out.el = la.el; out.range = la.range; out.rangeRate = la.rangeRate;
+    var se = teme2ecef(rSun, null, jd);
+    out.sunEl = lookAngles(site, se.r, null).el;
+    out.visible = out.el > 0 && out.shadow !== 'umbra' && out.sunEl < -6 * deg2rad;
+  }
+  return out;
+}
+
+/** 卫星可见地平圈半径（地心角，弧度）：给定最低仰角。 */
+function footprintAngle(altKm, minElRad) {
+  var rho = WGS84_A / (WGS84_A + altKm);
+  var e = minElRad || 0;
+  return Math.acos(rho * Math.cos(e)) - e;
+}
+
+/* -------------------------- 过境搜索 ---------------------------- */
+/**
+ * 在 [jd0, jd0+days] 内找出所有仰角超过 minEl 的过境。
+ * 三种边界都要照顾到：①窗口开始时就已经在天上（截断的过境）；②窗口结束时还没落下；
+ * ③静止轨道这类**永远不落**的目标（否则「找不到升起穿越」会被误报成「没有过境」）。
+ */
+function findPasses(satrec, site, jd0, days, minElDeg, opts) {
+  opts = opts || {};
+  var minEl = (minElDeg === undefined || minElDeg === null ? 10 : minElDeg) * deg2rad;
+  var maxPasses = opts.maxPasses || 100;
+  var periodMin = twopi / satrec.no_unkozai;
+  var stepSec = opts.stepSec || Math.max(5, Math.min(600, periodMin * 60 / 400));
+  var stepJd = stepSec / 86400, jdEnd = jd0 + days;
+  var elAt = function (jd) {
+    var p = propagateJd(satrec, jd, 0);
+    if (!Array.isArray(p.r)) return null;
+    var e = teme2ecef(p.r, null, jd);
+    return lookAngles(site, e.r, null).el;
+  };
+  var ts = [], els = [], guard = 0;
+  for (var jd = jd0; jd <= jdEnd + 1e-12 && guard++ < 400000; jd += stepJd) {
+    var el = elAt(jd);
+    if (el === null) break;
+    ts.push(jd); els.push(el);
+  }
+  if (ts.length < 2) return { passes: [], error: '轨道传播失败（历元过久或目标已衰落）', stepSec: stepSec };
+
+  var makePass = function (i0, i1, riseJd, setJd, partialStart, partialEnd) {
+    // 峰值：先在网格上取最大点，再在相邻两格里做黄金分割精化（长时段可能多峰，网格取最大最稳）
+    var bi = i0;
+    for (var k = i0; k <= i1; k++) if (els[k] > els[bi]) bi = k;
+    var lo = Math.max(riseJd, ts[Math.max(i0, bi - 1)]), hi = Math.min(setJd, ts[Math.min(i1, bi + 1)]);
+    var peak = hi > lo ? goldenMax(elAt, lo, hi) : ts[bi];
+    var pr = observe(satrec, site, riseJd), pm = observe(satrec, site, peak), ps = observe(satrec, site, setJd);
+    var vis = false, lit = 0, n = 0;
+    for (var q = 0; q <= 20; q++) {
+      var o = observe(satrec, site, riseJd + (setJd - riseJd) * q / 20);
+      if (o.error) continue;
+      n++; if (o.shadow !== 'umbra') lit++;
+      if (o.visible) vis = true;
+    }
+    return { rise: pr, peak: pm, set: ps, durationSec: (setJd - riseJd) * 86400,
+      maxEl: pm.el, visible: vis, litFraction: n ? lit / n : 0,
+      partialStart: !!partialStart, partialEnd: !!partialEnd,
+      alwaysUp: !!(partialStart && partialEnd) };
+  };
+
+  var passes = [], segStart = null, segStartIdx = 0, partialStart = false;
+  if (els[0] >= minEl) { segStart = ts[0]; segStartIdx = 0; partialStart = true; }
+  for (var i = 1; i < ts.length; i++) {
+    if (els[i - 1] < minEl && els[i] >= minEl) {
+      segStart = bisect(elAt, ts[i - 1], ts[i], minEl); segStartIdx = i; partialStart = false;
+    } else if (els[i - 1] >= minEl && els[i] < minEl && segStart !== null) {
+      var setJd = bisect(elAt, ts[i - 1], ts[i], minEl);
+      passes.push(makePass(segStartIdx, i - 1, segStart, setJd, partialStart, false));
+      segStart = null; partialStart = false;
+      if (passes.length >= maxPasses) break;
+    }
+  }
+  if (segStart !== null && passes.length < maxPasses) {
+    passes.push(makePass(segStartIdx, ts.length - 1, segStart, ts[ts.length - 1], partialStart, true));
+  }
+  return { passes: passes, stepSec: stepSec, samples: ts.length };
+}
+
+/** 二分求 f(t) = target 的穿越时刻（f 在 [lo,hi] 内单调穿越）。 */
+function bisect(f, lo, hi, target) {
+  var flo = f(lo);
+  for (var i = 0; i < 50; i++) {
+    var mid = (lo + hi) / 2, fm = f(mid);
+    if (fm === null) return mid;
+    if ((flo - target) * (fm - target) <= 0) hi = mid; else { lo = mid; flo = fm; }
+    if ((hi - lo) * 86400 < 0.05) break;                 // 0.05 s 足够
+  }
+  return (lo + hi) / 2;
+}
+
+/** 黄金分割求单峰最大值点。 */
+function goldenMax(f, a, b) {
+  var gr = (Math.sqrt(5) - 1) / 2;
+  var c = b - gr * (b - a), d = a + gr * (b - a);
+  var fc = f(c), fd = f(d);
+  for (var i = 0; i < 60 && (b - a) * 86400 > 0.05; i++) {
+    if (fc === null || fd === null) break;
+    if (fc > fd) { b = d; d = c; fd = fc; c = b - gr * (b - a); fc = f(c); }
+    else { a = c; c = d; fc = fd; d = a + gr * (b - a); fd = f(d); }
+  }
+  return (a + b) / 2;
+}
+
+/* ------------------------- 地面轨迹 ----------------------------- */
+/** 采样地面轨迹；跨 ±180° 处自动断开成多段折线。 */
+function groundTrack(satrec, jd0, minutes, stepMin) {
+  var segs = [], cur = [], prevLon = null;
+  var steps = Math.max(2, Math.ceil(minutes / stepMin));
+  for (var i = 0; i <= steps; i++) {
+    var jd = jd0 + (i * stepMin) / 1440;
+    var p = propagateJd(satrec, jd, 0);
+    if (!Array.isArray(p.r)) break;
+    var e = teme2ecef(p.r, null, jd);
+    var g = ecef2geodetic(e.r[0], e.r[1], e.r[2]);
+    var lon = g.lon * rad2deg, lat = g.lat * rad2deg;
+    if (prevLon !== null && Math.abs(lon - prevLon) > 180) { if (cur.length > 1) segs.push(cur); cur = []; }
+    cur.push([lon, lat, jd, g.alt]); prevLon = lon;
+  }
+  if (cur.length > 1) segs.push(cur);
+  return segs;
+}
+
+/* --------------------- TLE 派生的轨道特征 ----------------------- */
+var MU_WGS84 = 398600.4418;
+function orbitInfo(satrec) {
+  var gc = getgravconst(satrec.whichconst || 'wgs72');
+  var Re = gc[2], mu = gc[1], j2 = gc[4];
+  var n = satrec.no_unkozai;                            // rad/min（已解 Kozai）
+  var aEr = Math.pow(satrec.xke / n, 2 / 3);            // 半长轴（地球半径）
+  var a = aEr * Re, e = satrec.ecco, inc = satrec.inclo;
+  var periodMin = twopi / n;
+  var rp = a * (1 - e), ra = a * (1 + e);
+  var p = a * (1 - e * e);
+  // J2 长期项（单位：rad/min → °/天）
+  var f = 1.5 * j2 * (Re / p) * (Re / p) * n;
+  var nodeDot = -f * Math.cos(inc);
+  var argpDot = f * (2 - 2.5 * Math.sin(inc) * Math.sin(inc));
+  var perDay = 1440 / periodMin;
+  var out = {
+    a: a, e: e, incDeg: inc * rad2deg, raanDeg: satrec.nodeo * rad2deg,
+    argpDeg: satrec.argpo * rad2deg, maDeg: satrec.mo * rad2deg,
+    periodMin: periodMin, revsPerDay: perDay,
+    perigeeAlt: rp - Re, apogeeAlt: ra - Re, rp: rp, ra: ra,
+    nodeDotDegDay: nodeDot * 1440 * rad2deg,
+    argpDotDegDay: argpDot * 1440 * rad2deg,
+    vPerigee: Math.sqrt(mu * (2 / rp - 1 / a)),
+    vApogee: Math.sqrt(mu * (2 / ra - 1 / a)),
+    meanMotionRevDay: n * 1440 / twopi,
+    bstar: satrec.bstar, deepSpace: satrec.method === 'd'
+  };
+  // 太阳同步：升交点每天西退 360/365.2422 度即与太阳同步
+  out.sunSyncTargetDegDay = 360 / 365.2421897;
+  out.sunSync = Math.abs(out.nodeDotDegDay - out.sunSyncTargetDegDay) < 0.05;
+  var cosReq = -out.sunSyncTargetDegDay / (1440 * rad2deg * f);
+  out.sunSyncIncDeg = Math.abs(cosReq) <= 1 ? Math.acos(cosReq) * rad2deg : null;
+  // 轨道类型
+  var altP = out.perigeeAlt;
+  var geoSync = Math.abs(a - 42164.17) < 400;
+  if (geoSync && e < 0.02 && out.incDeg < 1.5) out.klass = '地球静止轨道 GEO';
+  else if (geoSync && e < 0.02 && out.incDeg < 5) out.klass = '准静止地球同步轨道';
+  else if (geoSync && e < 0.05) out.klass = '倾斜地球同步轨道 IGSO';
+  else if (geoSync && e >= 0.05) out.klass = '同步大椭圆轨道（苔原型 Tundra）';
+  else if (e > 0.4 && Math.abs(out.incDeg - 63.4) < 4 && Math.abs(out.periodMin - 718) < 40)
+    out.klass = '闪电轨道 Molniya（12 小时大椭圆）';
+  else if (e > 0.25) out.klass = '大椭圆轨道 HEO';
+  else if (altP < 2000) out.klass = out.sunSync ? '太阳同步低轨 SSO' : '近地轨道 LEO';
+  else if (altP < 35000) out.klass = '中地球轨道 MEO';
+  else out.klass = '高轨道';
+  // 回归周期：找 revsPerDay 的最佳有理逼近（分母 ≤ 30 天）
+  // 回归周期：每圈地面轨迹西移 Δλ = (地球自转率 − 交点进动) × 轨道周期
+  out.deltaLonPerRevDeg = (360.9856473 - out.nodeDotDegDay) * (periodMin / 1440);
+  out.repeat = bestRepeat(360 / out.deltaLonPerRevDeg, 40, out.deltaLonPerRevDeg);
+  return out;
+}
+
+/**
+ * 找地面轨迹回归周期：R 圈 / D 天使轨迹重合（κ = 360/Δλ 的最佳有理逼近，D ≤ maxDays）。
+ * 同时给出残余漂移——不写清楚漂移，「449 圈/29 天」这种其实不回归的答案会被当成真的。
+ */
+function bestRepeat(kappa, maxDays, dLonPerRev) {
+  var best = null;
+  for (var d = 1; d <= maxDays; d++) {
+    var r = Math.round(kappa * d);
+    if (r < 1) continue;
+    var g = gcd(r, d);
+    if (g !== 1) continue;                       // 只报最简（基本）周期
+    var driftDeg = Math.abs(kappa * d - r) / d * dLonPerRev;   // 每天残余经度漂移
+    if (best === null || driftDeg < best.driftDegPerDay - 1e-12) {
+      best = { revs: r, days: d, driftDegPerDay: driftDeg, driftKmPerDay: driftDeg * 111.32 };
+    }
+  }
+  if (best) best.good = best.driftDegPerDay < 0.05;      // < 5.6 km/天 才算真回归
+  return best;
+}
+function gcd(a, b) { while (b) { var t = a % b; a = b; b = t; } return a; }
+
+/* --------------------------- 机动 ------------------------------- */
+function visViva(r, a, mu) { return Math.sqrt((mu || MU_WGS84) * (2 / r - 1 / a)); }
+
+/** 霍曼转移（两个共面圆轨道之间）。半径单位 km（地心距）。 */
+function hohmann(r1, r2, mu) {
+  mu = mu || MU_WGS84;
+  var at = (r1 + r2) / 2;
+  var v1 = Math.sqrt(mu / r1), v2 = Math.sqrt(mu / r2);
+  var vp = visViva(r1, at, mu), va = visViva(r2, at, mu);
+  var dv1 = vp - v1, dv2 = v2 - va;
+  return {
+    at: at, v1: v1, v2: v2, vTransfer1: vp, vTransfer2: va,
+    dv1: dv1, dv2: dv2, dvTotal: Math.abs(dv1) + Math.abs(dv2),
+    tofSec: pi * Math.sqrt(at * at * at / mu)
+  };
+}
+
+/** 双椭圆转移（经过远点 rb 再回落）。 */
+function bielliptic(r1, r2, rb, mu) {
+  mu = mu || MU_WGS84;
+  var a1 = (r1 + rb) / 2, a2 = (rb + r2) / 2;
+  var v1 = Math.sqrt(mu / r1), v2 = Math.sqrt(mu / r2);
+  var dv1 = visViva(r1, a1, mu) - v1;
+  var dv2 = visViva(rb, a2, mu) - visViva(rb, a1, mu);
+  var dv3 = v2 - visViva(r2, a2, mu);
+  return {
+    dv1: dv1, dv2: dv2, dv3: dv3,
+    dvTotal: Math.abs(dv1) + Math.abs(dv2) + Math.abs(dv3),
+    tofSec: pi * (Math.sqrt(a1 * a1 * a1 / mu) + Math.sqrt(a2 * a2 * a2 / mu))
+  };
+}
+
+/** 纯改倾角（圆轨道）：Δv = 2v·sin(Δi/2)。 */
+function planeChange(r, diDeg, mu) {
+  var v = Math.sqrt((mu || MU_WGS84) / r);
+  return { v: v, dv: 2 * v * Math.sin(diDeg * deg2rad / 2) };
+}
+
+/** 改倾角与变轨合并做（余弦定理）。 */
+function combinedBurn(v1, v2, diDeg) {
+  return Math.sqrt(v1 * v1 + v2 * v2 - 2 * v1 * v2 * Math.cos(diDeg * deg2rad));
+}
+
+/** 齐奥尔科夫斯基：给定 Δv 与比冲，求质量比与推进剂占比。 */
+function tsiolkovsky(dv, ispSec, m0) {
+  var ve = ispSec * 9.80665 / 1000;             // km/s
+  var ratio = Math.exp(dv / ve);
+  return { ve: ve, massRatio: ratio, propellantFraction: 1 - 1 / ratio,
+           propellantMass: m0 ? m0 * (1 - 1 / ratio) : null, finalMass: m0 ? m0 / ratio : null };
+}
+
+/** 多普勒频移（Hz）：接收频率 = f0·(1 − ṙ/c)。 */
+function doppler(f0Hz, rangeRateKmS) { return -f0Hz * rangeRateKmS / 299792.458; }
+
+OL.jdFromDate = jdFromDate; OL.dateFromJd = dateFromJd; OL.jdFromMs = jdFromMs;
+OL.teme2ecef = teme2ecef; OL.ecef2geodetic = ecef2geodetic; OL.geodetic2ecef = geodetic2ecef;
+OL.lookAngles = lookAngles; OL.sunEci = sunEci; OL.subsolar = subsolar; OL.sunElevation = sunElevation;
+OL.shadowState = shadowState; OL.observe = observe; OL.footprintAngle = footprintAngle;
+OL.findPasses = findPasses; OL.groundTrack = groundTrack; OL.orbitInfo = orbitInfo;
+OL.hohmann = hohmann; OL.bielliptic = bielliptic; OL.planeChange = planeChange;
+OL.combinedBurn = combinedBurn; OL.tsiolkovsky = tsiolkovsky; OL.doppler = doppler;
+OL.visViva = visViva; OL.bestRepeat = bestRepeat; OL.MU = MU_WGS84; OL.RE = WGS84_A;
+
+
+/* ---------------- 内置数据（电文快照 / 海岸线 / 城市） ---------------- */
+OL.DATA = {"coast":"qAYK/7~#$I0S$#@48+|Rr#}JK#?*?20,L%H/*-|Q9]J@-,/(5a%7U#!?,(,P*6*T#FN(D%|b_#XH@%=(C/A$7*(,=%|db#XHF+i#,2*8)|RT#eGR##0-V$!7(-,0(]#%|wEQG(+-3S#)?!.,S#)3*!,J.:!*.$=..6$0+=G|q{#cM60J+B,D+D,b#(d#1W(3b#*V%-i$0(,a%*3,[#(6=%.u#6Y$$D)}#8+,[#.p$*^#:):B+j#(4+F$r#4D$+4**@(0)]#,]#$r#2Z+%R#.@%T#.F78*r#3]#*Q$+.,;2;$/,/:W$)B1B!v#,8%@$624+V##4+r#+=48+B$H/d%86(0**.AL!,$,44(*)6,,Q$T#8!}#@0%I5E$A--)#+!+.)E)I9%+61F-BC:W##-;1?%91h$53+S%#*+Z#-0)9)G$A)#3Z#9_+OD3z%D]%+0,B*Z#$g(892!*r$%),$4p#0j#8~$0a$8J0*,9(:4f#2N:b#+!,.,:#*+=#p#*.+R%:B04%8$@3=(,,8(@!,+4,l#$R#%:/U$(^$44*:68%,)6%8!B/:**,N.U$86#F0J($,6*]#,L%4%$-B/=#D/8!H0[$-49!%#-I/$+=!%+73N+:(PB44r#,D=r#:x#$2(.2436#U$!F)b#*8#f#FB+N5x#(D0L(N3:!f#/:$B06$m$)N,x#(*60)6;6%r%$2)%+0)R#-r#-:!2*X#3V#%.+L/o$%v#5#+IEg#1K9/1#5=9L#,-d$+MG@+.+P1e$5.-b#%6+_#(T#)nx%%|iEQ?@1B%+-7!-*)+3)9$e#8U#Hp#?4=8,2#4;|YAs;4+)+A)+,5--.=.4%2,|qFU;E#(=F-%/|nk#}68)L($;+)#3)*115$?T#!.2#|gx#Q7(+4,(+!-CE,-3!3)5G?1Y#,%*.4@8R#:DD$.2.(+|Zy#v427$2,)(34)0#0,.#-C3$))$-7A3+-,.4)09,$,2*$B+6GN,!0-2)*5|ru#_.+%;2CF8+PG|~z#R,*)#/;!#.,*,#*(|q{#q+Xy%%1%#,4(Wy%*($%/|ru#z*(3-!%:.)|_;_*,E#-%))0%)$;)%#5S#Y%G1A01b#$4.$.:$2-N,=L,B=*.#,,#.2$0*.6E|uj#d**12*43$?,/*5#-*1V#A#%01,7,(,-(((9NI(3!;.3-^#1G1+A[#)G/+9!M;A0$.A5c#4/0+@-,7$*.%2-15%:H#2A;+33,!09:((c#:I#U#17$K3-5s##/-)!7/A$E4!02*!H-8%:+8+,%41=.++641!.3B,@#0,2$1,2P:2!L2F*@D$626,5.(+.*..%$246.(!*,#!(8*@9=#%0.4,(#*,00*B$!.3*0(=1H+=*.-15)!$+17$)_#I4)()6)2*,8,B%@*8#*,B,*,9(#,5$7|ds#x(*)1!+04)|W_#r(+#?26(6/#%|wr#l(7$)($,2%.-|Zs#f(%%16%0*!4?|xa#p(5#.6:0L,*#Q#711|w]#s%,)0$(+U#),..$**|Xa#s%#/C%A$!,4(0)F,|cr#w%!%G:0%:1|iX#W%L#*,J+,1D%=/9+9.M!^#2+%I,%.5!28=#=+$+|of#x$-1#4,2(3|ip#W%)#+,1B($@C#)|qn#j$-#%%9-K0$*B#*.$-0!42#04#);|Xc#m#))1(%,8$(+|qd#e#*33.O!(0@!:)|Zo#T$))+8G:((@143$-|cf#;*E:/4::06!{$Q#=7(/F/*-5#(16/090!!+2%)%:+#)1#%*K*?=/4?.A/$33)E(547(%)?!,42*3LK63!C8)-+#%43.:*2!#*C!+05(+.B(.*F+$+|[b#B371%7(W#%%1650,J,!--(+/5+8?%)6;!//)+*.47+%*$,10$81)$Y#/%+**6%8+!)2,24]#62N+=!82$%|xc#:#3-$#1,-)#+0)@.=$/0#$+|ZW#r$9!OH;B?P361F52-4IH#.R#)f#e#:!BC2-+38+.;2#.1)^#|w]#J:5;#)1!551-W##*9++01$-*;++.C$#@-*-4!J022)4((4F,FJF=.4,!.-$+D/#+1!(-1+/525#-|ub#z%$;)5+8+-*3)+;0)2*./,)+-$1/%*,4=2*-4*(.2!#44-(5|tKy$5%+4%B,F2-8I%7+)|_Bq(9!**!,0$(!!3|pa#u(7?/2,0$00!%/46#5|V^#a(?5JN.8(3;?|q_#j)0)0!!+93#D|cb#p)*;3**5-)!2)$%00#!,/46#*)|i_#U*%57@6#*)|e_#m,0)**!1*1%3/+%3(38!@-#/*%#-;:%+105%-*$,*()*#+-0%B,+$F*60!|hDg,%%A#!.6$2)|sIa,)%9..*6#2-1!|sG]-6%6(4)()0!#)8+++?(-%%()#+1),1(C%/*$,H),*-,!,/$(*0!|_Y#q,3-3*#6.,H*(+17|_p#y,%%%(%0(0:31+|lp#l-)!)*,!()|aq#z-+!%**$*+|SKm.,+8$J?6%#)4!2+#%1%^#!2.7*/6/!a#4,(7$?35!=6D,H#6)|RJT/)#/6(0*!,A|c_#m.-3-4#40644.)3Q#|XJc09%#,=!!%|uIc0%1#0-.4+|mf#x3()//+*-%)//*!..00%,.2)|U4m41-$%7+-$%,T#0|R/m4.)P##)C#!(;((,|Z+t5+E[#8(.b#$|^(X701#?-!+)+*%J.#.*|li#]5+3(--1?+I#A91*!4I%9-;!831E/--,(6/*+28*.0H=N*:%8J2-NB2=%=,0:(.A!357!9|g(n7+3+()262(3|{j#k82%2,(9A)57E2-99!%8.2:$0R#:94)|mCn9H#5+;,)*,**-|rBw:I*5.F%:/|ea#k:-#G,?89().!*Z#-638+,/|T@l;152*0%))6),*8+)12(.;-39$(4%(;5/!2.7(c#!#*0,+(408F20@*15|qe#V?8$+963+!C=#4.%|uj#l;:GC*/A69!130/1%b#*P/6$B6.+,.(0G#5,9|W%a=I/A$4:-8P=6$8/-1(135|z)x?/390#,D**-|Wo#k@7+-*%.D.0#.)5-|c#]A97P$%3558#8?2#6E=%#//),-5-c#)-(/-5$1)/(D86(E(),:*/.(2D#(010;()*,,)*/-!8/.,844N!|Qu#xA/#?,J$$+|xJ{B+/1,.,0%|TLXC;-1!%*4,@!!%|ww#pCd#-3);,5#%$$,|mMkD(-.(b#5!-4$2+5)C*/,U#7+.?#4..H2!|r*{D%1:1?1s#5y#.8,Q#.J(!*O(02F$D1D0@)F.H!|^IZE9!%.,.6(4)#/1)|q{#UFc$I#/2))4]#%N57-E##5+%5!O0%.Q#!-*(,;%.-/+fy%!?-?$6-:9$+))I(q#3c#A++A2Y#3-,5-A()1;7$+:%#A7#+3,+G/+9C%)9A5AS$.B60!,F*n#R#J44D;#/5Y#93@Y#+W#E41q#)!2C(?-c#$i#)^%~#F#./8%0.:#B9$537-^#CA+1i#a#A//!/.A1#++$++))!1Q#9#/8/:I!;+-Y#1$@-84(14-(+%/,.0$67*A)3+7)..%,40/.M7//7#--0/4%!-4%:2F+$/A%-/5--18-,7@G!3/%(/0)+E/#U#o#^#G9#/-+*/+U#1+9-!)2*,A*I735%1HU#6/03,K#GM?MI+0*2303$5F5,5!(45!#93S#!32!0I.-0%B;,/$O,)*;1#OF;X#$2%.EL%/%..F#4*2+0$:+.-X#+4I;;**@%63=(*/(147P5!$+)/?*#+K%!3--A1;;G?!+K1)3*O+5!G/#+3*)5)35565V#3B-L5B1h#%R#A/1$?=,,)*K:)412]$)y#0+@-$I/;*747*AR#-#1*)+/$4S#B7#329#2*.*$*)%;,/R#$V#T#!C,10)@):??K-$%)#?-!/))1/!+)!+a#3%3Y#5513!-+I)//C#5Z#($#DCL)49418!@/:70/@IX#-!*B7K341D*;BY#FQ#%#!1B90k#6/6OLAPO!+/)4+05.!R%F#ACs#IY#9?m#Y#CM?51G++-;$/0)%G@S#*u#1A//O5Y#Q##12E(!#Ma#E$+(#1Y#5/;GKG1+E-#%g#!c#5A6$0+2*(!2c#W$3h##J5=3L36!T#2T#:D$@3D*0?p#W#b#/82P%(.L+0-(+6I/3$5@12U#%u#AY#.;%G1C.U#N7.-.):A@%2?0-2%8$,+4-*,(2=#0.B%N36$624!**2642J0*28.,6$PJ%@.B00J68H2!0-V##8.:(F2j#*.%8,P%:.2%!-4,$%--!-*%#5/-$-0!(-,%r#3.5l#982)4*,B0B%*+H)*)@!V#1=06$2%*-(,F)4.,@8J#4(,).,,C$1/C#3.9$%+1%709!/81..4/.:6D$,2L#=0=*H!f#9P$=.$.%0Z$Z#2(44-,B,!*i#13)!/.)8$%+9%?-/((,7*:0)(E(!,7#9?!)3#%;/+)1,76)%%;#;3)0;$;%2/-#/!-.%%*/.-+%83!-5(*-/#,51!3,/D9F/,$B/0a#=32($-,!,/$)+)*!,($3$3)!3*-6-.3:34!*))%F/81%+/.3$+/2+#--#-3+#,:18I=1$3,E=)8?.U#?K*C)#;51?%9G,//+%11%11S#!73-$/67(+)7$$B-$%*$2,,(8%J+,B2r#)V#!.0(NIFC,#2@(H))=6-T#4*4R#26DB,4!((4!(%2.1D!8,06$=.#-%)$).#?7*58%!+F.F1n#:8%$)8!(.B*%F.06,434!*B)#1*#0Z#,P#:.7.d$1/07*(8+6,060d#@#,A.G)71(/o#G1AH;599)+G-5;$/3;!)6EZ#/0M;?%A.1l#60]#6L8Q$j#S$NR#.F#D4r#(f#1?):/8*H/]#%t#;4+!19-E)T$41%F1$CP-$,/.2*V#/4*/2T#8L+.230.010_#+.-;#!/2)F((0m$B4#7/=#2*L$D,:/=0900,b#+a$A2.7.#*;$,,/:J6262(]#%(/732)*1%A:/-1KA:#,*:**.6./.,29$%.48?4J2%2.$./+7:#-2H,P!J/56#8{$*30=0:!N.Z#(*(]#$4%R#.L!(.8,V#,H)A)T##(-8(b#!d#5%-T$9]#+6(.1.*F(h#%(-}##$2r##F/.//+=3F+88F+H*L+2*H#36B,Y(/6/Z#3x#(N#4+#3=)B(k$!J5=*32.,e$%b#-tx%+|w:Z7.14)3#+;)%*;6%2-D%D*$N3**21!(68)4,10).3%#3+6*,%,;*+6/*!*8#!26(4#(6%27#3(O/-/5%7765#1FG|fR#WF1)?*3#A,F2F+8/|q{#]Gfy%19!%*vx%,|q{#]GV#%9+?#!2|TPaF!7@4=1)1818226$:b#%@-$-3/2-#-K1A#9*CI;1A#3+#/9%?379+3#;D#6GB(L+H5T#1]#%#3*729D74*.:-D10F,:202#216;2=:3V#2*]#+6(P5*+J!*O6%2/D0FDh#i#+1R#9T#/,32%,)$;A1G);5G#X$$31?+Y#S#4(F@P4D$6-5/0K@-H(8:!12+;/g#7;31$#6J4[#%$)e#9/1#1*-,!#**%#)q#1D(*%A)1())*#%113/0,93;(2-,%4#+(/1$2)!5*#*?137)1/7+#)9179%1(1=e#)G3!#,+*;N(2%.;87-?4^##+#,57%1!10Q#!5%537+35*C/E%K2I6?,-:%,-V#0=0.HJ.B!*%!-3;(#+;-((%)I-/4%((8#L(F1*)#1)1!;)?FO.!*%J4:%:10#:4(=0.0!$(4#F=2))/-#*+!/--,3,!*4+*!4=,#,,,*12#2-!)N!.+4#0*!(V#$3)*-4!4-$3.!:/01!-,!83=%6(8%:+:3$+,!4S#.%$133*)J#!740b#7.-%/=*L-D!D3@9F),+.I+GKMAM)#)1$K+Q#)+%?7?#75-%/9!C+K19357#1$/+C1-9IE;+79;9/?$5.1#/0#-@5%12+#-5?C-e##(/%3(-/)9%5,+)$72).,*/5)3/+C5!3/)1818%+5;//;5+++*90/?$?/%5E*S#=+2*0-0#H,8:4C*64*H=+.P1*)?/(0j#.0+P,$JY$)D*4#=0@4y$#F%D7.#,K8Y#J+4$*m#{$C:,,-8*2@@%.+-/.((#6*(0@#,=0#*,$#.**.$4:+*(0%N14%0((52-#53./5)%0+#%,9(!%1*%*$,7.+.#-/*!6%$((MJ,$%*7#[#2Q#H?0K-{#D92E,C8-0%.*$$61BU#V#5,#($094%2/!7:7J$,G0#+(;f#m#6U#.!49/+)0K@#@Q#:/0.!,,!.?8Il#92#*O0#0783F;=%4-.(H)4,6(J%B/@$(D+.5**-F^#BI,/6(0?.%4;2!.C2%6?4/6W#$;*O8[#0A#e#69%(1q#3%..8:*)*k#K2-53O1)+C-)-}$E#(f#@=$b#F$200;))(/+/.))+.E+$6/,?%C2#01,DFD!4,4!2*%,-(2,M-1*C%A*G8p#64!#-P!30;,G6A,0.J!=.*.8,b#06#D0D)4+,(H##%F%8$[$-@(_%?P2D#f#22+2(*.2#F5B2$3=(,*=#v#3V##@-A-J%p#*8/:.7,0,P$J3:$H-f#(%06(F+!5044!.8S#8$:=2@#8-B95-L%|U[#QH-+T#*@-=.6+45.,186$8#:+6Gn#7#+E#0+))o#,c%1/.?*5#;4^$,K(o##-,T#,i#*D:]#08%|lV#WH5/C2F$4%|gIQH!)g##A0$,,$T##J/|]NSH4164Z#.H9%/N*8,p#7$-L*81V#+6+65I-v#5D5D!)1G;;,E8?##/_#?07)1s#8X#A$+Z$8;.**a#8!)a#%5,22v#()*FD%,+,C.O*2(92G,-)I%o#*s#,3,8,A!)8468,Z#*3/|pT#aH=%J(*)7-F+%5G+5$g#:!*P#92:,|uj#SHq#(6,@$B+$)|aQ#xG939$/4!...8(x#%C5;%|R_#ZGY#--,S#0NJ70l#$v#%P1q#7?1!+|Un#{H9+m#.**Q$+|iQ#yH/+Y#*..B(@/|hk#XI33q#!E%M2.0@(]#!p#-|uS#pI4+!/-1E#9(!.E!#2z#,|_X#fI,+L((-/-k##W#-C!%*P.T$%A(B86*_#+J/H!A66,8#,-|s@yFs#$),I*#.8(#0N45(V#4).m$=j#$H,N$2+1)S%5e#7e#K(5L3|RR#xI:)N!6))+J-_##g$(8+*+O-o%$Y#*-:7,O$9,,,N#|R]#UJ#13+R$/A(t#Bb#$|mQ#SJU#$%(N!2%##|[Y#WJK)A*4,_##))|h/[JQ#-I*2(/,P(,+B%|jR#aJC)3*-,!,J#=+%)|jT#eJ,+g#,S#$8*;(#,Y$-2-|yV#eJn$+L@4$j#/)+|i,TKh#1W#+-35%-3;!O06*C*M634_#*.)B!,*D$@+|v/dKN)C/a##a#(%(A$9,f#*B%8*X#)|t;fKm#-9(0,S#!n#(()D,D%+%|gT#qJO#^#(G,32?(Z#2P*N/T#5)5|fNTK=+g#7I#O$9.$*4*K!9*/.B28$+(T#$@/j#+4/|wEoLT%-!%p$5R#!w#5G3n$-B#1%4-R$?(%H!!%[#/Y#*a#%k#(#.J(-2j#+?2G(4,J(**A,+0n#%F,p$!I,M2%*W$,D,T#+40f#(R)!|l0wL{$3K+](#.%n#$f#)L*4+9-f%2d#%0+V$7g##T##M?!;=/g#+L-(59!@5Q##=++)^#%@1!+M,-)B%@/*3G%M6*/;/z##h$Ey#+7+A7Q#1k#-51!1-/E3,37IA#C6M!5.18G=-2%6A6,21,8=D*,,(4Y#/;*#2,.d#%Y#67#3*:6Y#P?,!,[#0a%!a#6W$,{#(S#,$,h%8,,[#*6,^$4+.i$,f#!:)Z#.s$1U#.$,l#0n#!@*b)!","sats":[{"name":"国际空间站","group":"空间站","note":"ISS · 最容易肉眼看到的人造天体，倾角 51.6°","tleName":"ISS (ZARYA)","l1":"1 25544U 98067A   26246.56303513  .00003925  00000+0  79431-4 0  9992","l2":"2 25544  51.6315 272.1807 0005016 103.2669 256.8879 15.48980167583908"},{"name":"中国空间站 天和","group":"空间站","note":"天宫核心舱，与 ISS 同属低轨大目标","tleName":"CSS (TIANHE)","l1":"1 48274U 21035A   26246.95566175  .00012780  00000+0  16010-3 0  9998","l2":"2 48274  41.4678 203.8227 0002199 256.7093 103.3500 15.59557627305466"},{"name":"哈勃望远镜","group":"科学","note":"540 km 圆轨道，倾角 28.5°","tleName":"HST","l1":"1 20580U 90037B   26246.42238250  .00003758  00000+0  11251-3 0  9995","l2":"2 20580  28.4725 265.5388 0001478 291.5545  68.4894 15.31542612800572"},{"name":"钱德拉 X 射线天文台","group":"科学","note":"大椭圆轨道，远地点 13 万 km、周期 64 小时（深空分支）","tleName":"CXO","l1":"1 25867U 99040B   26246.06733144  .00000969  00000+0  00000+0 0  9990","l2":"2 25867  57.2648 114.5834 7721648 309.5325   0.4326  0.37807753 17610"},{"name":"NOAA-20 极轨气象","group":"气象","note":"太阳同步轨道，每天同一地方时过境","tleName":"NOAA 20 (JPSS-1)","l1":"1 43013U 17073A   26246.87523674  .00000048  00000+0  43776-4 0  9993","l2":"2 43013  98.7801 185.6479 0001826  62.4682 297.6679 14.19524237455638"},{"name":"MetOp-C 极轨气象","group":"气象","note":"太阳同步 817 km，欧洲气象业务星","tleName":"METOP-C","l1":"1 43689U 18087A   26245.49424735  .00000043  00000+0  39329-4 0  9997","l2":"2 43689  98.6573 303.6569 0000612  44.9821 315.1406 14.21512996405817"},{"name":"向日葵 9 号","group":"静止","note":"静止轨道气象卫星，定点 140.7°E（在天上不落）","tleName":"HIMAWARI-9","l1":"1 41836U 16064A   26246.62587463  .00000000  00000+0  00000+0 0  9998","l2":"2 41836   0.0192 142.5424 0002561  86.6712 119.6067  1.00267254 35995"},{"name":"GOES-19","group":"静止","note":"美国静止气象卫星，定点 75.2°W","tleName":"GOES 19","l1":"1 60133U 24119A   26246.86819571 -.00000252  00000+0  00000+0 0  9993","l2":"2 60133   0.0120 275.9227 0000778 334.0830 330.3579  1.00270951  7759"},{"name":"GPS BIIR-5 (PRN 22)","group":"导航","note":"MEO 20200 km，周期约 11 小时 58 分（半个恒星日）","tleName":"GPS BIIR-5  (PRN 22)","l1":"1 26407U 00040A   26246.82759516  .00000059  00000+0  00000+0 0  9998","l2":"2 26407  54.8412 212.0405 0118710 303.5861 241.1979  2.00558169191520"},{"name":"北斗 IGSO-1 (C06)","group":"导航","note":"倾斜地球同步轨道，地面轨迹画出「8」字","tleName":"BEIDOU-2 IGSO-1 (C06)","l1":"1 36828U 10036A   26233.75814490 -.00000137  00000+0  00000+0 0  9991","l2":"2 36828  54.3073 162.3689 0058186 224.3483 321.2966  1.00253816 58750"},{"name":"伽利略 GSAT0101","group":"导航","note":"欧洲 MEO 导航星，23222 km","tleName":"GSAT0101 (GALILEO-PFM)","l1":"1 37846U 11060A   26245.27765018 -.00000080  00000+0  00000+0 0  9998","l2":"2 37846  56.9635 339.6718 0000481  63.0846 296.9646  1.70475552 92437"},{"name":"Starlink-3551","group":"星座","note":"550 km 低轨互联网星座中的一颗","tleName":"STARLINK-3551","l1":"1 51887U 22022AM  26246.46600369 -.00004697  00000+0 -12793-3 0  9993","l2":"2 51887  53.1595 267.0071 0001149  72.4433 287.6695 15.34405470250272"},{"name":"Swift 伽马暴卫星","group":"科学","note":"近赤道低轨，倾角 20.6°","tleName":"SWIFT","l1":"1 28485U 04047A   26246.34115147  .00102025  00000+0  56068-3 0  9995","l2":"2 28485  20.5521 298.3023 0001029  39.3562 320.6961 15.77977209199180"},{"name":"Suomi NPP","group":"气象","note":"太阳同步 824 km","tleName":"SUOMI NPP","l1":"1 37849U 11061A   26246.93212732  .00000047  00000+0  43255-4 0  9992","l2":"2 37849  98.7988 187.2813 0002832  93.6142 266.5358 14.19531262769610"},{"name":"闪电 2-14（历史电文）","group":"大椭圆","note":"1975 年苏联通信卫星，12 小时共振大椭圆轨道；取自 SGP4 官方验证集（2006 年历元），用来演示深空分支","tleName":"MOLNIYA 2-14","l1":"1 08195U 75081A   06176.33215444  .00000099  00000-0  11873-3 0   813","l2":"2 08195  64.1586 279.0717 6877146 264.7651  20.2257  2.00491383225656"}],"cities":[["新加坡",1.3521,103.8198,15],["北京",39.9042,116.4074,44],["上海",31.2304,121.4737,4],["深圳",22.5431,114.0579,6],["香港",22.3193,114.1694,20],["台北",25.033,121.5654,10],["东京",35.6762,139.6503,40],["首尔",37.5665,126.978,38],["曼谷",13.7563,100.5018,2],["吉隆坡",3.139,101.6869,56],["雅加达",-6.2088,106.8456,8],["悉尼",-33.8688,151.2093,30],["奥克兰",-36.8485,174.7633,20],["旧金山",37.7749,-122.4194,16],["纽约",40.7128,-74.006,10],["多伦多",43.6532,-79.3832,76],["伦敦",51.5074,-0.1278,11],["巴黎",48.8566,2.3522,35],["柏林",52.52,13.405,34],["莫斯科",55.7558,37.6173,156],["迪拜",25.2048,55.2708,5],["孟买",19.076,72.8777,14],["开罗",30.0444,31.2357,23],["内罗毕",-1.2864,36.8172,1795],["圣保罗",-23.5505,-46.6333,760],["布宜诺斯艾利斯",-34.6037,-58.3816,25],["雷克雅未克",64.1466,-21.9426,20],["特罗姆瑟",69.6492,18.9553,10],["乌斯怀亚",-54.8019,-68.303,10],["基多",-0.1807,-78.4678,2850]],"snapshot":"2026-09-04"};
+
+
+/** 解开海岸线编码：zigzag varint（45 进制、可打印 ASCII）→ 逐点 delta → 1/10 度。 */
+var COAST_ALPHA = (function () {
+  var bad = {}, a = [], skip = ['"', "'", String.fromCharCode(92), String.fromCharCode(96), '|', '<', '>', '&'];
+  for (var k = 0; k < skip.length; k++) bad[skip[k]] = 1;
+  for (var c = 33; c <= 126 && a.length < 86; c++) { var ch = String.fromCharCode(c); if (!bad[ch]) a.push(ch); }
+  return a.join('');
+})();
+function decodeCoast(packed) {
+  var out = [], segs = packed.split('|');
+  for (var i = 0; i < segs.length; i++) {
+    var s = segs[i], j = 0, px = 0, py = 0, pts = [];
+    while (j < s.length) {
+      var vals = [];
+      for (var q = 0; q < 2; q++) {
+        var z = 0, mul = 1, cont = true;
+        while (cont) { var d = COAST_ALPHA.indexOf(s.charAt(j++)); cont = d >= 43; z += (d % 43) * mul; mul *= 43; }
+        vals.push(z % 2 ? -(z + 1) / 2 : z / 2);
+      }
+      px += vals[0]; py += vals[1];
+      pts.push([px / 10, py / 10]);
+    }
+    out.push(pts);
+  }
+  return out;
+}
+OL.decodeCoast = decodeCoast;
+
+
+})(OL);
+</script>
+<script id="ol-app">/* =====================================================================
+   轨道力学工作台 · 界面层
+   ===================================================================== */
+(function () {
+'use strict';
+var D = 180 / Math.PI, R = Math.PI / 180;
+var $ = function (id) { return document.getElementById(id); };
+var LS_SATS = 'ol.sats.v1', LS_SITE = 'ol.site.v1', LS_TAB = 'ol.tab.v1';
+
+/* ------------------------- 小工具 ------------------------- */
+function el(tag, attrs, kids) {
+  var n = document.createElement(tag);
+  if (attrs) for (var k in attrs) {
+    if (k === 'text') n.textContent = attrs[k];
+    else if (k === 'html') n.innerHTML = attrs[k];
+    else if (k === 'cls') n.className = attrs[k];
+    else if (attrs[k] !== null && attrs[k] !== undefined) n.setAttribute(k, attrs[k]);
+  }
+  if (kids) kids.forEach(function (c) { if (c) n.appendChild(c); });
+  return n;
+}
+function svgEl(tag, attrs) {
+  var n = document.createElementNS('http://www.w3.org/2000/svg', tag);
+  if (attrs) for (var k in attrs) if (attrs[k] !== null && attrs[k] !== undefined) {
+    if (k === 'text') n.textContent = attrs[k]; else n.setAttribute(k, attrs[k]);
+  }
+  return n;
+}
+function num(x, d) { return (x === null || x === undefined || !isFinite(x)) ? '—' : Number(x).toFixed(d === undefined ? 2 : d); }
+function pad(n, w) { var s = String(Math.abs(Math.trunc(n))); while (s.length < (w || 2)) s = '0' + s; return (n < 0 ? '-' : '') + s; }
+function fmtUTC(jd, withSec) {
+  var d = OL.dateFromJd(jd);
+  return d.getUTCFullYear() + '-' + pad(d.getUTCMonth() + 1) + '-' + pad(d.getUTCDate()) + ' ' +
+    pad(d.getUTCHours()) + ':' + pad(d.getUTCMinutes()) + (withSec === false ? '' : ':' + pad(d.getUTCSeconds()));
+}
+function fmtLocal(jd, withDate) {
+  var d = OL.dateFromJd(jd);
+  var t = pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+  return withDate ? (d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' + t) : t;
+}
+function tzLabel() {
+  var m = -new Date().getTimezoneOffset();
+  return 'UTC' + (m < 0 ? '-' : '+') + pad(Math.floor(Math.abs(m) / 60)) + (Math.abs(m) % 60 ? ':' + pad(Math.abs(m) % 60) : '');
+}
+function localInputValue(d) {
+  return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+}
+function compass(azDeg) {
+  var names = ['北', '东北偏北', '东北', '东北偏东', '东', '东南偏东', '东南', '东南偏南',
+               '南', '西南偏南', '西南', '西南偏西', '西', '西北偏西', '西北', '西北偏北'];
+  return names[Math.round(((azDeg % 360) + 360) % 360 / 22.5) % 16];
+}
+function hhmmss(sec) {
+  sec = Math.round(sec);
+  var m = Math.floor(sec / 60), s = sec % 60;
+  return m + ' 分 ' + pad(s) + ' 秒';
+}
+function store(key, val) {
+  try { if (val === undefined) { var v = localStorage.getItem(key); return v ? JSON.parse(v) : null; }
+        localStorage.setItem(key, JSON.stringify(val)); } catch (e) { return null; }
+}
+
+/** SVG 文字避让：每条文字先登记盒子，撞了就换退让位；退让位全撞就不画（并计数）。 */
+function Placer(w, h) {
+  this.boxes = []; this.w = w; this.h = h; this.dropped = 0; this.drawn = [];
+}
+Placer.prototype.reserve = function (x, y, w, h) { this.boxes.push([x, y, x + w, y + h]); };
+Placer.prototype.hits = function (b) {
+  if (b[0] < -2 || b[1] < -2 || b[2] > this.w + 2 || b[3] > this.h + 2) return true;
+  for (var i = 0; i < this.boxes.length; i++) {
+    var o = this.boxes[i];
+    if (b[0] < o[2] && b[2] > o[0] && b[1] < o[3] && b[3] > o[1]) return true;
+  }
+  return false;
+};
+/** offsets: [[dx,dy],…] 按优先级尝试；anchor 固定 start。 */
+Placer.prototype.text = function (g, x, y, str, opts) {
+  opts = opts || {};
+  var size = opts.size || 11, w = str.length * size * (opts.cjk ? 1.0 : 0.56) + 2, h = size * 1.2;
+  var offs = opts.offsets || [[6, -4], [6, 10], [-w - 6, -4], [-w - 6, 10]];
+  for (var i = 0; i < offs.length; i++) {
+    var bx = x + offs[i][0], by = y + offs[i][1] - h * 0.8;
+    var box = [bx, by, bx + w, by + h];
+    if (this.hits(box)) continue;
+    this.boxes.push(box);
+    if (opts.plate) g.appendChild(svgEl('rect', { x: bx - 2, y: by, width: w + 4, height: h, fill: opts.plate }));
+    var t = svgEl('text', { x: bx, y: by + h * 0.78, fill: opts.fill || '#e6e6e6', 'font-size': size,
+      'font-family': opts.mono ? 'ui-monospace,SFMono-Regular,Menlo,monospace' : 'inherit', text: str });
+    if (opts.weight) t.setAttribute('font-weight', opts.weight);
+    g.appendChild(t);
+    this.drawn.push(str);
+    return true;
+  }
+  this.dropped++;
+  return false;
+};
+
+/** S.site 用「度」存（表单与地图投影都要度）；引擎一律要弧度，必须过这个转换器。 */
+function siteRad() { return { name: S.site.name, lat: S.site.lat * R, lon: S.site.lon * R, alt: S.site.alt }; }
+
+/* ------------------------- 全局状态 ------------------------- */
+var S = {
+  satrec: null, fields: null, info: null, tleList: [], tleIndex: 0,
+  site: store(LS_SITE) || { name: '新加坡', lat: 1.3521, lon: 103.8198, alt: 0.015 },
+  mySats: store(LS_SATS) || [],
+  trackJd: null, trackOffsetMin: 0, passes: [], passIndex: 0, tab: 'elements'
+};
+
+/* ------------------------- 电文来源 ------------------------- */
+function allSats() {
+  return OL.DATA.sats.map(function (s) { return { name: s.name, group: s.group, note: s.note, l1: s.l1, l2: s.l2, tleName: s.tleName, builtin: true }; })
+    .concat(S.mySats.map(function (s) { return { name: s.name, group: '我存的', note: '', l1: s.l1, l2: s.l2, tleName: s.name, builtin: false }; }));
+}
+function fillSatSelect(selectIdx) {
+  var sel = $('ol-sat');
+  sel.textContent = '';
+  var list = allSats(), groups = {};
+  list.forEach(function (s, i) { (groups[s.group] = groups[s.group] || []).push([s, i]); });
+  Object.keys(groups).forEach(function (g) {
+    var og = el('optgroup', { label: g });
+    groups[g].forEach(function (pair) { og.appendChild(el('option', { value: String(pair[1]), text: pair[0].name })); });
+    sel.appendChild(og);
+  });
+  if (selectIdx !== undefined && selectIdx !== null) sel.value = String(selectIdx);
+}
+
+/** 把一段文本切成若干组 TLE（支持带名称行、多组连排）。 */
+function splitTLE(text) {
+  var lines = text.split(/\r?\n/).map(function (l) { return l.replace(/\s+$/, ''); });
+  var out = [], name = '';
+  for (var i = 0; i < lines.length; i++) {
+    var l = lines[i];
+    if (/^1 /.test(l) && i + 1 < lines.length && /^2 /.test(lines[i + 1])) {
+      out.push({ name: name, l1: l, l2: lines[i + 1] }); i++; name = '';
+    } else if (l.trim()) name = l.trim();
+  }
+  return out;
+}
+
+function setStatus(fields, satrec, info, err) {
+  var box = $('ol-status'), alert = $('ol-status-alert');
+  box.textContent = ''; alert.textContent = '';
+  if (err) {
+    alert.appendChild(el('div', { cls: 'ol-alert', text: '解析失败：' + err }));
+    return;
+  }
+  var epochJd = satrec.jdsatepoch + satrec.jdsatepochF;
+  var ageDays = OL.jdFromDate(new Date()) - epochJd;
+  var rows = [
+    ['目标名称', fields.name || satrec.name || '（电文未带名称）'],
+    ['NORAD 编号', String(satrec.satnum) + (fields.satnumStr !== String(satrec.satnum) ? '（电文写作 ' + fields.satnumStr + '）' : '')],
+    ['国际标识', fields.intldesg || '—'],
+    ['电文历元 (UTC)', fmtUTC(epochJd) + ' · ' + (ageDays >= 0 ? '距今 ' + num(ageDays, 1) + ' 天' : num(-ageDays, 1) + ' 天后')],
+    ['引擎分支', satrec.method === 'd' ? 'SDP4 深空（周期 ≥ 225 分钟，含日月摄动与共振项）' : 'SGP4 近地'],
+    ['校验和', null]
+  ];
+  rows.forEach(function (r) {
+    var right;
+    if (r[1] === null) {
+      var ok1 = fields.checksum1.given === fields.checksum1.want, ok2 = fields.checksum2.given === fields.checksum2.want;
+      right = el('span', {}, [
+        el('span', { cls: 'ol-badge ' + (ok1 ? 'ol-badge-ok' : 'ol-badge-bad'), text: '第 1 行 ' + (ok1 ? '通过' : '不符 应为 ' + fields.checksum1.want) }),
+        document.createTextNode(' '),
+        el('span', { cls: 'ol-badge ' + (ok2 ? 'ol-badge-ok' : 'ol-badge-bad'), text: '第 2 行 ' + (ok2 ? '通过' : '不符 应为 ' + fields.checksum2.want) })
+      ]);
+    } else right = el('span', { text: r[1] });
+    box.appendChild(el('div', { cls: 'ol-status-row' }, [el('span', { text: r[0] }), right]));
+  });
+  if (Math.abs(ageDays) > 14) {
+    alert.appendChild(el('div', { cls: 'ol-alert ol-alert-warn', id: 'ol-age-warn',
+      text: '这份电文离现在 ' + num(Math.abs(ageDays), 1) + ' 天了。TLE 精度随时间迅速衰减（低轨一般 1 天内数百米、两周后可差几十公里），过境时刻会明显偏。要算准请换当天的电文。' }));
+  }
+}
+
+/* ------------------------- 载入一颗星 ------------------------- */
+function loadTLE(l1, l2, name, opts) {
+  var fields, satrec, info;
+  try {
+    fields = OL.parseTLE(l1, l2, name);
+    satrec = OL.satrecFromFields(fields, 'wgs72', 'i');
+    if (satrec.error) throw new Error('sgp4init 报错 ' + satrec.error + '：' + (satrec.error_message || ''));
+    var test = OL.propagate(satrec, 0);
+    if (!Array.isArray(test.r)) throw new Error('历元时刻传播失败：' + (test.message || '错误码 ' + test.error));
+    info = OL.orbitInfo(satrec);
+  } catch (e) {
+    S.satrec = null; S.fields = null; S.info = null;
+    setStatus(null, null, null, e.message);
+    renderAll();
+    return false;
+  }
+  S.satrec = satrec; S.fields = fields; S.info = info;
+  S.trackJd = null; S.trackOffsetMin = 0; S.passes = []; S.passIndex = 0;
+  setStatus(fields, satrec, info, null);
+  if (!opts || !opts.keepText) $('ol-tle').value = (name ? name + '\n' : '') + l1 + '\n' + l2;
+  renderAll();
+  return true;
+}
+
+/* =====================================================================
+   分区 1 · 轨道根数
+   ===================================================================== */
+var TLE_FIELDS_1 = [
+  [1, 1, '行号', function (v) { return '固定为 1'; }],
+  [3, 7, '卫星编号', function (v, f) { return String(f.satnum) + (/^[A-Za-z]/.test(v.trim()) ? '（Alpha-5 编码，首字母代表 10–33 万段）' : ''); }],
+  [8, 8, '密级', function (v) { return v === 'U' ? 'U 非密' : v === 'C' ? 'C 机密' : v === 'S' ? 'S 秘密' : v; }],
+  [10, 17, '国际标识', function (v) { var y = v.slice(0, 2); if (!y.trim()) return '—';
+      var yr = Number(y) < 57 ? 2000 + Number(y) : 1900 + Number(y);
+      return yr + ' 年第 ' + Number(v.slice(2, 5)) + ' 次发射的第 ' + v.slice(5).trim() + ' 号物体'; }],
+  [19, 32, '历元', function (v, f) { return '20' + v.slice(0, 2) + ' 年第 ' + v.slice(2) + ' 天 → ' + fmtUTC(f.epochJd) + ' UTC'; }],
+  [34, 43, '平均运动一阶导 /2', function (v, f) { return num(f.ndot, 10) + ' 圈/天²（SGP4 不用它，只有 B* 参与阻力）'; }],
+  [45, 52, '平均运动二阶导 /6', function (v, f) { return f.nddot.toExponential(4) + ' 圈/天³（同样不参与 SGP4）'; }],
+  [54, 61, '弹道系数 B*', function (v, f) { return f.bstar.toExponential(5) + ' 地球半径⁻¹ —— 大气阻力的唯一入口，隐含小数点与指数'; }],
+  [63, 63, '星历类型', function (v) { return v === '0' || v === ' ' ? '0 = SGP4/SDP4' : v; }],
+  [65, 68, '根数编号', function (v) { return '第 ' + Number(v) + ' 组'; }],
+  [69, 69, '校验和', function (v, f) { return v + (Number(v) === f.checksum1.want ? ' 通过' : ' 不符，应为 ' + f.checksum1.want); }]
+];
+var TLE_FIELDS_2 = [
+  [1, 1, '行号', function () { return '固定为 2'; }],
+  [3, 7, '卫星编号', function (v, f) { return String(f.satnum) + '（须与第 1 行一致）'; }],
+  [9, 16, '轨道倾角 i', function (v, f) { return num(f.inclo, 4) + '°'; }],
+  [18, 25, '升交点赤经 Ω', function (v, f) { return num(f.nodeo, 4) + '°'; }],
+  [27, 33, '偏心率 e', function (v, f) { return num(f.ecco, 7) + '（电文省略前导小数点）'; }],
+  [35, 42, '近地点幅角 ω', function (v, f) { return num(f.argpo, 4) + '°'; }],
+  [44, 51, '平近点角 M', function (v, f) { return num(f.mo, 4) + '°'; }],
+  [53, 63, '平均运动 n', function (v, f) { return num(f.no_kozai_revday, 8) + ' 圈/天 → 周期 ' + num(1440 / f.no_kozai_revday, 3) + ' 分钟（Kozai 型，尚未解算）'; }],
+  [64, 68, '圈数', function (v, f) { return '第 ' + f.revnum + ' 圈'; }],
+  [69, 69, '校验和', function (v, f) { return v + (Number(v) === f.checksum2.want ? ' 通过' : ' 不符，应为 ' + f.checksum2.want); }]
+];
+
+function fieldTable(line, defs, f) {
+  var tb = el('tbody');
+  defs.forEach(function (d) {
+    var raw = line.slice(d[0] - 1, d[1]);
+    tb.appendChild(el('tr', {}, [
+      el('td', { text: d[0] === d[1] ? String(d[0]) : d[0] + '–' + d[1] }),
+      el('td', { cls: 'ol-td-text', text: d[2] }),
+      el('td', { text: raw === '' ? '—' : raw }),
+      el('td', { cls: 'ol-td-text', text: d[3](raw, f) })
+    ]));
+  });
+  return el('div', { cls: 'ol-tablewrap' }, [
+    el('table', {}, [
+      el('thead', {}, [el('tr', {}, [
+        el('th', { text: '列位' }), el('th', { text: '字段' }), el('th', { text: '原文' }), el('th', { text: '含义' })])]),
+      tb])]);
+}
+
+function cell(dt, dd, unit, note) {
+  return el('div', { cls: 'ol-cell' }, [
+    el('dt', { text: dt }),
+    el('dd', {}, [document.createTextNode(dd), unit ? el('small', { text: unit }) : null]),
+    note ? el('div', { cls: 'ol-cell-note', text: note }) : null
+  ]);
+}
+
+/** 轨道剖面示意：地球 + 椭圆按真实比例，标出近地点/远地点。 */
+function orbitSketch(info) {
+  var W = 520, H = 300, p = new Placer(W, H);
+  var svg = svgEl('svg', { viewBox: '0 0 ' + W + ' ' + H, role: 'img',
+    'aria-label': '轨道剖面示意图：地球与轨道椭圆按同一比例绘制' });
+  var a = info.a, e = info.e, b = a * Math.sqrt(1 - e * e), c = a * e;
+  var scale = Math.min((W - 80) / (2 * a), (H - 60) / (2 * b));
+  var cx = W / 2 + c * scale, cy = H / 2;               // 地心在焦点上 → 椭圆中心偏移
+  var g = svgEl('g');
+  // 轨道
+  g.appendChild(svgEl('ellipse', { cx: cx, cy: cy, rx: a * scale, ry: b * scale,
+    fill: 'none', stroke: '#1c69d4', 'stroke-width': 1.6 }));
+  // 地球
+  var re = OL.RE * scale;
+  g.appendChild(svgEl('circle', { cx: W / 2 + c * scale - c * scale, cy: cy, r: Math.max(2, re),
+    fill: '#161a20', stroke: '#454b57', 'stroke-width': 1, id: 'ol-sketch-earth' }));
+  var ex = W / 2 + c * scale - c * scale;
+  p.reserve(ex - re, cy - re, re * 2, re * 2);
+  // 近地点 / 远地点
+  var px = cx - a * scale, ax = cx + a * scale;
+  g.appendChild(svgEl('circle', { cx: px, cy: cy, r: 3.5, fill: '#e22718' }));
+  g.appendChild(svgEl('circle', { cx: ax, cy: cy, r: 3.5, fill: '#0066b1' }));
+  p.reserve(px - 4, cy - 4, 8, 8); p.reserve(ax - 4, cy - 4, 8, 8);
+  p.text(g, px, cy, '近地点 ' + num(info.perigeeAlt, 0) + ' km', { size: 11, cjk: false, fill: '#e6e6e6', plate: '#000',
+    offsets: [[6, -8], [6, 16], [-120, -8], [-120, 16]] });
+  p.text(g, ax, cy, '远地点 ' + num(info.apogeeAlt, 0) + ' km', { size: 11, cjk: false, fill: '#e6e6e6', plate: '#000',
+    offsets: [[-120, -8], [-120, 16], [6, -8], [6, 16]] });
+  p.text(g, ex, cy + re, '地球', { size: 11, cjk: true, fill: '#7e7e7e', plate: '#000', offsets: [[-14, 16], [-14, 28], [8, 16]] });
+  svg.appendChild(g);
+  svg.setAttribute('data-dropped', String(p.dropped));
+  return svg;
+}
+
+function renderElements() {
+  var host = $('ol-panel-elements');
+  host.textContent = '';
+  if (!S.satrec) { host.appendChild(el('p', { text: '先在上面粘一段两行根数。' })); return; }
+  var f = S.fields, o = S.info, sr = S.satrec;
+  f.epochJd = sr.jdsatepoch + sr.jdsatepochF;
+
+  var grid = el('dl', { cls: 'ol-grid', id: 'ol-elem-grid' }, [
+    cell('轨道周期', num(o.periodMin, 3), '分钟', num(o.revsPerDay, 4) + ' 圈/天'),
+    cell('半长轴 a', num(o.a, 2), 'km', '地心距；扣掉地球半径 6378.14 km 才是高度'),
+    cell('近地点高度', num(o.perigeeAlt, 1), 'km', '速度 ' + num(o.vPerigee, 4) + ' km/s'),
+    cell('远地点高度', num(o.apogeeAlt, 1), 'km', '速度 ' + num(o.vApogee, 4) + ' km/s'),
+    cell('偏心率 e', num(o.e, 7), '', o.e < 0.001 ? '近似正圆' : '椭圆'),
+    cell('轨道倾角 i', num(o.incDeg, 4), '°', o.incDeg > 90 ? '逆行轨道（倾角 > 90°）' : '顺行轨道'),
+    cell('升交点赤经 Ω', num(o.raanDeg, 4), '°', '交点进动 ' + num(o.nodeDotDegDay, 4) + ' °/天'),
+    cell('近地点幅角 ω', num(o.argpDeg, 4), '°', '拱线旋转 ' + num(o.argpDotDegDay, 4) + ' °/天'),
+    cell('轨道类型', o.klass, '', o.deepSpace ? '周期 ≥ 225 分钟 → 走 SDP4 深空分支' : '走 SGP4 近地分支'),
+    cell('太阳同步', o.sunSync ? '是' : '否', '',
+      o.sunSync ? '交点进动 ' + num(o.nodeDotDegDay, 4) + ' °/天 ≈ 太阳视运动 ' + num(o.sunSyncTargetDegDay, 4) + ' °/天'
+        : (o.sunSyncIncDeg ? '同高度要做到太阳同步需倾角 ' + num(o.sunSyncIncDeg, 3) + '°' : '此高度无法做到太阳同步')),
+    cell('地面轨迹回归', o.repeat ? o.repeat.revs + ' 圈 / ' + o.repeat.days + ' 天' : '—', '',
+      o.repeat ? (o.repeat.good ? '残余漂移 ' + num(o.repeat.driftKmPerDay, 1) + ' km/天，算得上回归轨道'
+        : '残余漂移 ' + num(o.repeat.driftKmPerDay, 1) + ' km/天 —— 太大，不是真正的回归轨道') : ''),
+    cell('弹道系数 B*', o.bstar.toExponential(4), '', o.bstar > 1e-4 ? '阻力显著，轨道衰减快' : o.bstar <= 0 ? '电文给的是零或负值（常见于高轨与拟合产物）' : '阻力较小')
+  ]);
+
+  var live = el('div', { cls: 'ol-card', id: 'ol-live' });
+  var sketchWrap = el('div', { cls: 'ol-figure' }, [orbitSketch(o),
+    el('div', { cls: 'ol-figcap', text: '轨道剖面：地球与轨道椭圆按同一比例画；地心落在椭圆的一个焦点上。' })]);
+
+  host.appendChild(el('div', { cls: 'ol-stripe-sm' }));
+  host.appendChild(el('h2', { text: '这份电文说了什么' }));
+  host.appendChild(el('p', { cls: 'ol-lede', text: '左边是电文逐字段的读法（TLE 是定宽格式，含义全靠列位），右边是由它算出来的轨道特征。' }));
+  var two = el('div', { cls: 'ol-two-wide', style: 'margin-top:24px' });
+  var left = el('div', { cls: 'ol-stack' });
+  left.appendChild(el('div', { cls: 'ol-card-soft' }, [el('h4', { text: '第 1 行' }), fieldTable(padTo69(f.line1), TLE_FIELDS_1, f)]));
+  left.appendChild(el('div', { cls: 'ol-card-soft' }, [el('h4', { text: '第 2 行' }), fieldTable(padTo69(f.line2), TLE_FIELDS_2, f)]));
+  var right = el('div', { cls: 'ol-stack' }, [live, sketchWrap]);
+  two.appendChild(left); two.appendChild(right);
+  host.appendChild(el('h3', { text: '派生量', style: 'margin-top:32px' }));
+  host.appendChild(grid);
+  host.appendChild(two);
+  updateLive();
+}
+function padTo69(l) { return l.length >= 69 ? l : l + ' '.repeat(69 - l.length); }
+
+function updateLive() {
+  var box = $('ol-live');
+  if (!box || !S.satrec) return;
+  var jd = OL.jdFromDate(new Date());
+  var o = OL.observe(S.satrec, siteRad(), jd);
+  box.textContent = '';
+  box.appendChild(el('div', { cls: 'ol-stripe-sm' }));
+  box.appendChild(el('h4', { text: '此刻 · ' + fmtLocal(jd, true) + ' ' + tzLabel() }));
+  if (o.error) { box.appendChild(el('div', { cls: 'ol-alert', text: '传播失败：' + (o.message || '错误码 ' + o.error) })); return; }
+  var rows = [
+    ['星下点', num(o.lat * D, 3) + '° ' + (o.lat >= 0 ? '北' : '南') + '  ' + num(Math.abs(o.lon * D), 3) + '° ' + (o.lon >= 0 ? '东' : '西')],
+    ['高度', num(o.alt, 1) + ' km'],
+    ['轨道速度', num(o.speed, 4) + ' km/s'],
+    ['日照状态', o.shadow === 'sunlit' ? '在阳光下' : o.shadow === 'penumbra' ? '半影中' : '进了地球本影'],
+    ['相对 ' + S.site.name, o.el > 0
+      ? '仰角 ' + num(o.el * D, 2) + '°，方位 ' + num(o.az * D, 1) + '°（' + compass(o.az * D) + '），距离 ' + num(o.range, 0) + ' km'
+      : '在地平线以下（仰角 ' + num(o.el * D, 1) + '°）'],
+    ['当地太阳', num(o.sunEl * D, 1) + '°' + (o.sunEl > 0 ? '（白天）' : o.sunEl > -6 * R ? '（民用曙暮光）' : '（天已黑）')],
+    ['肉眼可见', o.visible ? '此刻满足：在天上 + 被太阳照着 + 你这边天黑' : '此刻不满足']
+  ];
+  rows.forEach(function (r) {
+    box.appendChild(el('div', { cls: 'ol-status-row' }, [el('span', { text: r[0] }), el('span', { text: r[1] })]));
+  });
+  box.setAttribute('data-lat', num(o.lat * D, 4));
+  box.setAttribute('data-lon', num(o.lon * D, 4));
+  box.setAttribute('data-alt', num(o.alt, 2));
+  box.setAttribute('data-el', num(o.el * D, 4));
+  box.setAttribute('data-az', num(o.az * D, 4));
+  box.setAttribute('data-range', num(o.range, 2));
+  box.setAttribute('data-site', S.site.name);
+}
+
+/* =====================================================================
+   分区 2 · 地面轨迹（等距圆柱投影世界地图）
+   ===================================================================== */
+var MAPW = 720, MAPH = 360;
+var COAST = null;
+function coast() { if (!COAST) COAST = OL.decodeCoast(OL.DATA.coast); return COAST; }
+function mx(lon) { return (lon + 180) / 360 * MAPW; }
+function my(lat) { return (90 - lat) / 180 * MAPH; }
+
+/** 昼侧多边形：太阳高度角为 0 的曲线 φ(λ)=atan(−cos(λ−λs)/tanδ)，再沿上/下边闭合。 */
+function dayPath(jd) {
+  var s = OL.subsolar(jd), dec = s.lat, lonS = s.lon * D;
+  if (Math.abs(dec) < 1e-6) dec = 1e-6;
+  var pts = [];
+  for (var lon = -180; lon <= 180; lon += 2) {
+    var phi = Math.atan(-Math.cos((lon - lonS) * R) / Math.tan(dec)) * D;
+    pts.push([mx(lon), my(Math.max(-90, Math.min(90, phi)))]);
+  }
+  var curve = 'M' + pts.map(function (p) { return num(p[0], 2) + ',' + num(p[1], 2); }).join('L');
+  // 闭合到上边或下边：北半球是夏天（δ>0）时北极圈内极昼，昼侧要往上收
+  var d = curve + (dec > 0 ? 'L' + MAPW + ',0 L0,0 Z' : 'L' + MAPW + ',' + MAPH + ' L0,' + MAPH + ' Z');
+  return { d: d, curve: curve, sub: s };
+}
+
+/** 可见地平圈：以星下点为中心、地心角 ang 的小圆，跨日期变更线处断开。 */
+function footprintSegments(latC, lonC, ang) {
+  var segs = [], cur = [], prev = null;
+  for (var t = 0; t <= 360; t += 3) {
+    var brg = t * R;
+    var lat = Math.asin(Math.sin(latC) * Math.cos(ang) + Math.cos(latC) * Math.sin(ang) * Math.cos(brg));
+    var lon = lonC + Math.atan2(Math.sin(brg) * Math.sin(ang) * Math.cos(latC), Math.cos(ang) - Math.sin(latC) * Math.sin(lat));
+    var lonD = ((lon * D + 540) % 360) - 180, latD = lat * D;
+    if (prev !== null && Math.abs(lonD - prev) > 180) { if (cur.length > 1) segs.push(cur); cur = []; }
+    cur.push([lonD, latD]); prev = lonD;
+  }
+  if (cur.length > 1) segs.push(cur);
+  return segs;
+}
+
+function renderTrack() {
+  var host = $('ol-panel-track');
+  host.textContent = '';
+  if (!S.satrec) { host.appendChild(el('p', { text: '先在上面粘一段两行根数。' })); return; }
+  var o = S.info;
+  if (S.trackJd === null) S.trackJd = OL.jdFromDate(new Date());
+  var revs = Number((store('ol.revs') || 0)) || (o.periodMin > 400 ? 1 : 3);
+
+  host.appendChild(el('div', { cls: 'ol-stripe-sm' }));
+  host.appendChild(el('h2', { text: '地面轨迹与覆盖范围' }));
+  host.appendChild(el('p', { cls: 'ol-lede', text: '轨迹是卫星正下方那个点在地面上划出的线；地球自转让它每圈都向西挪一截。浅色区域是此刻的白昼半球，蓝圈是卫星「能看见」的地面范围。' }));
+
+  var ctrl = el('div', { cls: 'ol-fields', style: 'margin-top:24px' }, [
+    el('div', { cls: 'ol-field' }, [el('label', { for: 'ol-track-start', text: '起始时刻（本地 ' + tzLabel() + '）' }),
+      el('input', { type: 'datetime-local', id: 'ol-track-start', value: localInputValue(OL.dateFromJd(S.trackJd)) })]),
+    el('div', { cls: 'ol-field' }, [el('label', { for: 'ol-track-revs', text: '画几圈' }),
+      el('input', { type: 'number', id: 'ol-track-revs', min: '1', max: '8', step: '1', value: String(revs) })]),
+    el('div', { cls: 'ol-field' }, [el('label', { for: 'ol-track-minel', text: '覆盖圈按最低仰角（°）' }),
+      el('input', { type: 'number', id: 'ol-track-minel', min: '0', max: '80', step: '1', value: '0' })]),
+    el('div', { cls: 'ol-field' }, [el('label', { text: ' ' }),
+      el('button', { type: 'button', id: 'ol-track-now', cls: 'ol-btn-quiet', text: '回到现在' })])
+  ]);
+  host.appendChild(ctrl);
+
+  var slider = el('div', { style: 'margin-top:16px' }, [
+    el('label', { for: 'ol-track-time', id: 'ol-track-time-label', text: '时间游标' }),
+    el('input', { type: 'range', id: 'ol-track-time', min: '0', max: String(Math.round(o.periodMin * revs)), step: '1', value: String(Math.round(S.trackOffsetMin)) })
+  ]);
+  host.appendChild(slider);
+
+  var figure = el('div', { cls: 'ol-figure', id: 'ol-map-figure', style: 'margin-top:16px' });
+  host.appendChild(figure);
+  host.appendChild(el('div', { cls: 'ol-legend' }, [
+    el('span', {}, [el('i', { style: 'background:#1c69d4' }), document.createTextNode('地面轨迹')]),
+    el('span', {}, [el('i', { style: 'background:#e22718' }), document.createTextNode('当前星下点')]),
+    el('span', {}, [el('i', { style: 'background:#f4b400' }), document.createTextNode('观测站 ' + S.site.name)]),
+    el('span', {}, [el('i', { style: 'background:#2f2f2f' }), document.createTextNode('浅色 = 白昼半球')])
+  ]));
+  var read = el('div', { cls: 'ol-grid', id: 'ol-track-read', style: 'margin-top:24px' });
+  host.appendChild(read);
+
+  var redraw = function () { drawMap(figure, read); };
+  $('ol-track-start').addEventListener('change', function () {
+    var v = this.value; if (!v) return;
+    S.trackJd = OL.jdFromDate(new Date(v)); S.trackOffsetMin = 0;
+    $('ol-track-time').value = '0'; redraw();
+  });
+  $('ol-track-revs').addEventListener('change', function () {
+    var n = Math.max(1, Math.min(8, Number(this.value) || 1));
+    this.value = String(n); store('ol.revs', n);
+    $('ol-track-time').max = String(Math.round(S.info.periodMin * n)); redraw();
+  });
+  $('ol-track-minel').addEventListener('change', redraw);
+  $('ol-track-time').addEventListener('input', function () { S.trackOffsetMin = Number(this.value); redraw(); });
+  $('ol-track-now').addEventListener('click', function () {
+    S.trackJd = OL.jdFromDate(new Date()); S.trackOffsetMin = 0;
+    $('ol-track-start').value = localInputValue(OL.dateFromJd(S.trackJd));
+    $('ol-track-time').value = '0'; redraw();
+  });
+  redraw();
+}
+
+function drawMap(figure, read) {
+  var o = S.info, sr = S.satrec;
+  var revs = Math.max(1, Math.min(8, Number(($('ol-track-revs') || {}).value) || 1));
+  var minEl = Math.max(0, Math.min(80, Number(($('ol-track-minel') || {}).value) || 0));
+  var jd0 = S.trackJd, cursorJd = jd0 + S.trackOffsetMin / 1440;
+  var totalMin = o.periodMin * revs;
+  var step = Math.max(0.15, totalMin / 900);
+
+  var svg = svgEl('svg', { viewBox: '0 0 ' + MAPW + ' ' + MAPH, id: 'ol-map', role: 'img',
+    'aria-label': '世界地图上的卫星地面轨迹' });
+  var defs = svgEl('defs');
+  var grad = svgEl('linearGradient', { id: 'ol-mgrad', x1: '0', y1: '0', x2: '1', y2: '0' });
+  [['0%', '#0066b1'], ['45%', '#1c69d4'], ['100%', '#e22718']].forEach(function (s) {
+    grad.appendChild(svgEl('stop', { offset: s[0], 'stop-color': s[1] })); });
+  defs.appendChild(grad); svg.appendChild(defs);
+  svg.appendChild(svgEl('rect', { x: 0, y: 0, width: MAPW, height: MAPH, fill: '#07070b' }));
+
+  // 昼侧
+  var day = dayPath(cursorJd);
+  svg.appendChild(svgEl('path', { d: day.d, fill: '#ffffff', 'fill-opacity': '0.10', id: 'ol-daypath' }));
+  svg.appendChild(svgEl('path', { d: day.curve, fill: 'none', stroke: '#f4b400', 'stroke-opacity': '0.45',
+    'stroke-width': '1', id: 'ol-terminator' }));
+
+  // 经纬网
+  var gg = svgEl('g', { stroke: '#20232b', 'stroke-width': '0.6', fill: 'none' });
+  for (var lon = -150; lon <= 150; lon += 30) gg.appendChild(svgEl('line', { x1: mx(lon), y1: 0, x2: mx(lon), y2: MAPH }));
+  for (var lat = -60; lat <= 60; lat += 30) gg.appendChild(svgEl('line', { x1: 0, y1: my(lat), x2: MAPW, y2: my(lat) }));
+  svg.appendChild(gg);
+  svg.appendChild(svgEl('line', { x1: 0, y1: my(0), x2: MAPW, y2: my(0), stroke: '#3c3c3c', 'stroke-width': '0.8' }));
+
+  // 陆地
+  var land = svgEl('g', { fill: '#161a20', stroke: '#454b57', 'stroke-width': '0.6', 'stroke-linejoin': 'round' });
+  coast().forEach(function (poly) {
+    var d = 'M' + poly.map(function (p) { return num(mx(p[0]), 1) + ',' + num(my(p[1]), 1); }).join('L') + 'Z';
+    land.appendChild(svgEl('path', { d: d }));
+  });
+  svg.appendChild(land);
+
+  // 轨迹
+  var segs = OL.groundTrack(sr, jd0, totalMin, step);
+  var tg = svgEl('g', { fill: 'none', stroke: 'url(#ol-mgrad)', 'stroke-width': '1.7', 'stroke-linejoin': 'round', id: 'ol-trackpaths' });
+  segs.forEach(function (sg) {
+    tg.appendChild(svgEl('path', { d: 'M' + sg.map(function (p) { return num(mx(p[0]), 1) + ',' + num(my(p[1]), 1); }).join('L') }));
+  });
+  svg.appendChild(tg);
+
+  // 当前点 + 覆盖圈
+  var now = OL.observe(sr, siteRad(), cursorJd);
+  var p = new Placer(MAPW, MAPH);
+  var mg = svgEl('g');
+  if (!now.error) {
+    var ang = OL.footprintAngle(now.alt, minEl * R);
+    var fps = footprintSegments(now.lat, now.lon, ang);
+    fps.forEach(function (sg) {
+      mg.appendChild(svgEl('path', { d: 'M' + sg.map(function (q) { return num(mx(q[0]), 1) + ',' + num(my(q[1]), 1); }).join('L'),
+        fill: '#1c69d4', 'fill-opacity': '0.10', stroke: '#1c69d4', 'stroke-width': '0.9', 'stroke-opacity': '0.75' }));
+    });
+    var sx = mx(now.lon * D), sy = my(now.lat * D);
+    mg.appendChild(svgEl('circle', { cx: sx, cy: sy, r: 7, fill: '#e22718', 'fill-opacity': '0.22' }));
+    mg.appendChild(svgEl('circle', { cx: sx, cy: sy, r: 3.4, fill: '#e22718', id: 'ol-subpoint' }));
+    p.reserve(sx - 8, sy - 8, 16, 16);
+  }
+  // 观测站
+  var ox = mx(S.site.lon), oy = my(S.site.lat);
+  mg.appendChild(svgEl('path', { d: 'M' + (ox - 4) + ',' + oy + 'h8M' + ox + ',' + (oy - 4) + 'v8', stroke: '#f4b400', 'stroke-width': '1.6' }));
+  p.reserve(ox - 5, oy - 5, 10, 10);
+  svg.appendChild(mg);
+
+  // 标注（走避让表；撞了就不画）
+  var lg = svgEl('g');
+  p.text(lg, ox, oy, S.site.name, { size: 11, cjk: true, fill: '#f4b400', plate: '#07070b',
+    offsets: [[7, -6], [7, 14], [-40, -6], [-40, 14]] });
+  if (!now.error) {
+    p.text(lg, mx(now.lon * D), my(now.lat * D), num(now.alt, 0) + ' km', { size: 10.5, mono: true, fill: '#ffffff', plate: '#07070b',
+      offsets: [[8, -6], [8, 14], [-52, -6], [-52, 14]] });
+  }
+  svg.appendChild(lg);
+  svg.setAttribute('data-dropped', String(p.dropped));
+
+  figure.textContent = '';
+  figure.appendChild(svg);
+  figure.appendChild(el('div', { cls: 'ol-figcap',
+    text: '等距圆柱投影。轨迹从 ' + fmtLocal(jd0, true) + ' 起画 ' + revs + ' 圈（' + num(totalMin, 0) + ' 分钟），采样步长 ' + num(step * 60, 1) + ' 秒。' }));
+  var lbl = $('ol-track-time-label');
+  if (lbl) lbl.textContent = '时间游标：' + fmtLocal(cursorJd, true) + '（起点后 ' + num(S.trackOffsetMin, 0) + ' 分钟）';
+
+  read.textContent = '';
+  if (now.error) { read.appendChild(cell('传播失败', now.message || String(now.error))); return; }
+  read.appendChild(cell('星下点纬度', num(now.lat * D, 3), '°', now.lat >= 0 ? '北半球' : '南半球'));
+  read.appendChild(cell('星下点经度', num(now.lon * D, 3), '°', now.lon >= 0 ? '东经' : '西经'));
+  read.appendChild(cell('高度', num(now.alt, 1), 'km', '对 WGS-84 椭球'));
+  read.appendChild(cell('速度', num(now.speed, 4), 'km/s', '惯性系下的轨道速度'));
+  read.appendChild(cell('日照', now.shadow === 'sunlit' ? '阳光下' : now.shadow === 'penumbra' ? '半影' : '本影中', '',
+    '圆锥本影模型（含半影带）'));
+  read.appendChild(cell('覆盖半径', num(OL.footprintAngle(now.alt, minEl * R) * D * 111.195, 0), 'km',
+    '最低仰角 ' + minEl + '° 时地面能看见它的范围'));
+  read.appendChild(cell('对 ' + S.site.name, now.el > 0 ? num(now.el * D, 1) + '° 仰角' : '地平线下', '',
+    now.el > 0 ? '方位 ' + num(now.az * D, 0) + '°（' + compass(now.az * D) + '），距离 ' + num(now.range, 0) + ' km' : '此刻看不到'));
+  read.appendChild(cell('太阳直射点', num(day.sub.lat * D, 2) + '°, ' + num(day.sub.lon * D, 1) + '°', '', '决定昼夜分界线的位置'));
+}
+
+/* =====================================================================
+   分区 3 · 过境预报 + 天空图 + 多普勒
+   ===================================================================== */
+function renderPasses() {
+  var host = $('ol-panel-passes');
+  host.textContent = '';
+  if (!S.satrec) { host.appendChild(el('p', { text: '先在上面粘一段两行根数。' })); return; }
+
+  host.appendChild(el('div', { cls: 'ol-stripe-sm' }));
+  host.appendChild(el('h2', { text: '它什么时候从你头顶过' }));
+  host.appendChild(el('p', { cls: 'ol-lede', text: '给定你的位置，逐秒搜索卫星升到最低仰角以上的时段：升起、最高点、落下三个时刻都用二分与黄金分割精化到 0.05 秒。「肉眼可见」还要同时满足卫星被太阳照着、而你这边天已经黑了。' }));
+
+  var citySel = el('select', { id: 'ol-city' });
+  citySel.appendChild(el('option', { value: '-1', text: '自定义坐标' }));
+  OL.DATA.cities.forEach(function (c, i) { citySel.appendChild(el('option', { value: String(i), text: c[0] })); });
+  var idx = OL.DATA.cities.findIndex(function (c) { return c[0] === S.site.name; });
+  citySel.value = String(idx);
+
+  var form = el('div', { cls: 'ol-fields', style: 'margin-top:24px' }, [
+    el('div', { cls: 'ol-field' }, [el('label', { for: 'ol-city', text: '观测地点' }), citySel]),
+    el('div', { cls: 'ol-field' }, [el('label', { for: 'ol-lat', text: '纬度（北正南负）' }),
+      el('input', { type: 'number', id: 'ol-lat', step: '0.0001', min: '-90', max: '90', value: String(S.site.lat) })]),
+    el('div', { cls: 'ol-field' }, [el('label', { for: 'ol-lon', text: '经度（东正西负）' }),
+      el('input', { type: 'number', id: 'ol-lon', step: '0.0001', min: '-180', max: '180', value: String(S.site.lon) })]),
+    el('div', { cls: 'ol-field' }, [el('label', { for: 'ol-altm', text: '海拔（米）' }),
+      el('input', { type: 'number', id: 'ol-altm', step: '1', value: String(Math.round(S.site.alt * 1000)) })]),
+    el('div', { cls: 'ol-field' }, [el('label', { for: 'ol-pass-start', text: '起始时刻（本地）' }),
+      el('input', { type: 'datetime-local', id: 'ol-pass-start', value: localInputValue(new Date()) })]),
+    el('div', { cls: 'ol-field' }, [el('label', { for: 'ol-days', text: '往后算几天' }),
+      el('input', { type: 'number', id: 'ol-days', min: '1', max: '10', step: '1', value: '3' })]),
+    el('div', { cls: 'ol-field' }, [el('label', { for: 'ol-minel', text: '最低仰角（°）' }),
+      el('input', { type: 'number', id: 'ol-minel', min: '0', max: '80', step: '1', value: '10' })]),
+    el('div', { cls: 'ol-field' }, [el('label', { for: 'ol-freq', text: '下行频率（MHz，算多普勒）' }),
+      el('input', { type: 'number', id: 'ol-freq', min: '1', max: '40000', step: '0.001', value: '145.8' })])
+  ]);
+  host.appendChild(form);
+  host.appendChild(el('div', { cls: 'ol-btnrow' }, [
+    el('button', { type: 'button', id: 'ol-calc', text: '算过境' }),
+    el('label', { cls: 'ol-check', for: 'ol-visonly' }, [
+      el('input', { type: 'checkbox', id: 'ol-visonly' }), document.createTextNode('只看肉眼可见的')])
+  ]));
+  host.appendChild(el('div', { id: 'ol-pass-out', style: 'margin-top:24px' }));
+
+  citySel.addEventListener('change', function () {
+    var i = Number(this.value);
+    if (i >= 0) {
+      var c = OL.DATA.cities[i];
+      $('ol-lat').value = String(c[1]); $('ol-lon').value = String(c[2]); $('ol-altm').value = String(c[3]);
+      applySite();
+    }
+  });
+  ['ol-lat', 'ol-lon', 'ol-altm'].forEach(function (id) {
+    $(id).addEventListener('change', function () { $('ol-city').value = '-1'; applySite(); });
+  });
+  $('ol-calc').addEventListener('click', computePasses);
+  $('ol-visonly').addEventListener('change', function () { renderPassTable(); });
+  computePasses();
+}
+
+function applySite() {
+  var round6 = function (x) { return Math.round(x * 1e6) / 1e6; };
+  var lat = round6(Math.max(-90, Math.min(90, Number($('ol-lat').value) || 0)));
+  var lon = round6(((Number($('ol-lon').value) || 0) + 540) % 360 - 180);
+  $('ol-lat').value = String(lat); $('ol-lon').value = String(lon);
+  var alt = (Number($('ol-altm').value) || 0) / 1000;
+  var i = Number($('ol-city').value);
+  S.site = { name: i >= 0 ? OL.DATA.cities[i][0] : '自定义站点', lat: lat, lon: lon, alt: alt };
+  store(LS_SITE, S.site);
+  updateLive();
+}
+
+function computePasses() {
+  applySite();
+  var out = $('ol-pass-out');
+  var startV = $('ol-pass-start').value;
+  var jd0 = startV ? OL.jdFromDate(new Date(startV)) : OL.jdFromDate(new Date());
+  var days = Math.max(1, Math.min(10, Number($('ol-days').value) || 3));
+  var minEl = Math.max(0, Math.min(80, Number($('ol-minel').value) || 10));
+  $('ol-days').value = String(days); $('ol-minel').value = String(minEl);
+  var site = siteRad();
+  var t0 = performance.now();
+  var res = OL.findPasses(S.satrec, site, jd0, days, minEl);
+  S.passes = res.passes || []; S.passIndex = 0; S.passMeta = { ms: performance.now() - t0, step: res.stepSec, jd0: jd0, days: days, minEl: minEl };
+  out.textContent = '';
+  if (res.error) { out.appendChild(el('div', { cls: 'ol-alert', text: res.error })); return; }
+  renderPassTable();
+}
+
+function passRowLabel(p) {
+  if (p.alwaysUp) return '整段都在天上';
+  if (p.partialStart) return '起算时已在天上';
+  if (p.partialEnd) return '到窗口结束仍未落';
+  return '';
+}
+
+function renderPassTable() {
+  var out = $('ol-pass-out');
+  out.textContent = '';
+  var visOnly = $('ol-visonly') && $('ol-visonly').checked;
+  var list = S.passes.filter(function (p) { return !visOnly || p.visible; });
+  var m = S.passMeta || {};
+  out.appendChild(el('p', { cls: 'ol-figcap', id: 'ol-pass-summary',
+    text: '在 ' + num(m.days, 0) + ' 天窗口里、最低仰角 ' + num(m.minEl, 0) + '° 的条件下共 ' + S.passes.length + ' 次过境' +
+      (visOnly ? '（其中肉眼可见 ' + list.length + ' 次）' : '') + '；搜索步长 ' + num(m.step, 1) + ' 秒，耗时 ' + num(m.ms, 0) + ' 毫秒。' }));
+  if (!list.length) {
+    out.appendChild(el('div', { cls: 'ol-alert ol-alert-warn', id: 'ol-nopass',
+      text: visOnly ? '这段时间没有肉眼可见的过境（卫星要被太阳照着、你这边还得天黑）。' : '这段时间它不会升到设定仰角以上。换个地点、放低仰角门槛或拉长窗口再试。' }));
+    return;
+  }
+  var tb = el('tbody');
+  list.forEach(function (p, i) {
+    var tr = el('tr', { cls: 'ol-row-click' + (i === S.passIndex ? ' ol-row-sel' : ''), 'data-pass': String(i) }, [
+      el('td', { text: fmtLocal(p.rise.jd, true) }),
+      el('td', { text: num(p.rise.az * D, 0) + '° ' }),
+      el('td', { cls: 'ol-td-text', text: compass(p.rise.az * D) }),
+      el('td', { text: fmtLocal(p.peak.jd) }),
+      el('td', { text: num(p.maxEl * D, 1) + '°' }),
+      el('td', { text: num(p.peak.az * D, 0) + '°' }),
+      el('td', { text: num(p.peak.range, 0) }),
+      el('td', { text: fmtLocal(p.set.jd) }),
+      el('td', { text: num(p.set.az * D, 0) + '°' }),
+      el('td', { text: hhmmss(p.durationSec) }),
+      el('td', { cls: 'ol-td-text', text: (p.visible ? '肉眼可见' : (p.litFraction > 0 ? '在阳光下但天没黑' : '全程在地影里')) + (passRowLabel(p) ? ' · ' + passRowLabel(p) : '') })
+    ]);
+    tr.addEventListener('click', function () { S.passIndex = i; renderPassTable(); });
+    tb.appendChild(tr);
+  });
+  out.appendChild(el('div', { cls: 'ol-tablewrap', id: 'ol-pass-table' }, [
+    el('table', {}, [
+      el('thead', {}, [el('tr', {}, ['升起（本地 ' + tzLabel() + '）', '方位', '朝向', '最高点', '最高仰角', '方位', '最近距离 km', '落下', '方位', '持续', '可见性'].map(function (h) { return el('th', { text: h }); }))]),
+      tb])]));
+  var sel = list[Math.min(S.passIndex, list.length - 1)];
+  out.appendChild(renderPassDetail(sel));
+}
+
+/** 天空图：极坐标，圆心为天顶，边缘为地平线。 */
+function skyChart(pass) {
+  var W = 460, H = 460, cx = W / 2, cy = H / 2, rad = 186;
+  var p = new Placer(W, H);
+  var svg = svgEl('svg', { viewBox: '0 0 ' + W + ' ' + H, id: 'ol-sky', role: 'img',
+    'aria-label': '过境天空图：圆心是天顶，外圈是地平线' });
+  var g = svgEl('g');
+  var rOf = function (elRad) { return (1 - elRad / (Math.PI / 2)) * rad; };
+  var pos = function (az, elv) { var r = rOf(elv); return [cx + r * Math.sin(az), cy - r * Math.cos(az)]; };
+  // 环
+  [0, 30, 60].forEach(function (e) {
+    g.appendChild(svgEl('circle', { cx: cx, cy: cy, r: rOf(e * R), fill: 'none',
+      stroke: e === 0 ? '#3c3c3c' : '#262626', 'stroke-width': e === 0 ? 1.2 : 0.8 }));
+  });
+  g.appendChild(svgEl('circle', { cx: cx, cy: cy, r: 2, fill: '#3c3c3c' }));
+  for (var a = 0; a < 360; a += 30) {
+    var q = pos(a * R, 0);
+    g.appendChild(svgEl('line', { x1: cx, y1: cy, x2: q[0], y2: q[1], stroke: '#1a1a1a', 'stroke-width': 0.6 }));
+  }
+  // 方位标（固定位置，天然不重叠）
+  [['北', 0], ['东', 90], ['南', 180], ['西', 270]].forEach(function (d) {
+    var q = pos(d[1] * R, 0), dx = (q[0] - cx) * 0.10, dy = (q[1] - cy) * 0.10;
+    g.appendChild(svgEl('text', { x: q[0] + dx, y: q[1] + dy + 4, fill: '#7e7e7e', 'font-size': 12,
+      'text-anchor': 'middle', text: d[0] }));
+    p.reserve(q[0] + dx - 9, q[1] + dy - 6, 18, 16);
+  });
+  [30, 60].forEach(function (e) {
+    var y = cy - rOf(e * R);
+    g.appendChild(svgEl('text', { x: cx + 4, y: y + 11, fill: '#5a5a5a', 'font-size': 10,
+      'font-family': 'ui-monospace,Menlo,monospace', text: e + '°' }));
+    p.reserve(cx + 2, y, 24, 14);
+  });
+  // 轨迹：日照段实线、地影段虚线
+  var n = 90, litPts = [], darkPts = [], cur = null, curLit = null;
+  var samples = [];
+  for (var i = 0; i <= n; i++) {
+    var jd = pass.rise.jd + (pass.set.jd - pass.rise.jd) * i / n;
+    var o = OL.observe(S.satrec, siteRad(), jd);
+    if (o.error) continue;
+    samples.push(o);
+    var lit = o.shadow !== 'umbra';
+    if (cur === null || lit !== curLit) {
+      if (cur && cur.length > 1) (curLit ? litPts : darkPts).push(cur);
+      cur = []; curLit = lit;
+      if (samples.length > 1) cur.push(pos(samples[samples.length - 2].az, Math.max(0, samples[samples.length - 2].el)));
+    }
+    cur.push(pos(o.az, Math.max(0, o.el)));
+  }
+  if (cur && cur.length > 1) (curLit ? litPts : darkPts).push(cur);
+  var mk = function (arr, dash) {
+    arr.forEach(function (seg) {
+      g.appendChild(svgEl('path', { d: 'M' + seg.map(function (q) { return num(q[0], 1) + ',' + num(q[1], 1); }).join('L'),
+        fill: 'none', stroke: dash ? '#5a6472' : '#1c69d4', 'stroke-width': dash ? 1.6 : 2.4,
+        'stroke-dasharray': dash ? '4 4' : null, 'stroke-linecap': 'round' }));
+    });
+  };
+  mk(darkPts, true); mk(litPts, false);
+  // 三个关键点
+  [[pass.rise, '#0fa336', '升'], [pass.peak, '#e22718', '高'], [pass.set, '#f4b400', '落']].forEach(function (t) {
+    var q = pos(t[0].az, Math.max(0, t[0].el));
+    g.appendChild(svgEl('circle', { cx: q[0], cy: q[1], r: 4, fill: t[1] }));
+    p.reserve(q[0] - 5, q[1] - 5, 10, 10);
+  });
+  svg.appendChild(g);
+  var lg = svgEl('g');
+  [[pass.rise, '#0fa336', fmtLocal(pass.rise.jd) + ' 升起'],
+   [pass.peak, '#e22718', fmtLocal(pass.peak.jd) + ' ' + num(pass.maxEl * D, 0) + '°'],
+   [pass.set, '#f4b400', fmtLocal(pass.set.jd) + ' 落下']].forEach(function (t) {
+    var q = pos(t[0].az, Math.max(0, t[0].el));
+    // 退让位先朝圆心方向（那一侧通常是空的）
+    var ux = (cx - q[0]), uy = (cy - q[1]), len = Math.hypot(ux, uy) || 1;
+    ux /= len; uy /= len;
+    p.text(lg, q[0], q[1], t[2], { size: 11, mono: true, fill: t[1], plate: '#0d0d0d',
+      offsets: [[ux * 12 - (ux < 0 ? 96 : 0), uy * 12], [8, -8], [-104, -8], [8, 16], [-104, 16]] });
+  });
+  svg.appendChild(lg);
+  svg.setAttribute('data-dropped', String(p.dropped));
+  svg.setAttribute('data-drawn', String(p.drawn.length));
+  return { svg: svg, samples: samples };
+}
+
+/** 多普勒曲线：接收频率相对标称值的偏移。 */
+function dopplerChart(samples, f0Hz) {
+  var W = 460, H = 200, L = 58, Rr = 12, T = 14, B = 30;
+  var p = new Placer(W, H);
+  var svg = svgEl('svg', { viewBox: '0 0 ' + W + ' ' + H, id: 'ol-doppler', role: 'img', 'aria-label': '过境期间的多普勒频移曲线' });
+  var g = svgEl('g');
+  var vals = samples.map(function (o) { return OL.doppler(f0Hz, o.rangeRate) / 1000; });   // kHz
+  var maxAbs = Math.max(1e-6, Math.max.apply(null, vals.map(Math.abs)));
+  var nice = Math.pow(10, Math.floor(Math.log10(maxAbs)));
+  var stepv = [1, 2, 2.5, 5, 10].map(function (m) { return m * nice; }).filter(function (v) { return maxAbs / v <= 3.2; })[0] || nice;
+  var top = Math.ceil(maxAbs / stepv) * stepv;
+  var x = function (i) { return L + (W - L - Rr) * i / (samples.length - 1); };
+  var y = function (v) { return T + (H - T - B) * (1 - (v + top) / (2 * top)); };
+  g.appendChild(svgEl('line', { x1: L, y1: y(0), x2: W - Rr, y2: y(0), stroke: '#3c3c3c', 'stroke-width': 0.9 }));
+  for (var v = -top; v <= top + 1e-9; v += stepv) {
+    if (Math.abs(v) > 1e-9) g.appendChild(svgEl('line', { x1: L, y1: y(v), x2: W - Rr, y2: y(v), stroke: '#1c1f26', 'stroke-width': 0.6 }));
+    p.text(g, L - 6, y(v), (v > 0 ? '+' : '') + num(v, Math.abs(stepv) < 1 ? 2 : 1), { size: 10, mono: true, fill: '#7e7e7e',
+      offsets: [[-(String(num(v, 1)).length * 6 + 8), 4]] });
+  }
+  g.appendChild(svgEl('path', { d: 'M' + vals.map(function (vv, i) { return num(x(i), 1) + ',' + num(y(vv), 1); }).join('L'),
+    fill: 'none', stroke: '#e22718', 'stroke-width': 2 }));
+  [0, samples.length - 1].forEach(function (i, k) {
+    p.text(g, x(i), H - B + 4, fmtLocal(samples[i].jd), { size: 10, mono: true, fill: '#7e7e7e',
+      offsets: k === 0 ? [[0, 12]] : [[-52, 12]] });
+  });
+  p.text(g, L - 6, T + 2, 'kHz', { size: 10, fill: '#7e7e7e', offsets: [[-30, 0], [4, -2]] });
+  svg.appendChild(g);
+  svg.setAttribute('data-dropped', String(p.dropped));
+  return svg;
+}
+
+function renderPassDetail(pass) {
+  var wrap = el('div', { cls: 'ol-two', style: 'margin-top:24px', id: 'ol-pass-detail' });
+  var sky = skyChart(pass);
+  var f0 = (Number($('ol-freq').value) || 145.8) * 1e6;
+  var shifts = sky.samples.map(function (o) { return OL.doppler(f0, o.rangeRate); });
+  var maxShift = Math.max.apply(null, shifts), minShift = Math.min.apply(null, shifts);
+  var left = el('div', { cls: 'ol-figure' }, [sky.svg,
+    el('div', { cls: 'ol-figcap', text: '选中的这次过境。实线 = 卫星在阳光下，虚线 = 它进了地球阴影（此时再高也看不见）。' }),
+    el('div', { cls: 'ol-legend' }, [
+      el('span', {}, [el('i', { style: 'background:#0fa336' }), document.createTextNode('升起')]),
+      el('span', {}, [el('i', { style: 'background:#e22718' }), document.createTextNode('最高点')]),
+      el('span', {}, [el('i', { style: 'background:#f4b400' }), document.createTextNode('落下')]),
+      el('span', {}, [el('i', { style: 'background:#5a6472' }), document.createTextNode('地影段')])])]);
+  var stats = el('dl', { cls: 'ol-grid', id: 'ol-pass-stats' }, [
+    cell('最高仰角', num(pass.maxEl * D, 2), '°', '方位 ' + num(pass.peak.az * D, 0) + '°（' + compass(pass.peak.az * D) + '）'),
+    cell('持续时间', hhmmss(pass.durationSec), '', '从升到设定仰角算起'),
+    cell('最近距离', num(pass.peak.range, 0), 'km', '最高点时的斜距'),
+    cell('径向速度', num(pass.peak.rangeRate, 3), 'km/s', '最高点前后由正转负'),
+    cell('阳光下占比', num(pass.litFraction * 100, 0), '%', pass.visible ? '本次过境肉眼可见' : '本次过境肉眼看不到'),
+    cell('多普勒峰峰值', num((maxShift - minShift) / 1000, 2), 'kHz', '按 ' + num(f0 / 1e6, 3) + ' MHz 下行算')
+  ]);
+  var right = el('div', { cls: 'ol-stack' }, [
+    el('div', {}, [el('h4', { text: '这次过境' }), stats]),
+    el('div', { cls: 'ol-figure' }, [dopplerChart(sky.samples, f0),
+      el('div', { cls: 'ol-figcap', text: '多普勒频移：卫星迎面飞来时收到的频率偏高，掠过头顶后急剧转低——业余无线电做低轨通联必须跟着这条曲线调频。' })])
+  ]);
+  wrap.appendChild(left); wrap.appendChild(right);
+  return wrap;
+}
+
+/* =====================================================================
+   分区 4 · 机动 Δv
+   ===================================================================== */
+function transferSketch(r1, r2, rb) {
+  var W = 460, H = 330, cx = W / 2, cy = H / 2;
+  var p = new Placer(W, H);
+  var maxR = Math.max(r1, r2, rb || 0) * 1.12;
+  var k = Math.min((W - 40) / (2 * maxR), (H - 40) / (2 * maxR));
+  var svg = svgEl('svg', { viewBox: '0 0 ' + W + ' ' + H, id: 'ol-dvfig', role: 'img',
+    'aria-label': '霍曼转移示意图：起始圆轨道、转移椭圆、目标圆轨道' });
+  var g = svgEl('g');
+  g.appendChild(svgEl('circle', { cx: cx, cy: cy, r: Math.max(3, OL.RE * k), fill: '#11151b', stroke: '#454b57', 'stroke-width': 1 }));
+  p.reserve(cx - OL.RE * k, cy - OL.RE * k, OL.RE * k * 2, OL.RE * k * 2);
+  g.appendChild(svgEl('circle', { cx: cx, cy: cy, r: r1 * k, fill: 'none', stroke: '#0066b1', 'stroke-width': 1.4 }));
+  g.appendChild(svgEl('circle', { cx: cx, cy: cy, r: r2 * k, fill: 'none', stroke: '#1c69d4', 'stroke-width': 1.4, 'stroke-dasharray': '5 4' }));
+  // 转移椭圆：近地点在左（r1），远地点在右（r2）
+  var a = (r1 + r2) / 2, e = Math.abs(r2 - r1) / (r1 + r2), b = a * Math.sqrt(1 - e * e), c = a * e;
+  var sign = r2 >= r1 ? 1 : -1;
+  g.appendChild(svgEl('ellipse', { cx: cx + sign * c * k, cy: cy, rx: a * k, ry: b * k, fill: 'none', stroke: '#e22718', 'stroke-width': 2 }));
+  var p1 = [cx - sign * r1 * k, cy], p2 = [cx + sign * r2 * k, cy];
+  [[p1, '#e22718'], [p2, '#e22718']].forEach(function (q) {
+    g.appendChild(svgEl('circle', { cx: q[0][0], cy: q[0][1], r: 4.5, fill: q[1] }));
+    p.reserve(q[0][0] - 6, q[0][1] - 6, 12, 12);
+  });
+  svg.appendChild(g);
+  var lg = svgEl('g');
+  p.text(lg, p1[0], p1[1], '点火 1', { size: 11, cjk: true, fill: '#ffffff', plate: '#0d0d0d',
+    offsets: [[-14, -12], [-14, 22], [8, -12], [-58, -12]] });
+  p.text(lg, p2[0], p2[1], '点火 2', { size: 11, cjk: true, fill: '#ffffff', plate: '#0d0d0d',
+    offsets: [[-14, -12], [-14, 22], [-58, -12], [8, -12]] });
+  p.text(lg, cx, cy + r1 * k, '起始圆轨道', { size: 10.5, cjk: true, fill: '#0066b1', plate: '#0d0d0d',
+    offsets: [[6, 14], [6, -6], [-70, 14]] });
+  p.text(lg, cx, cy + r2 * k, '目标圆轨道', { size: 10.5, cjk: true, fill: '#1c69d4', plate: '#0d0d0d',
+    offsets: [[6, 14], [6, -6], [-70, 14], [6, 28]] });
+  svg.appendChild(lg);
+  svg.setAttribute('data-dropped', String(p.dropped));
+  return svg;
+}
+
+function renderDv() {
+  var host = $('ol-panel-dv');
+  host.textContent = '';
+  host.appendChild(el('div', { cls: 'ol-stripe-sm' }));
+  host.appendChild(el('h2', { text: '换轨道要花多少 Δv' }));
+  host.appendChild(el('p', { cls: 'ol-lede', text: '二体近似下的经典结果：两次切向点火的霍曼转移在大多数情况下最省；半径比超过 11.94 时双椭圆反而更省；改倾角是所有机动里最贵的一种。下面的数按 μ = 398600.4418 km³/s² 现算。' }));
+
+  var pre = S.info ? Math.max(0, S.info.perigeeAlt) : 400;
+  var form = el('div', { cls: 'ol-fields', style: 'margin-top:24px' }, [
+    el('div', { cls: 'ol-field' }, [el('label', { for: 'ol-h1', text: '起始圆轨道高度（km）' }),
+      el('input', { type: 'number', id: 'ol-h1', min: '100', max: '400000', step: '1', value: String(Math.round(pre)) })]),
+    el('div', { cls: 'ol-field' }, [el('label', { for: 'ol-h2', text: '目标圆轨道高度（km）' }),
+      el('input', { type: 'number', id: 'ol-h2', min: '100', max: '400000', step: '1', value: '35786' })]),
+    el('div', { cls: 'ol-field' }, [el('label', { for: 'ol-hb', text: '双椭圆的中转远点高度（km）' }),
+      el('input', { type: 'number', id: 'ol-hb', min: '100', max: '2000000', step: '1', value: '200000' })]),
+    el('div', { cls: 'ol-field' }, [el('label', { for: 'ol-di', text: '要改的倾角（°）' }),
+      el('input', { type: 'number', id: 'ol-di', min: '0', max: '180', step: '0.1', value: '28.5' })]),
+    el('div', { cls: 'ol-field' }, [el('label', { for: 'ol-isp', text: '发动机比冲 Isp（秒）' }),
+      el('input', { type: 'number', id: 'ol-isp', min: '50', max: '5000', step: '1', value: '450' })]),
+    el('div', { cls: 'ol-field' }, [el('label', { for: 'ol-m0', text: '机动前质量（kg）' }),
+      el('input', { type: 'number', id: 'ol-m0', min: '1', max: '1000000', step: '1', value: '3000' })])
+  ]);
+  host.appendChild(form);
+  host.appendChild(el('div', { id: 'ol-dv-out', style: 'margin-top:24px' }));
+  ['ol-h1', 'ol-h2', 'ol-hb', 'ol-di', 'ol-isp', 'ol-m0'].forEach(function (id) {
+    $(id).addEventListener('input', computeDv);
+  });
+  computeDv();
+}
+
+function computeDv() {
+  var out = $('ol-dv-out');
+  var RE = OL.RE;
+  var h1 = Number($('ol-h1').value), h2 = Number($('ol-h2').value), hb = Number($('ol-hb').value);
+  var di = Number($('ol-di').value), isp = Number($('ol-isp').value), m0 = Number($('ol-m0').value);
+  out.textContent = '';
+  if (!(h1 > 0) || !(h2 > 0) || h1 === h2) {
+    out.appendChild(el('div', { cls: 'ol-alert', id: 'ol-dv-err', text: '起始与目标高度都要是正数，且不能相同。' }));
+    return;
+  }
+  var r1 = RE + h1, r2 = RE + h2, rb = RE + Math.max(hb, Math.max(h1, h2) + 1);
+  var h = OL.hohmann(r1, r2), be = OL.bielliptic(r1, r2, rb);
+  var pc = OL.planeChange(r2, di);
+  var combined = OL.combinedBurn(h.vTransfer2, h.v2, di);
+  var totalCombined = Math.abs(h.dv1) + combined;
+  var ts = OL.tsiolkovsky(h.dvTotal, isp, m0);
+  var ratio = r2 / r1;
+
+  var grid = el('dl', { cls: 'ol-grid', id: 'ol-dv-grid' }, [
+    cell('霍曼 Δv₁', num(h.dv1, 4), 'km/s', '在起始轨道切向点火，进入转移椭圆'),
+    cell('霍曼 Δv₂', num(h.dv2, 4), 'km/s', '在转移椭圆远点圆化'),
+    cell('霍曼总 Δv', num(h.dvTotal, 4), 'km/s', '转移耗时 ' + num(h.tofSec / 3600, 3) + ' 小时'),
+    cell('双椭圆总 Δv', num(be.dvTotal, 4), 'km/s',
+      (be.dvTotal < h.dvTotal ? '比霍曼省 ' + num((h.dvTotal - be.dvTotal) * 1000, 1) + ' m/s' : '比霍曼多 ' + num((be.dvTotal - h.dvTotal) * 1000, 1) + ' m/s')
+      + '，耗时 ' + num(be.tofSec / 86400, 2) + ' 天'),
+    cell('半径比 r₂/r₁', num(ratio, 3), '', ratio > 15.58 ? '> 15.58：双椭圆必定更省' : ratio > 11.94 ? '在 11.94–15.58 之间：取决于中转点高度' : '< 11.94：霍曼必定更省'),
+    cell('单独改倾角 ' + num(di, 1) + '°', num(pc.dv, 4), 'km/s', '在 ' + num(h2, 0) + ' km 圆轨道上纯转向；改倾角在低轨极贵，所以要放到远点做'),
+    cell('转移末端合并改倾角', num(totalCombined, 4), 'km/s', '第二次点火同时圆化与转向，比「先圆化再转向」省 ' + num((h.dvTotal + pc.dv - totalCombined) * 1000, 1) + ' m/s'),
+    cell('推进剂消耗', num(ts.propellantMass, 1), 'kg', '按霍曼总 Δv、Isp ' + num(isp, 0) + ' s、初始 ' + num(m0, 0) + ' kg：质量比 ' + num(ts.massRatio, 4) + '，占 ' + num(ts.propellantFraction * 100, 1) + '%')
+  ]);
+  out.appendChild(grid);
+
+  var two = el('div', { cls: 'ol-two', style: 'margin-top:24px' });
+  two.appendChild(el('div', { cls: 'ol-figure' }, [transferSketch(r1, r2, null),
+    el('div', { cls: 'ol-figcap', text: '霍曼转移：红色椭圆与两个圆轨道各相切一次，两个切点就是两次点火的位置。' })]));
+
+  var tb = el('tbody');
+  var rows = [
+    ['起始圆轨道速度', num(h.v1, 4), 'km/s', num(h1, 0) + ' km 圆轨道'],
+    ['转移椭圆近点速度', num(h.vTransfer1, 4), 'km/s', '点火 1 之后'],
+    ['转移椭圆远点速度', num(h.vTransfer2, 4), 'km/s', '点火 2 之前'],
+    ['目标圆轨道速度', num(h.v2, 4), 'km/s', num(h2, 0) + ' km 圆轨道'],
+    ['转移椭圆半长轴', num(h.at, 1), 'km', '周期 ' + num(2 * h.tofSec / 60, 1) + ' 分钟'],
+    ['起始轨道逃逸速度', num(Math.sqrt(2 * OL.MU / r1), 4), 'km/s', '再快就绕不回来了'],
+    ['起始轨道逃逸所需 Δv', num(Math.sqrt(2 * OL.MU / r1) - h.v1, 4), 'km/s', 'C₃ = 0 的抛物线逃逸'],
+    ['双椭圆三次点火', num(be.dv1, 4) + ' / ' + num(be.dv2, 4) + ' / ' + num(be.dv3, 4), 'km/s', '中转远点 ' + num(rb - OL.RE, 0) + ' km']
+  ];
+  rows.forEach(function (r) {
+    tb.appendChild(el('tr', {}, [el('td', { cls: 'ol-td-text', text: r[0] }), el('td', { text: r[1] }),
+      el('td', { cls: 'ol-td-text', text: r[2] }), el('td', { cls: 'ol-td-text', text: r[3] })]));
+  });
+  two.appendChild(el('div', { cls: 'ol-card-soft' }, [el('h4', { text: '中间量' }),
+    el('div', { cls: 'ol-tablewrap', id: 'ol-dv-table' }, [
+      el('table', {}, [el('thead', {}, [el('tr', {}, ['量', '数值', '单位', '说明'].map(function (x) { return el('th', { text: x }); }))]), tb])])]));
+  out.appendChild(two);
+}
+
+/* =====================================================================
+   分区 5 · 说明与验证
+   ===================================================================== */
+function renderNotes() {
+  var host = $('ol-panel-notes');
+  host.textContent = '';
+  host.appendChild(el('div', { cls: 'ol-stripe-sm' }));
+  host.appendChild(el('h2', { text: '这一页的算法、验证与边界' }));
+  var mk = function (title, items) {
+    var ul = el('ul');
+    items.forEach(function (t) { ul.appendChild(el('li', { html: t })); });
+    return el('div', {}, [el('h3', { text: title }), ul]);
+  };
+  var box = el('div', { cls: 'ol-notes ol-two', style: 'margin-top:16px' });
+  var c1 = el('div', { cls: 'ol-stack' }, [
+    mk('引擎', [
+      '<b>SGP4 / SDP4</b>：按 Vallado 的参考实现（NORAD Spacetrack Report #3 修订版，与 python-sgp4 / SGP4.cpp 同一套公式）移植到本页，近地分支与深空分支（日月摄动、12 小时与 24 小时共振、Lyddane 修正）都在。默认 WGS-72 引力常数 —— TLE 本来就是按它拟合的，换成 WGS-84 反而会引入误差。',
+      '<b>TEME → 地固系</b>：绕 z 轴转 GMST(1982)（AIAA 2006-6753 附录 C 的多项式），速度加上地球自转的牵连项。<b>忽略极移</b>（量级 &lt; 15 m）。',
+      '<b>大地坐标</b>：WGS-84 椭球，Bowring 初值 + 迭代到 10⁻¹⁴ 弧度收敛（高轨道上一次 Bowring 不够）。',
+      '<b>太阳位置</b>：Vallado 算法 29（低精度，标称 ±0.01°），用于晨昏线、日照判定与「天黑没黑」。',
+      '<b>日照判定</b>：圆锥本影 / 半影模型，区分「全照」「半影」「本影」三种状态。',
+      '<b>过境搜索</b>：按轨道周期自适应步长粗扫，升/落穿越用二分、最高点用黄金分割，都精化到 0.05 秒；静止轨道这种「永远不落」的目标会被识别成整段可见而不是「无过境」。',
+      '<b>机动</b>：二体近似（μ = 398600.4418 km³/s²）下的霍曼、双椭圆、纯改倾角、末端合并机动与齐奥尔科夫斯基方程。'
+    ]),
+    mk('对拍验证（每次改动都跑）', [
+      '<b>官方验证集</b>：SGP4-VER.TLE + tcppver.out（33 颗星、700 行期望输出，覆盖全部深空分支）逐行比对 —— 位置/速度 700 行全部落在官方 2×10⁻⁷ 容差内（最大偏差 1.2×10⁻⁷ km），后面的轨道根数与历日列<b>逐字符相同</b>，连错误码序列 [1,1,6,6,4,3,6] 都一致。',
+      '<b>与 C++ 实现对拍</b>：360 组「真实电文 × 随机时刻」与 python-sgp4 的加速实现（Vallado 的 C++ 代码）比，位置最大差 9×10⁻⁹ km、速度 1×10⁻¹¹ km/s。',
+      '<b>与 Skyfield 对拍</b>（另一套独立实现）：TEME→ITRF 最大差 6×10⁻⁵ km、星下点纬度 2×10⁻⁸°、站心仰角 1.3×10⁻⁷°、方位 4.4×10⁻⁷°、斜距 8.4×10⁻⁶ km、距离变化率 5.5×10⁻⁸ km/s。',
+      '<b>过境事件</b>：Skyfield 的 find_events 给出的 379 个最高点全部落在本页给出的过境段内，696 个升/落事件时刻差都在 0.45 秒以内。',
+      '<b>日照判定</b>：480 个随机时刻与 Skyfield + JPL DE421 星历的 is_sunlit 判定<b>全部一致</b>。',
+      '<b>太阳位置</b>：48 个跨年时刻与 DE421 比，直射点纬度差 ≤ 0.004°、经度差 ≤ 0.005°。'
+    ])
+  ]);
+  var c2 = el('div', { cls: 'ol-stack' }, [
+    mk('它算不准的地方（请当心）', [
+      '<b>TLE 会过期</b>：低轨卫星的两行根数一天内一般好到几百米，两周后可以差几十公里、过境时刻差几分钟。页面顶部会提示电文年龄，超过 14 天会警告。',
+      '<b>SGP4 只配 TLE 用</b>：它是一套「和 TLE 生成方式配套」的模型，把精密星历的根数塞进来不会更准；反过来，用别的模型去传播 TLE 也是错的。',
+      '<b>UT1 当成了 UTC</b>：本页不查 IERS 的 ΔUT1（|ΔUT1| &lt; 0.9 秒），因此地固系经度最多可能差 0.004°（赤道约 400 米）。',
+      '<b>没有大气折射</b>：仰角低于约 5° 时，真实观测到的仰角会比几何值高 0.1°–0.5°。',
+      '<b>「肉眼可见」是个粗判据</b>：只看「卫星未进本影 + 观测者太阳低于 −6°」，没有算目标亮度 —— 小卫星即使满足条件也可能看不见。',
+      '<b>机动那一页是二体近似</b>：没有 J2、没有有限推力损失、没有月球引力，工程上还要再加余量。'
+    ]),
+    mk('数据来源', [
+      '内置电文：<b>Celestrak</b> 的 GP 数据（' + OL.DATA.snapshot + ' 快照），只作示例；实时数据请自己去取。',
+      '「闪电 2-14」那条来自 SGP4 官方验证集（2006 年历元），保留它是为了演示 12 小时共振的深空分支。',
+      '海岸线：Natural Earth 110m 陆地边界，经道格拉斯–普克简化到 0.15° 后以变长整数编码内联（' + coast().length + ' 条轮廓、' +
+        coast().reduce(function (a, b) { return a + b.length; }, 0) + ' 个点，约 ' + Math.round(OL.DATA.coast.length / 1024) + ' KB）。',
+      '你自己粘的电文只写进浏览器的 localStorage，不会离开这台设备。'
+    ]),
+    mk('键盘与可访问性', [
+      '所有分区可以用 Tab 走到，回车/空格切换；表格与图都带 aria 标签。',
+      '过境表格每一行可以点，选中后下方天空图与多普勒曲线随之更新。'
+    ])
+  ]);
+  box.appendChild(c1); box.appendChild(c2);
+  host.appendChild(box);
+}
+
+/* =====================================================================
+   分区切换与启动
+   ===================================================================== */
+var TABS = ['elements', 'track', 'passes', 'dv', 'notes'];
+function showTab(name) {
+  if (TABS.indexOf(name) < 0) name = 'elements';
+  S.tab = name;
+  TABS.forEach(function (t) {
+    var btn = $('ol-tab-' + t), panel = $('ol-panel-' + t);
+    var on = t === name;
+    btn.setAttribute('aria-selected', on ? 'true' : 'false');
+    panel.hidden = !on;
+  });
+  store(LS_TAB, name);
+  if (location.hash.slice(1) !== name) history.replaceState(null, '', '#' + name);
+  renderPanel(name);
+}
+function renderPanel(name) {
+  if (name === 'elements') renderElements();
+  else if (name === 'track') renderTrack();
+  else if (name === 'passes') renderPasses();
+  else if (name === 'dv') renderDv();
+  else if (name === 'notes') renderNotes();
+}
+function renderAll() { renderPanel(S.tab); }
+
+function boot() {
+  $('ol-snapdate').textContent = OL.DATA.snapshot;
+  $('ol-navmeta').textContent = 'SGP4 / SDP4 引擎在本页内 · 零上传 · 本地时区 ' + tzLabel();
+  fillSatSelect(0);
+
+  $('ol-sat').addEventListener('change', function () {
+    var s = allSats()[Number(this.value)];
+    if (s) loadTLE(s.l1, s.l2, s.tleName || s.name);
+  });
+  $('ol-parse').addEventListener('click', function () {
+    var list = splitTLE($('ol-tle').value);
+    if (!list.length) { setStatus(null, null, null, '没找到成对的第 1 / 第 2 行。TLE 是两行定宽文本，第一行以「1 」开头、第二行以「2 」开头。'); return; }
+    S.tleList = list;
+    loadTLE(list[0].l1, list[0].l2, list[0].name, { keepText: true });
+  });
+  $('ol-save').addEventListener('click', function () {
+    if (!S.satrec) return;
+    var name = (S.fields.name || ('NORAD ' + S.satrec.satnum));
+    S.mySats = S.mySats.filter(function (x) { return x.name !== name; });
+    S.mySats.push({ name: name, l1: S.fields.line1, l2: S.fields.line2 });
+    store(LS_SATS, S.mySats);
+    fillSatSelect(OL.DATA.sats.length + S.mySats.length - 1);
+    var box = $('ol-status-alert');
+    box.appendChild(el('div', { cls: 'ol-alert ol-alert-warn', id: 'ol-saved', text: '已存进这台设备的浏览器：' + name + '（共 ' + S.mySats.length + ' 条）' }));
+  });
+  $('ol-clear').addEventListener('click', function () {
+    S.mySats = []; store(LS_SATS, []); fillSatSelect(0);
+    var box = $('ol-status-alert');
+    box.appendChild(el('div', { cls: 'ol-alert ol-alert-warn', id: 'ol-cleared', text: '自存的电文已清空。' }));
+  });
+  TABS.forEach(function (t) {
+    $('ol-tab-' + t).addEventListener('click', function () { showTab(t); });
+  });
+  window.addEventListener('hashchange', function () { showTab(location.hash.slice(1) || 'elements'); });
+
+  var first = OL.DATA.sats[0];
+  loadTLE(first.l1, first.l2, first.tleName);
+  showTab(location.hash.slice(1) || store(LS_TAB) || 'elements');
+  setInterval(function () { if (S.tab === 'elements') updateLive(); }, 1000);
+}
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
+})();
+</script>
+</body>
+</html>
