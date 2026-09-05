@@ -313,7 +313,11 @@ export default async ({ page, toolURL, screenshot, assert }) => {
     A(on.length === 1 && on[0].id === `ol-tab-${t}`, `选中的分区应只有 ${t}，实得 ${on.map((x) => x.id).join(',')}`);
     A(on[0].bc === 'rgb(28, 105, 212)', `选中分区的下划线应是 M 蓝，实得 ${on[0].bc}`);
     const others = st.filter((x) => x.sel !== 'true');
-    A(others.every((x) => x.bc === 'rgba(0, 0, 0, 0)'), `未选中的分区不该有下划线：${others.map((x) => x.id + '=' + x.bc).join('、')}`);
+    // 「没有下划线」的不变量是**透明**（alpha=0），不是某个具体字符串：刚被取消选中的 tab
+    // 在 0.15s 淡出期间会算成 rgba(28, 105, 212, 0) —— 肉眼完全一样，但字符串不等，
+    // 会随机卡住当天的发布闸（2026-09-05 实撞两次，每次是不同的 tab）。改断 alpha。
+    const alphaOf = (c) => { const m = /rgba?\(([^)]+)\)/.exec(c); return m ? Number(m[1].split(',')[3] ?? 1) : 1; };
+    A(others.every((x) => alphaOf(x.bc) === 0), `未选中的分区不该有下划线：${others.map((x) => x.id + '=' + x.bc).join('、')}`);
   }
 
   /* ---------- 9. 四类通用守卫 ---------- */
