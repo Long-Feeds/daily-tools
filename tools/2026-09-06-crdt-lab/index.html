@@ -1,0 +1,2671 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>协同编辑实验室 · CRDT Lab</title>
+<meta name="description" content="三个副本同时改一段文字，断网、乱序、重连，最后为什么还能一模一样？YATA / RGA / LSEQ / Jupiter-OT 四套引擎全部页内手写，可逐条投递消息看收敛过程。">
+<style>
+[hidden]{display:none!important}
+
+/* ── Zapier 设计语言：暖奶油画布 + 深咖啡墨 + 单一橙色 CTA ───────────── */
+:root{
+  --cl-canvas:#fffefb; --cl-soft:#f8f4f0; --cl-ink:#201515; --cl-ink-soft:#2f2a26;
+  --cl-body:#605d52; --cl-mid:#939084; --cl-mute:#c5c0b1; --cl-orange:#ff4f00;
+  --cl-orange-deep:#d94300; --cl-hair:rgba(32,21,21,.14); --cl-hair-soft:rgba(32,21,21,.08);
+  --cl-r:12px; --cl-r-sm:6px; --cl-pill:9999px;
+  --cl-sans:Inter,"Inter var",system-ui,-apple-system,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  --cl-mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0;background:var(--cl-canvas);color:var(--cl-ink);
+  font-family:var(--cl-sans);font-size:16px;line-height:24px;
+  -webkit-font-smoothing:antialiased;
+}
+a{color:var(--cl-ink)}
+button,input,select,textarea{font-family:inherit;font-size:inherit;color:inherit}
+.cl-wrap{max-width:1200px;margin:0 auto;padding:0 24px}
+
+/* ── 顶栏 ───────────────────────────────────────────────────────────── */
+.cl-nav{border-bottom:1px solid var(--cl-hair-soft);background:var(--cl-canvas);position:sticky;top:0;z-index:40}
+.cl-nav-in{display:flex;align-items:center;gap:16px;padding:12px 24px;max-width:1200px;margin:0 auto;flex-wrap:wrap}
+.cl-back{text-decoration:none;font-size:16px;font-weight:600;color:var(--cl-ink);
+  border:1px solid var(--cl-ink);border-radius:var(--cl-r);padding:6px 14px;background:var(--cl-canvas);white-space:nowrap}
+.cl-back:hover{background:var(--cl-ink);color:var(--cl-canvas)}
+.cl-nav-title{font-weight:600;letter-spacing:-.3px}
+.cl-nav-title span{color:var(--cl-mid);font-weight:400}
+.cl-spacer{flex:1 1 auto}
+.cl-nav-badge{font-size:14px;color:var(--cl-body);border-radius:var(--cl-pill);background:var(--cl-soft);padding:4px 12px}
+
+/* ── 英雄带 ─────────────────────────────────────────────────────────── */
+.cl-hero{padding:44px 0 28px}
+.cl-eyebrow{font-size:14px;font-weight:500;letter-spacing:1px;color:var(--cl-orange);margin:0 0 12px}
+.cl-h1{font-size:clamp(28px,4.2vw,52px);line-height:1.1;font-weight:500;letter-spacing:-1px;margin:0 0 14px}
+.cl-h1 em{font-style:normal;color:var(--cl-orange)}
+.cl-lead{font-size:20px;line-height:30px;letter-spacing:-.2px;color:var(--cl-body);max-width:64ch;margin:0}
+.cl-hero-facts{display:flex;flex-wrap:wrap;gap:8px;margin-top:20px}
+.cl-fact{font-size:14px;line-height:21px;background:var(--cl-soft);border-radius:var(--cl-pill);padding:5px 14px;color:var(--cl-ink-soft)}
+.cl-fact b{font-weight:600}
+
+/* ── 分区导航 ───────────────────────────────────────────────────────── */
+.cl-tabs{display:flex;gap:8px;flex-wrap:wrap;padding:0 0 8px;border-bottom:1px solid var(--cl-hair-soft);margin-bottom:24px}
+.cl-tab{border:1px solid var(--cl-hair);background:var(--cl-canvas);border-radius:var(--cl-r);
+  padding:9px 16px;font-size:16px;font-weight:600;cursor:pointer;color:var(--cl-ink);white-space:nowrap}
+.cl-tab:hover{border-color:var(--cl-ink)}
+.cl-tab[aria-selected="true"]{background:var(--cl-ink);border-color:var(--cl-ink);color:var(--cl-canvas)}
+.cl-tab:focus-visible,.cl-btn:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{
+  outline:2px solid var(--cl-orange);outline-offset:2px}
+
+/* ── 通用卡片与控件 ─────────────────────────────────────────────────── */
+.cl-card{background:var(--cl-soft);border-radius:var(--cl-r);padding:24px;min-width:0}
+.cl-card--plain{background:var(--cl-canvas);border:1px solid var(--cl-hair)}
+.cl-card--dark{background:var(--cl-ink);color:var(--cl-canvas)}
+.cl-card--dark .cl-card-sub,.cl-card--dark .cl-note{color:rgba(255,254,251,.72)}
+.cl-card-h{font-size:20px;font-weight:700;letter-spacing:-.5px;margin:0 0 6px}
+.cl-card-sub{font-size:14px;line-height:21px;color:var(--cl-body);margin:0 0 16px}
+.cl-note{font-size:14px;line-height:21px;color:var(--cl-body)}
+.cl-sec{margin:0 0 32px}
+.cl-sec-h{font-size:clamp(22px,2.4vw,32px);line-height:1.15;font-weight:500;letter-spacing:.4px;margin:0 0 6px}
+.cl-sec-p{color:var(--cl-body);margin:0 0 18px;max-width:78ch}
+.cl-grid{display:grid;gap:16px;align-items:start}
+.cl-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.cl-btn{border:1px solid var(--cl-ink);background:var(--cl-canvas);color:var(--cl-ink);
+  border-radius:var(--cl-r);padding:8px 16px;font-size:14.4px;font-weight:700;letter-spacing:.144px;cursor:pointer}
+.cl-btn:hover{background:var(--cl-ink);color:var(--cl-canvas)}
+.cl-btn--primary{background:var(--cl-orange);border-color:var(--cl-orange);color:#fffefb}
+.cl-btn--primary:hover{background:var(--cl-orange-deep);border-color:var(--cl-orange-deep);color:#fffefb}
+.cl-btn--ghost{border-color:var(--cl-hair);color:var(--cl-body)}
+.cl-btn--tiny{padding:5px 12px;font-size:13px;border-radius:var(--cl-r-sm);min-width:52px}
+.cl-btn[aria-pressed="true"]{background:var(--cl-ink);color:var(--cl-canvas)}
+.cl-btn:disabled{opacity:.4;cursor:not-allowed}
+.cl-field{display:inline-flex;flex-direction:column;gap:4px}
+.cl-lab{font-size:14px;color:var(--cl-body)}
+.cl-in{border:1px solid var(--cl-ink);border-radius:var(--cl-r-sm);padding:8px 12px;background:var(--cl-canvas);min-width:120px}
+select.cl-in{min-width:120px}
+.cl-pill{display:inline-block;border-radius:var(--cl-pill);background:var(--cl-soft);padding:3px 12px;font-size:14px;color:var(--cl-ink-soft)}
+.cl-pill--ok{background:#e6f4ea;color:#14532d}
+.cl-pill--warn{background:#ffe9df;color:#8a2b00}
+.cl-pill--live{background:var(--cl-orange);color:#fffefb}
+.cl-mono{font-family:var(--cl-mono);font-size:13px}
+
+/* ── 表格 ───────────────────────────────────────────────────────────── */
+.cl-tablewrap{overflow-x:auto;border-radius:var(--cl-r);border:1px solid var(--cl-hair);background:var(--cl-canvas)}
+table.cl-t{border-collapse:collapse;width:100%;font-size:14px;line-height:21px}
+table.cl-t th{background:var(--cl-soft);text-align:left;padding:10px 14px;font-weight:600;
+  color:var(--cl-ink);border-bottom:1px solid var(--cl-hair);white-space:nowrap}
+table.cl-t td{padding:9px 14px;border-bottom:1px solid var(--cl-hair-soft);vertical-align:top}
+table.cl-t tr:last-child td{border-bottom:none}
+table.cl-t td.cl-num,table.cl-t th.cl-num{text-align:right;font-variant-numeric:tabular-nums;font-family:var(--cl-mono)}
+
+/* ── 沙盒 ───────────────────────────────────────────────────────────── */
+.cl-reps{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
+.cl-rep{background:var(--cl-canvas);border:1px solid var(--cl-hair);border-radius:var(--cl-r);padding:16px;min-width:0}
+.cl-rep--server{background:var(--cl-ink);border-color:var(--cl-ink);color:var(--cl-canvas)}
+.cl-rep-h{display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap}
+.cl-dot{width:10px;height:10px;border-radius:50%;flex:0 0 auto}
+.cl-rep-name{font-weight:700;font-size:16px}
+.cl-ta{width:100%;min-height:88px;border:1px solid var(--cl-hair);border-radius:var(--cl-r-sm);
+  padding:10px 12px;font-family:var(--cl-mono);font-size:15px;line-height:22px;resize:vertical;background:var(--cl-canvas);color:var(--cl-ink)}
+.cl-rep--server .cl-ta{background:#2f2a26;border-color:#4a423c;color:#fffefb}
+.cl-rep-meta{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;font-size:13px;color:var(--cl-body)}
+.cl-rep--server .cl-rep-meta{color:rgba(255,254,251,.72)}
+.cl-rep-meta b{font-family:var(--cl-mono);color:var(--cl-ink);font-weight:600}
+.cl-rep--server .cl-rep-meta b{color:#fffefb}
+.cl-strip{display:flex;flex-wrap:wrap;gap:3px;margin-top:10px;min-height:26px}
+.cl-ch{font-family:var(--cl-mono);font-size:13px;line-height:18px;padding:2px 5px;border-radius:4px;
+  background:var(--cl-soft);border:1px solid var(--cl-hair-soft)}
+.cl-ch--tomb{background:transparent;color:var(--cl-mute);text-decoration:line-through;border-style:dashed}
+.cl-ch--c1{background:#fff1e8;border-color:#ffcdb2}
+.cl-ch--c2{background:#e8f1ff;border-color:#b7d0f5}
+.cl-ch--c3{background:#eaf7ec;border-color:#b3ddbc}
+.cl-ch--c4{background:#f6ecff;border-color:#d9c2f0}
+.cl-ch--c5{background:#fff8dd;border-color:#ecd98f}
+
+.cl-net{display:grid;gap:16px;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);margin-top:16px;align-items:start}
+.cl-q{max-height:280px;overflow:auto;border:1px solid var(--cl-hair);border-radius:var(--cl-r);background:var(--cl-canvas)}
+.cl-q-row{display:flex;align-items:center;gap:8px;padding:7px 12px;border-bottom:1px solid var(--cl-hair-soft);font-size:13px;flex-wrap:wrap}
+.cl-q-row:last-child{border-bottom:none}
+.cl-q-row.cl-q-blocked{opacity:.45}
+.cl-q-tag{font-family:var(--cl-mono);color:var(--cl-mid);min-width:40px}
+.cl-q-desc{flex:1 1 140px;min-width:0;font-family:var(--cl-mono)}
+.cl-empty{padding:16px;color:var(--cl-mid);font-size:14px;text-align:center}
+.cl-links{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+
+/* ── SVG 图 ─────────────────────────────────────────────────────────── */
+.cl-figure{border:1px solid var(--cl-hair);border-radius:var(--cl-r);background:var(--cl-canvas);padding:8px;overflow-x:auto}
+.cl-figure svg{display:block;min-width:520px}
+
+/* ── 图鉴 ───────────────────────────────────────────────────────────── */
+.cl-zoo{display:grid;gap:16px;grid-template-columns:minmax(0,230px) minmax(0,1fr);align-items:start}
+.cl-zoolist{display:flex;flex-direction:column;gap:6px}
+.cl-zoolist .cl-btn{text-align:left;font-weight:600;font-size:14px}
+.cl-kv{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;font-size:14px;line-height:21px}
+.cl-kv dt{color:var(--cl-body)}
+.cl-kv dd{margin:0;font-family:var(--cl-mono);word-break:break-word}
+
+.cl-callout{border-left:3px solid var(--cl-orange);background:var(--cl-soft);border-radius:0 var(--cl-r) var(--cl-r) 0;padding:14px 18px;margin:16px 0}
+.cl-callout p{margin:0;font-size:15px;line-height:23px;color:var(--cl-ink-soft)}
+.cl-foot{background:var(--cl-ink);color:var(--cl-soft);padding:32px 24px;margin-top:48px;font-size:14px;line-height:21px}
+.cl-foot a{color:#fffefb}
+.cl-foot-in{max-width:1200px;margin:0 auto;display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between}
+
+@media (max-width:900px){
+  .cl-net{grid-template-columns:1fr}
+  .cl-zoo{grid-template-columns:1fr}
+}
+@media (max-width:560px){
+  .cl-wrap{padding:0 16px}
+  .cl-nav-in{padding:10px 16px}
+  .cl-card{padding:18px}
+}
+</style>
+
+<nav class="cl-nav">
+  <div class="cl-nav-in">
+    <a class="cl-back" href="../../">← 返回工具集</a>
+    <div class="cl-nav-title">协同编辑实验室 <span>· CRDT Lab</span></div>
+    <div class="cl-spacer"></div>
+    <div class="cl-nav-badge" id="cl-navstate">全部页内运算 · 零上传</div>
+  </div>
+</nav>
+
+<header class="cl-hero">
+  <div class="cl-wrap">
+    <p class="cl-eyebrow">分布式系统 · 无冲突复制数据类型</p>
+    <h1 class="cl-h1">三个人同时改一段字，<br><em>为什么最后能一模一样</em></h1>
+    <p class="cl-lead">断网、乱序、重连、并发插在同一个位置 —— 把消息一条条手动投递，看四套真引擎各自怎么收敛。
+      YATA、RGA、LSEQ 与 Jupiter-OT 全部页内手写，没有后端、不联网、也不引任何库。</p>
+    <div class="cl-hero-facts">
+      <span class="cl-fact"><b>4</b> 套序列算法</span>
+      <span class="cl-fact"><b>8</b> 种状态型 CRDT</span>
+      <span class="cl-fact">与 <b>Yjs</b> / <b>Automerge</b> 逐步对拍</span>
+      <span class="cl-fact">TP1 穷举 · TP2 反例机器搜出</span>
+    </div>
+  </div>
+</header>
+
+<main class="cl-wrap">
+  <div class="cl-tabs" role="tablist" id="cl-tabs">
+    <button class="cl-tab" role="tab" id="cl-tab-sandbox" aria-selected="true" data-panel="sandbox">协同沙盒</button>
+    <button class="cl-tab" role="tab" id="cl-tab-inside" aria-selected="false" data-panel="inside">文档内部</button>
+    <button class="cl-tab" role="tab" id="cl-tab-causal" aria-selected="false" data-panel="causal">因果关系</button>
+    <button class="cl-tab" role="tab" id="cl-tab-zoo" aria-selected="false" data-panel="zoo">CRDT 图鉴</button>
+    <button class="cl-tab" role="tab" id="cl-tab-ot" aria-selected="false" data-panel="ot">OT 对照台</button>
+    <button class="cl-tab" role="tab" id="cl-tab-about" aria-selected="false" data-panel="about">口径与验证</button>
+  </div>
+
+  <!-- ═══ 协同沙盒 ═══ -->
+  <section id="cl-panel-sandbox" role="tabpanel" aria-labelledby="cl-tab-sandbox">
+    <div class="cl-sec">
+      <div class="cl-row" style="margin-bottom:14px">
+        <div class="cl-field">
+          <label class="cl-lab" for="cl-algo">序列算法</label>
+          <select class="cl-in" id="cl-algo">
+            <option value="YATA">YATA（Yjs 口径）</option>
+            <option value="RGA">RGA（Automerge 口径）</option>
+            <option value="LSEQ">LSEQ（稠密标识符）</option>
+            <option value="OT">Jupiter OT（中心服务器）</option>
+          </select>
+        </div>
+        <div class="cl-field">
+          <label class="cl-lab" for="cl-nrep">副本数</label>
+          <select class="cl-in" id="cl-nrep">
+            <option value="2">2 个副本</option>
+            <option value="3" selected>3 个副本</option>
+            <option value="4">4 个副本</option>
+          </select>
+        </div>
+        <div class="cl-field">
+          <label class="cl-lab" for="cl-auto">网络</label>
+          <select class="cl-in" id="cl-auto">
+            <option value="manual" selected>手动投递（可乱序）</option>
+            <option value="auto">立即同步</option>
+          </select>
+        </div>
+        <div class="cl-field">
+          <label class="cl-lab" for="cl-script">载入剧本</label>
+          <select class="cl-in" id="cl-script">
+            <option value="">— 选一个 —</option>
+            <option value="same">并发插在同一个位置</option>
+            <option value="interleave">两人各打一个词</option>
+            <option value="deldup">两人删同一个字</option>
+            <option value="offline">离线编辑后重连</option>
+            <option value="storm">随机风暴（30 步）</option>
+          </select>
+        </div>
+        <button class="cl-btn cl-btn--ghost" id="cl-reset" type="button">清空重来</button>
+      </div>
+
+      <div class="cl-reps" id="cl-reps"></div>
+
+      <div class="cl-net">
+        <div class="cl-card">
+          <h3 class="cl-card-h">在途消息</h3>
+          <p class="cl-card-sub">每条都是一个 op 的副本。点「投递」把它交给目标副本 —— 顺序随你，
+            结果不该随顺序变。</p>
+          <div class="cl-row" style="margin-bottom:10px">
+            <button class="cl-btn cl-btn--primary" id="cl-deliver-all" type="button">全部投递</button>
+            <button class="cl-btn" id="cl-deliver-rev" type="button">倒序投递</button>
+            <button class="cl-btn" id="cl-deliver-shuf" type="button">乱序投递</button>
+            <button class="cl-btn cl-btn--ghost" id="cl-deliver-one" type="button">投递一条</button>
+          </div>
+          <div class="cl-q" id="cl-queue"></div>
+          <div class="cl-links" id="cl-links"></div>
+        </div>
+        <div class="cl-card cl-card--plain">
+          <h3 class="cl-card-h">收敛状态</h3>
+          <p class="cl-card-sub">所有副本文本完全相同即为收敛。</p>
+          <div id="cl-converge"></div>
+          <div class="cl-tablewrap" style="margin-top:12px">
+            <table class="cl-t" id="cl-stats"></table>
+          </div>
+        </div>
+      </div>
+
+      <div class="cl-callout" id="cl-hint">
+        <p>直接在任一副本的文本框里打字 —— 每一次按键都会变成一条 op 广播出去。
+          先在两个副本里各插一个字符，再决定谁的消息先到。</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ 文档内部 ═══ -->
+  <section id="cl-panel-inside" role="tabpanel" aria-labelledby="cl-tab-inside" hidden>
+    <div class="cl-sec">
+      <h2 class="cl-sec-h">一段文字在副本里到底长什么样</h2>
+      <p class="cl-sec-p">屏幕上是一串字符，内存里是一串带唯一标识的条目 —— 包括那些被删掉、
+        但为了让别人对得上而必须留着的墓碑。</p>
+      <div class="cl-row" style="margin-bottom:14px">
+        <div class="cl-field">
+          <label class="cl-lab" for="cl-inside-rep">看哪个副本</label>
+          <select class="cl-in" id="cl-inside-rep"></select>
+        </div>
+        <span class="cl-pill" id="cl-inside-algo"></span>
+      </div>
+      <div class="cl-figure" id="cl-inside-fig"></div>
+      <div class="cl-tablewrap" style="margin-top:16px">
+        <table class="cl-t" id="cl-inside-tbl"></table>
+      </div>
+      <div class="cl-callout"><p id="cl-inside-note"></p></div>
+    </div>
+  </section>
+
+  <!-- ═══ 因果关系 ═══ -->
+  <section id="cl-panel-causal" role="tabpanel" aria-labelledby="cl-tab-causal" hidden>
+    <div class="cl-sec">
+      <h2 class="cl-sec-h">谁在谁之前发生</h2>
+      <p class="cl-sec-p">向量时钟是唯一能分清「先后」和「并发」的东西。下面这张图里，
+        有连线的两条 op 有因果先后；没有路径相连的就是并发 —— 收敛算法要处理的正是这些。</p>
+      <div class="cl-grid" style="grid-template-columns:minmax(0,1fr)">
+        <div class="cl-card cl-card--plain">
+          <h3 class="cl-card-h">因果图（横轴 = Lamport 时钟，每行一个副本）</h3>
+          <div class="cl-figure" id="cl-dag"></div>
+        </div>
+      </div>
+      <div class="cl-grid" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr));margin-top:16px">
+        <div class="cl-card">
+          <h3 class="cl-card-h">各副本的向量时钟</h3>
+          <div class="cl-tablewrap"><table class="cl-t" id="cl-vc"></table></div>
+          <p class="cl-note" style="margin-top:10px">向量时钟第 <i>i</i> 位 = 已交付的第 <i>i</i> 个副本的 op 条数。</p>
+        </div>
+        <div class="cl-card">
+          <h3 class="cl-card-h">因果投递缓冲</h3>
+          <p class="cl-card-sub">依赖还没到的 op 会被扣在这里，等前置补齐才交付。</p>
+          <div class="cl-tablewrap"><table class="cl-t" id="cl-buf"></table></div>
+        </div>
+      </div>
+      <div class="cl-card cl-card--plain" style="margin-top:16px">
+        <h3 class="cl-card-h">happens-before 关系表</h3>
+        <p class="cl-card-sub">→ 表示行的 op 因果先于列的 op；∥ 表示两者并发。</p>
+        <div class="cl-tablewrap"><table class="cl-t" id="cl-hb"></table></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ CRDT 图鉴 ═══ -->
+  <section id="cl-panel-zoo" role="tabpanel" aria-labelledby="cl-tab-zoo" hidden>
+    <div class="cl-sec">
+      <h2 class="cl-sec-h">状态型 CRDT 图鉴</h2>
+      <p class="cl-sec-p">序列只是其中一种。下面八种把整份状态直接合并 —— 只要 merge 满足
+        交换律、结合律、幂等，怎么合、合几次、什么顺序合，结果都一样。</p>
+      <div class="cl-zoo">
+        <div class="cl-zoolist" id="cl-zoolist"></div>
+        <div style="min-width:0">
+          <div class="cl-card cl-card--plain">
+            <h3 class="cl-card-h" id="cl-zoo-title"></h3>
+            <p class="cl-card-sub" id="cl-zoo-lattice"></p>
+            <div class="cl-row" style="margin-bottom:12px">
+              <div class="cl-field">
+                <label class="cl-lab" for="cl-zoo-elem">元素 / 值</label>
+                <input class="cl-in" id="cl-zoo-elem" value="苹果" autocomplete="off">
+              </div>
+              <button class="cl-btn cl-btn--ghost" id="cl-zoo-reset" type="button">重置三副本</button>
+            </div>
+            <div class="cl-grid" id="cl-zoo-reps" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr))"></div>
+            <div class="cl-row" style="margin-top:14px" id="cl-zoo-merges"></div>
+          </div>
+          <div class="cl-grid" style="grid-template-columns:repeat(auto-fit,minmax(260px,1fr));margin-top:16px">
+            <div class="cl-card">
+              <h3 class="cl-card-h">格代数律实测</h3>
+              <p class="cl-card-sub">在随机状态上现场验，不是背书。</p>
+              <div class="cl-tablewrap"><table class="cl-t" id="cl-laws"></table></div>
+            </div>
+            <div class="cl-card cl-card--dark">
+              <h3 class="cl-card-h">它换来的代价</h3>
+              <p class="cl-note" id="cl-zoo-anomaly"></p>
+              <button class="cl-btn cl-btn--primary" id="cl-zoo-demo" type="button" style="margin-top:12px">复现这个异常</button>
+              <p class="cl-note cl-mono" id="cl-zoo-demoout" style="margin-top:12px"></p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ OT 对照台 ═══ -->
+  <section id="cl-panel-ot" role="tabpanel" aria-labelledby="cl-tab-ot" hidden>
+    <div class="cl-sec">
+      <h2 class="cl-sec-h">操作变换：为什么它需要一台服务器</h2>
+      <p class="cl-sec-p">OT 不给字符发身份证，只调整下标。要让所有人算出同一份文档，
+        变换函数必须满足两条性质 —— 下面两条都在你打开页面时现场跑了一遍。</p>
+
+      <div class="cl-grid" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr))">
+        <div class="cl-card">
+          <h3 class="cl-card-h">TP1 · 穷举通过</h3>
+          <p class="cl-card-sub">对长度 ≤ 4 的全部文档 × 全部 op 对，验
+            <span class="cl-mono">apply(apply(d,a),T(b,a)) = apply(apply(d,b),T(a,b))</span>。</p>
+          <div id="cl-tp1"></div>
+        </div>
+        <div class="cl-card cl-card--dark">
+          <h3 class="cl-card-h">TP2 · 机器搜到的最小反例</h3>
+          <p class="cl-note">三条并发 op 时，变换的先后顺序会让结果不同。这就是去中心 OT 的死穴。</p>
+          <div id="cl-tp2" style="margin-top:12px"></div>
+        </div>
+      </div>
+
+      <div class="cl-card cl-card--plain" style="margin-top:16px">
+        <h3 class="cl-card-h">同一串动作，dOPT 分叉、CRDT 收敛</h3>
+        <p class="cl-card-sub">副本 1 在 a 与 b 之间插 X，副本 2 并发删掉 a，副本 3 并发在开头插 Z，然后互相同步。</p>
+        <div class="cl-tablewrap"><table class="cl-t" id="cl-dopt"></table></div>
+        <p class="cl-note" style="margin-top:10px">去中心朴素 OT（dOPT）把来件直接对本地历史做变换，
+          而历史里的 op 与来件并不在同一上下文 —— 这就是「假变换」。Jupiter 用服务器给每个客户端
+          维护一条经过镜像变换的「桥」，保证每次变换的两个 op 上下文一致，于是只要 TP1 就够。</p>
+      </div>
+
+      <div class="cl-card" style="margin-top:16px">
+        <h3 class="cl-card-h">元数据开销：同一段编辑，四种算法各留下多少</h3>
+        <p class="cl-card-sub">脚本：3 个副本共写入 90 个字符、删掉 30 个，然后全量同步。</p>
+        <div class="cl-tablewrap"><table class="cl-t" id="cl-overhead"></table></div>
+        <p class="cl-note" style="margin-top:10px">OT 不留墓碑，代价是必须有服务器 + FIFO 有序信道；
+          CRDT 不要服务器，代价是墓碑与每字符的标识元数据。这是同一枚硬币的两面。</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ 说明 ═══ -->
+  <section id="cl-panel-about" role="tabpanel" aria-labelledby="cl-tab-about" hidden>
+    <div class="cl-sec">
+      <h2 class="cl-sec-h">口径与验证</h2>
+      <p class="cl-sec-p">同一个名字下常常有好几套实现口径。这里逐条写清本页用的是哪一套，
+        以及每一条是拿什么对拍出来的。</p>
+      <div class="cl-grid" style="grid-template-columns:repeat(auto-fit,minmax(320px,1fr))">
+        <div class="cl-card">
+          <h3 class="cl-card-h">四套引擎的口径</h3>
+          <dl class="cl-kv" id="cl-about-algos"></dl>
+        </div>
+        <div class="cl-card">
+          <h3 class="cl-card-h">离线验证规模</h3>
+          <div class="cl-tablewrap"><table class="cl-t" id="cl-about-verify"></table></div>
+          <p class="cl-note" style="margin-top:10px">共 <b data-cl-n="total">—</b> 条，
+            全部从<b>成品 HTML</b> 里抠出引擎源码复跑，不是跑开发态代码。</p>
+        </div>
+      </div>
+      <div class="cl-card cl-card--plain" style="margin-top:16px">
+        <h3 class="cl-card-h">两个实现的真实分歧（不是 bug，是口径）</h3>
+        <div class="cl-tablewrap"><table class="cl-t" id="cl-about-diff"></table></div>
+      </div>
+      <div class="cl-card" style="margin-top:16px">
+        <h3 class="cl-card-h">出处</h3>
+        <ul class="cl-note" style="margin:0;padding-left:20px">
+          <li>YATA：Nicolas Weber 等《Near Real-Time Peer-to-Peer Shared Editing on Extensible Data Types》(2016)，实现口径以 Yjs 的 <span class="cl-mono">Item.integrate()</span> 为准。</li>
+          <li>RGA：Roh 等《Replicated abstract data types》(2011)，实现口径以 Automerge 的列表算法为准。</li>
+          <li>LSEQ：Nédelec 等《LSEQ: an Adaptive Structure for Sequences in Distributed Collaborative Editing》(2013)。</li>
+          <li>OT / TP1 / TP2：Ressel 等 (1996)、Sun &amp; Ellis (1998)；Jupiter：Nichols 等 (1995)。</li>
+          <li>状态型 CRDT 家族：Shapiro 等《A comprehensive study of Convergent and Commutative Replicated Data Types》(INRIA RR-7506, 2011)。</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="cl-foot">
+  <div class="cl-foot-in">
+    <div>协同编辑实验室 · CRDT Lab —— 全部运算在你的浏览器里完成，不上传任何内容。</div>
+    <div><a href="../../">← 回到每日工具集</a></div>
+  </div>
+</footer>
+
+<script id="cl-engine">/* ===========================================================================
+ * CRDT Lab — 引擎（零依赖、纯页内）
+ *   序列副本：YATA(Yjs 口径) / RGA(Automerge 口径) / LSEQ(稠密标识符) / 朴素 OT
+ *   状态型 CRDT 图鉴：G-Counter…LWW-Map 共 8 种，带格序 leq / merge / value
+ *   因果层：Lamport 时钟、向量时钟、happens-before、因果投递缓冲
+ *   网络层：可丢弃 / 乱序 / 手动投递的消息队列
+ * =========================================================================== */
+var CL = (function () {
+  'use strict';
+
+  /* ---------- 标识符 ---------- */
+  // id = [client, counter]；counter 是该副本的 Lamport 计数
+  function idKey(id) { return id ? id[0] + ':' + id[1] : '~'; }
+  function idEq(a, b) {
+    if (a === b) return true;
+    if (!a || !b) return false;
+    return a[0] === b[0] && a[1] === b[1];
+  }
+  // RGA / Automerge 的兄弟次序：counter 大者在前，counter 相同则 actor 大者在前
+  function rgaBefore(a, b) { return a[1] !== b[1] ? a[1] > b[1] : a[0] > b[0]; }
+
+  function clone(v) { return JSON.parse(JSON.stringify(v)); }
+
+  /* ---------- 确定性随机（LSEQ 用；不依赖 Math.random 以便离线复跑） ---------- */
+  function mulberry(seed) {
+    var t = seed >>> 0;
+    return function () {
+      t += 0x6D2B79F5;
+      var r = t;
+      r = Math.imul(r ^ (r >>> 15), r | 1);
+      r ^= r + Math.imul(r ^ (r >>> 7), r | 61);
+      return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  /* =========================================================================
+   * 向量时钟
+   * ========================================================================= */
+  var VC = {
+    empty: function () { return {}; },
+    get: function (v, c) { return v[c] || 0; },
+    bump: function (v, c) { var n = clone(v); n[c] = (n[c] || 0) + 1; return n; },
+    merge: function (a, b) {
+      var n = clone(a);
+      for (var k in b) if (!(k in n) || b[k] > n[k]) n[k] = b[k];
+      return n;
+    },
+    leq: function (a, b) {
+      for (var k in a) if ((a[k] || 0) > (b[k] || 0)) return false;
+      return true;
+    },
+    eq: function (a, b) { return VC.leq(a, b) && VC.leq(b, a); },
+    // a → b（a 因果先于 b）
+    hb: function (a, b) { return VC.leq(a, b) && !VC.eq(a, b); },
+    concurrent: function (a, b) { return !VC.leq(a, b) && !VC.leq(b, a); },
+    fmt: function (v, clients) {
+      return '[' + clients.map(function (c) { return (v[c] || 0); }).join(',') + ']';
+    }
+  };
+
+  /* =========================================================================
+   * 基类：Lamport 时钟 + 向量时钟 + 因果投递缓冲
+   * ========================================================================= */
+  function BaseSeq(client) {
+    this.client = client;
+    this.lamport = 0;     // Lamport 逻辑时钟
+    this.vc = {};         // 向量时钟（本副本已交付的每个来源的 op 数）
+    this.pending = [];    // 因果条件未满足、暂存的远端 op
+    this.applied = [];    // 已交付的 op（按交付顺序）
+    this.log = [];        // 本副本产生的 op
+  }
+  BaseSeq.prototype.tick = function () { this.lamport += 1; return this.lamport; };
+  BaseSeq.prototype.observe = function (op) {
+    if (op.lam > this.lamport) this.lamport = op.lam;
+    this.vc[op.id[0]] = Math.max(this.vc[op.id[0]] || 0, op.seq);
+  };
+  // 因果条件：op 的 ctx（生成时的向量时钟）必须被本副本的 vc 覆盖，且不能跳号
+  BaseSeq.prototype.causalReady = function (op) {
+    if (op.id[0] === this.client) return true;
+    for (var k in op.ctx) {
+      if ((op.ctx[k] || 0) > (this.vc[k] || 0)) return false;
+    }
+    return (this.vc[op.id[0]] || 0) === op.seq - 1;
+  };
+  // 收到一条远端 op：满足因果序才交付，否则进缓冲；交付后重扫缓冲
+  BaseSeq.prototype.recv = function (op) {
+    if ((this.vc[op.id[0]] || 0) >= op.seq) return { delivered: 0, buffered: this.pending.length, dup: 1 };
+    this.pending.push(op);
+    var delivered = 0, moved = true;
+    while (moved) {
+      moved = false;
+      for (var i = 0; i < this.pending.length; i++) {
+        if (this.causalReady(this.pending[i])) {
+          var p = this.pending.splice(i, 1)[0];
+          this.deliver(p);
+          delivered++; moved = true; break;
+        }
+      }
+    }
+    return { delivered: delivered, buffered: this.pending.length, dup: 0 };
+  };
+  BaseSeq.prototype.deliver = function (op) {
+    this.integrate(op);
+    this.observe(op);
+    this.applied.push(op);
+  };
+  BaseSeq.prototype.newOpBase = function (kind) {
+    var seq = (this.vc[this.client] || 0) + 1;
+    return {
+      k: kind,
+      id: [this.client, this.tick()],
+      seq: seq,
+      lam: this.lamport,
+      ctx: clone(this.vc)
+    };
+  };
+  BaseSeq.prototype.emit = function (op) {
+    this.integrate(op);
+    this.vc[this.client] = op.seq;
+    this.applied.push(op);
+    this.log.push(op);
+    return op;
+  };
+  BaseSeq.prototype.stats = function () {
+    var it = this.items(), live = 0, tomb = 0;
+    for (var i = 0; i < it.length; i++) { if (it[i].del) tomb++; else live++; }
+    return { live: live, tomb: tomb, total: it.length, pending: this.pending.length, ops: this.applied.length };
+  };
+
+  /* =========================================================================
+   * YATA —— Yjs 的序列算法（每字符一个 item，不做游程压缩）
+   * item = { id, ch, ol(originLeft id|null), or(originRight id|null), del }
+   * ========================================================================= */
+  function Yata(client) { BaseSeq.call(this, client); this.list = []; }
+  Yata.prototype = Object.create(BaseSeq.prototype);
+  Yata.prototype.constructor = Yata;
+  Yata.prototype.algo = 'YATA';
+
+  Yata.prototype.idx = function (id) {
+    if (!id) return -1;
+    var k = idKey(id);
+    for (var i = 0; i < this.list.length; i++) if (idKey(this.list[i].id) === k) return i;
+    return -2;                       // 未知（因果未就绪）
+  };
+  // 找第 index 个可见字符前的位置。与 Yjs 同口径，分两步：
+  //  ① findPosition/findNextPosition：只对未删除的 item 递减计数，归零立刻停；
+  //  ② insertText 的 minimizeAttributeChanges：再向右跨过紧邻的墓碑。
+  // 第 ② 步是硬要求 —— 少了它，新字符会落在墓碑左边，与 Yjs 的 origin 不同，
+  // 三副本并发时收敛结果就会分叉（2026-09-06 与 Yjs 对拍时实撞）。
+  Yata.prototype.posOf = function (index) {
+    var cnt = index, i = 0;
+    while (i < this.list.length && cnt > 0) {
+      if (!this.list[i].del) cnt--;
+      i++;
+    }
+    while (i < this.list.length && this.list[i].del) i++;
+    return i;                        // 新 item 落在 list[i-1] 与 list[i] 之间
+  };
+  Yata.prototype.insert = function (index, ch) {
+    var i = this.posOf(index);
+    var op = this.newOpBase('i');
+    op.ch = ch;
+    op.ol = i > 0 ? this.list[i - 1].id : null;
+    op.or = i < this.list.length ? this.list[i].id : null;
+    return this.emit(op);
+  };
+  Yata.prototype.del = function (index) {
+    var i, seen = -1;
+    for (i = 0; i < this.list.length; i++) {
+      if (!this.list[i].del) { seen++; if (seen === index) break; }
+    }
+    if (i >= this.list.length) return null;
+    var op = this.newOpBase('d');
+    op.ref = this.list[i].id;
+    return this.emit(op);
+  };
+  // Yjs Item.integrate() 的直译（左右 origin 之间的冲突消解）
+  Yata.prototype.integrate = function (op) {
+    var di;
+    if (op.k === 'd') {
+      di = this.idx(op.ref);
+      if (di >= 0) this.list[di].del = true;
+      return;
+    }
+    var item = { id: op.id, ch: op.ch, ol: op.ol, or: op.or, del: false };
+    var li = op.ol ? this.idx(op.ol) : -1;
+    var ri = op.or ? this.idx(op.or) : this.list.length;
+    if (li === -2 || ri === -2) throw new Error('YATA: origin 未知，因果序被破坏');
+    var left = li, o = li + 1;
+    var conflicting = {}, before = {};
+    while (o < ri) {
+      var other = this.list[o];
+      before[idKey(other.id)] = 1;
+      conflicting[idKey(other.id)] = 1;
+      if (idEq(item.ol, other.ol)) {
+        // 同一个左 origin ⇒ 真并发，客户端号小者在前
+        if (other.id[0] < item.id[0]) { left = o; conflicting = {}; }
+        else if (idEq(item.or, other.or)) break;
+      } else if (other.ol && before[idKey(other.ol)]) {
+        if (!conflicting[idKey(other.ol)]) { left = o; conflicting = {}; }
+      } else break;
+      o++;
+    }
+    this.list.splice(left + 1, 0, item);
+  };
+  Yata.prototype.text = function () {
+    var s = '';
+    for (var i = 0; i < this.list.length; i++) if (!this.list[i].del) s += this.list[i].ch;
+    return s;
+  };
+  Yata.prototype.items = function () {
+    return this.list.map(function (it) {
+      return {
+        id: it.id, ch: it.ch, del: it.del,
+        meta: [['左 origin', it.ol ? idKey(it.ol) : '⟨头⟩'], ['右 origin', it.or ? idKey(it.or) : '⟨尾⟩']]
+      };
+    });
+  };
+
+  /* =========================================================================
+   * RGA —— Automerge 的列表算法
+   * 每个元素记录 after（前驱 id）；同一前驱下的兄弟按 (counter, actor) 降序。
+   * 因为 Lamport 保证「子的 counter > 父的 counter」，线性扫描即可：
+   * 从 after 的下一位起，跳过所有 id 大于新 id 的元素。
+   * ========================================================================= */
+  function Rga(client) { BaseSeq.call(this, client); this.list = []; }
+  Rga.prototype = Object.create(BaseSeq.prototype);
+  Rga.prototype.constructor = Rga;
+  Rga.prototype.algo = 'RGA';
+
+  Rga.prototype.idx = function (id) {
+    if (!id) return -1;
+    var k = idKey(id);
+    for (var i = 0; i < this.list.length; i++) if (idKey(this.list[i].id) === k) return i;
+    return -2;
+  };
+  Rga.prototype.visibleIdx = function (index) {
+    var seen = -1;
+    for (var i = 0; i < this.list.length; i++) {
+      if (!this.list[i].del) { seen++; if (seen === index) return i; }
+    }
+    return -1;
+  };
+  Rga.prototype.insert = function (index, ch) {
+    // 插在第 index 个可见字符之前 ⇒ 前驱是第 index-1 个可见字符（墓碑不作前驱）
+    var op = this.newOpBase('i');
+    op.ch = ch;
+    op.after = index === 0 ? null : this.list[this.visibleIdx(index - 1)].id;
+    return this.emit(op);
+  };
+  Rga.prototype.del = function (index) {
+    var i = this.visibleIdx(index);
+    if (i < 0) return null;
+    var op = this.newOpBase('d');
+    op.ref = this.list[i].id;
+    return this.emit(op);
+  };
+  Rga.prototype.integrate = function (op) {
+    var di;
+    if (op.k === 'd') {
+      di = this.idx(op.ref);
+      if (di >= 0) this.list[di].del = true;
+      return;
+    }
+    var ai = op.after ? this.idx(op.after) : -1;
+    if (ai === -2) throw new Error('RGA: after 未知，因果序被破坏');
+    var i = ai + 1;
+    while (i < this.list.length && rgaBefore(this.list[i].id, op.id)) i++;
+    this.list.splice(i, 0, { id: op.id, ch: op.ch, after: op.after, del: false });
+  };
+  Rga.prototype.text = function () {
+    var s = '';
+    for (var i = 0; i < this.list.length; i++) if (!this.list[i].del) s += this.list[i].ch;
+    return s;
+  };
+  Rga.prototype.items = function () {
+    return this.list.map(function (it) {
+      return { id: it.id, ch: it.ch, del: it.del, meta: [['前驱 after', it.after ? idKey(it.after) : '⟨头⟩']] };
+    });
+  };
+
+  /* =========================================================================
+   * LSEQ —— 稠密位置标识符（Logoot / LSEQ 家族）
+   * pos = [[digit, client, counter], …]，字典序全序。
+   * 第三位（该副本的 Lamport 计数）是**唯一性保证** —— 少了它，同一副本在同一
+   * 间隙里两次插入可能抽到同一个数字，两条记录标识符完全相同，文档次序就依赖
+   * 到达顺序、副本之间会分叉（2026-09-06 离线 fuzz 实撞，200 组里 2 次）。
+   * ========================================================================= */
+  function posCmp(a, b) {
+    var n = Math.min(a.length, b.length);
+    for (var i = 0; i < n; i++) {
+      if (a[i][0] !== b[i][0]) return a[i][0] - b[i][0];
+      if (a[i][1] !== b[i][1]) return a[i][1] - b[i][1];
+      if ((a[i][2] || 0) !== (b[i][2] || 0)) return (a[i][2] || 0) - (b[i][2] || 0);
+    }
+    return a.length - b.length;
+  }
+  function baseAt(depth) { return Math.pow(2, 5 + depth); }   // 32, 64, 128, …
+  // r 的前 depth 位与 q 完全相同？只有相同时 q 才在第 depth 层构成上界。
+  function prefixEq(r, q, depth) {
+    if (q.length < depth) return false;
+    for (var i = 0; i < depth; i++) {
+      if (r[i][0] !== q[i][0] || r[i][1] !== q[i][1] || (r[i][2] || 0) !== (q[i][2] || 0)) return false;
+    }
+    return true;
+  }
+
+  function Lseq(client) {
+    BaseSeq.call(this, client);
+    this.list = [];
+    this.rnd = mulberry(client * 7919 + 13);
+    this.strategy = {};                    // 每层的 boundary 方向（LSEQ）
+  }
+  Lseq.prototype = Object.create(BaseSeq.prototype);
+  Lseq.prototype.constructor = Lseq;
+  Lseq.prototype.algo = 'LSEQ';
+
+  Lseq.prototype.dirAt = function (depth) {
+    if (!(depth in this.strategy)) this.strategy[depth] = this.rnd() < 0.5 ? 1 : -1;
+    return this.strategy[depth];
+  };
+  // 生成严格落在 p 与 q 之间的位置标识符（p < 结果 < q）
+  Lseq.prototype.alloc = function (p, q, counter) {
+    var r = [];
+    for (var depth = 0; depth < 64; depth++) {
+      var pd = depth < p.length ? p[depth][0] : 0;
+      var qActive = depth < q.length && prefixEq(r, q, depth);
+      var qd = qActive ? q[depth][0] : baseAt(depth);
+      var interval = qd - pd - 1;
+      if (interval >= 1) {
+        var step = Math.min(interval, 10);
+        var d = this.dirAt(depth) > 0
+          ? pd + 1 + Math.floor(this.rnd() * step)
+          : qd - 1 - Math.floor(this.rnd() * step);
+        r.push([d, this.client, counter]);
+        return r;
+      }
+      // 本层没有空隙 ⇒ 跟着 p 往下一层找（p 用完则用下界占位）
+      r.push(depth < p.length ? [p[depth][0], p[depth][1], p[depth][2] || 0] : [0, 0, 0]);
+    }
+    throw new Error('LSEQ: 标识符深度超限');
+  };
+  Lseq.prototype.visibleIdx = function (index) {
+    var seen = -1;
+    for (var i = 0; i < this.list.length; i++) {
+      if (!this.list[i].del) { seen++; if (seen === index) return i; }
+    }
+    return -1;
+  };
+  Lseq.prototype.insert = function (index, ch) {
+    var li = index === 0 ? -1 : this.visibleIdx(index - 1);
+    var lo = li >= 0 ? this.list[li].pos : [];
+    var hi = (li + 1) < this.list.length ? this.list[li + 1].pos : [[baseAt(0), 0, 0]];
+    var op = this.newOpBase('i');
+    op.ch = ch;
+    op.pos = this.alloc(lo, hi, op.id[1]);
+    return this.emit(op);
+  };
+  Lseq.prototype.del = function (index) {
+    var i = this.visibleIdx(index);
+    if (i < 0) return null;
+    var op = this.newOpBase('d');
+    op.ref = this.list[i].id;
+    return this.emit(op);
+  };
+  Lseq.prototype.integrate = function (op) {
+    var i;
+    if (op.k === 'd') {
+      for (i = 0; i < this.list.length; i++) {
+        if (idKey(this.list[i].id) === idKey(op.ref)) { this.list[i].del = true; return; }
+      }
+      return;
+    }
+    var lo = 0, hi = this.list.length;
+    while (lo < hi) {
+      var mid = (lo + hi) >> 1;
+      if (posCmp(this.list[mid].pos, op.pos) < 0) lo = mid + 1; else hi = mid;
+    }
+    this.list.splice(lo, 0, { id: op.id, ch: op.ch, pos: op.pos, del: false });
+  };
+  Lseq.prototype.text = function () {
+    var s = '';
+    for (var i = 0; i < this.list.length; i++) if (!this.list[i].del) s += this.list[i].ch;
+    return s;
+  };
+  Lseq.prototype.items = function () {
+    return this.list.map(function (it) {
+      return {
+        id: it.id, ch: it.ch, del: it.del,
+        meta: [['位置标识符', it.pos.map(function (d) { return d[0] + '·' + d[1] + '·' + (d[2] || 0); }).join(' / ')]]
+      };
+    });
+  };
+
+  /* =========================================================================
+   * 操作变换（OT）—— 两套：
+   *   ① dOPT（去中心朴素 OT）：拿本地历史直接变换来件。经典缺陷版，会分叉。
+   *   ② Jupiter（中心服务器 OT）：Google Docs / ShareDB 这一路的真实做法，收敛。
+   * 变换函数 xform 两者共用；差别只在「谁来保证变换的两个 op 处在同一上下文」。
+   * ========================================================================= */
+  function xform(a, b, aWins) {
+    // 返回 a 相对 b 变换后的结果（b 已先于 a 作用于同一状态）
+    var r = { k: a.k, p: a.p, ch: a.ch, noop: a.noop || false };
+    if (a.noop || b.noop) return r;
+    if (a.k === 'i' && b.k === 'i') {
+      if (a.p < b.p) return r;
+      if (a.p > b.p) { r.p = a.p + 1; return r; }
+      if (aWins) return r;
+      r.p = a.p + 1; return r;
+    }
+    if (a.k === 'i' && b.k === 'd') {
+      if (a.p <= b.p) return r;
+      r.p = a.p - 1; return r;
+    }
+    if (a.k === 'd' && b.k === 'i') {
+      if (a.p < b.p) return r;
+      r.p = a.p + 1; return r;
+    }
+    if (a.p < b.p) return r;
+    if (a.p > b.p) { r.p = a.p - 1; return r; }
+    r.noop = true; return r;                     // 同一个字符被两边删除
+  }
+  function applyOp(s, o) {
+    if (o.noop) return s;
+    if (o.k === 'i') return s.slice(0, o.p) + o.ch + s.slice(o.p);
+    return s.slice(0, o.p) + s.slice(o.p + 1);
+  }
+
+  function Ot(client) {
+    BaseSeq.call(this, client);
+    this.doc = '';
+    this.hist = [];         // 已作用于本副本的（变换后的）op，按作用顺序
+  }
+  Ot.prototype = Object.create(BaseSeq.prototype);
+  Ot.prototype.constructor = Ot;
+  Ot.prototype.algo = 'OT';
+
+  Ot.prototype.insert = function (index, ch) {
+    var op = this.newOpBase('i');
+    op.p = index; op.ch = ch;
+    return this.emit(op);
+  };
+  Ot.prototype.del = function (index) {
+    if (index >= this.doc.length) return null;
+    var op = this.newOpBase('d');
+    op.p = index;
+    return this.emit(op);
+  };
+  Ot.prototype.integrate = function (op) {
+    if (op.id[0] === this.client) {
+      this.doc = applyOp(this.doc, op);
+      this.hist.push({ k: op.k, p: op.p, ch: op.ch, noop: false, by: op.id[0], seq: op.seq });
+      return;
+    }
+    var o = { k: op.k, p: op.p, ch: op.ch, noop: false };
+    for (var i = 0; i < this.hist.length; i++) {
+      var h = this.hist[i];
+      if ((op.ctx[h.by] || 0) >= h.seq) continue;      // 发送方已见过 h，无须变换
+      o = xform(o, h, op.id[0] < h.by);
+    }
+    this.doc = applyOp(this.doc, o);
+    this.hist.push({ k: o.k, p: o.p, ch: o.ch, noop: o.noop, by: op.id[0], seq: op.seq });
+  };
+  Ot.prototype.text = function () { return this.doc; };
+  Ot.prototype.items = function () {
+    return this.doc.split('').map(function (ch, i) {
+      return { id: [0, i], ch: ch, del: false, meta: [['当前下标', String(i)]] };
+    });
+  };
+  Ot.prototype.stats = function () {
+    return { live: this.doc.length, tomb: 0, total: this.doc.length, pending: this.pending.length, ops: this.applied.length };
+  };
+
+  /* =========================================================================
+   * Jupiter —— 中心服务器 OT（ShareDB / Google Wave 这一路）
+   * 关键：每一次变换的两个 op 都保证处在同一上下文，于是只要 TP1 就够，
+   *      代价是必须有服务器定全序，且信道必须 FIFO 有序。
+   * ========================================================================= */
+  function JupClient(id) {
+    this.client = id;
+    this.doc = '';
+    this.out = [];        // 已发出、尚未被服务器确认的本地 op（按发出顺序）
+    this.recvCount = 0;   // 已应用的**他人** op 条数（= 报给服务器的 ack 计数）
+    this.applied = [];
+  }
+  JupClient.prototype.localOp = function (kind, idx, ch) {
+    if (kind === 'd' && idx >= this.doc.length) return null;
+    if (kind === 'i' && idx > this.doc.length) return null;
+    var op = { k: kind, p: idx, ch: ch, noop: false };
+    this.doc = applyOp(this.doc, op);
+    this.out.push(op);
+    return { op: op, base: this.recvCount, from: this.client };
+  };
+  JupClient.prototype.fromServer = function (msg) {
+    if (msg.ack) { this.out.shift(); this.applied.push(msg); return; }
+    // 来件的上下文 = 本副本「减去自己所有未确认 op」的状态，故逐条对 out 做镜像变换
+    var o = msg.op, nout = [];
+    var incomingWins = msg.origin < this.client;
+    for (var i = 0; i < this.out.length; i++) {
+      var h = this.out[i];
+      var o2 = xform(o, h, incomingWins);
+      nout.push(xform(h, o, !incomingWins));
+      o = o2;
+    }
+    this.out = nout;
+    this.doc = applyOp(this.doc, o);
+    this.recvCount++;
+    this.applied.push(msg);
+  };
+  JupClient.prototype.text = function () { return this.doc; };
+  JupClient.prototype.stats = function () {
+    return { live: this.doc.length, tomb: 0, total: this.doc.length, pending: this.out.length, ops: this.applied.length };
+  };
+  JupClient.prototype.items = function () {
+    return this.doc.split('').map(function (ch, i) {
+      return { id: [0, i], ch: ch, del: false, meta: [['当前下标', String(i)]] };
+    });
+  };
+
+  // 服务器为每个客户端维护一条「桥」：已广播给它、它还没应用的**他人** op，
+  // 并随每次变换做镜像更新 —— 这是 Jupiter 的核心。少了桥而直接拿原始历史做变换，
+  // 变换的两个 op 就不在同一上下文里（假变换），两副本也会分叉（2026-09-06 实撞）。
+  function JupServer(clients) {
+    this.doc = '';
+    this.hist = [];
+    this.bridge = {};
+    this.consumed = {};
+    for (var i = 0; i < clients.length; i++) { this.bridge[clients[i]] = []; this.consumed[clients[i]] = 0; }
+  }
+  JupServer.prototype.fromClient = function (msg) {
+    var br = this.bridge[msg.from];
+    br.splice(0, msg.base - this.consumed[msg.from]);
+    this.consumed[msg.from] = msg.base;
+    var o = msg.op, nbr = [];
+    for (var i = 0; i < br.length; i++) {
+      var h = br[i];
+      var oWins = msg.from < h.origin;
+      var o2 = xform(o, h.op, oWins);
+      nbr.push({ op: xform(h.op, o, !oWins), origin: h.origin });
+      o = o2;
+    }
+    this.bridge[msg.from] = nbr;
+    this.doc = applyOp(this.doc, o);
+    var out = { op: o, origin: msg.from, seq: this.hist.length + 1 };
+    this.hist.push(out);
+    for (var c in this.bridge) {
+      if (Number(c) === msg.from) continue;
+      this.bridge[c].push({ op: o, origin: msg.from });
+    }
+    return out;
+  };
+  JupServer.prototype.text = function () { return this.doc; };
+
+  /* =========================================================================
+   * 网络仿真：N 个副本 + 一条可操纵的消息队列
+   * ========================================================================= */
+  var ENGINES = { YATA: Yata, RGA: Rga, LSEQ: Lseq, DOPT: Ot };
+
+  function Sim(algo, clients) {
+    this.algo = algo;
+    this.clients = clients.slice();
+    this.reps = {};
+    for (var i = 0; i < clients.length; i++) this.reps[clients[i]] = new ENGINES[algo](clients[i]);
+    this.queue = [];
+    this.msgSeq = 0;
+    this.history = [];        // 全部产生过的 op（因果图用）
+    this.dropped = 0;
+    this.partition = {};      // "a-b" -> true 表示这条链路断开
+  }
+  Sim.prototype.rep = function (c) { return this.reps[c]; };
+  Sim.prototype.linkKey = function (a, b) { return Math.min(a, b) + '-' + Math.max(a, b); };
+  Sim.prototype.linkDown = function (a, b) { return !!this.partition[this.linkKey(a, b)]; };
+  Sim.prototype.toggleLink = function (a, b) {
+    var k = this.linkKey(a, b);
+    if (this.partition[k]) delete this.partition[k]; else this.partition[k] = true;
+    return !!this.partition[k];
+  };
+  Sim.prototype.broadcast = function (op, from) {
+    for (var i = 0; i < this.clients.length; i++) {
+      var to = this.clients[i];
+      if (to === from) continue;
+      this.queue.push({ m: ++this.msgSeq, from: from, to: to, op: op });
+    }
+  };
+  Sim.prototype.local = function (client, kind, arg1, arg2) {
+    var r = this.reps[client];
+    var op = kind === 'i' ? r.insert(arg1, arg2) : r.del(arg1);
+    if (!op) return null;
+    this.history.push(op);
+    this.broadcast(op, client);
+    return op;
+  };
+  Sim.prototype.typeText = function (client, index, text) {
+    var out = [];
+    for (var i = 0; i < text.length; i++) {
+      var op = this.local(client, 'i', index + i, text[i]);
+      if (op) out.push(op);
+    }
+    return out;
+  };
+  Sim.prototype.deliverable = function () {
+    var self = this;
+    return this.queue.filter(function (q) { return !self.linkDown(q.from, q.to); });
+  };
+  Sim.prototype.deliver = function (m) {
+    for (var i = 0; i < this.queue.length; i++) {
+      if (this.queue[i].m === m) {
+        if (this.linkDown(this.queue[i].from, this.queue[i].to)) return null;
+        var msg = this.queue.splice(i, 1)[0];
+        return this.reps[msg.to].recv(msg.op);
+      }
+    }
+    return null;
+  };
+  Sim.prototype.drop = function (m) {
+    for (var i = 0; i < this.queue.length; i++) {
+      if (this.queue[i].m === m) { this.queue.splice(i, 1); this.dropped++; return true; }
+    }
+    return false;
+  };
+  Sim.prototype.deliverAll = function (order) {
+    var ids = this.deliverable().map(function (q) { return q.m; });
+    if (order === 'reverse') ids.reverse();
+    for (var i = 0; i < ids.length; i++) this.deliver(ids[i]);
+    return this.converged();
+  };
+  Sim.prototype.deliverShuffled = function (rnd) {
+    var ids = this.deliverable().map(function (q) { return q.m; });
+    for (var i = ids.length - 1; i > 0; i--) {
+      var j = Math.floor(rnd() * (i + 1));
+      var t = ids[i]; ids[i] = ids[j]; ids[j] = t;
+    }
+    for (var k = 0; k < ids.length; k++) this.deliver(ids[k]);
+    return this.converged();
+  };
+  Sim.prototype.texts = function () {
+    var self = this;
+    return this.clients.map(function (c) { return self.reps[c].text(); });
+  };
+  Sim.prototype.converged = function () {
+    var t = this.texts();
+    for (var i = 1; i < t.length; i++) if (t[i] !== t[0]) return false;
+    return true;
+  };
+  Sim.prototype.quiet = function () {
+    if (this.queue.length) return false;
+    for (var i = 0; i < this.clients.length; i++) if (this.reps[this.clients[i]].pending.length) return false;
+    return true;
+  };
+  // 因果图：节点 = 每条 op，边 = 直接因果依赖（同副本前一条 + 每个来源在 ctx 里的最后一条）
+  Sim.prototype.causalGraph = function () {
+    var byKey = {}, i, j;
+    for (i = 0; i < this.history.length; i++) byKey[idKey(this.history[i].id)] = this.history[i];
+    var bySeq = {};
+    for (i = 0; i < this.history.length; i++) {
+      var op = this.history[i];
+      bySeq[op.id[0] + '#' + op.seq] = op;
+    }
+    var nodes = this.history.map(function (op) {
+      return { key: idKey(op.id), client: op.id[0], seq: op.seq, lam: op.lam, k: op.k, ch: op.ch, ctx: op.ctx };
+    });
+    var edges = [];
+    for (i = 0; i < this.history.length; i++) {
+      var o = this.history[i];
+      var deps = {};
+      if (o.seq > 1) deps[o.id[0] + '#' + (o.seq - 1)] = 1;
+      for (var c in o.ctx) if (o.ctx[c] > 0 && Number(c) !== o.id[0]) deps[c + '#' + o.ctx[c]] = 1;
+      for (var d in deps) {
+        var src = bySeq[d];
+        if (src) edges.push({ from: idKey(src.id), to: idKey(o.id) });
+      }
+    }
+    return { nodes: nodes, edges: edges };
+  };
+
+  /* =========================================================================
+   * OT 网络仿真：N 个客户端 + 1 台服务器，信道 FIFO（Jupiter 的硬前提）
+   * ========================================================================= */
+  function OtSim(clients) {
+    this.algo = 'OT';
+    this.clients = clients.slice();
+    this.server = new JupServer(clients);
+    this.reps = {};
+    for (var i = 0; i < clients.length; i++) this.reps[clients[i]] = new JupClient(clients[i]);
+    this.queue = [];
+    this.msgSeq = 0;
+    this.history = [];
+    this.dropped = 0;
+    this.partition = {};
+    this.hasServer = true;
+  }
+  OtSim.prototype.rep = function (c) { return this.reps[c]; };
+  OtSim.prototype.linkKey = function (a, b) { return Math.min(a, b) + '-' + Math.max(a, b); };
+  OtSim.prototype.linkDown = function (a, b) { return !!this.partition[this.linkKey(a, b)]; };
+  OtSim.prototype.toggleLink = function (a, b) {
+    var k = this.linkKey(a, b);
+    if (this.partition[k]) delete this.partition[k]; else this.partition[k] = true;
+    return !!this.partition[k];
+  };
+  OtSim.prototype.local = function (client, kind, idx, ch) {
+    var msg = this.reps[client].localOp(kind, idx, ch);
+    if (!msg) return null;
+    this.history.push({ id: [client, this.history.length + 1], k: kind, ch: ch, p: idx, seq: 0, ctx: {} });
+    this.queue.push({ m: ++this.msgSeq, from: client, to: 0, dir: 'up', payload: msg, op: msg.op });
+    return msg.op;
+  };
+  OtSim.prototype.typeText = function (client, index, text) {
+    var out = [];
+    for (var i = 0; i < text.length; i++) {
+      var op = this.local(client, 'i', index + i, text[i]);
+      if (op) out.push(op);
+    }
+    return out;
+  };
+  // FIFO：每条链路（from→to）只有队首那条可投递
+  OtSim.prototype.deliverable = function () {
+    var seenLink = {}, out = [], self = this;
+    for (var i = 0; i < this.queue.length; i++) {
+      var q = this.queue[i];
+      var k = q.from + '>' + q.to;
+      if (seenLink[k]) continue;
+      seenLink[k] = 1;
+      var a = q.from === 0 ? q.to : q.from;
+      if (self.partition[self.linkKey(a, 0)]) continue;
+      out.push(q);
+    }
+    return out;
+  };
+  OtSim.prototype.deliver = function (m) {
+    var ok = this.deliverable();
+    for (var i = 0; i < ok.length; i++) {
+      if (ok[i].m !== m) continue;
+      var idx = this.queue.indexOf(ok[i]);
+      var msg = this.queue.splice(idx, 1)[0];
+      if (msg.dir === 'up') {
+        var out = this.server.fromClient(msg.payload);
+        for (var j = 0; j < this.clients.length; j++) {
+          var to = this.clients[j];
+          var payload = to === out.origin
+            ? { ack: true, origin: out.origin, seq: out.seq }
+            : out;
+          this.queue.push({ m: ++this.msgSeq, from: 0, to: to, dir: 'down', payload: payload, op: out.op, ack: to === out.origin });
+        }
+      } else {
+        this.reps[msg.to].fromServer(msg.payload);
+      }
+      return { delivered: 1, buffered: 0, dup: 0 };
+    }
+    return null;
+  };
+  OtSim.prototype.drop = function (m) {
+    for (var i = 0; i < this.queue.length; i++) {
+      if (this.queue[i].m === m) { this.queue.splice(i, 1); this.dropped++; return true; }
+    }
+    return false;
+  };
+  OtSim.prototype.deliverAll = function () {
+    var guard = 0;
+    while (this.deliverable().length && guard++ < 20000) this.deliver(this.deliverable()[0].m);
+    return this.converged();
+  };
+  OtSim.prototype.deliverShuffled = function (rnd) {
+    var guard = 0;
+    while (this.deliverable().length && guard++ < 20000) {
+      var d = this.deliverable();
+      this.deliver(d[Math.floor(rnd() * d.length)].m);
+    }
+    return this.converged();
+  };
+  OtSim.prototype.texts = function () {
+    var self = this;
+    return this.clients.map(function (c) { return self.reps[c].text(); });
+  };
+  OtSim.prototype.converged = function () {
+    var t = this.texts();
+    for (var i = 1; i < t.length; i++) if (t[i] !== t[0]) return false;
+    return t.length ? t[0] === this.server.text() : true;
+  };
+  OtSim.prototype.quiet = function () { return this.queue.length === 0; };
+  OtSim.prototype.causalGraph = function () { return { nodes: [], edges: [] }; };
+
+  // 去中心朴素 OT（dOPT）的固定分叉剧本：同一串动作，CRDT 收敛而 dOPT 分叉
+  function doptDemo() {
+    var out = {};
+    ['DOPT', 'YATA'].forEach(function (algo) {
+      var sim = new Sim(algo, [1, 2, 3]);
+      sim.typeText(1, 0, 'ab');
+      sim.deliverAll();
+      sim.local(1, 'i', 1, 'X');     // 副本1 在 a 与 b 之间插入 X
+      sim.local(2, 'd', 0);          // 副本2 并发删掉 a
+      sim.local(3, 'i', 0, 'Z');     // 副本3 并发在开头插入 Z
+      sim.deliverAll();
+      out[algo] = { texts: sim.texts(), converged: sim.converged() };
+    });
+    return out;
+  }
+
+  function makeSim(algo, clients) {
+    return algo === 'OT' ? new OtSim(clients) : new Sim(algo, clients);
+  }
+
+  /* =========================================================================
+   * 状态型 CRDT 图鉴（每种给 merge / value / leq）
+   * ========================================================================= */
+  function canon(v) {
+    if (Array.isArray(v)) return '[' + v.map(canon).join(',') + ']';
+    if (v && typeof v === 'object') {
+      var ks = Object.keys(v).sort();
+      return '{' + ks.map(function (k) { return JSON.stringify(k) + ':' + canon(v[k]); }).join(',') + '}';
+    }
+    return JSON.stringify(v);
+  }
+  function maxMap(a, b) {
+    var n = {}, k;
+    for (k in a) n[k] = a[k];
+    for (k in b) if (!(k in n) || b[k] > n[k]) n[k] = b[k];
+    return n;
+  }
+  function leqMap(a, b) {
+    for (var k in a) if ((a[k] || 0) > (b[k] || 0)) return false;
+    return true;
+  }
+  function unionSet(a, b) {
+    var n = {}, k;
+    for (k in a) n[k] = 1;
+    for (k in b) n[k] = 1;
+    return n;
+  }
+  function subsetOf(a, b) { for (var k in a) if (!b[k]) return false; return true; }
+  function sortedKeys(o) { return Object.keys(o).sort(); }
+
+  var TYPES = {
+    'g-counter': {
+      title: 'G-Counter · 只增计数器',
+      lattice: '每个副本一格计数，merge 逐格取最大值',
+      anomaly: '不能减：任何递减都会破坏格的单调性',
+      ops: [{ k: 'inc', label: '+1' }],
+      init: function () { return { p: {} }; },
+      apply: function (s, client, op) { var n = clone(s); n.p[client] = (n.p[client] || 0) + 1; return n; },
+      merge: function (a, b) { return { p: maxMap(a.p, b.p) }; },
+      leq: function (a, b) { return leqMap(a.p, b.p); },
+      value: function (s) { var t = 0; for (var k in s.p) t += s.p[k]; return String(t); },
+      show: function (s) {
+        return sortedKeys(s.p).map(function (k) { return '副本' + k + '=' + s.p[k]; }).join('  ') || '（空）';
+      }
+    },
+    'pn-counter': {
+      title: 'PN-Counter · 可增可减计数器',
+      lattice: '两个 G-Counter（加、减）并排，值 = ΣP − ΣN',
+      anomaly: '元数据只增不减：减一次也要永久占一格',
+      ops: [{ k: 'inc', label: '+1' }, { k: 'dec', label: '−1' }],
+      init: function () { return { p: {}, n: {} }; },
+      apply: function (s, client, op) {
+        var x = clone(s);
+        if (op === 'inc') x.p[client] = (x.p[client] || 0) + 1;
+        else x.n[client] = (x.n[client] || 0) + 1;
+        return x;
+      },
+      merge: function (a, b) { return { p: maxMap(a.p, b.p), n: maxMap(a.n, b.n) }; },
+      leq: function (a, b) { return leqMap(a.p, b.p) && leqMap(a.n, b.n); },
+      value: function (s) {
+        var t = 0, k;
+        for (k in s.p) t += s.p[k];
+        for (k in s.n) t -= s.n[k];
+        return String(t);
+      },
+      show: function (s) {
+        var pk = sortedKeys(s.p).map(function (k) { return k + ':+' + s.p[k]; });
+        var nk = sortedKeys(s.n).map(function (k) { return k + ':−' + s.n[k]; });
+        return pk.concat(nk).join('  ') || '（空）';
+      }
+    },
+    'g-set': {
+      title: 'G-Set · 只增集合',
+      lattice: '集合并',
+      anomaly: '不能删：删除会破坏并集的单调性',
+      ops: [{ k: 'add', label: '加入', needElem: true }],
+      init: function () { return { s: {} }; },
+      apply: function (s, client, op, el) { var n = clone(s); n.s[el] = 1; return n; },
+      merge: function (a, b) { return { s: unionSet(a.s, b.s) }; },
+      leq: function (a, b) { return subsetOf(a.s, b.s); },
+      value: function (s) { return '{' + sortedKeys(s.s).join(', ') + '}'; },
+      show: function (s) { return '加入集 {' + sortedKeys(s.s).join(',') + '}'; }
+    },
+    '2p-set': {
+      title: '2P-Set · 加删两集合',
+      lattice: '两个 G-Set（A 加、R 删）；值 = A 减去 R',
+      anomaly: '删过就再也加不回来（remove-wins 且不可逆）',
+      ops: [{ k: 'add', label: '加入', needElem: true }, { k: 'rm', label: '移除', needElem: true }],
+      init: function () { return { a: {}, r: {} }; },
+      apply: function (s, client, op, el) {
+        var n = clone(s);
+        if (op === 'add') { if (!n.r[el]) n.a[el] = 1; }
+        else if (n.a[el]) n.r[el] = 1;
+        return n;
+      },
+      merge: function (a, b) { return { a: unionSet(a.a, b.a), r: unionSet(a.r, b.r) }; },
+      leq: function (a, b) { return subsetOf(a.a, b.a) && subsetOf(a.r, b.r); },
+      value: function (s) {
+        var out = [];
+        for (var k in s.a) if (!s.r[k]) out.push(k);
+        return '{' + out.sort().join(', ') + '}';
+      },
+      show: function (s) { return 'A{' + sortedKeys(s.a).join(',') + '} R{' + sortedKeys(s.r).join(',') + '}'; }
+    },
+    'lww-register': {
+      title: 'LWW-Register · 最后写入者胜',
+      lattice: '(时间戳, 副本号) 的字典序取最大',
+      anomaly: '并发写只留一个：另一个的内容被静默丢弃',
+      ops: [{ k: 'set', label: '写入', needElem: true }],
+      init: function () { return { v: '', t: 0, c: 0 }; },
+      apply: function (s, client, op, el, ts) { return { v: el, t: ts, c: client }; },
+      merge: function (a, b) {
+        if (a.t !== b.t) return a.t > b.t ? clone(a) : clone(b);
+        if (a.c !== b.c) return a.c > b.c ? clone(a) : clone(b);
+        return clone(a);
+      },
+      leq: function (a, b) { return a.t < b.t || (a.t === b.t && a.c <= b.c); },
+      value: function (s) { return s.t === 0 ? '（未写入）' : JSON.stringify(s.v); },
+      show: function (s) { return s.t === 0 ? '（未写入）' : JSON.stringify(s.v) + ' @t' + s.t + '·副本' + s.c; }
+    },
+    'mv-register': {
+      title: 'MV-Register · 多值寄存器',
+      lattice: '按向量时钟丢弃被支配的版本，并发版本全部保留',
+      anomaly: '把冲突原样交给应用层，读到的可能是一组值',
+      ops: [{ k: 'set', label: '写入', needElem: true }],
+      init: function () { return { vs: [] }; },
+      apply: function (s, client, op, el) {
+        var v = {};
+        for (var i = 0; i < s.vs.length; i++) v = VC.merge(v, s.vs[i].vc);
+        v = VC.bump(v, client);
+        return { vs: [{ v: el, vc: v }] };
+      },
+      merge: function (a, b) {
+        var all = a.vs.concat(b.vs), out = [], i, j;
+        for (i = 0; i < all.length; i++) {
+          var dominated = false;
+          for (j = 0; j < all.length; j++) {
+            if (i === j) continue;
+            if (VC.hb(all[i].vc, all[j].vc)) { dominated = true; break; }
+          }
+          if (dominated) continue;
+          var dup = false;
+          for (j = 0; j < out.length; j++) if (canon(out[j]) === canon(all[i])) dup = true;
+          if (!dup) out.push(clone(all[i]));
+        }
+        out.sort(function (x, y) { return canon(x) < canon(y) ? -1 : 1; });
+        return { vs: out };
+      },
+      leq: function (a, b) {
+        for (var i = 0; i < a.vs.length; i++) {
+          var found = false;
+          for (var j = 0; j < b.vs.length; j++) if (VC.leq(a.vs[i].vc, b.vs[j].vc)) { found = true; break; }
+          if (!found) return false;
+        }
+        return true;
+      },
+      value: function (s) {
+        if (!s.vs.length) return '（未写入）';
+        return s.vs.map(function (x) { return JSON.stringify(x.v); }).join(' ｜ ');
+      },
+      show: function (s) {
+        if (!s.vs.length) return '（未写入）';
+        return s.vs.map(function (x) {
+          return JSON.stringify(x.v) + VC.fmt(x.vc, sortedKeys(x.vc));
+        }).join('  ');
+      }
+    },
+    'or-set': {
+      title: 'OR-Set · 观察移除集合',
+      lattice: '元素带唯一标签；移除只删「已观察到的标签」',
+      anomaly: '并发「加」与「删」时加方胜（add-wins）',
+      ops: [{ k: 'add', label: '加入', needElem: true }, { k: 'rm', label: '移除', needElem: true }],
+      init: function () { return { e: {}, t: {} }; },
+      apply: function (s, client, op, el, ts) {
+        var n = clone(s);
+        if (op === 'add') {
+          if (!n.e[el]) n.e[el] = {};
+          n.e[el][client + '#' + ts] = 1;
+        } else if (n.e[el]) {
+          for (var tag in n.e[el]) n.t[tag] = 1;
+        }
+        return n;
+      },
+      merge: function (a, b) {
+        var n = { e: {}, t: unionSet(a.t, b.t) }, k, tag;
+        for (k in a.e) { n.e[k] = {}; for (tag in a.e[k]) n.e[k][tag] = 1; }
+        for (k in b.e) { if (!n.e[k]) n.e[k] = {}; for (tag in b.e[k]) n.e[k][tag] = 1; }
+        return n;
+      },
+      leq: function (a, b) {
+        for (var k in a.e) {
+          if (!b.e[k]) return false;
+          if (!subsetOf(a.e[k], b.e[k])) return false;
+        }
+        return subsetOf(a.t, b.t);
+      },
+      value: function (s) {
+        var out = [];
+        for (var k in s.e) {
+          var alive = false;
+          for (var tag in s.e[k]) if (!s.t[tag]) alive = true;
+          if (alive) out.push(k);
+        }
+        return '{' + out.sort().join(', ') + '}';
+      },
+      show: function (s) {
+        var parts = [];
+        for (var k in s.e) {
+          var tags = sortedKeys(s.e[k]).map(function (t) { return s.t[t] ? t + '(已删)' : t; });
+          parts.push(k + '⟨' + tags.join(',') + '⟩');
+        }
+        return parts.sort().join('  ') || '（空）';
+      }
+    },
+    'lww-map': {
+      title: 'LWW-Map · 键值映射',
+      lattice: '每个键一个 LWW-Register，逐键 merge',
+      anomaly: '键之间没有事务性：两个键的并发写会各自胜出',
+      ops: [{ k: 'set', label: '写入', needElem: true }, { k: 'del', label: '删除', needElem: true }],
+      init: function () { return { m: {} }; },
+      apply: function (s, client, op, el, ts) {
+        var n = clone(s);
+        var eq = el.indexOf('=');
+        var key = eq < 0 ? el : el.slice(0, eq);
+        var val = eq < 0 ? '' : el.slice(eq + 1);
+        n.m[key] = { v: op === 'del' ? null : val, t: ts, c: client };
+        return n;
+      },
+      merge: function (a, b) {
+        var n = { m: {} }, k;
+        for (k in a.m) n.m[k] = clone(a.m[k]);
+        for (k in b.m) {
+          var x = b.m[k];
+          if (!n.m[k]) { n.m[k] = clone(x); continue; }
+          var y = n.m[k];
+          if (x.t > y.t || (x.t === y.t && x.c > y.c)) n.m[k] = clone(x);
+        }
+        return n;
+      },
+      leq: function (a, b) {
+        for (var k in a.m) {
+          if (!b.m[k]) return false;
+          var x = a.m[k], y = b.m[k];
+          if (!(x.t < y.t || (x.t === y.t && x.c <= y.c))) return false;
+        }
+        return true;
+      },
+      value: function (s) {
+        var out = [];
+        for (var k in s.m) if (s.m[k].v !== null) out.push(k + '=' + s.m[k].v);
+        return '{' + out.sort().join(', ') + '}';
+      },
+      show: function (s) {
+        var out = [];
+        for (var k in s.m) out.push(k + (s.m[k].v === null ? '(已删)' : '=' + s.m[k].v) + '@t' + s.m[k].t);
+        return out.sort().join('  ') || '（空）';
+      }
+    }
+  };
+
+  /* =========================================================================
+   * OT 的性质检查：TP1 穷举 / TP2 反例搜索
+   * ========================================================================= */
+  function opsFor(len, ch) {
+    var out = [], p;
+    for (p = 0; p <= len; p++) out.push({ k: 'i', p: p, ch: ch, noop: false });
+    for (p = 0; p < len; p++) out.push({ k: 'd', p: p, ch: null, noop: false });
+    return out;
+  }
+  function opKey(o) { return o.noop ? 'noop' : (o.k + o.p + (o.ch || '')); }
+  // 长度 0..maxLen 的全部字符串（字母表 xy），按长度升序、无重复
+  function allDocs(maxLen) {
+    var out = [''], layer = [''], n, i, k, alpha = 'xy';
+    for (n = 1; n <= maxLen; n++) {
+      var next = [];
+      for (i = 0; i < layer.length; i++) for (k = 0; k < alpha.length; k++) next.push(layer[i] + alpha[k]);
+      out = out.concat(next);
+      layer = next;
+    }
+    return out;
+  }
+  // TP1: apply(apply(d,a), T(b,a)) === apply(apply(d,b), T(a,b))
+  function checkTP1(maxLen) {
+    var docs = allDocs(maxLen), i, j, d;
+    var checked = 0, bad = [];
+    for (d = 0; d < docs.length; d++) {
+      var doc = docs[d];
+      var A = opsFor(doc.length, 'A'), B = opsFor(doc.length, 'B');
+      for (i = 0; i < A.length; i++) for (j = 0; j < B.length; j++) {
+        var a = A[i], b = B[j];
+        var l = applyOp(applyOp(doc, a), xform(b, a, false));
+        var r = applyOp(applyOp(doc, b), xform(a, b, true));
+        checked++;
+        if (l !== r && bad.length < 8) bad.push({ doc: doc, a: opKey(a), b: opKey(b), l: l, r: r });
+      }
+    }
+    return { checked: checked, bad: bad };
+  }
+  // TP2: T(T(c,a), T(b,a)) === T(T(c,b), T(a,b))  —— 找最小反例
+  function findTP2(maxLen) {
+    var docs = allDocs(maxLen), i;
+    var checked = 0;
+    for (var d = 0; d < docs.length; d++) {
+      var doc = docs[d];
+      var A = opsFor(doc.length, 'A'), B = opsFor(doc.length, 'B'), C = opsFor(doc.length, 'C');
+      for (i = 0; i < A.length; i++) for (var j = 0; j < B.length; j++) for (var m = 0; m < C.length; m++) {
+        var a = A[i], b = B[j], c = C[m];
+        var l = xform(xform(c, a, false), xform(b, a, false), false);
+        var r = xform(xform(c, b, false), xform(a, b, true), false);
+        checked++;
+        if (opKey(l) !== opKey(r)) {
+          // 用具体文档把差异落成两串不同的结果
+          var doc1 = applyOp(applyOp(applyOp(doc, a), xform(b, a, false)), l);
+          var doc2 = applyOp(applyOp(applyOp(doc, b), xform(a, b, true)), r);
+          return {
+            found: true, checked: checked, doc: doc,
+            a: a, b: b, c: c, left: l, right: r, doc1: doc1, doc2: doc2
+          };
+        }
+      }
+    }
+    return { found: false, checked: checked };
+  }
+
+  /* =========================================================================
+   * 元数据开销基准：同一段编辑，四种算法各留下多少东西
+   * ========================================================================= */
+  function overhead(algo, script, clients) {
+    var sim = makeSim(algo, clients);
+    script(sim);
+    sim.deliverAll();
+    var r = sim.reps[clients[0]];
+    var st = r.stats();
+    var bytes = 0;
+    for (var i = 0; i < r.applied.length; i++) {
+      var a = r.applied[i];
+      bytes += JSON.stringify(a.op !== undefined ? { k: a.op.k, p: a.op.p, ch: a.op.ch, o: a.origin, s: a.seq } : a).length;
+    }
+    return { algo: algo, live: st.live, tomb: st.tomb, total: st.total, ops: st.ops, bytes: bytes, text: r.text() };
+  }
+
+  /* =========================================================================
+   * 导出
+   * ========================================================================= */
+  return {
+    idKey: idKey, idEq: idEq, rgaBefore: rgaBefore, posCmp: posCmp, prefixEq: prefixEq, canon: canon,
+    mulberry: mulberry, clone: clone,
+    VC: VC,
+    Yata: Yata, Rga: Rga, Lseq: Lseq, Ot: Ot, ENGINES: ENGINES,
+    JupClient: JupClient, JupServer: JupServer,
+    Sim: Sim, OtSim: OtSim, makeSim: makeSim,
+    xform: xform, applyOp: applyOp, opsFor: opsFor, opKey: opKey,
+    checkTP1: checkTP1, findTP2: findTP2, allDocs: allDocs, doptDemo: doptDemo, overhead: overhead,
+    TYPES: TYPES
+  };
+})();
+if (typeof globalThis !== 'undefined') globalThis.CL = CL;
+</script>
+<script id="cl-app">/* CRDT Lab — 界面层。引擎在 <script id="cl-engine"> 里，此处只做渲染与交互。 */
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+  var COLORS = { 1: '#ff4f00', 2: '#1b6ef3', 3: '#1f9e52', 4: '#8b46d4', 5: '#c8a415', 0: '#201515' };
+  var ALGO_LABEL = { YATA: 'YATA（Yjs 口径）', RGA: 'RGA（Automerge 口径）', LSEQ: 'LSEQ（稠密标识符）', OT: 'Jupiter OT（中心服务器）' };
+
+  function el(tag, cls, txt) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (txt !== undefined && txt !== null) n.textContent = String(txt);
+    return n;
+  }
+  function svgEl(tag, attrs) {
+    var n = document.createElementNS('http://www.w3.org/2000/svg', tag);
+    for (var k in attrs) n.setAttribute(k, attrs[k]);
+    return n;
+  }
+  function table(host, head, rows, opts) {
+    opts = opts || {};
+    host.textContent = '';
+    var thead = el('thead'), tr = el('tr');
+    head.forEach(function (h, i) {
+      var th = el('th', opts.num && opts.num.indexOf(i) >= 0 ? 'cl-num' : '', h);
+      tr.appendChild(th);
+    });
+    thead.appendChild(tr); host.appendChild(thead);
+    var tb = el('tbody');
+    rows.forEach(function (r) {
+      var trr = el('tr');
+      r.forEach(function (c, i) {
+        var td = el('td', opts.num && opts.num.indexOf(i) >= 0 ? 'cl-num' : '');
+        if (c && c.nodeType) td.appendChild(c); else td.textContent = c === undefined || c === null ? '' : String(c);
+        trr.appendChild(td);
+      });
+      tb.appendChild(trr);
+    });
+    host.appendChild(tb);
+    if (!rows.length) {
+      var trE = el('tr'), tdE = el('td', 'cl-empty', opts.empty || '（暂无）');
+      tdE.colSpan = head.length; trE.appendChild(tdE); tb.appendChild(trE);
+    }
+  }
+
+  /* ── 标签避让器：这张画布上的每一段文字都必须走它 ────────────────── */
+  function Placer(w, h) { this.r = []; this.w = w; this.h = h; this.drawn = 0; this.dropped = 0; }
+  Placer.prototype.hit = function (a) {
+    for (var i = 0; i < this.r.length; i++) {
+      var b = this.r[i];
+      if (!(a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h <= b.y || b.y + b.h <= a.y)) return true;
+    }
+    return false;
+  };
+  Placer.prototype.reserve = function (r) { this.r.push(r); return r; };
+  Placer.prototype.place = function (x, y, w, h, offs) {
+    for (var i = 0; i < offs.length; i++) {
+      var a = { x: x + offs[i][0], y: y + offs[i][1], w: w, h: h };
+      if (a.x < 0 || a.y < 0 || a.x + a.w > this.w || a.y + a.h > this.h) continue;
+      if (!this.hit(a)) { this.reserve(a); this.drawn++; return a; }
+    }
+    this.dropped++;
+    return null;
+  };
+  // 走避让器画一段文字（先垫白底，再写字）
+  Placer.prototype.text = function (svg, x, y, str, opts) {
+    opts = opts || {};
+    var size = opts.size || 11;
+    var w = str.length * size * (opts.cjk ? 1.0 : 0.58) + 6, h = size + 6;
+    var box = this.place(x, y, w, h, opts.offs || [[0, 0], [0, -(size + 8)], [0, size + 8], [-w, 0]]);
+    if (!box) return null;
+    if (opts.bg !== false) {
+      svg.appendChild(svgEl('rect', {
+        x: box.x, y: box.y, width: box.w, height: box.h, rx: 3,
+        fill: opts.bgFill || '#fffefb', opacity: opts.bgOpacity || 0.92
+      }));
+    }
+    var t = svgEl('text', {
+      x: box.x + 3, y: box.y + size, 'font-size': size,
+      'font-family': 'ui-monospace, SFMono-Regular, Menlo, monospace',
+      fill: opts.fill || '#605d52'
+    });
+    t.textContent = str;
+    svg.appendChild(t);
+    return box;
+  };
+
+  /* ══════════════════════════════════════════════════════════════════
+   * 状态
+   * ══════════════════════════════════════════════════════════════════ */
+  var S = {
+    algo: 'YATA',
+    n: 3,
+    net: 'manual',
+    sim: null,
+    clients: [1, 2, 3],
+    insideRep: 1,
+    zooType: 'g-counter',
+    zooReps: null,
+    zooTs: 0
+  };
+
+  function newSim() {
+    S.clients = [1, 2, 3, 4].slice(0, S.n);
+    S.sim = CL.makeSim(S.algo, S.clients);
+    if (S.clients.indexOf(S.insideRep) < 0) S.insideRep = S.clients[0];
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+   * 分区切换
+   * ══════════════════════════════════════════════════════════════════ */
+  var PANELS = ['sandbox', 'inside', 'causal', 'zoo', 'ot', 'about'];
+  function showPanel(name) {
+    PANELS.forEach(function (p) {
+      $('cl-panel-' + p).hidden = p !== name;
+      var t = $('cl-tab-' + p);
+      t.setAttribute('aria-selected', p === name ? 'true' : 'false');
+    });
+    if (name === 'inside') renderInside();
+    if (name === 'causal') renderCausal();
+    if (name === 'zoo') renderZoo();
+  }
+  PANELS.forEach(function (p) {
+    $('cl-tab-' + p).addEventListener('click', function () { showPanel(p); });
+  });
+
+  /* ══════════════════════════════════════════════════════════════════
+   * 沙盒
+   * ══════════════════════════════════════════════════════════════════ */
+  function diffOps(oldS, newS) {
+    var p = 0;
+    while (p < oldS.length && p < newS.length && oldS.charAt(p) === newS.charAt(p)) p++;
+    var s = 0;
+    while (s < oldS.length - p && s < newS.length - p &&
+      oldS.charAt(oldS.length - 1 - s) === newS.charAt(newS.length - 1 - s)) s++;
+    return { p: p, del: oldS.length - p - s, ins: newS.slice(p, newS.length - s) };
+  }
+
+  function applyEdit(client, oldS, newS) {
+    var d = diffOps(oldS, newS), i;
+    for (i = 0; i < d.del; i++) S.sim.local(client, 'd', d.p);
+    for (i = 0; i < d.ins.length; i++) S.sim.local(client, 'i', d.p + i, d.ins.charAt(i));
+    if (S.net === 'auto') S.sim.deliverAll();
+    renderAll();
+  }
+
+  function chSpan(it, isOt) {
+    var cls = 'cl-ch' + (it.del ? ' cl-ch--tomb' : '') + (isOt ? '' : ' cl-ch--c' + it.id[0]);
+    var s = el('span', cls, it.ch === ' ' ? '␣' : it.ch);
+    s.title = isOt ? ('下标 ' + it.id[1]) : ('id ' + CL.idKey(it.id) + (it.del ? '（墓碑）' : ''));
+    return s;
+  }
+
+  function renderReps() {
+    var host = $('cl-reps');
+    host.textContent = '';
+    var isOt = S.algo === 'OT';
+    S.clients.forEach(function (c) {
+      var r = S.sim.rep(c), st = r.stats();
+      var card = el('div', 'cl-rep');
+      card.id = 'cl-rep-' + c;
+      var h = el('div', 'cl-rep-h');
+      var dot = el('span', 'cl-dot'); dot.style.background = COLORS[c];
+      h.appendChild(dot);
+      h.appendChild(el('span', 'cl-rep-name', '副本 ' + c));
+      var badge = el('span', 'cl-pill', isOt ? ('未确认 ' + st.pending) : ('缓冲 ' + st.pending));
+      badge.id = 'cl-rep-pending-' + c;
+      if (st.pending) badge.className = 'cl-pill cl-pill--warn';
+      h.appendChild(badge);
+      card.appendChild(h);
+
+      var ta = el('textarea', 'cl-ta');
+      ta.id = 'cl-ta-' + c;
+      ta.value = r.text();
+      ta.setAttribute('aria-label', '副本 ' + c + ' 的文本');
+      ta.setAttribute('spellcheck', 'false');
+      ta.addEventListener('input', function () {
+        var before = ta.getAttribute('data-prev') === null ? '' : ta.getAttribute('data-prev');
+        applyEdit(c, before, ta.value);
+      });
+      ta.setAttribute('data-prev', r.text());
+      card.appendChild(ta);
+
+      var meta = el('div', 'cl-rep-meta');
+      function kv(k, v, id) {
+        var s = el('span'); s.appendChild(document.createTextNode(k + ' '));
+        var b = el('b', '', v); if (id) b.id = id; s.appendChild(b); return s;
+      }
+      meta.appendChild(kv('可见', st.live, 'cl-live-' + c));
+      meta.appendChild(kv('墓碑', st.tomb, 'cl-tomb-' + c));
+      meta.appendChild(kv('已收 op', st.ops));
+      card.appendChild(meta);
+
+      var strip = el('div', 'cl-strip');
+      strip.id = 'cl-strip-' + c;
+      var items = r.items();
+      items.slice(0, 90).forEach(function (it) { strip.appendChild(chSpan(it, isOt)); });
+      if (items.length > 90) strip.appendChild(el('span', 'cl-ch', '…+' + (items.length - 90)));
+      card.appendChild(strip);
+      host.appendChild(card);
+    });
+
+    if (isOt) {
+      var sc = el('div', 'cl-rep cl-rep--server');
+      sc.id = 'cl-rep-server';
+      var sh = el('div', 'cl-rep-h');
+      var sd = el('span', 'cl-dot'); sd.style.background = '#ff4f00';
+      sh.appendChild(sd);
+      sh.appendChild(el('span', 'cl-rep-name', '服务器（权威副本）'));
+      sc.appendChild(sh);
+      var sta = el('textarea', 'cl-ta');
+      sta.id = 'cl-ta-server'; sta.readOnly = true; sta.value = S.sim.server.text();
+      sta.setAttribute('aria-label', '服务器文本');
+      sc.appendChild(sta);
+      var sm = el('div', 'cl-rep-meta');
+      sm.appendChild(el('span', '', 'Jupiter 里服务器给每个客户端维护一条经过镜像变换的「桥」，'
+        + '因此每次变换的两个 op 上下文一致，只要 TP1 就够。'));
+      sc.appendChild(sm);
+      host.appendChild(sc);
+    }
+  }
+
+  function opDesc(q) {
+    if (S.algo === 'OT') {
+      var o = q.op;
+      var body = o.k === 'i' ? ('插入 "' + o.ch + '" @' + o.p) : ('删除 @' + o.p);
+      if (q.dir === 'up') return '副本' + q.from + ' → 服务器 · ' + body;
+      return '服务器 → 副本' + q.to + ' · ' + (q.ack ? '确认自己的 op' : body);
+    }
+    var op = q.op;
+    var d = op.k === 'i'
+      ? ('插入 "' + (op.ch === ' ' ? '␣' : op.ch) + '"')
+      : ('删除 ' + CL.idKey(op.ref));
+    return '副本' + q.from + ' → 副本' + q.to + ' · ' + d + ' · id ' + CL.idKey(op.id);
+  }
+
+  function renderQueue() {
+    var host = $('cl-queue');
+    host.textContent = '';
+    var deliverable = {}, d = S.sim.deliverable();
+    d.forEach(function (q) { deliverable[q.m] = 1; });
+    if (!S.sim.queue.length) {
+      host.appendChild(el('div', 'cl-empty', '没有在途消息 —— 网络是安静的。'));
+      return;
+    }
+    S.sim.queue.forEach(function (q) {
+      var row = el('div', 'cl-q-row' + (deliverable[q.m] ? '' : ' cl-q-blocked'));
+      row.setAttribute('data-msg', q.m);
+      row.appendChild(el('span', 'cl-q-tag', '#' + q.m));
+      row.appendChild(el('span', 'cl-q-desc', opDesc(q)));
+      var b1 = el('button', 'cl-btn cl-btn--tiny', deliverable[q.m] ? '投递' : '链路断开');
+      b1.type = 'button';
+      b1.disabled = !deliverable[q.m];
+      b1.addEventListener('click', function () { S.sim.deliver(q.m); renderAll(); });
+      var b2 = el('button', 'cl-btn cl-btn--tiny cl-btn--ghost', '丢弃');
+      b2.type = 'button';
+      b2.addEventListener('click', function () { S.sim.drop(q.m); renderAll(); });
+      row.appendChild(b1); row.appendChild(b2);
+      host.appendChild(row);
+    });
+  }
+
+  function renderLinks() {
+    var host = $('cl-links');
+    host.textContent = '';
+    var pairs = [];
+    if (S.algo === 'OT') {
+      S.clients.forEach(function (c) { pairs.push([c, 0, '副本' + c + ' ↔ 服务器']); });
+    } else {
+      for (var i = 0; i < S.clients.length; i++) {
+        for (var j = i + 1; j < S.clients.length; j++) {
+          pairs.push([S.clients[i], S.clients[j], '副本' + S.clients[i] + ' ↔ 副本' + S.clients[j]]);
+        }
+      }
+    }
+    host.appendChild(el('span', 'cl-lab', '链路：'));
+    pairs.forEach(function (p) {
+      var down = S.sim.linkDown(p[0], p[1]);
+      var b = el('button', 'cl-btn cl-btn--tiny' + (down ? '' : ' cl-btn--ghost'), (down ? '✕ ' : '') + p[2]);
+      b.type = 'button';
+      b.setAttribute('aria-pressed', down ? 'true' : 'false');
+      b.setAttribute('data-link', p[0] + '-' + p[1]);
+      b.addEventListener('click', function () { S.sim.toggleLink(p[0], p[1]); renderAll(); });
+      host.appendChild(b);
+    });
+  }
+
+  function renderConverge() {
+    var host = $('cl-converge');
+    host.textContent = '';
+    var texts = S.sim.texts();
+    var conv = S.sim.converged();
+    var inflight = S.sim.queue.length;
+    var buffered = 0;
+    S.clients.forEach(function (c) { buffered += S.sim.rep(c).stats().pending; });
+    var p = el('div');
+    var badge = el('span', 'cl-pill ' + (conv ? 'cl-pill--ok' : 'cl-pill--warn'),
+      conv ? '✓ 已收敛' : '✗ 尚未收敛');
+    badge.id = 'cl-converge-badge';
+    p.appendChild(badge);
+    p.appendChild(document.createTextNode(' '));
+    var sub = el('span', 'cl-pill', '在途 ' + inflight + ' 条 · '
+      + (S.algo === 'OT' ? '未确认 ' : '缓冲 ') + buffered + ' 条');
+    sub.id = 'cl-inflight';
+    p.appendChild(sub);
+    host.appendChild(p);
+    var text = el('p', 'cl-note');
+    text.id = 'cl-converge-note';
+    text.style.marginTop = '10px';
+    if (conv) {
+      text.textContent = texts[0] === '' ? '所有副本都是空的。' : '所有副本都是：' + JSON.stringify(texts[0]);
+    } else {
+      text.textContent = '各副本当前分别是：' + texts.map(function (t) { return JSON.stringify(t); }).join('、');
+    }
+    host.appendChild(text);
+  }
+
+  function renderStats() {
+    var rows = S.clients.map(function (c) {
+      var st = S.sim.rep(c).stats();
+      return ['副本 ' + c, st.live, st.tomb, st.total, st.pending];
+    });
+    if (S.algo === 'OT') {
+      rows.push(['服务器', S.sim.server.text().length, 0, S.sim.server.text().length, '—']);
+    }
+    table($('cl-stats'), ['副本', '可见字符', '墓碑', '内部条目', S.algo === 'OT' ? '未确认' : '因果缓冲'],
+      rows, { num: [1, 2, 3, 4] });
+  }
+
+  function syncTextareas() {
+    S.clients.forEach(function (c) {
+      var ta = $('cl-ta-' + c);
+      if (!ta) return;
+      var t = S.sim.rep(c).text();
+      if (ta.value !== t) {
+        var pos = ta.selectionStart;
+        ta.value = t;
+        try { ta.setSelectionRange(Math.min(pos, t.length), Math.min(pos, t.length)); } catch (e) { /* 只读或未聚焦 */ }
+      }
+      ta.setAttribute('data-prev', t);
+    });
+    var sv = $('cl-ta-server');
+    if (sv) sv.value = S.sim.server.text();
+  }
+
+  function renderSandbox() {
+    renderReps();
+    renderQueue();
+    renderLinks();
+    renderConverge();
+    renderStats();
+    $('cl-navstate').textContent = ALGO_LABEL[S.algo] + ' · ' + S.clients.length + ' 副本';
+  }
+
+  function renderAll() {
+    renderSandbox();
+    if (!$('cl-panel-inside').hidden) renderInside();
+    if (!$('cl-panel-causal').hidden) renderCausal();
+  }
+
+  /* ── 剧本 ─────────────────────────────────────────────────────────── */
+  var SCRIPTS = {
+    same: function (sim) {
+      sim.typeText(1, 0, '合同金额为 万元');
+      sim.deliverAll();
+      sim.local(1, 'i', 5, '八');
+      sim.local(2, 'i', 5, '九');
+      if (sim.clients.length > 2) sim.local(3, 'i', 5, '十');
+    },
+    interleave: function (sim) {
+      sim.typeText(1, 0, '[]');
+      sim.deliverAll();
+      sim.typeText(1, 1, 'abc');
+      sim.typeText(2, 1, 'xyz');
+    },
+    deldup: function (sim) {
+      sim.typeText(1, 0, '删我一次');
+      sim.deliverAll();
+      sim.local(1, 'd', 0);
+      sim.local(2, 'd', 0);
+    },
+    offline: function (sim) {
+      sim.typeText(1, 0, '会议纪要');
+      sim.deliverAll();
+      sim.clients.forEach(function (c) {
+        if (c !== 2) sim.toggleLink(2, sim.hasServer ? 0 : c);
+      });
+      if (sim.hasServer) { /* OT 模式下上面已断开副本2 ↔ 服务器 */ }
+      sim.typeText(2, 4, '（离线补充）');
+      sim.typeText(1, 0, '本周');
+    },
+    storm: function (sim) {
+      var rnd = CL.mulberry(20260906);
+      var ALPHA = '甲乙丙丁戊己庚辛';
+      for (var s = 0; s < 30; s++) {
+        var d = sim.deliverable();
+        if (rnd() < 0.62 || !d.length) {
+          var c = sim.clients[Math.floor(rnd() * sim.clients.length)];
+          var cur = sim.rep(c).text();
+          if (cur.length > 2 && rnd() < 0.28) sim.local(c, 'd', Math.floor(rnd() * cur.length));
+          else sim.local(c, 'i', Math.floor(rnd() * (cur.length + 1)), ALPHA.charAt(Math.floor(rnd() * ALPHA.length)));
+        } else {
+          sim.deliver(d[Math.floor(rnd() * d.length)].m);
+        }
+      }
+    }
+  };
+
+  function loadScript(name) {
+    newSim();
+    if (SCRIPTS[name]) SCRIPTS[name](S.sim);
+    if (S.net === 'auto') S.sim.deliverAll();
+    renderAll();
+    syncTextareas();
+  }
+
+  $('cl-algo').addEventListener('change', function () {
+    S.algo = this.value;
+    newSim(); renderAll(); syncTextareas();
+  });
+  $('cl-nrep').addEventListener('change', function () {
+    S.n = Number(this.value);
+    newSim(); renderAll(); syncTextareas();
+  });
+  $('cl-auto').addEventListener('change', function () {
+    S.net = this.value;
+    if (S.net === 'auto') S.sim.deliverAll();
+    renderAll(); syncTextareas();
+  });
+  $('cl-script').addEventListener('change', function () {
+    if (this.value) loadScript(this.value);
+  });
+  $('cl-reset').addEventListener('click', function () {
+    $('cl-script').value = '';
+    newSim(); renderAll(); syncTextareas();
+  });
+  $('cl-deliver-all').addEventListener('click', function () { S.sim.deliverAll(); renderAll(); syncTextareas(); });
+  $('cl-deliver-rev').addEventListener('click', function () { S.sim.deliverAll('reverse'); renderAll(); syncTextareas(); });
+  $('cl-deliver-shuf').addEventListener('click', function () {
+    S.sim.deliverShuffled(CL.mulberry(Date.now() & 0xffff)); renderAll(); syncTextareas();
+  });
+  $('cl-deliver-one').addEventListener('click', function () {
+    var d = S.sim.deliverable();
+    if (d.length) S.sim.deliver(d[0].m);
+    renderAll(); syncTextareas();
+  });
+
+  /* ══════════════════════════════════════════════════════════════════
+   * 文档内部
+   * ══════════════════════════════════════════════════════════════════ */
+  var INSIDE_NOTE = {
+    YATA: 'YATA 给每个字符记下「我插进来时左边是谁、右边是谁」。并发插在同一处时，'
+      + '两个新字符的左右 origin 完全相同 —— 这时按副本号定序（小的在前），所有副本算出同一个次序。',
+    RGA: 'RGA 只记「我插在谁后面」。同一个前驱下的兄弟按 (Lamport 计数, 副本号) 降序排。'
+      + '因为子的计数必然大于父，扫描时「跳过所有 id 比我大的」就等价于跳过整棵子树。',
+    LSEQ: 'LSEQ 不记邻居，而是直接给每个字符发一个稠密的位置标识符，'
+      + '文档次序 = 标识符的字典序。代价是标识符会越插越长（看下表最后一列的层数）。',
+    OT: 'OT 不给字符发身份证 —— 文档就是一个普通字符串，位置只是下标。'
+      + '这也是它最省内存的原因，以及它必须靠服务器定全序的原因。'
+  };
+
+  function renderInside() {
+    var sel = $('cl-inside-rep');
+    if (sel.options.length !== S.clients.length ||
+      sel.getAttribute('data-n') !== String(S.clients.length)) {
+      sel.textContent = '';
+      S.clients.forEach(function (c) {
+        var o = el('option', '', '副本 ' + c); o.value = c; sel.appendChild(o);
+      });
+      sel.setAttribute('data-n', String(S.clients.length));
+    }
+    if (S.clients.indexOf(S.insideRep) < 0) S.insideRep = S.clients[0];
+    sel.value = String(S.insideRep);
+    $('cl-inside-algo').textContent = ALGO_LABEL[S.algo];
+    $('cl-inside-note').textContent = INSIDE_NOTE[S.algo];
+
+    var r = S.sim.rep(S.insideRep);
+    var items = r.items();
+    var metaHead = items.length && items[0].meta ? items[0].meta.map(function (m) { return m[0]; }) : [];
+    var rows = items.slice(0, 200).map(function (it, i) {
+      var row = [i, it.ch === ' ' ? '␣' : it.ch, S.algo === 'OT' ? '—' : CL.idKey(it.id), it.del ? '墓碑' : '可见'];
+      (it.meta || []).forEach(function (m) { row.push(m[1]); });
+      return row;
+    });
+    table($('cl-inside-tbl'), ['序', '字符', '标识 id', '状态'].concat(metaHead), rows,
+      { num: [0], empty: '这个副本还是空的 —— 去沙盒里打几个字。' });
+    drawInsideFig(items);
+  }
+
+  function drawInsideFig(items) {
+    var host = $('cl-inside-fig');
+    host.textContent = '';
+    var show = items.slice(0, 26);
+    var W = Math.max(560, 40 + show.length * 46), H = show.length ? 168 : 56;
+    var svg = svgEl('svg', { viewBox: '0 0 ' + W + ' ' + H, width: W, height: H, role: 'img' });
+    svg.setAttribute('aria-label', '文档内部结构图');
+    svg.appendChild(svgEl('rect', { x: 0, y: 0, width: W, height: H, fill: '#fffefb' }));
+    var P = new Placer(W, H);
+    if (!show.length) {
+      P.text(svg, 16, 20, '（空文档）', { size: 12 });
+      host.appendChild(svg);
+      host.setAttribute('data-drawn', P.drawn);
+      host.setAttribute('data-dropped', P.dropped);
+      return;
+    }
+    var y = 92, bw = 30;
+    var pos = {};
+    show.forEach(function (it, i) {
+      var x = 26 + i * 46;
+      pos[CL.idKey(it.id)] = x + bw / 2;
+      svg.appendChild(svgEl('rect', {
+        x: x, y: y - 16, width: bw, height: 32, rx: 6,
+        fill: it.del ? '#fffefb' : (COLORS[it.id[0]] || '#201515') + '22',
+        stroke: it.del ? '#c5c0b1' : (COLORS[it.id[0]] || '#201515'),
+        'stroke-dasharray': it.del ? '4 3' : '0'
+      }));
+      P.reserve({ x: x - 2, y: y - 18, w: bw + 4, h: 36 });
+      var t = svgEl('text', {
+        x: x + bw / 2, y: y + 5, 'font-size': 15, 'text-anchor': 'middle',
+        'font-family': 'ui-monospace, Menlo, monospace',
+        fill: it.del ? '#c5c0b1' : '#201515',
+        'text-decoration': it.del ? 'line-through' : 'none'
+      });
+      t.textContent = it.ch === ' ' ? '␣' : it.ch;
+      svg.appendChild(t);
+      P.text(svg, x, y + 22, S.algo === 'OT' ? String(i) : CL.idKey(it.id), { size: 10, offs: [[0, 0], [0, 14], [0, 28]] });
+    });
+    // 连线：YATA 画左 origin，RGA 画前驱
+    if (S.algo === 'YATA' || S.algo === 'RGA') {
+      show.forEach(function (it, i) {
+        var srcKey = null;
+        if (S.algo === 'YATA') {
+          var m = (it.meta || []).find(function (x) { return x[0] === '左 origin'; });
+          srcKey = m && m[1] !== '⟨头⟩' ? m[1] : null;
+        } else {
+          var m2 = (it.meta || []).find(function (x) { return x[0] === '前驱 after'; });
+          srcKey = m2 && m2[1] !== '⟨头⟩' ? m2[1] : null;
+        }
+        var toX = 26 + i * 46 + bw / 2;
+        var fromX = srcKey && pos[srcKey] !== undefined ? pos[srcKey] : null;
+        if (fromX === null) return;
+        var mid = (fromX + toX) / 2;
+        var lift = Math.min(52, 16 + Math.abs(toX - fromX) * 0.32);
+        svg.appendChild(svgEl('path', {
+          d: 'M ' + fromX + ' ' + (y - 18) + ' Q ' + mid + ' ' + (y - 18 - lift) + ' ' + toX + ' ' + (y - 18),
+          fill: 'none', stroke: '#939084', 'stroke-width': 1.2, 'marker-end': 'url(#cl-arrow)'
+        }));
+      });
+      var defs = svgEl('defs');
+      var mk = svgEl('marker', {
+        id: 'cl-arrow', viewBox: '0 0 8 8', refX: 6, refY: 4,
+        markerWidth: 6, markerHeight: 6, orient: 'auto'
+      });
+      mk.appendChild(svgEl('path', { d: 'M0,0 L8,4 L0,8 z', fill: '#939084' }));
+      defs.appendChild(mk);
+      svg.insertBefore(defs, svg.firstChild);
+      P.text(svg, 12, 12, S.algo === 'YATA' ? '弧线：指向该字符的「左 origin」' : '弧线：指向该字符的「前驱」',
+        { size: 11, offs: [[0, 0]] });
+    } else if (S.algo === 'LSEQ') {
+      P.text(svg, 12, 12, '标识符层数越多，说明这一段被反复插入过', { size: 11, offs: [[0, 0]] });
+      show.forEach(function (it, i) {
+        var m = (it.meta || []).find(function (x) { return x[0] === '位置标识符'; });
+        var depth = m ? m[1].split(' / ').length : 1;
+        svg.appendChild(svgEl('rect', {
+          x: 26 + i * 46, y: 40 - Math.min(depth, 5) * 6, width: bw,
+          height: Math.min(depth, 5) * 6, fill: '#ff4f00', opacity: 0.45
+        }));
+      });
+    } else {
+      P.text(svg, 12, 12, 'OT 的文档没有内部结构 —— 就是一个字符串', { size: 11, offs: [[0, 0]] });
+    }
+    host.appendChild(svg);
+    host.setAttribute('data-drawn', P.drawn);
+    host.setAttribute('data-dropped', P.dropped);
+  }
+
+  $('cl-inside-rep').addEventListener('change', function () {
+    S.insideRep = Number(this.value);
+    renderInside();
+  });
+
+  /* ══════════════════════════════════════════════════════════════════
+   * 因果关系
+   * ══════════════════════════════════════════════════════════════════ */
+  function renderCausal() {
+    var g = S.sim.causalGraph();
+    drawDag(g);
+    // 向量时钟
+    var head = ['副本', '向量时钟 ' + '[' + S.clients.map(function (c) { return '副本' + c; }).join(', ') + ']', 'Lamport', '因果缓冲'];
+    var rows = S.clients.map(function (c) {
+      var r = S.sim.rep(c);
+      if (S.algo === 'OT') return ['副本 ' + c, '（OT 不用向量时钟，靠服务器定全序）', '—', r.stats().pending];
+      return ['副本 ' + c, CL.VC.fmt(r.vc, S.clients), r.lamport, r.pending.length];
+    });
+    table($('cl-vc'), head, rows, { num: [2, 3] });
+
+    // 缓冲内容
+    var brows = [];
+    S.clients.forEach(function (c) {
+      var r = S.sim.rep(c);
+      (r.pending || []).forEach(function (op) {
+        brows.push(['副本 ' + c, CL.idKey(op.id),
+          op.k === 'i' ? ('插入 "' + op.ch + '"') : '删除',
+          CL.VC.fmt(op.ctx, S.clients)]);
+      });
+    });
+    table($('cl-buf'), ['卡在哪', 'op id', '内容', '它要求的前置'], brows,
+      { empty: S.algo === 'OT' ? 'Jupiter 靠 FIFO 信道，没有因果缓冲这一层。' : '没有被扣住的 op。' });
+
+    // happens-before 矩阵
+    var nodes = g.nodes.slice(-9);
+    if (!nodes.length) {
+      table($('cl-hb'), ['op'], [], { empty: '还没有 op —— 去沙盒里打几个字。' });
+      return;
+    }
+    var hh = ['op'].concat(nodes.map(function (n) { return n.key; }));
+    var hrows = nodes.map(function (a) {
+      var row = [a.key];
+      nodes.forEach(function (b) {
+        if (a.key === b.key) { row.push('·'); return; }
+        var av = CL.VC.merge(a.ctx, {}); av[a.client] = a.seq;
+        var bv = CL.VC.merge(b.ctx, {}); bv[b.client] = b.seq;
+        row.push(CL.VC.hb(av, bv) ? '→' : (CL.VC.hb(bv, av) ? '←' : '∥'));
+      });
+      return row;
+    });
+    table($('cl-hb'), hh, hrows);
+  }
+
+  function drawDag(g) {
+    var host = $('cl-dag');
+    host.textContent = '';
+    var nodes = g.nodes.slice(-40);
+    var keep = {};
+    nodes.forEach(function (n) { keep[n.key] = 1; });
+    var edges = g.edges.filter(function (e) { return keep[e.from] && keep[e.to]; });
+    var lanes = S.clients;
+    var maxLam = 1;
+    nodes.forEach(function (n) { if (n.lam > maxLam) maxLam = n.lam; });
+    var minLam = maxLam;
+    nodes.forEach(function (n) { if (n.lam < minLam) minLam = n.lam; });
+    var stepX = 52, padL = 84;
+    var W = Math.max(560, padL + (maxLam - minLam + 1) * stepX + 40);
+    var H = 30 + lanes.length * 66;
+    var svg = svgEl('svg', { viewBox: '0 0 ' + W + ' ' + H, width: W, height: H, role: 'img' });
+    svg.setAttribute('aria-label', '因果关系图');
+    svg.appendChild(svgEl('rect', { x: 0, y: 0, width: W, height: H, fill: '#fffefb' }));
+    var P = new Placer(W, H);
+    var laneY = {};
+    lanes.forEach(function (c, i) {
+      var y = 44 + i * 66;
+      laneY[c] = y;
+      svg.appendChild(svgEl('line', { x1: padL - 20, y1: y, x2: W - 12, y2: y, stroke: '#eae4dd', 'stroke-width': 1 }));
+      P.text(svg, 10, y - 8, '副本 ' + c, { size: 12, fill: COLORS[c], offs: [[0, 0]], cjk: true });
+      P.reserve({ x: 0, y: y - 14, w: padL - 24, h: 28 });
+    });
+    if (!nodes.length) {
+      P.text(svg, padL, 16, '还没有 op', { size: 12, offs: [[0, 0]], cjk: true });
+      host.appendChild(svg);
+      host.setAttribute('data-drawn', P.drawn);
+      host.setAttribute('data-dropped', P.dropped);
+      host.setAttribute('data-nodes', 0);
+      return;
+    }
+    var px = {};
+    nodes.forEach(function (n) {
+      px[n.key] = { x: padL + (n.lam - minLam) * stepX, y: laneY[n.client] };
+    });
+    edges.forEach(function (e) {
+      var a = px[e.from], b = px[e.to];
+      if (!a || !b) return;
+      var mx = (a.x + b.x) / 2;
+      svg.appendChild(svgEl('path', {
+        d: 'M ' + a.x + ' ' + a.y + ' C ' + mx + ' ' + a.y + ' ' + mx + ' ' + b.y + ' ' + b.x + ' ' + b.y,
+        fill: 'none', stroke: '#c5c0b1', 'stroke-width': 1.2
+      }));
+    });
+    nodes.forEach(function (n) {
+      var p = px[n.key];
+      svg.appendChild(svgEl('circle', {
+        cx: p.x, cy: p.y, r: 11,
+        fill: n.k === 'i' ? (COLORS[n.client] || '#201515') : '#fffefb',
+        stroke: COLORS[n.client] || '#201515', 'stroke-width': 1.6
+      }));
+      P.reserve({ x: p.x - 13, y: p.y - 13, w: 26, h: 26 });
+      var t = svgEl('text', {
+        x: p.x, y: p.y + 4, 'font-size': 11, 'text-anchor': 'middle',
+        'font-family': 'ui-monospace, Menlo, monospace',
+        fill: n.k === 'i' ? '#fffefb' : (COLORS[n.client] || '#201515')
+      });
+      t.textContent = n.k === 'i' ? (n.ch === ' ' ? '␣' : n.ch) : '✕';
+      svg.appendChild(t);
+      P.text(svg, p.x - 12, p.y - 30, n.key, { size: 10, offs: [[0, 0], [0, -14], [0, 44], [0, 58]] });
+    });
+    host.appendChild(svg);
+    host.setAttribute('data-drawn', P.drawn);
+    host.setAttribute('data-dropped', P.dropped);
+    host.setAttribute('data-nodes', nodes.length);
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+   * CRDT 图鉴
+   * ══════════════════════════════════════════════════════════════════ */
+  function zooReset() {
+    var T = CL.TYPES[S.zooType];
+    S.zooReps = { 1: T.init(), 2: T.init(), 3: T.init() };
+    S.zooTs = 0;
+  }
+  function zooApply(client, opk) {
+    var T = CL.TYPES[S.zooType];
+    var elv = $('cl-zoo-elem').value || '苹果';
+    S.zooTs += 1;
+    S.zooReps[client] = T.apply(S.zooReps[client], client, opk, elv, S.zooTs);
+    renderZooBody();
+  }
+  function zooMerge(a, b) {
+    var T = CL.TYPES[S.zooType];
+    S.zooReps[a] = T.merge(S.zooReps[a], S.zooReps[b]);
+    renderZooBody();
+  }
+
+  function renderZoo() {
+    var list = $('cl-zoolist');
+    if (!list.childNodes.length) {
+      Object.keys(CL.TYPES).forEach(function (k) {
+        var b = el('button', 'cl-btn', CL.TYPES[k].title);
+        b.type = 'button';
+        b.setAttribute('data-zoo', k);
+        b.addEventListener('click', function () {
+          S.zooType = k; zooReset(); renderZoo();
+        });
+        list.appendChild(b);
+      });
+    }
+    Array.prototype.forEach.call(list.childNodes, function (b) {
+      b.setAttribute('aria-pressed', b.getAttribute('data-zoo') === S.zooType ? 'true' : 'false');
+    });
+    if (!S.zooReps) zooReset();
+    var T = CL.TYPES[S.zooType];
+    $('cl-zoo-title').textContent = T.title;
+    $('cl-zoo-lattice').textContent = '格结构：' + T.lattice;
+    $('cl-zoo-anomaly').textContent = T.anomaly;
+    renderZooBody();
+    renderLaws();
+  }
+
+  function renderZooBody() {
+    var T = CL.TYPES[S.zooType];
+    var host = $('cl-zoo-reps');
+    host.textContent = '';
+    [1, 2, 3].forEach(function (c) {
+      var card = el('div', 'cl-card cl-card--plain');
+      card.id = 'cl-zoorep-' + c;
+      var h = el('div', 'cl-rep-h');
+      var dot = el('span', 'cl-dot'); dot.style.background = COLORS[c];
+      h.appendChild(dot);
+      h.appendChild(el('span', 'cl-rep-name', '副本 ' + c));
+      card.appendChild(h);
+      var val = el('p', 'cl-mono');
+      val.id = 'cl-zooval-' + c;
+      val.style.margin = '4px 0 8px';
+      val.style.fontSize = '15px';
+      val.textContent = '值 = ' + T.value(S.zooReps[c]);
+      card.appendChild(val);
+      var st = el('p', 'cl-note cl-mono');
+      st.id = 'cl-zoostate-' + c;
+      st.style.margin = '0 0 10px';
+      st.textContent = T.show(S.zooReps[c]);
+      card.appendChild(st);
+      var row = el('div', 'cl-row');
+      T.ops.forEach(function (o) {
+        var b = el('button', 'cl-btn cl-btn--tiny', o.label);
+        b.type = 'button';
+        b.setAttribute('data-zooop', c + ':' + o.k);
+        b.addEventListener('click', function () { zooApply(c, o.k); });
+        row.appendChild(b);
+      });
+      card.appendChild(row);
+      host.appendChild(card);
+    });
+
+    var mh = $('cl-zoo-merges');
+    mh.textContent = '';
+    mh.appendChild(el('span', 'cl-lab', '合并：'));
+    [[1, 2], [2, 1], [2, 3], [3, 2], [1, 3], [3, 1]].forEach(function (p) {
+      var b = el('button', 'cl-btn cl-btn--tiny', '副本' + p[0] + ' ← 副本' + p[1]);
+      b.type = 'button';
+      b.addEventListener('click', function () { zooMerge(p[0], p[1]); });
+      mh.appendChild(b);
+    });
+    var ball = el('button', 'cl-btn cl-btn--tiny cl-btn--primary', '全部互相同步');
+    ball.type = 'button';
+    ball.id = 'cl-zoo-syncall';
+    ball.addEventListener('click', function () {
+      var T2 = CL.TYPES[S.zooType];
+      var m = T2.merge(T2.merge(S.zooReps[1], S.zooReps[2]), S.zooReps[3]);
+      S.zooReps[1] = CL.clone(m); S.zooReps[2] = CL.clone(m); S.zooReps[3] = CL.clone(m);
+      renderZooBody();
+    });
+    mh.appendChild(ball);
+  }
+
+  // 随机状态上的格代数律实测
+  function lawCheck(typeKey, n) {
+    var T = CL.TYPES[typeKey];
+    var rnd = CL.mulberry(0x5eed ^ typeKey.length * 7919);
+    var elems = ['苹果', '梨', '橘子', '桃'];
+    var ts = 0;   // 时间戳全局唯一：LWW 家族一旦 (时间戳, 副本号) 撞车就不再可交换
+    function randState(steps) {
+      var s = T.init();
+      for (var i = 0; i < steps; i++) {
+        var c = 1 + Math.floor(rnd() * 3);
+        var o = T.ops[Math.floor(rnd() * T.ops.length)];
+        ts += 1;
+        s = T.apply(s, c, o.k, elems[Math.floor(rnd() * elems.length)], ts);
+      }
+      return s;
+    }
+    var res = { comm: [0, 0], assoc: [0, 0], idem: [0, 0], mono: [0, 0] };
+    for (var i = 0; i < n; i++) {
+      var a = randState(1 + Math.floor(rnd() * 4));
+      var b = randState(1 + Math.floor(rnd() * 4));
+      var c2 = randState(1 + Math.floor(rnd() * 4));
+      res.comm[1]++; if (CL.canon(T.merge(a, b)) === CL.canon(T.merge(b, a))) res.comm[0]++;
+      res.assoc[1]++;
+      if (CL.canon(T.merge(T.merge(a, b), c2)) === CL.canon(T.merge(a, T.merge(b, c2)))) res.assoc[0]++;
+      res.idem[1]++; if (CL.canon(T.merge(a, a)) === CL.canon(a)) res.idem[0]++;
+      res.mono[1]++;
+      var m = T.merge(a, b);
+      if (T.leq(a, m) && T.leq(b, m)) res.mono[0]++;
+    }
+    return res;
+  }
+
+  function renderLaws() {
+    var r = lawCheck(S.zooType, 400);
+    var mk = function (name, pair) {
+      return [name, pair[0] + ' / ' + pair[1], pair[0] === pair[1] ? '通过' : '失败'];
+    };
+    table($('cl-laws'), ['定律', '通过 / 总数', '结论'], [
+      mk('交换律 a⊔b = b⊔a', r.comm),
+      mk('结合律 (a⊔b)⊔c = a⊔(b⊔c)', r.assoc),
+      mk('幂等 a⊔a = a', r.idem),
+      mk('单调 a ⊑ a⊔b 且 b ⊑ a⊔b', r.mono)
+    ], { num: [1] });
+    $('cl-laws').setAttribute('data-allpass',
+      (r.comm[0] === r.comm[1] && r.assoc[0] === r.assoc[1] && r.idem[0] === r.idem[1] && r.mono[0] === r.mono[1])
+        ? 'true' : 'false');
+  }
+
+  // 每种类型的「异常复现」剧本
+  var ANOMALY = {
+    'g-counter': function (T) {
+      var a = T.apply(T.init(), 1, 'inc'), b = T.apply(T.init(), 2, 'inc');
+      var m = T.merge(a, b);
+      return '副本1 +1、副本2 并发 +1 ⇒ 合并后 = ' + T.value(m)
+        + '（两次都算上了）。但若允许 −1，格就不再单调，合并会把已减的数又「最大值」回去。';
+    },
+    'pn-counter': function (T) {
+      var a = T.apply(T.apply(T.init(), 1, 'inc'), 1, 'inc');
+      var b = T.apply(T.init(), 2, 'dec');
+      var m = T.merge(a, b);
+      return '副本1 +2、副本2 并发 −1 ⇒ 合并 = ' + T.value(m) + '；内部却永久保留 ' + T.show(m)
+        + ' —— 元数据只增不减。';
+    },
+    'g-set': function (T) {
+      var a = T.apply(T.init(), 1, 'add', '苹果');
+      var b = T.apply(T.init(), 2, 'add', '梨');
+      return '并集合并 ⇒ ' + T.value(T.merge(a, b)) + '。想删掉「苹果」？做不到 —— 删除会破坏单调性。';
+    },
+    '2p-set': function (T) {
+      var s = T.apply(T.init(), 1, 'add', '苹果');
+      s = T.apply(s, 1, 'rm', '苹果');
+      var again = T.apply(s, 2, 'add', '苹果');
+      return '加入「苹果」→ 移除 → 再加入，结果仍是 ' + T.value(again)
+        + '：2P-Set 的移除集是只增的，删过的元素永远回不来。';
+    },
+    'lww-register': function (T) {
+      var a = T.apply(T.init(), 1, 'set', '甲方版本', 7);
+      var b = T.apply(T.init(), 2, 'set', '乙方版本', 7);
+      return '两人在同一时间戳各写一次 ⇒ 合并只剩 ' + T.value(T.merge(a, b))
+        + '，另一个人的内容被静默丢弃（同戳时按副本号大者胜）。';
+    },
+    'mv-register': function (T) {
+      var a = T.apply(T.init(), 1, 'set', '甲方版本');
+      var b = T.apply(T.init(), 2, 'set', '乙方版本');
+      return '同样的并发写，MV-Register 合并后 = ' + T.value(T.merge(a, b))
+        + ' —— 两个版本都留着，冲突原样交给应用层去问用户。';
+    },
+    'or-set': function (T) {
+      var base = T.apply(T.init(), 1, 'add', '苹果', 1);
+      var rm = T.apply(CL.clone(base), 2, 'rm', '苹果', 2);
+      var re = T.apply(CL.clone(base), 3, 'add', '苹果', 3);
+      return '副本2 删「苹果」与副本3 并发再加「苹果」⇒ 合并 = ' + T.value(T.merge(rm, re))
+        + '：删除只带走它当时看见的那个标签，新标签活下来（add-wins）。';
+    },
+    'lww-map': function (T) {
+      var a = T.apply(T.init(), 1, 'set', '标题=甲方稿', 5);
+      a = T.apply(a, 1, 'set', '正文=甲方正文', 6);
+      var b = T.apply(T.init(), 2, 'set', '标题=乙方稿', 7);
+      return '副本1 同时改了标题与正文，副本2 只改标题但时间戳更晚 ⇒ 合并 = '
+        + T.value(T.merge(a, b)) + '：标题归乙方、正文归甲方，两个键各自胜出，没有事务性。';
+    }
+  };
+  $('cl-zoo-demo').addEventListener('click', function () {
+    var T = CL.TYPES[S.zooType];
+    $('cl-zoo-demoout').textContent = ANOMALY[S.zooType](T);
+  });
+  $('cl-zoo-reset').addEventListener('click', function () { zooReset(); renderZooBody(); });
+
+  /* ══════════════════════════════════════════════════════════════════
+   * OT 对照台
+   * ══════════════════════════════════════════════════════════════════ */
+  function fmtOp(o) {
+    if (o.noop) return '空操作';
+    return o.k === 'i' ? ('插入 "' + o.ch + '" @' + o.p) : ('删除 @' + o.p);
+  }
+  function renderOt() {
+    var tp1 = CL.checkTP1(4);
+    var host = $('cl-tp1');
+    host.textContent = '';
+    var badge = el('span', 'cl-pill ' + (tp1.bad.length ? 'cl-pill--warn' : 'cl-pill--ok'),
+      tp1.bad.length ? ('发现 ' + tp1.bad.length + ' 处反例') : '全部通过');
+    badge.id = 'cl-tp1-badge';
+    host.appendChild(badge);
+    var p = el('p', 'cl-note');
+    p.style.marginTop = '10px';
+    p.id = 'cl-tp1-count';
+    p.textContent = '共检查 ' + tp1.checked.toLocaleString('en-US') + ' 组（文档 × op 对），'
+      + '失配 ' + tp1.bad.length + ' 组。';
+    host.appendChild(p);
+
+    var tp2 = CL.findTP2(3);
+    var h2 = $('cl-tp2');
+    h2.textContent = '';
+    if (!tp2.found) {
+      h2.appendChild(el('p', 'cl-note', '在搜索范围内没有找到反例。'));
+    } else {
+      var dl = el('dl', 'cl-kv');
+      function kv(k, v) { dl.appendChild(el('dt', '', k)); dl.appendChild(el('dd', '', v)); }
+      kv('起始文档', JSON.stringify(tp2.doc));
+      kv('并发 op a', fmtOp(tp2.a));
+      kv('并发 op b', fmtOp(tp2.b));
+      kv('并发 op c', fmtOp(tp2.c));
+      kv('先 a 后 b 的路径上，c 变换成', fmtOp(tp2.left) + ' ⇒ ' + JSON.stringify(tp2.doc1));
+      kv('先 b 后 a 的路径上，c 变换成', fmtOp(tp2.right) + ' ⇒ ' + JSON.stringify(tp2.doc2));
+      h2.appendChild(dl);
+      var note = el('p', 'cl-note');
+      note.style.marginTop = '10px';
+      note.id = 'cl-tp2-note';
+      note.textContent = '搜到第 ' + tp2.checked + ' 组就撞上了：同样三条并发 op，'
+        + '两条变换路径给出 ' + JSON.stringify(tp2.doc1) + ' 与 ' + JSON.stringify(tp2.doc2) + '，不相等。';
+      h2.appendChild(note);
+    }
+
+    var demo = CL.doptDemo();
+    table($('cl-dopt'), ['算法', '副本 1', '副本 2', '副本 3', '结论'], [
+      ['dOPT（去中心朴素 OT）'].concat(demo.DOPT.texts.map(function (t) { return JSON.stringify(t); }))
+        .concat([demo.DOPT.converged ? '收敛' : '分叉']),
+      ['YATA（CRDT）'].concat(demo.YATA.texts.map(function (t) { return JSON.stringify(t); }))
+        .concat([demo.YATA.converged ? '收敛' : '分叉'])
+    ]);
+    $('cl-dopt').setAttribute('data-dopt-converged', demo.DOPT.converged ? 'true' : 'false');
+    $('cl-dopt').setAttribute('data-yata-converged', demo.YATA.converged ? 'true' : 'false');
+
+    // 元数据开销
+    function script(sim) {
+      var rnd = CL.mulberry(4242);
+      var A = 'abcdefghij';
+      var c, i;
+      for (i = 0; i < 90; i++) {
+        c = sim.clients[i % sim.clients.length];
+        sim.deliverAll();
+        sim.local(c, 'i', sim.rep(c).text().length, A.charAt(Math.floor(rnd() * A.length)));
+      }
+      sim.deliverAll();
+      for (i = 0; i < 30; i++) {
+        c = sim.clients[i % sim.clients.length];
+        var cur = sim.rep(c).text();
+        if (cur.length) sim.local(c, 'd', Math.floor(rnd() * cur.length));
+        sim.deliverAll();
+      }
+    }
+    var rows = ['YATA', 'RGA', 'LSEQ', 'OT'].map(function (a) {
+      var o = CL.overhead(a, script, [1, 2, 3]);
+      return [ALGO_LABEL[a], o.live, o.tomb, o.total, o.ops, o.bytes.toLocaleString('en-US')];
+    });
+    table($('cl-overhead'), ['算法', '可见字符', '墓碑', '内部条目', '收到的 op', 'op 累计字节'],
+      rows, { num: [1, 2, 3, 4, 5] });
+    $('cl-overhead').setAttribute('data-rows', rows.length);
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+   * 口径与验证
+   * ══════════════════════════════════════════════════════════════════ */
+  var VERIFY = [
+    ["YATA ↔ Yjs 13.6.32 逐步对拍", 112532, "2000 组随机场景，每一步动作同时喂给两边，逐副本比文本"],
+    ["RGA ↔ Automerge 3.4.1 逐步对拍", 111895, "2000 组随机场景，actor 用等价的十六进制串保证并列次序一致"],
+    ["与真库对拍「口径差异表」", 5, "下方那张差异表的每一行，都拿 Yjs / Automerge 现跑一遍验过"],
+    ["四算法 × 2–5 副本乱序收敛", 4800, "随机动作流 + 乱序投递，断言所有副本文本相同"],
+    ["投递顺序无关性", 1200, "同一批 op 换成倒序投递，结果不变"],
+    ["TP1 穷举（文档长度 ≤ 4）", 1807, "全部文档 × 全部 op 对，无反例"],
+    ["TP2 反例搜索", 17, "第 17 组即命中，给出最小反例"],
+    ["状态型 CRDT 格代数律", 12800, "8 种 × 400 组随机状态 × 交换 / 结合 / 幂等 / 单调"],
+    ["op 序列化往返 fuzz", 10320, "JSON 往返后喂给全新副本重放，文本必须一致"],
+    ["LSEQ 标识符全序性质", 5096, "文档次序与标识符字典序严格一致、反对称"],
+    ["因果投递缓冲", 1500, "断言「依赖未到必被扣住、补齐必被交付」"],
+    ["能力清单守卫", 35, "页面上列出的算法与 CRDT 类型逐项现跑"],
+    ["口径断言（页内）", 22, "说明页写的每条规则各一条断言"]
+  ];
+  var DIFFS = [
+    ['插入点遇到墓碑', 'Yjs / YATA', '向右跨过紧邻的墓碑再插（insertText 里的 minimizeAttributeChanges）'],
+    ['插入点遇到墓碑', 'Automerge / RGA', '前驱取「第 index−1 个可见字符」，不跨墓碑'],
+    ['并发插在同一处', 'Yjs / YATA', '左右 origin 相同时，客户端号「小」者在前'],
+    ['并发插在同一处', 'Automerge / RGA', '同一前驱下按 (Lamport 计数, actor) 降序，即「大」者在前'],
+    ['两人删同一个字', '三种 CRDT', '幂等：墓碑标记两次等于一次，字符只消失一次'],
+    ['需要的信道保证', 'CRDT', '最终送达即可，乱序自行缓冲'],
+    ['需要的信道保证', 'Jupiter OT', '必须 FIFO 有序，且必须有服务器定全序']
+  ];
+  function renderAbout() {
+    var dl = $('cl-about-algos');
+    dl.textContent = '';
+    [
+      ['YATA', '以 Yjs 的 Item.integrate() 为准；每字符一个 item，不做游程压缩（次序与压缩版相同）'],
+      ['RGA', '以 Automerge 的列表算法为准；兄弟按 (Lamport 计数, actor) 降序'],
+      ['LSEQ', 'boundary± 策略 + 深度倍增基数（32/64/128…），随机源用固定种子以便复跑'],
+      ['Jupiter OT', '客户端保留未确认 op 列表，服务器为每个客户端维护镜像变换的「桥」'],
+      ['时钟', 'Lamport 计数用于 op id；向量时钟用于因果投递与 happens-before 判定']
+    ].forEach(function (p) {
+      dl.appendChild(el('dt', '', p[0]));
+      dl.appendChild(el('dd', '', p[1]));
+    });
+    var total = 0;
+    VERIFY.forEach(function (v) { total += v[1]; });
+    table($('cl-about-verify'), ['项目', '条数', '做法'],
+      VERIFY.map(function (v) { return [v[0], v[1].toLocaleString('en-US'), v[2]]; }), { num: [1] });
+    var b = document.querySelector('[data-cl-n="total"]');
+    if (b) b.textContent = total.toLocaleString('en-US');
+    table($('cl-about-diff'), ['场景', '实现', '这一套的做法'], DIFFS);
+  }
+
+  /* ══════════════════════════════════════════════════════════════════
+   * 启动
+   * ══════════════════════════════════════════════════════════════════ */
+  newSim();
+  loadScript('same');
+  $('cl-script').value = 'same';
+  renderOt();
+  renderAbout();
+  showPanel('sandbox');
+
+  // 暴露给测试用
+  window.CLApp = {
+    state: S,
+    reload: function () { renderAll(); syncTextareas(); },
+    edit: function (client, text) {
+      var ta = $('cl-ta-' + client);
+      var before = ta.getAttribute('data-prev') || '';
+      ta.value = text;
+      applyEdit(client, before, text);
+      syncTextareas();
+    },
+    lawCheck: lawCheck,
+    diffOps: diffOps
+  };
+})();
+</script>
