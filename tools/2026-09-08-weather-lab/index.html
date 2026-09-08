@@ -1,0 +1,2559 @@
+<title>气象工作台</title>
+<meta name="description" content="探空 Skew-T · 对流参数 · 风矢端图 · METAR/TAF 解码 · 湿空气与高度换算，全部在浏览器里算完，零上传。">
+<style>
+[hidden]{display:none!important}
+*,*::before,*::after{box-sizing:border-box}
+:root{
+  --wx-yellow:#ffed00; --wx-yellow-deep:#e6d200; --wx-ink:#000; --wx-body:#222; --wx-charcoal:#333;
+  --wx-mute:#666; --wx-ash:#8a8a8a; --wx-stone:#c4c4c4; --wx-canvas:#fff; --wx-soft:#f7f7f7;
+  --wx-dark:#000; --wx-deep:#111; --wx-hair:#f2f2f2; --wx-hair2:#e2e2e2; --wx-ondark:#fff;
+  --wx-ondark-mute:rgba(255,255,255,.72); --wx-divider-dark:rgba(255,255,255,.16);
+  --wx-err:#be6464; --wx-warn:#f0ad4e; --wx-ok:#8dc572; --wx-info:#337ab7;
+  --wx-temp:#c62828; --wx-dew:#1b7a3e; --wx-parcel:#7b4bd8; --wx-wet:#0f7c8c;
+  --wx-sans:"Inter Tight",Inter,Manrope,-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,sans-serif;
+  --wx-mono:"SF Mono",ui-monospace,Menlo,Consolas,"Liberation Mono",monospace;
+}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--wx-canvas);color:var(--wx-ink);font-family:var(--wx-sans);font-size:16px;line-height:1.4;
+  -webkit-font-smoothing:antialiased}
+a{color:inherit}
+.wx-wrap{max-width:1440px;margin:0 auto;padding:0 24px}
+@media(max-width:640px){.wx-wrap{padding:0 14px}}
+
+/* ---------- 顶部黑带 ---------- */
+.wx-top{background:var(--wx-dark);color:var(--wx-ondark)}
+.wx-nav{display:flex;align-items:center;gap:16px;height:60px;border-bottom:1px solid var(--wx-divider-dark)}
+.wx-back{font-size:14.4px;font-weight:700;letter-spacing:.144px;text-decoration:none;color:var(--wx-ondark);
+  padding:8px 0;display:inline-flex;align-items:center;gap:8px}
+.wx-back:hover{color:var(--wx-yellow)}
+.wx-navmark{margin-left:auto;display:flex;align-items:center;gap:10px;font-size:12px;color:var(--wx-ondark-mute);letter-spacing:.06em}
+.wx-diamond{width:16px;height:16px;border:2px solid var(--wx-yellow);transform:rotate(45deg)}
+.wx-hero{padding:44px 0 40px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:28px;align-items:end}
+.wx-hero h1{margin:0;font-size:clamp(32px,5.2vw,56px);font-weight:700;line-height:.95;letter-spacing:-.5px}
+.wx-hero p{margin:14px 0 0;max-width:62ch;font-size:clamp(15px,1.6vw,19.2px);font-weight:600;line-height:1.3;color:var(--wx-ondark-mute)}
+.wx-heroTag{background:var(--wx-yellow);color:#000;font-size:12px;font-weight:700;letter-spacing:.1em;padding:8px 14px;white-space:nowrap}
+@media(max-width:760px){.wx-hero{grid-template-columns:1fr;align-items:start}}
+
+/* ---------- 分区导航（pill） ---------- */
+.wx-tabs{display:flex;gap:8px;overflow-x:auto;padding:16px 0 18px;background:var(--wx-dark);
+  scrollbar-width:thin}
+.wx-tab{flex:0 0 auto;background:transparent;color:var(--wx-ondark);border:1px solid var(--wx-divider-dark);
+  border-radius:46px;padding:9px 18px;font-family:inherit;font-size:13px;font-weight:600;letter-spacing:.13px;cursor:pointer}
+.wx-tab:hover{border-color:var(--wx-ondark)}
+.wx-tab[aria-selected="true"]{background:var(--wx-yellow);color:#000;border-color:var(--wx-yellow)}
+.wx-tab:focus-visible{outline:2px solid var(--wx-yellow);outline-offset:2px}
+
+/* ---------- 通用 ---------- */
+.wx-panel{padding:32px 0 64px}
+.wx-h2{font-size:24px;font-weight:700;line-height:.95;margin:0 0 4px}
+.wx-h3{font-size:18px;font-weight:700;line-height:1;margin:0 0 10px}
+.wx-over{font-size:10px;font-weight:700;letter-spacing:.16em;color:var(--wx-mute);margin:0 0 6px}
+.wx-lead{font-size:14px;color:var(--wx-charcoal);margin:0 0 20px;max-width:80ch;line-height:1.57}
+.wx-sec{border-top:2px solid var(--wx-ink);padding-top:14px;margin-top:34px}
+.wx-sec:first-of-type{margin-top:0}
+.wx-row{display:grid;gap:24px;min-width:0}
+.wx-card{border:1px solid var(--wx-hair2);padding:18px;min-width:0;background:var(--wx-canvas)}
+.wx-card--soft{background:var(--wx-soft);border-color:var(--wx-soft)}
+.wx-card--dark{background:var(--wx-dark);color:var(--wx-ondark);border-color:var(--wx-dark)}
+.wx-card--yellow{background:var(--wx-yellow);border-color:var(--wx-yellow);color:#000}
+label.wx-lab{display:block;font-size:12px;font-weight:700;color:var(--wx-charcoal);margin:0 0 5px}
+input.wx-in,select.wx-sel,textarea.wx-ta{width:100%;font-family:inherit;font-size:16px;color:var(--wx-ink);
+  background:var(--wx-canvas);border:1px solid var(--wx-ink);border-radius:0;padding:11px 12px;min-height:44px}
+textarea.wx-ta{font-family:var(--wx-mono);font-size:13px;line-height:1.6;min-height:132px;resize:vertical}
+input.wx-in:focus,select.wx-sel:focus,textarea.wx-ta:focus{outline:2px solid var(--wx-yellow);outline-offset:-1px}
+.wx-btn{font-family:inherit;font-size:14.4px;font-weight:700;letter-spacing:.144px;border-radius:2px;
+  padding:13px 22px;min-height:44px;cursor:pointer;border:1px solid var(--wx-ink);background:var(--wx-canvas);color:var(--wx-ink)}
+.wx-btn:hover{background:var(--wx-soft)}
+.wx-btn--primary{background:var(--wx-yellow);border-color:var(--wx-yellow);color:#000}
+.wx-btn--primary:hover{background:var(--wx-yellow-deep);border-color:var(--wx-yellow-deep)}
+.wx-btn--dark{background:var(--wx-dark);border-color:var(--wx-dark);color:var(--wx-ondark)}
+.wx-btn:focus-visible{outline:2px solid var(--wx-ink);outline-offset:2px}
+.wx-btnrow{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.wx-tblwrap{overflow-x:auto;border:1px solid var(--wx-hair2);max-width:100%}
+table.wx-tbl{border-collapse:collapse;width:100%;font-size:13px;font-variant-numeric:tabular-nums}
+table.wx-tbl th,table.wx-tbl td{padding:7px 10px;text-align:right;border-bottom:1px solid var(--wx-hair);white-space:nowrap}
+table.wx-tbl th{background:var(--wx-soft);font-weight:700;font-size:12px;color:var(--wx-charcoal);position:sticky;top:0}
+table.wx-tbl td:first-child,table.wx-tbl th:first-child{text-align:left}
+table.wx-tbl tbody tr:hover{background:#fffdf0}
+.wx-kv{display:grid;grid-template-columns:repeat(auto-fill,minmax(148px,1fr));gap:1px;background:transparent}
+.wx-kv>div{background:var(--wx-canvas);padding:11px 12px;min-width:0;box-shadow:0 0 0 1px var(--wx-hair2)}
+.wx-kv dt{margin:0 0 3px;font-size:11px;font-weight:700;color:var(--wx-mute)}
+.wx-kv dd{margin:0;font-size:19px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.1;overflow-wrap:anywhere}
+.wx-kv dd small{font-size:11px;font-weight:600;color:var(--wx-mute);margin-left:3px}
+.wx-note{font-size:12px;color:var(--wx-mute);line-height:1.6;margin:10px 0 0}
+.wx-badge{display:inline-block;font-size:11px;font-weight:700;padding:3px 9px;border:1px solid var(--wx-ink);border-radius:46px}
+.wx-badge--vfr{background:#0a7d34;border-color:#0a7d34;color:#fff}
+.wx-badge--mvfr{background:#1f5fb0;border-color:#1f5fb0;color:#fff}
+.wx-badge--ifr{background:#b3261e;border-color:#b3261e;color:#fff}
+.wx-badge--lifr{background:#7b1fa2;border-color:#7b1fa2;color:#fff}
+.wx-badge--y{background:var(--wx-yellow);border-color:var(--wx-yellow)}
+.wx-alert{border-left:4px solid var(--wx-warn);background:var(--wx-soft);padding:10px 14px;font-size:13px;margin:12px 0 0}
+.wx-alert--err{border-left-color:var(--wx-err)}
+.wx-chartbox{border:1px solid var(--wx-hair2);background:var(--wx-canvas);padding:8px;overflow-x:auto}
+.wx-chartbox svg{display:block;max-width:100%;height:auto;margin:0 auto}
+.wx-legend{display:flex;flex-wrap:wrap;gap:14px;font-size:12px;color:var(--wx-charcoal);margin-top:10px}
+.wx-legend span{display:inline-flex;align-items:center;gap:6px}
+.wx-swatch{width:18px;height:3px;display:inline-block}
+.wx-mono{font-family:var(--wx-mono);font-size:13px;white-space:pre-wrap;word-break:break-word}
+.wx-foot{background:var(--wx-dark);color:var(--wx-ondark-mute);padding:40px 0;font-size:14px;margin-top:20px}
+.wx-foot a{color:var(--wx-yellow)}
+.wx-2col{display:grid;grid-template-columns:minmax(0,7fr) minmax(0,5fr);gap:24px}
+.wx-3col{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:16px}
+@media(max-width:980px){.wx-2col{grid-template-columns:1fr}}
+.wx-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+</style>
+
+<div class="wx-top">
+  <div class="wx-wrap">
+    <nav class="wx-nav">
+      <a class="wx-back" href="../../">← 返回工具集</a>
+      <span class="wx-navmark"><i class="wx-diamond"></i> 气象工作台</span>
+    </nav>
+    <header class="wx-hero">
+      <div>
+        <h1>探空、报文、<br>都在这一页算完</h1>
+        <p>粘一份探空就画出 Skew-T 与风矢端图，把 CAPE / CIN / LCL / 切变 / 螺旋度算清楚；粘一条 METAR 或 TAF 就出中文明码、飞行类别、跑道侧风与密度高度。全部在你的浏览器里跑，零上传、断网可用。</p>
+      </div>
+      <span class="wx-heroTag">14 份真实探空 · 零后端</span>
+    </header>
+    <div class="wx-tabs" role="tablist" aria-label="分区">
+      <button class="wx-tab" id="wx-tab-sounding" role="tab" aria-controls="wx-p-sounding" aria-selected="true">探空图 Skew-T</button>
+      <button class="wx-tab" id="wx-tab-params" role="tab" aria-controls="wx-p-params" aria-selected="false">对流参数</button>
+      <button class="wx-tab" id="wx-tab-wind" role="tab" aria-controls="wx-p-wind" aria-selected="false">风与风暴</button>
+      <button class="wx-tab" id="wx-tab-metar" role="tab" aria-controls="wx-p-metar" aria-selected="false">METAR / TAF</button>
+      <button class="wx-tab" id="wx-tab-calc" role="tab" aria-controls="wx-p-calc" aria-selected="false">湿空气与高度</button>
+      <button class="wx-tab" id="wx-tab-about" role="tab" aria-controls="wx-p-about" aria-selected="false">口径与验证</button>
+    </div>
+  </div>
+</div>
+
+<main class="wx-wrap">
+  <section class="wx-panel" id="wx-p-sounding" role="tabpanel" aria-labelledby="wx-tab-sounding"></section>
+  <section class="wx-panel" id="wx-p-params" role="tabpanel" aria-labelledby="wx-tab-params" hidden></section>
+  <section class="wx-panel" id="wx-p-wind" role="tabpanel" aria-labelledby="wx-tab-wind" hidden></section>
+  <section class="wx-panel" id="wx-p-metar" role="tabpanel" aria-labelledby="wx-tab-metar" hidden></section>
+  <section class="wx-panel" id="wx-p-calc" role="tabpanel" aria-labelledby="wx-tab-calc" hidden></section>
+  <section class="wx-panel" id="wx-p-about" role="tabpanel" aria-labelledby="wx-tab-about" hidden></section>
+</main>
+
+<footer class="wx-foot"><div class="wx-wrap">
+  气象工作台 · 每日工具集的一件 —— <a href="../../">回到工具集首页</a>。探空样本来自怀俄明大学存档（University of Wyoming Upper Air Archive），报文样本来自美国国家气象局 Aviation Weather Center。所有计算在本地完成，不向任何服务器发送数据。
+</div></footer>
+
+<script id="wx-engine">/* 气象工作台 · 引擎
+ * 全部页内手写、零依赖。数值口径逐行照 MetPy 1.7.1 的源码转写（常数取 metpy.constants 的原值），
+ * 目的是让浏览器里算出来的数与 Python 里 MetPy 算出来的数在 1e-8 量级上一致。
+ * 另一套独立口径（ASHRAE / psychrolib、ICAO 标准大气 / ambiance）单独实现，在「口径」页列差异。
+ */
+var WX = (function () {
+  'use strict';
+
+  /* ============================ 常数（metpy.constants，逐位） ============================ */
+  var Rd = 287.04749097718457;          // 干空气气体常数 J/(kg K)
+  var Rv = 461.52311572606084;          // 水汽气体常数
+  var Cp_d = 1004.6662184201462;        // 干空气定压比热
+  var Cp_v = 1860.078011865639;         // 水汽定压比热
+  var Cp_l = 4219.400000000001;         // 液态水比热
+  var Lv = 2500840.0;                   // 0.01°C 汽化潜热 J/kg
+  var T0 = 273.16;                      // 水三相点 K
+  var ZEROC = 273.15;                   // 0°C 的开氏值
+  var EPS = 0.6219569100577033;         // Mw/Md
+  var KAPPA = 0.28571428571428564;      // Rd/Cp_d
+  var E0_PA = 611.2;                    // 0°C 饱和水汽压 Pa
+  var G = 9.80665;
+  var RHO_L = 999.97495;                // 液态水密度 kg/m^3
+  var P0_PA = 100000.0;                 // 位温参考气压 1000 hPa
+
+  /* ============================ 小工具 ============================ */
+  function isNum(x) { return typeof x === 'number' && isFinite(x); }
+  // numpy.isclose 的默认口径（rtol=1e-5, atol=1e-8）——MetPy 的 _greater_or_close 靠它
+  function isclose(a, b, rtol, atol) {
+    rtol = rtol === undefined ? 1e-5 : rtol;
+    atol = atol === undefined ? 1e-8 : atol;
+    return Math.abs(a - b) <= atol + rtol * Math.abs(b);
+  }
+  function geClose(a, b) { return a > b || isclose(a, b); }
+  function leClose(a, b) { return a < b || isclose(a, b); }
+  // scipy.integrate.trapezoid(y, x)
+  function trapz(y, x) {
+    var s = 0;
+    for (var i = 0; i + 1 < y.length; i++) s += (x[i + 1] - x[i]) * (y[i] + y[i + 1]) / 2;
+    return s;
+  }
+  function argsortAsc(a) {
+    var idx = a.map(function (_, i) { return i; });
+    idx.sort(function (i, j) { return a[i] - a[j] || i - j; });
+    return idx;
+  }
+  function take(a, idx) { return idx.map(function (i) { return a[i]; }); }
+
+  /* ============================ 饱和水汽压与湿度 ============================ */
+  // MetPy 1.7 不再用 Bolton(1980)，改用「潜热随温度线性变化的克-克方程积分解」（Ambaum 2020 口径）
+  // e_s(T) = e0 * (T0/T)^((Cp_l-Cp_v)/Rv) * exp( (Lv/T0 - L(T)/T)/Rv ),  L(T)=Lv-(Cp_l-Cp_v)(T-T0)
+  function latentHeatVap(tK) { return Lv - (Cp_l - Cp_v) * (tK - T0); }
+  function svpPa(tK) {
+    var heatPower = (Cp_l - Cp_v) / Rv;
+    var expTerm = (Lv / T0 - latentHeatVap(tK) / tK) / Rv;
+    return E0_PA * Math.pow(T0 / tK, heatPower) * Math.exp(expTerm);
+  }
+  function svp(tC) { return svpPa(tC + ZEROC) / 100; }          // hPa 输入 °C
+  // 反解露点用的仍是 Bolton(1980) 的经验反式 —— MetPy 内部就是这样「正反不同源」的，照抄以对齐
+  function dewpointFromE(eHpa) {
+    var val = Math.log((eHpa * 100) / E0_PA);
+    return ZEROC + 243.5 * val / (17.67 - val) - ZEROC;         // 返回 °C
+  }
+  function mixingRatio(ppPa, totPa) { return EPS * ppPa / (totPa - ppPa); }
+  function satMixingRatio(pHpa, tC) {
+    var es = svpPa(tC + ZEROC), P = pHpa * 100;
+    if (es >= P) return NaN;
+    return mixingRatio(es, P);
+  }
+  function vaporPressureFromW(pHpa, w) { return pHpa * w / (EPS + w); }   // hPa
+  function rhFromDewpoint(tC, tdC) { return svpPa(tdC + ZEROC) / svpPa(tC + ZEROC); }
+  function dewpointFromRH(tC, rh) { return dewpointFromE(rh * svp(tC)); }
+  function specificHumidityFromW(w) { return w / (1 + w); }
+  function virtualTemperature(tK, w) { return tK * ((w + EPS) / (EPS * (1 + w))); }
+  function virtualTemperatureFromDewpoint(pHpa, tC, tdC) {
+    var w = satMixingRatio(pHpa, tdC);
+    return virtualTemperature(tC + ZEROC, w) - ZEROC;           // °C 进 °C 出
+  }
+  function exner(pHpa) { return Math.pow(pHpa * 100 / P0_PA, KAPPA); }
+  function potentialTemperature(pHpa, tC) { return (tC + ZEROC) / exner(pHpa); }
+  function density(pHpa, tC, w) { return (pHpa * 100) / (Rd * virtualTemperature(tC + ZEROC, w)); }
+
+  // Bolton(1980) 相当位温（MetPy 原式）
+  function equivalentPotentialTemperature(pHpa, tC, tdC) {
+    var t = tC + ZEROC, td = tdC + ZEROC;
+    var r = satMixingRatio(pHpa, tdC);
+    var e = svp(tdC);                                            // hPa
+    var t_l = 56 + 1 / (1 / (td - 56) + Math.log(t / td) / 800);
+    var th_l = potentialTemperature(pHpa - e, tC) * Math.pow(t / t_l, 0.28 * r);
+    return th_l * Math.exp(r * (1 + 0.448 * r) * (3036 / t_l - 1.78));
+  }
+  // Davies-Jones(2008) 反解湿球位温（MetPy 原式）
+  function wetBulbPotentialTemperature(pHpa, tC, tdC) {
+    var theta_e = equivalentPotentialTemperature(pHpa, tC, tdC);
+    if (theta_e <= 173.15) return theta_e;
+    var x = theta_e / 273.15, x2 = x * x, x3 = x2 * x, x4 = x2 * x2;
+    var a = 7.101574 - 20.68208 * x + 16.11182 * x2 + 2.574631 * x3 - 5.205688 * x4;
+    var b = 1 - 3.552497 * x + 3.781782 * x2 - 0.6899655 * x3 - 0.5929340 * x4;
+    return theta_e - Math.exp(a / b);
+  }
+
+  /* ============================ Lambert W（-1 支）============================ */
+  // MetPy 1.7 的 LCL 用 Romps(2017) 解析解，核心是 W_{-1}(x)，x ∈ [-1/e, 0)
+  var INV_E = Math.exp(-1);
+  function lambertWm1(x) {
+    if (!(x < 0) || x < -INV_E - 1e-15) return NaN;
+    if (x >= -1e-320) return -Infinity;
+    var w;
+    if (x < -0.3) {
+      // 分支点 x=-1/e 附近：用 -1 支的级数当初值（p 取负号）
+      var p = -Math.sqrt(2 * (Math.E * x + 1));
+      w = -1 + p - p * p / 3 + 11 * p * p * p / 72 - 43 * p * p * p * p / 540;
+    } else {
+      // 靠近 0⁻：渐近展开 L1 - L2 + L2/L1 + …
+      var L1 = Math.log(-x), L2 = Math.log(-L1);
+      w = L1 - L2 + L2 / L1 + L2 * (L2 - 2) / (2 * L1 * L1)
+        + L2 * (2 * L2 * L2 - 9 * L2 + 6) / (6 * L1 * L1 * L1);
+    }
+    // Halley 迭代
+    for (var i = 0; i < 100; i++) {
+      var ew = Math.exp(w), f = w * ew - x;
+      var d = ew * (w + 1) - (w + 2) * f / (2 * w + 2);
+      if (!isFinite(d) || d === 0) break;
+      var wn = w - f / d;
+      if (!isFinite(wn)) break;
+      if (Math.abs(wn - w) <= 1e-16 * Math.abs(wn)) { w = wn; break; }
+      w = wn;
+    }
+    return w;
+  }
+
+  /* ============================ LCL / 干湿绝热 ============================ */
+  // Romps(2017) 解析 LCL（MetPy 1.7 原式），返回 {p: hPa, t: °C}
+  function lcl(pHpa, tC, tdC) {
+    var T = tC + ZEROC;
+    var q = specificHumidityFromW(satMixingRatio(pHpa, tdC));
+    var cpm = Cp_d + q * (Cp_v - Cp_d);
+    var Rm = Rd + q * (Rv - Rd);
+    var moistHeatRatio = cpm / Rm;
+    var specHeatDiff = Cp_l - Cp_v;
+    var a = moistHeatRatio + specHeatDiff / Rv;
+    var b = -(Lv + specHeatDiff * T0) / (Rv * T);
+    var c = b / a;
+    var rh = rhFromDewpoint(tC, tdC);
+    var wm1 = lambertWm1(Math.pow(rh, 1 / a) * c * Math.exp(c));
+    var tLcl = c / wm1 * T;
+    var pLcl = pHpa * Math.pow(tLcl / T, moistHeatRatio);
+    return { p: pLcl, t: tLcl - ZEROC };
+  }
+  function dryLapse(pHpa, tC, refPHpa) { return (tC + ZEROC) * Math.pow(pHpa / refPHpa, KAPPA) - ZEROC; }
+
+  // 湿绝热（假绝热）ODE：dT/d(lnp) = (Rd*T + Lv*rs) / (Cp_d + Lv^2*rs*eps/(Rd*T^2))
+  // MetPy 用 LSODA(atol 1e-7, rtol 1.5e-8) 在气压空间积分；这里用 Dormand-Prince RK45 在 ln p 空间自适应积分。
+  function moistLapseDeriv(pPa, tK) {
+    var es = svpPa(tK);
+    var rs = es >= pPa ? NaN : EPS * es / (pPa - es);
+    return (Rd * tK + Lv * rs) / (Cp_d + (Lv * Lv * rs * EPS) / (Rd * tK * tK));
+  }
+  var DP_A = [
+    [], [1 / 5], [3 / 40, 9 / 40], [44 / 45, -56 / 15, 32 / 9],
+    [19372 / 6561, -25360 / 2187, 64448 / 6561, -212 / 729],
+    [9017 / 3168, -355 / 33, 46732 / 5247, 49 / 176, -5103 / 18656],
+    [35 / 384, 0, 500 / 1113, 125 / 192, -2187 / 6784, 11 / 84]
+  ];
+  var DP_B5 = [35 / 384, 0, 500 / 1113, 125 / 192, -2187 / 6784, 11 / 84, 0];
+  var DP_B4 = [5179 / 57600, 0, 7571 / 16695, 393 / 640, -92097 / 339200, 187 / 2100, 1 / 40];
+  // 从 (lnp0, T0) 积到 lnp1，自适应步长
+  function integrateMoist(lnp0, tK0, lnp1, tol) {
+    tol = tol || 1e-11;
+    var t = tK0, x = lnp0, dir = lnp1 > lnp0 ? 1 : -1;
+    var span = Math.abs(lnp1 - lnp0);
+    if (span === 0) return tK0;
+    var h = dir * Math.min(span, 0.01);
+    var guard = 0;
+    while (dir * (lnp1 - x) > 1e-15) {
+      if (guard++ > 20000) return NaN;                       // 步长塌缩 → 明确失败
+      if (dir * (x + h - lnp1) > 0) h = lnp1 - x;
+      var k = [], i, j, ti, xi;
+      for (i = 0; i < 7; i++) {
+        ti = t;
+        for (j = 0; j < DP_A[i].length; j++) ti += h * DP_A[i][j] * k[j];
+        xi = x + h * (i === 0 ? 0 : (i === 1 ? 1 / 5 : i === 2 ? 3 / 10 : i === 3 ? 4 / 5 : i === 4 ? 8 / 9 : 1));
+        k.push(moistLapseDeriv(Math.exp(xi), ti));
+      }
+      var t5 = t, t4 = t;
+      for (i = 0; i < 7; i++) { t5 += h * DP_B5[i] * k[i]; t4 += h * DP_B4[i] * k[i]; }
+      if (!isFinite(t5)) return NaN;                       // 导数发散/未饱和 → 明确报 NaN，绝不静默返回初值
+      var err = Math.abs(t5 - t4);
+      var sc = tol * (1 + Math.abs(t5));
+      if (err <= sc || Math.abs(h) < 1e-12) {
+        t = t5; x += h;
+        var fac = err > 0 ? 0.9 * Math.pow(sc / err, 0.2) : 5;
+        h *= Math.max(0.2, Math.min(5, fac));
+      } else {
+        h *= Math.max(0.1, 0.9 * Math.pow(sc / err, 0.2));
+      }
+    }
+    return t;
+  }
+  /** 沿湿绝热从 refP 起把气块移到 pressures 上的每个气压。pressures: hPa 数组（任意序）。 */
+  function moistLapse(pressuresHpa, tC, refPHpa) {
+    var refP = refPHpa === undefined ? pressuresHpa[0] : refPHpa;
+    var order = argsortAsc(pressuresHpa.map(function (p) { return -Math.abs(Math.log(p / refP)); }));
+    // 按「离参考点由近到远」依次积分，复用上一段的终点
+    var out = new Array(pressuresHpa.length);
+    var upper = [], lower = [];
+    for (var i = 0; i < pressuresHpa.length; i++) {
+      if (pressuresHpa[i] < refP) upper.push(i); else if (pressuresHpa[i] > refP) lower.push(i); else out[i] = tC;
+    }
+    upper.sort(function (a, b) { return pressuresHpa[b] - pressuresHpa[a]; });   // 气压递减（向上）
+    lower.sort(function (a, b) { return pressuresHpa[a] - pressuresHpa[b]; });   // 气压递增（向下）
+    var t = tC + ZEROC, x = Math.log(refP * 100);                 // ln(p) 里的 p 用 Pa
+    for (var u = 0; u < upper.length; u++) {
+      var lp = Math.log(pressuresHpa[upper[u]] * 100);
+      t = integrateMoist(x, t, lp); x = lp; out[upper[u]] = t - ZEROC;
+    }
+    t = tC + ZEROC; x = Math.log(refP * 100);
+    for (var d = 0; d < lower.length; d++) {
+      var lp2 = Math.log(pressuresHpa[lower[d]] * 100);
+      t = integrateMoist(x, t, lp2); x = lp2; out[lower[d]] = t - ZEROC;
+    }
+    void order;
+    return out;
+  }
+  function wetBulbTemperature(pHpa, tC, tdC) {
+    var l = lcl(pHpa, tC, tdC);
+    return moistLapse([pHpa], l.t, l.p)[0];
+  }
+
+  /* ============================ 插值与分层（MetPy tools 口径） ============================ */
+  // metpy.interpolate.interpolate_1d：xp 升序线性插值，越界给 NaN
+  function interp1dArr(xs, xp, fp) {
+    var idx = argsortAsc(xp), XP = take(xp, idx), FP = take(fp, idx);
+    return xs.map(function (x) {
+      var lo = 0, hi = XP.length;                       // searchsorted(side='left')
+      while (lo < hi) { var mid = (lo + hi) >> 1; if (XP[mid] < x) lo = mid + 1; else hi = mid; }
+      var minv = lo;
+      if (minv >= XP.length) return NaN;
+      var m2 = minv === 0 ? 1 : minv;
+      var below = m2 - 1, above = m2;
+      if (x < XP[below]) return NaN;
+      return FP[below] + (FP[above] - FP[below]) * ((x - XP[below]) / (XP[above] - XP[below]));
+    });
+  }
+  function interp1d(x, xp, fp) { return interp1dArr([x], xp, fp)[0]; }
+  function logInterp1dArr(xs, xp, fp) {
+    return interp1dArr(xs.map(Math.log), xp.map(Math.log), fp);
+  }
+  function logInterp1d(x, xp, fp) { return logInterp1dArr([x], xp, fp)[0]; }
+  // np.interp：xp 必须升序，越界取端点值
+  function npInterp(x, xp, fp) {
+    if (x <= xp[0]) return fp[0];
+    if (x >= xp[xp.length - 1]) return fp[fp.length - 1];
+    for (var i = 0; i + 1 < xp.length; i++) {
+      if (x >= xp[i] && x <= xp[i + 1]) {
+        var f = (x - xp[i]) / (xp[i + 1] - xp[i]);
+        return fp[i] + f * (fp[i + 1] - fp[i]);
+      }
+    }
+    return NaN;
+  }
+
+  function getBoundPressureHeight(pressure, bound, height, interpolate, boundIsHeight) {
+    var idx = argsortAsc(pressure).reverse();                       // 气压降序
+    var P = take(pressure, idx), H = height ? take(height, idx) : null;
+    var bp, bh, i;
+    if (!boundIsHeight) {
+      var exact = P.indexOf(bound);
+      if (exact >= 0) { bp = bound; bh = H ? H[exact] : NaN; }
+      else if (interpolate) { bp = bound; bh = H ? logInterp1d(bound, P, H) : NaN; }
+      else {
+        var best = 0;
+        for (i = 0; i < P.length; i++) if (Math.abs(P[i] - bound) < Math.abs(P[best] - bound)) best = i;
+        bp = P[best]; bh = H ? H[best] : NaN;
+      }
+    } else {
+      var eh = H ? H.indexOf(bound) : -1;
+      if (eh >= 0) { bh = bound; bp = P[eh]; }
+      else if (interpolate) {
+        bh = bound;
+        var asc = argsortAsc(H);
+        bp = npInterp(bound, take(H, asc), take(P, asc));
+      } else {
+        var b2 = 0;
+        for (i = 0; i < H.length; i++) if (Math.abs(H[i] - bound) < Math.abs(H[b2] - bound)) b2 = i;
+        bp = P[b2]; bh = H[b2];
+      }
+    }
+    return { p: bp, h: bh };
+  }
+
+  /** MetPy get_layer。opts: {bottom, depth, depthIsHeight, height, interpolate, bottomIsHeight} */
+  function getLayer(pressure, vars, opts) {
+    opts = opts || {};
+    var interpolate = opts.interpolate !== false;
+    var height = opts.height || null;
+    var bottom = opts.bottom === undefined || opts.bottom === null ? Math.max.apply(null, pressure) : opts.bottom;
+    var b = getBoundPressureHeight(pressure, bottom, height, interpolate, !!opts.bottomIsHeight);
+    var top = opts.depthIsHeight ? b.h + opts.depth : b.p - opts.depth;
+    var t = getBoundPressureHeight(pressure, top, height, interpolate, !!opts.depthIsHeight);
+
+    var sortInds = argsortAsc(pressure);
+    var P = take(pressure, sortInds);
+    var pInterp = P.filter(function (p) { return leClose(p, b.p) && geClose(p, t.p); });
+    if (interpolate) {
+      if (!pInterp.some(function (p) { return isclose(t.p, p); })) { pInterp.push(t.p); pInterp.sort(function (a, c) { return a - c; }); }
+      if (!pInterp.some(function (p) { return isclose(b.p, p); })) { pInterp.push(b.p); pInterp.sort(function (a, c) { return a - c; }); }
+    }
+    var inds = [];
+    for (var i = 0; i < P.length; i++) if (leClose(P[i], b.p) && geClose(P[i], t.p)) inds.push(i);
+    var out = [pInterp.slice().reverse()];
+    for (var v = 0; v < vars.length; v++) {
+      var dv = take(vars[v], sortInds);
+      var res = interpolate ? logInterp1dArr(pInterp, P, dv) : take(dv, inds);
+      out.push(res.slice().reverse());
+    }
+    return out;
+  }
+
+  /** MetPy get_layer_heights */
+  function getLayerHeights(height, depth, vars, opts) {
+    opts = opts || {};
+    var interpolate = opts.interpolate !== false;
+    var h = height.slice();
+    if (opts.withAgl) { var sfc = Math.min.apply(null, h); h = h.map(function (z) { return z - sfc; }); }
+    var bottom = opts.bottom === undefined || opts.bottom === null ? h[0] : opts.bottom;
+    var top = bottom + depth;
+    var sortInds = argsortAsc(h);
+    var H = take(h, sortInds);
+    var hInterp = H.filter(function (z) { return geClose(z, bottom) && leClose(z, top); });
+    var inds = [];
+    for (var i = 0; i < H.length; i++) if (geClose(H[i], bottom) && leClose(H[i], top)) inds.push(i);
+    if (interpolate) {
+      if (hInterp.indexOf(top) < 0) { hInterp.push(top); hInterp.sort(function (a, b) { return a - b; }); }
+      if (hInterp.indexOf(bottom) < 0) { hInterp.push(bottom); hInterp.sort(function (a, b) { return a - b; }); }
+    }
+    var out = [hInterp];
+    for (var v = 0; v < vars.length; v++) {
+      var dv = take(vars[v], sortInds);
+      out.push(interpolate ? interp1dArr(hInterp, H, dv) : take(dv, inds));
+    }
+    return out;
+  }
+
+  /* ============================ 交点（LFC/EL 的基础） ============================ */
+  function nearestIntersectionIdx(a, b) {
+    var out = [];
+    for (var i = 0; i + 1 < a.length; i++) {
+      var s0 = Math.sign(a[i] - b[i]), s1 = Math.sign(a[i + 1] - b[i + 1]);
+      if (s1 - s0 !== 0) out.push(i);
+    }
+    return out;
+  }
+  /** MetPy find_intersections。direction: 'all' | 'increasing' | 'decreasing' */
+  function findIntersections(x, a, b, direction, logX) {
+    var X = logX ? x.map(Math.log) : x;
+    var near = nearestIntersectionIdx(a, b);
+    var ix = [], iy = [], signs = [];
+    for (var n = 0; n < near.length; n++) {
+      var i = near[n], j = i + 1;
+      var sign = Math.sign(a[j] - b[j]);
+      var x0 = X[i], x1 = X[j], a0 = a[i], a1 = a[j], b0 = b[i], b1 = b[j];
+      var dy0 = a0 - b0, dy1 = a1 - b1;
+      var xi = (dy1 * x0 - dy0 * x1) / (dy1 - dy0);
+      var yi = ((xi - x0) / (x1 - x0)) * (a1 - a0) + a0;
+      ix.push(logX ? Math.exp(xi) : xi); iy.push(yi); signs.push(sign);
+    }
+    var keepX = [], keepY = [];
+    for (var k = 0; k < ix.length; k++) {
+      var dup = (k + 1 < ix.length) ? (ix[k + 1] - ix[k]) !== 0 : true;      // ediff1d(to_end=1)!=0
+      if (!dup) continue;
+      if (direction === 'increasing' && !(signs[k] > 0)) continue;
+      if (direction === 'decreasing' && !(signs[k] < 0)) continue;
+      keepX.push(ix[k]); keepY.push(iy[k]);
+    }
+    return { x: keepX, y: keepY };
+  }
+
+  /* ============================ 气块廓线 ============================ */
+  function removeNans(arrays) {
+    var n = arrays[0].length, keep = [];
+    for (var i = 0; i < n; i++) {
+      var bad = false;
+      for (var j = 0; j < arrays.length; j++) if (!isNum(arrays[j][i])) { bad = true; break; }
+      if (!bad) keep.push(i);
+    }
+    return arrays.map(function (a) { return take(a, keep); });
+  }
+  function parcelProfileHelper(pressure, tC, tdC) {
+    var l = lcl(pressure[0], tC, tdC);
+    var pressLower = pressure.filter(function (p) { return p >= l.p; }).concat([l.p]);
+    var tempLower = pressLower.map(function (p) { return dryLapse(p, tC, pressLower[0]); });
+    var minP = Math.min.apply(null, pressure);
+    if (geClose(minP, l.p)) {
+      return { pl: pressLower.slice(0, -1), pLcl: l.p, pu: [], tl: tempLower.slice(0, -1), tLcl: l.t, tu: [] };
+    }
+    var pressUpper = [l.p].concat(pressure.filter(function (p) { return p < l.p; }));
+    var uniq = [], indices = [], seen = new Map();
+    var sortedU = pressUpper.slice().sort(function (a, b) { return a - b; });
+    for (var i = 0; i < sortedU.length; i++) if (i === 0 || sortedU[i] !== sortedU[i - 1]) { seen.set(sortedU[i], uniq.length); uniq.push(sortedU[i]); }
+    for (var k = 0; k < pressUpper.length; k++) indices.push(seen.get(pressUpper[k]));
+    var desc = uniq.slice().reverse();
+    var tu = moistLapse(desc, tempLower[tempLower.length - 1], desc[0]);   // 起点用干绝热落到 LCL 的温度（MetPy 原样）
+    var tuAsc = tu.slice().reverse();
+    var tempUpper = indices.map(function (ix) { return tuAsc[ix]; });
+    return { pl: pressLower.slice(0, -1), pLcl: l.p, pu: pressUpper.slice(1), tl: tempLower.slice(0, -1), tLcl: l.t, tu: tempUpper.slice(1) };
+  }
+  /** 与输入等长的气块温度廓线（°C） */
+  function parcelProfile(pressure, tC, tdC) {
+    var h = parcelProfileHelper(pressure, tC, tdC);
+    return h.tl.concat(h.tu);
+  }
+  /** 在廓线里插入 LCL 那一层，返回 {p, t, td, prof} */
+  function parcelProfileWithLcl(pressure, temp, dew) {
+    var h = parcelProfileHelper(pressure, temp[0], dew[0]);
+    var newPress = h.pl.concat([h.pLcl], h.pu);
+    var profTemp = h.tl.concat([h.tLcl], h.tu);
+    // MetPy _insert_lcl_level：loc = size - searchsorted_left(reversed(pressure), pLcl)
+    // 与「找第一个 < pLcl 的位置」只在**气压恰好等于 LCL**（地面已饱和）时不同：MetPy 插在相等那层之后。
+    // 差一位会让地面那次穿越消失，LFC 从 1000.5 变成 496.8 hPa（2026-09-08 对拍实撞）。
+    var rev = pressure.slice().reverse(), lo = 0, hi = rev.length;
+    while (lo < hi) { var mid = (lo + hi) >> 1; if (rev[mid] < h.pLcl) lo = mid + 1; else hi = mid; }
+    var loc = pressure.length - lo;
+    function ins(arr) {
+      var v = interp1d(h.pLcl, pressure, arr);
+      var out = arr.slice(); out.splice(loc, 0, v); return out;
+    }
+    return { p: newPress, t: ins(temp), td: ins(dew), prof: profTemp };
+  }
+
+  /* ============================ LFC / EL / CAPE / CIN ============================ */
+  function pickMultiple(xs, ys, idxMask, which) {
+    var px = [], py = [];
+    for (var i = 0; i < xs.length; i++) if (idxMask[i]) { px.push(xs[i]); py.push(ys[i]); }
+    if (which === 'bottom') return { p: px[0], t: py[0] };
+    return { p: px[px.length - 1], t: py[py.length - 1] };     // 'top'
+  }
+  function lfc(pressure, temperature, dewpoint, prof, which) {
+    which = which || 'top';
+    var r = removeNans([pressure, temperature, dewpoint, prof]);
+    var p = r[0], T = r[1], Td = r[2], P = r[3];
+    var dewStart = Td[0];
+    // 交点判定一律在**开氏**下做：MetPy 的 find_intersections 被 pint 统一到 K，
+    // 而 (a+273.15)-(b+273.15) 与 a-b 不是同一个浮点数。地面饱和时 t_lcl 与环境温度在 K 下差恰好为 0
+    // （np.sign(0)=0 ⇒ 记一次穿越），在 °C 下差 1.07e-14 ⇒ 不记 —— LFC 会从 1000.5 跳到 496.8 hPa。
+    var TK = T.map(function (x) { return x + ZEROC; }), PK = P.map(function (x) { return x + ZEROC; });
+    var inter = isclose(P[0], T[0])
+      ? findIntersections(p.slice(1), PK.slice(1), TK.slice(1), 'increasing', true)
+      : findIntersections(p, PK, TK, 'increasing', true);
+    inter.y = inter.y.map(function (x) { return x - ZEROC; });
+    var thisLcl = lcl(p[0], P[0], dewStart);
+    var i;
+    if (inter.x.length === 0) {
+      var allLess = true;
+      for (i = 0; i < p.length; i++) if (p[i] < thisLcl.p && !leClose(P[i], T[i])) { allLess = false; break; }
+      if (allLess) return { p: NaN, t: NaN };
+      return { p: thisLcl.p, t: thisLcl.t };
+    }
+    var mask = inter.x.map(function (x) { return x < thisLcl.p; });
+    if (!mask.some(Boolean)) {
+      var elx = findIntersections(p.slice(1), PK.slice(1), TK.slice(1), 'decreasing', true).x;
+      if (elx.length && Math.min.apply(null, elx) > thisLcl.p) return { p: NaN, t: NaN };
+      return { p: thisLcl.p, t: thisLcl.t };
+    }
+    return pickMultiple(inter.x, inter.y, mask, which);
+  }
+  function el(pressure, temperature, dewpoint, prof, which) {
+    which = which || 'top';
+    var r = removeNans([pressure, temperature, dewpoint, prof]);
+    var p = r[0], T = r[1], Td = r[2], P = r[3];
+    if (P[P.length - 1] > T[T.length - 1]) return { p: NaN, t: NaN };
+    var TK = T.map(function (x) { return x + ZEROC; }), PK = P.map(function (x) { return x + ZEROC; });
+    var inter = findIntersections(p.slice(1), PK.slice(1), TK.slice(1), 'decreasing', true);
+    inter.y = inter.y.map(function (x) { return x - ZEROC; });
+    var lclP = lcl(p[0], T[0], Td[0]).p;
+    if (inter.x.length > 0 && inter.x[inter.x.length - 1] < lclP) {
+      return pickMultiple(inter.x, inter.y, inter.x.map(function (x) { return x < lclP; }), which);
+    }
+    return { p: NaN, t: NaN };
+  }
+  function findAppendZeroCrossings(x, y) {
+    var zeros = y.slice(1).map(function () { return 0; });
+    var cr = findIntersections(x.slice(1), y.slice(1), zeros, 'all', true);
+    var X = x.concat(cr.x), Y = y.concat(cr.y);
+    var idx = argsortAsc(X);
+    X = take(X, idx); Y = take(Y, idx);
+    var kx = [], ky = [];
+    for (var i = 0; i < X.length; i++) {
+      var d = (i + 1 < X.length) ? X[i + 1] - X[i] : 1;
+      if (d > 1e-6) { kx.push(X[i]); ky.push(Y[i]); }
+    }
+    return { x: kx, y: ky };
+  }
+  /** MetPy cape_cin（虚温订正口径）。返回 {cape, cin, lfcP, elP} J/kg */
+  function capeCin(pressure, temperature, dewpoint, prof, whichLfc, whichEl) {
+    var r = removeNans([pressure, temperature, dewpoint, prof]);
+    var p = r[0], T = r[1], Td = r[2], P = r[3];
+    var lclP = lcl(p[0], T[0], Td[0]).p;
+    var parcelW = p.map(function (pp, i) {
+      return pp > lclP ? satMixingRatio(p[0], Td[0]) : satMixingRatio(pp, P[i]);
+    });
+    var Tv = p.map(function (pp, i) { return virtualTemperatureFromDewpoint(pp, T[i], Td[i]); });
+    var Pv = P.map(function (t, i) { return virtualTemperature(t + ZEROC, parcelW[i]) - ZEROC; });
+    var L = lfc(p, Tv, Td, Pv, whichLfc || 'bottom');
+    if (!isNum(L.p)) return { cape: 0, cin: 0, lfcP: NaN, elP: NaN, lfcT: NaN, elT: NaN };
+    var E = el(p, Tv, Td, Pv, whichEl || 'top');
+    var elP = isNum(E.p) ? E.p : p[p.length - 1];
+    var y = Pv.map(function (v, i) { return (v + ZEROC) - (Tv[i] + ZEROC); });   // 同上：差值在 K 下算
+    var z = findAppendZeroCrossings(p.slice(), y);
+    var xc = [], yc = [], i;
+    for (i = 0; i < z.x.length; i++) if (leClose(z.x[i], L.p) && geClose(z.x[i], elP)) { xc.push(Math.log(z.x[i])); yc.push(z.y[i]); }
+    var cape = Rd * trapz(yc, xc);
+    var xi = [], yi = [];
+    for (i = 0; i < z.x.length; i++) if (geClose(z.x[i], L.p)) { xi.push(Math.log(z.x[i])); yi.push(z.y[i]); }
+    var cin = Rd * trapz(yi, xi);
+    if (cin > 0) cin = 0;
+    return { cape: cape, cin: cin, lfcP: L.p, lfcT: L.t, elP: isNum(E.p) ? E.p : NaN, elT: isNum(E.t) ? E.t : NaN };
+  }
+  function surfaceBasedCapeCin(pressure, temperature, dewpoint) {
+    var r = removeNans([pressure, temperature, dewpoint]);
+    var w = parcelProfileWithLcl(r[0], r[1], r[2]);
+    return capeCin(w.p, w.t, w.td, w.prof);
+  }
+  function mostUnstableParcel(pressure, temperature, dewpoint, depth) {
+    depth = depth || 300;
+    var lay = getLayer(pressure, [temperature, dewpoint], { depth: depth, interpolate: false });
+    var pL = lay[0], tL = lay[1], tdL = lay[2];
+    var best = 0, bestTe = -Infinity;
+    for (var i = 0; i < pL.length; i++) {
+      var te = equivalentPotentialTemperature(pL[i], tL[i], tdL[i]);
+      if (te > bestTe) { bestTe = te; best = i; }
+    }
+    return { p: pL[best], t: tL[best], td: tdL[best], idx: best };
+  }
+  function mostUnstableCapeCin(pressure, temperature, dewpoint) {
+    var r = removeNans([pressure, temperature, dewpoint]);
+    var mu = mostUnstableParcel(r[0], r[1], r[2]);
+    var w = parcelProfileWithLcl(r[0].slice(mu.idx), r[1].slice(mu.idx), r[2].slice(mu.idx));
+    var res = capeCin(w.p, w.t, w.td, w.prof);
+    res.parcel = mu;
+    return res;
+  }
+  function mixedParcel(pressure, temperature, dewpoint, depth) {
+    depth = depth || 100;
+    var startP = pressure[0];
+    var theta = pressure.map(function (p, i) { return potentialTemperature(p, temperature[i]); });
+    var w = pressure.map(function (p, i) { return satMixingRatio(p, dewpoint[i]); });
+    var lay = getLayer(pressure, [theta, w], { depth: depth, interpolate: true });
+    var pL = lay[0], actualDepth = Math.abs(pL[0] - pL[pL.length - 1]);
+    var meanTheta = trapz(lay[1], pL) / -actualDepth;
+    var meanW = trapz(lay[2], pL) / -actualDepth;
+    var meanT = meanTheta * exner(startP) - ZEROC;
+    var meanTd = dewpointFromE(vaporPressureFromW(startP, meanW));
+    return { p: startP, t: meanT, td: meanTd };
+  }
+  function mixedLayerCapeCin(pressure, temperature, dewpoint, depth) {
+    depth = depth || 100;
+    var startP = pressure[0];
+    var mp = mixedParcel(pressure, temperature, dewpoint, depth);
+    var pp = [mp.p], tt = [mp.t], dd = [mp.td];
+    for (var i = 0; i < pressure.length; i++) if (pressure[i] < startP - depth) { pp.push(pressure[i]); tt.push(temperature[i]); dd.push(dewpoint[i]); }
+    var w = parcelProfileWithLcl(pp, tt, dd);
+    var res = capeCin(w.p, w.t, w.td, w.prof);
+    res.parcel = mp;
+    return res;
+  }
+  function downdraftCape(pressure, temperature, dewpoint) {
+    var r = removeNans([pressure, temperature, dewpoint]);
+    var p = r[0], T = r[1], Td = r[2];
+    var lay = getLayer(p, [T, Td], { bottom: 700, depth: 200, interpolate: true });
+    var pL = lay[0], tL = lay[1], tdL = lay[2];
+    var min = 0, minTe = Infinity;
+    for (var i = 0; i < pL.length; i++) {
+      var te = equivalentPotentialTemperature(pL[i], tL[i], tdL[i]);
+      if (te < minTe) { minTe = te; min = i; }
+    }
+    var startP = pL[min];
+    var startWb = wetBulbTemperature(startP, tL[min], tdL[min]);
+    var downP = [], envT = [], envTd = [];
+    for (i = 0; i < p.length; i++) if (p[i] >= startP) { downP.push(p[i]); envT.push(T[i]); envTd.push(Td[i]); }
+    // downP 只有 1 层（气块起点就在地面）时 trapz=0 ⇒ DCAPE=0，与 MetPy 一致，别返回 NaN
+    var trace = downP.length ? moistLapse(downP, startWb, startP) : [];
+    var diff = downP.map(function (pp, i) {
+      var pv = virtualTemperatureFromDewpoint(pp, trace[i], trace[i]);
+      var ev = virtualTemperatureFromDewpoint(pp, envT[i], envTd[i]);
+      return ev - pv;
+    });
+    var dcape = -Rd * trapz(diff, downP.map(Math.log));
+    return { dcape: dcape, p: downP, trace: trace, startP: startP, startT: startWb };
+  }
+
+  /* ============================ 稳定度指数 ============================ */
+  function kIndex(p, T, Td) {
+    var t = interp1dArr([850, 700, 500], p, T), d = interp1dArr([850, 700], p, Td);
+    return (t[0] - t[2]) + d[0] - (t[1] - d[1]);
+  }
+  function totalTotals(p, T, Td) {
+    var t = interp1dArr([850, 500], p, T), d = interp1d(850, p, Td);
+    return (t[0] - t[1]) + (d - t[1]);
+  }
+  function liftedIndex(p, T, prof) { return interp1d(500, p, T) - interp1d(500, p, prof); }
+  function showalterIndex(p, T, Td) {
+    var t850 = interp1d(850, p, T), td850 = interp1d(850, p, Td), t500 = interp1d(500, p, T);
+    var pr = parcelProfile([850, 500], t850, td850);
+    return t500 - pr[pr.length - 1];
+  }
+  function precipitableWater(p, Td) {
+    var idx = argsortAsc(p).reverse();
+    var P = take(p, idx), D = take(Td, idx);
+    var r = removeNans([P, D]); P = r[0]; D = r[1];
+    var bottom = Math.max.apply(null, P), top = Math.min.apply(null, P);
+    var lay = getLayer(P, [D], { bottom: bottom, depth: bottom - top, interpolate: true });
+    var pL = lay[0], dL = lay[1];
+    var w = pL.map(function (pp, i) { return mixingRatio(svpPa(dL[i] + ZEROC), pp * 100); });
+    var pw = -trapz(w, pL.map(function (x) { return x * 100; })) / (G * RHO_L);
+    return pw * 1000;                                       // mm
+  }
+  // SWEAT（AWS/NWS 经典式；MetPy 无此项，属单源口径，已在「口径」页标注）
+  function sweatIndex(p, T, Td, spd, dir) {
+    var td850 = interp1d(850, p, Td), tt = totalTotals(p, T, Td);
+    var f850 = interp1d(850, p, spd), f500 = interp1d(500, p, spd);
+    var d850 = interp1d(850, p, dir), d500 = interp1d(500, p, dir);
+    var term1 = 12 * Math.max(td850, 0);
+    var term2 = tt < 49 ? 0 : 20 * (tt - 49);
+    var kt850 = f850 * 1.9438444924406046, kt500 = f500 * 1.9438444924406046;
+    var shearTerm = 0;
+    var ok = (d850 >= 130 && d850 <= 250) && (d500 >= 210 && d500 <= 310)
+      && (d500 - d850 > 0) && kt850 >= 15 && kt500 >= 15;
+    if (ok) shearTerm = 125 * (Math.sin((d500 - d850) * Math.PI / 180) + 0.2);
+    return term1 + term2 + 2 * kt850 + kt500 + shearTerm;
+  }
+
+  /* ============================ 风与风暴参数 ============================ */
+  function windComponents(spd, dirDeg) {
+    var r = dirDeg * Math.PI / 180;
+    return { u: -spd * Math.sin(r), v: -spd * Math.cos(r) };
+  }
+  function windSpeed(u, v) { return Math.hypot(u, v); }
+  function windDirection(u, v) {
+    var d = Math.atan2(-u, -v) * 180 / Math.PI;
+    d = (d + 360) % 360;
+    return (u === 0 && v === 0) ? 0 : d;
+  }
+  function weightedContinuousAverage(pressure, vars, opts) {
+    var lay = getLayer(pressure, vars, opts);
+    var pL = lay[0], denom = pL[pL.length - 1] - pL[0];
+    return lay.slice(1).map(function (v) { return trapz(v, pL) / denom; });
+  }
+  function bunkersStormMotion(pressure, u, v, height) {
+    var r = removeNans([pressure, u, v, height]);
+    var p = r[0], U = r[1], V = r[2], H = r[3];
+    var mean = weightedContinuousAverage(p, [U, V], { height: H, depth: 6000, depthIsHeight: true });
+    var w500 = weightedContinuousAverage(p, [U, V], { height: H, depth: 500, depthIsHeight: true });
+    var w5500 = weightedContinuousAverage(p, [U, V], { height: H, depth: 500, depthIsHeight: true, bottom: H[0] + 5500, bottomIsHeight: true });
+    var shearU = w5500[0] - w500[0], shearV = w5500[1] - w500[1];
+    var mag = Math.hypot(shearU, shearV);
+    var devU = shearV * (7.5 / mag), devV = -shearU * (7.5 / mag);
+    return {
+      right: { u: mean[0] + devU, v: mean[1] + devV },
+      left: { u: mean[0] - devU, v: mean[1] - devV },
+      mean: { u: mean[0], v: mean[1] }
+    };
+  }
+  function stormRelativeHelicity(height, u, v, depth, opts) {
+    opts = opts || {};
+    var lay = getLayerHeights(height, depth, [u, v], { withAgl: true, bottom: opts.bottom || 0 });
+    var U = lay[1], V = lay[2];
+    var su = opts.stormU || 0, sv = opts.stormV || 0;
+    var pos = 0, neg = 0;
+    for (var i = 0; i + 1 < U.length; i++) {
+      var a = (U[i + 1] - su) * (V[i] - sv) - (U[i] - su) * (V[i + 1] - sv);
+      if (a > 0) pos += a; else if (a < 0) neg += a;
+    }
+    return { positive: pos, negative: neg, total: pos + neg };
+  }
+  function bulkShear(pressure, u, v, height, depth, bottom) {
+    var opts = { height: height, depth: depth, depthIsHeight: true };
+    if (bottom !== undefined) { opts.bottom = bottom; opts.bottomIsHeight = true; }
+    var lay = getLayer(pressure, [u, v], opts);
+    var U = lay[1], V = lay[2];
+    return { u: U[U.length - 1] - U[0], v: V[V.length - 1] - V[0] };
+  }
+  function criticalAngle(pressure, u, v, height, stormU, stormV) {
+    var idx = argsortAsc(pressure.slice().reverse());
+    var p = take(pressure, idx), h = take(height, idx), U = take(u, idx), V = take(v, idx);
+    var shr = bulkShear(p, U, V, h, 500);
+    var umn = stormU - U[0], vmn = stormV - V[0];
+    var dot = shr.u * umn + shr.v * vmn;
+    var ang = Math.acos(dot / (Math.hypot(shr.u, shr.v) * Math.hypot(umn, vmn)));
+    return ang * 180 / Math.PI;
+  }
+  function supercellComposite(mucape, esrh, eshear) {
+    var s = Math.min(eshear, 20);
+    if (s < 10) s = 0;
+    s = s / 20;
+    return (mucape / 1000) * (esrh / 50) * s;
+  }
+  function significantTornado(sbcape, lclHeight, srh1km, shear6km) {
+    var z = Math.max(1000, Math.min(2000, lclHeight));
+    z = (2000 - z) / 1000;
+    var s = Math.min(shear6km, 30);
+    if (s < 12.5) s = 0;
+    s = s / 20;
+    return (sbcape / 1500) * z * (srh1km / 150) * s;
+  }
+  function energyHelicityIndex(cape, srh) { return cape * srh / 160000; }
+
+  /* ============================ ICAO 标准大气（与 ambiance 对拍） ============================ */
+  var ISA_R = 287.05287, ISA_G = 9.80665, ISA_RE = 6356766.0;
+  var ISA_H = [0, 11000, 20000, 32000, 47000, 51000, 71000, 84852];
+  var ISA_T = [288.15, 216.65, 216.65, 228.65, 270.65, 270.65, 214.65, 186.946];
+  var ISA_L = [-0.0065, 0, 0.001, 0.0028, 0, -0.0028, -0.002, 0];
+  var ISA_P = (function () {
+    var p = [101325], i;
+    for (i = 0; i < 7; i++) {
+      var dh = ISA_H[i + 1] - ISA_H[i];
+      p.push(ISA_L[i] === 0
+        ? p[i] * Math.exp(-ISA_G * dh / (ISA_R * ISA_T[i]))
+        : p[i] * Math.pow(ISA_T[i] / (ISA_T[i] + ISA_L[i] * dh), ISA_G / (ISA_R * ISA_L[i])));
+    }
+    return p;
+  })();
+  function isaLayer(h) { var i = 0; while (i < 6 && h >= ISA_H[i + 1]) i++; return i; }
+  /** 位势高 h(m) → {T(K), p(Pa), rho(kg/m^3)} */
+  function isaAt(h) {
+    var i = isaLayer(h), dh = h - ISA_H[i];
+    var T = ISA_T[i] + ISA_L[i] * dh;
+    var p = ISA_L[i] === 0
+      ? ISA_P[i] * Math.exp(-ISA_G * dh / (ISA_R * ISA_T[i]))
+      : ISA_P[i] * Math.pow(ISA_T[i] / T, ISA_G / (ISA_R * ISA_L[i]));
+    return { T: T, p: p, rho: p / (ISA_R * T) };
+  }
+  function geometricToGeopotential(z) { return ISA_RE * z / (ISA_RE + z); }
+  function geopotentialToGeometric(h) { return ISA_RE * h / (ISA_RE - h); }
+  /** 由气压反求 ISA 位势高（m） */
+  function isaHeightFromPressure(pPa) {
+    var i = 0; while (i < 6 && pPa < ISA_P[i + 1]) i++;
+    if (ISA_L[i] === 0) return ISA_H[i] - ISA_R * ISA_T[i] / ISA_G * Math.log(pPa / ISA_P[i]);
+    return ISA_H[i] + ISA_T[i] / ISA_L[i] * (Math.pow(ISA_P[i] / pPa, ISA_R * ISA_L[i] / ISA_G) - 1);
+  }
+  /** 由密度反求 ISA 位势高（m），二分 */
+  function isaHeightFromDensity(rho) {
+    var lo = -5000, hi = 84000;
+    for (var i = 0; i < 200; i++) {
+      var mid = (lo + hi) / 2;
+      if (isaAt(mid).rho > rho) lo = mid; else hi = mid;
+    }
+    return (lo + hi) / 2;
+  }
+  /** 高度表拨正值 QNH(hPa) → 场面气压(hPa)。MetPy altimeter_to_station_pressure 同式。 */
+  function altimeterToStationPressure(altHpa, elevM) {
+    var n = ISA_R * 0.0065 / ISA_G;
+    var p0 = 1013.25;
+    return Math.pow(Math.pow(altHpa, n) - Math.pow(p0, n) * (0.0065 * elevM / 288.15), 1 / n);
+  }
+  function stationPressureToAltimeter(pHpa, elevM) {
+    var n = ISA_R * 0.0065 / ISA_G, p0 = 1013.25;
+    return Math.pow(Math.pow(pHpa, n) + Math.pow(p0, n) * (0.0065 * elevM / 288.15), 1 / n);
+  }
+  /** 气压高度(m)：把场面气压放进 ISA 反求 */
+  function pressureAltitude(pHpa) { return isaHeightFromPressure(pHpa * 100); }
+  /** 密度高度(m)：可选露点做湿度订正（虚温） */
+  function densityAltitude(pHpa, tC, tdC) {
+    var w = isNum(tdC) ? satMixingRatio(pHpa, Math.min(tdC, tC)) : 0;
+    var rho = (pHpa * 100) / (Rd * virtualTemperature(tC + ZEROC, w));
+    return isaHeightFromDensity(rho);
+  }
+
+  /* ============================ 体感温度（NWS 口径，MetPy 同式） ============================ */
+  function heatIndexF(tF, rh) {
+    if (tF <= 40) return tF;
+    var a = -10.3 + 1.1 * tF + 4.7 * rh;
+    if (a < 79) return a;
+    var d = tF, d2 = d * d, r2 = rh * rh;
+    var hi = -42.379 + 2.04901523 * d + 1014.333127 * rh - 22.475541 * d * rh
+      - 6.83783e-3 * d2 - 5.481717e2 * r2 + 1.22874e-1 * d2 * rh + 8.5282 * d * r2 - 1.99e-2 * d2 * r2;
+    if (rh <= 0.13 && tF >= 80 && tF <= 112) hi -= (13 - rh * 100) / 4 * Math.sqrt((17 - Math.abs(d - 95)) / 17);
+    if (rh > 0.85 && tF >= 80 && tF <= 87) hi += 0.02 * (rh * 100 - 85) * (87 - d);
+    return hi;
+  }
+  function heatIndex(tC, rh) { return (heatIndexF(tC * 9 / 5 + 32, rh) - 32) * 5 / 9; }
+  /** 风寒温度（NWS 2001 口径；风速 m/s、温度 °C），风速 <4.8 km/h 或温度 >10°C 时无定义 */
+  function windChill(tC, spdMs) {
+    var v = spdMs * 3.6;                                     // km/h
+    if (tC > 10 || v < 4.8) return NaN;
+    var vp = Math.pow(v, 0.16);
+    return 13.12 + 0.6215 * tC - 11.37 * vp + 0.3965 * tC * vp;
+  }
+
+  return {
+    C: { Rd: Rd, Rv: Rv, Cp_d: Cp_d, Cp_v: Cp_v, Cp_l: Cp_l, Lv: Lv, T0: T0, ZEROC: ZEROC, EPS: EPS, KAPPA: KAPPA, G: G, RHO_L: RHO_L },
+    isclose: isclose, trapz: trapz, interp1d: interp1d, interp1dArr: interp1dArr,
+    logInterp1d: logInterp1d, npInterp: npInterp, removeNans: removeNans,
+    svp: svp, svpPa: svpPa, dewpointFromE: dewpointFromE, mixingRatio: mixingRatio,
+    satMixingRatio: satMixingRatio, vaporPressureFromW: vaporPressureFromW,
+    rhFromDewpoint: rhFromDewpoint, dewpointFromRH: dewpointFromRH,
+    specificHumidityFromW: specificHumidityFromW, virtualTemperature: virtualTemperature,
+    virtualTemperatureFromDewpoint: virtualTemperatureFromDewpoint,
+    exner: exner, potentialTemperature: potentialTemperature, density: density,
+    equivalentPotentialTemperature: equivalentPotentialTemperature,
+    wetBulbPotentialTemperature: wetBulbPotentialTemperature,
+    lambertWm1: lambertWm1, lcl: lcl, dryLapse: dryLapse, moistLapse: moistLapse,
+    wetBulbTemperature: wetBulbTemperature,
+    getLayer: getLayer, getLayerHeights: getLayerHeights, findIntersections: findIntersections,
+    parcelProfile: parcelProfile, parcelProfileWithLcl: parcelProfileWithLcl,
+    lfc: lfc, el: el, capeCin: capeCin, surfaceBasedCapeCin: surfaceBasedCapeCin,
+    mostUnstableParcel: mostUnstableParcel, mostUnstableCapeCin: mostUnstableCapeCin,
+    mixedParcel: mixedParcel, mixedLayerCapeCin: mixedLayerCapeCin, downdraftCape: downdraftCape,
+    kIndex: kIndex, totalTotals: totalTotals, liftedIndex: liftedIndex,
+    showalterIndex: showalterIndex, precipitableWater: precipitableWater, sweatIndex: sweatIndex,
+    windComponents: windComponents, windSpeed: windSpeed, windDirection: windDirection,
+    weightedContinuousAverage: weightedContinuousAverage,
+    bunkersStormMotion: bunkersStormMotion, stormRelativeHelicity: stormRelativeHelicity,
+    bulkShear: bulkShear, criticalAngle: criticalAngle,
+    supercellComposite: supercellComposite, significantTornado: significantTornado,
+    energyHelicityIndex: energyHelicityIndex,
+    isaAt: isaAt, isaHeightFromPressure: isaHeightFromPressure, isaHeightFromDensity: isaHeightFromDensity,
+    geometricToGeopotential: geometricToGeopotential, geopotentialToGeometric: geopotentialToGeometric,
+    altimeterToStationPressure: altimeterToStationPressure, stationPressureToAltimeter: stationPressureToAltimeter,
+    pressureAltitude: pressureAltitude, densityAltitude: densityAltitude,
+    heatIndex: heatIndex, windChill: windChill
+  };
+})();
+if (typeof globalThis !== 'undefined') globalThis.WX = WX;
+
+/* METAR / TAF 报文解析（WMO No.306 FM 15/51 + ICAO Annex 3 + FMH-1 的常见变体）
+ * 逐 token 状态机；认不出来的 token 一律进 unparsed 明示出来，绝不静默丢弃。 */
+(function () {
+  'use strict';
+  var CLOUD_AMOUNT = { FEW: '少云 1–2/8', SCT: '疏云 3–4/8', BKN: '多云 5–7/8', OVC: '阴天 8/8' };
+  var CLOUD_TYPE = { CB: '积雨云 CB', TCU: '浓积云 TCU' };
+  var DESCRIPTOR = { MI: '浅', PR: '部分', BC: '散片', DR: '低吹', BL: '高吹', SH: '阵性', TS: '雷暴', FZ: '冻' };
+  var PHENOM = {
+    DZ: '毛毛雨', RA: '雨', SN: '雪', SG: '米雪', IC: '冰晶', PL: '冰粒', GR: '冰雹', GS: '霰',
+    UP: '未知降水', BR: '轻雾', FG: '雾', FU: '烟', VA: '火山灰', DU: '浮尘', SA: '沙',
+    HZ: '霾', PY: '飞沫', PO: '尘卷风', SQ: '飑', FC: '漏斗云', SS: '沙暴', DS: '尘暴'
+  };
+  var INTENSITY = { '-': '小', '+': '大', VC: '附近' };
+  var TREND_TYPE = { NOSIG: '未来 2 小时无显著变化', BECMG: '渐变', TEMPO: '短时' };
+  var KT2MS = 0.5144444444444444, MS2KT = 1 / KT2MS;
+
+  function reTest(re, s) { return re.test(s); }
+
+  function parseWindTok(tok) {
+    var m = /^(\d{3}|VRB|\/{3})(\d{2,3}|\/{2})(?:G(\d{2,3}))?(KT|MPS|KMH)$/.exec(tok);
+    if (!m) return null;
+    var unit = m[4];
+    function toMs(v) {
+      if (v === null) return null;
+      return unit === 'KT' ? v * KT2MS : unit === 'KMH' ? v / 3.6 : v;
+    }
+    var spd = m[2] === '//' ? null : parseInt(m[2], 10);
+    var gst = m[3] ? parseInt(m[3], 10) : null;
+    return {
+      dir: m[1] === 'VRB' || m[1] === '///' ? null : parseInt(m[1], 10),
+      vrb: m[1] === 'VRB', unknown: m[1] === '///',
+      speed: spd, gust: gst, unit: unit,
+      speedMs: toMs(spd), gustMs: toMs(gst),
+      calm: spd === 0
+    };
+  }
+  function parseCloudTok(tok) {
+    if (tok === 'SKC') return { special: 'SKC', text: '天空晴朗（人工观测）' };
+    if (tok === 'CLR') return { special: 'CLR', text: '3600 m 以下无云（自动观测）' };
+    if (tok === 'NSC') return { special: 'NSC', text: '无显著云' };
+    if (tok === 'NCD') return { special: 'NCD', text: '自动观测未探测到云' };
+    var m = /^(VV)(\d{3}|\/{3})$/.exec(tok);
+    if (m) return { vv: true, baseFt: m[2] === '///' ? null : parseInt(m[2], 10) * 100, cover: 'VV' };
+    m = /^\/{3}(CB|TCU)$/.exec(tok);
+    if (m) return { cover: null, coverUnknown: true, baseFt: null, type: m[1] };
+    m = /^(FEW|SCT|BKN|OVC|\/{3})(\d{3}|\/{3})(CB|TCU|\/{3})?$/.exec(tok);
+    if (!m) return null;
+    if (m[1] === '///' && m[2] === '///' && !m[3]) return { cover: null, coverUnknown: true, baseFt: null };
+    return {
+      cover: m[1] === '///' ? null : m[1], coverUnknown: m[1] === '///',
+      baseFt: m[2] === '///' ? null : parseInt(m[2], 10) * 100,
+      type: m[3] && m[3] !== '///' ? m[3] : null, typeUnknown: m[3] === '///'
+    };
+  }
+  // 描述符可以单独成组（TS 雷暴无降水、VCSH 附近阵性降水），所以现象部分是 * 不是 +，
+  // 但必须「描述符或现象至少有一个」，否则空串也会匹配。
+  var WX_RE = /^(-|\+|VC)?(MI|PR|BC|DR|BL|SH|TS|FZ)?((?:DZ|RA|SN|SG|IC|PL|GR|GS|UP|BR|FG|FU|VA|DU|SA|HZ|PY|PO|SQ|FC|SS|DS)*)$/;
+  function parseWeatherTok(tok) {
+    if (tok === 'NSW') return { nsw: true, text: '显著天气现象结束' };
+    var m = WX_RE.exec(tok);
+    if (!m) return null;
+    if (!m[2] && !m[3]) return null;                        // 只有 -/+/VC 不成组
+    var ph = [];
+    for (var i = 0; i < m[3].length; i += 2) ph.push(m[3].substr(i, 2));
+    var parts = [];
+    if (m[1] === 'VC') parts.push('附近');
+    else if (m[1]) parts.push(INTENSITY[m[1]]);
+    if (m[2]) parts.push(DESCRIPTOR[m[2]]);
+    if (ph.length) parts.push(ph.map(function (p) { return PHENOM[p]; }).join('夹'));
+    else if (m[2] === 'TS') parts.push('（无降水）');
+    else if (m[2] === 'SH') parts.push('降水');
+    return { intensity: m[1] || null, descriptor: m[2] || null, phenomena: ph, raw: tok, text: parts.join('') };
+  }
+  function parseRvrTok(tok) {
+    var m = /^R(\d{2}[LCR]?)\/([MP]?)(\d{3,4})(?:V([MP]?)(\d{3,4}))?(FT)?\/?([UDN])?$/.exec(tok);
+    if (!m) return null;
+    return {
+      rwy: m[1], prefix: m[2] || null, min: parseInt(m[3], 10),
+      maxPrefix: m[4] || null, max: m[5] ? parseInt(m[5], 10) : null,
+      unit: m[6] ? 'ft' : 'm', trend: m[7] || null, raw: tok
+    };
+  }
+  /** 主视程 token（公制/英制）；返回 {meters, sm, plus, dir} 或 null */
+  function parseVisTok(tok, prevFrac) {
+    if (/^\d{4}$/.test(tok)) {
+      var v = parseInt(tok, 10);
+      return { meters: v === 9999 ? 10000 : v, plus: v === 9999, sm: (v === 9999 ? 10000 : v) / 1609.344 };
+    }
+    var m = /^(\d{4})(NDV|NE|NW|SE|SW|N|E|S|W)$/.exec(tok);
+    if (m) { var v2 = parseInt(m[1], 10); return { meters: v2 === 9999 ? 10000 : v2, plus: v2 === 9999, dir: m[2], sm: v2 / 1609.344 }; }
+    if (/^\/{4}SM$/.test(tok)) return { unknown: true, meters: null, sm: null };
+    if (/^\/{4}$/.test(tok)) return { unknown: true, meters: null, sm: null };
+    m = /^(M|P)?(\d{1,3})(?:\/(\d{1,2}))?SM$/.exec(tok);
+    if (m) {
+      var sm = m[3] ? parseInt(m[2], 10) / parseInt(m[3], 10) : parseInt(m[2], 10);
+      if (prevFrac !== null && prevFrac !== undefined && m[3]) sm += prevFrac;
+      return { sm: sm, meters: sm * 1609.344, less: m[1] === 'M', plus: m[1] === 'P' };
+    }
+    return null;
+  }
+
+  function fmtVis(v) {
+    if (!v) return '—';
+    if (v.cavok) return 'CAVOK（10 km 以上、无显著云与天气）';
+    var s;
+    if (v.meters >= 9999 || v.plus) s = '10 km 以上';
+    else if (v.meters >= 1000) s = (v.meters / 1000).toFixed(v.meters % 1000 ? 1 : 0) + ' km';
+    else s = v.meters + ' m';
+    if (v.less) s = '小于 ' + s;
+    if (v.dir && v.dir !== 'NDV') s += '（' + v.dir + ' 方向）';
+    return s;
+  }
+
+  /** 解析一份 METAR/SPECI 报文 */
+  function parseMetar(raw) {
+    var text = String(raw || '').replace(/=+\s*$/, '').replace(/\s+/g, ' ').trim().toUpperCase();
+    var r = {
+      raw: text, type: null, station: null, time: null, auto: false, cor: false, nil: false,
+      wind: null, windVar: null, vis: null, minVis: null, rvr: [], weather: [], clouds: [],
+      skySpecial: null, temp: null, dew: null, qnh: null, recent: [], windShear: [],
+      sea: null, runwayState: [], trend: [], remarks: null, unparsed: [], warnings: [], ok: false
+    };
+    if (!text) { r.warnings.push('报文为空'); return r; }
+    var toks = text.split(' ');
+    var i = 0, rmkIdx = toks.indexOf('RMK');
+    var body = rmkIdx >= 0 ? toks.slice(0, rmkIdx) : toks.slice();
+    if (rmkIdx >= 0) r.remarks = { raw: toks.slice(rmkIdx + 1).join(' ') };
+
+    if (body[i] === 'METAR' || body[i] === 'SPECI') { r.type = body[i]; i++; }
+    if (body[i] === 'COR') { r.cor = true; i++; }
+    if (body[i] && /^[A-Z][A-Z0-9]{3}$/.test(body[i]) && !parseCloudTok(body[i])) { r.station = body[i]; i++; }
+    else r.warnings.push('没有识别到 4 位 ICAO 地名代码');
+    if (body[i] && /^(\d{2})(\d{2})(\d{2})Z$/.test(body[i])) {
+      var t = /^(\d{2})(\d{2})(\d{2})Z$/.exec(body[i]);
+      r.time = { day: +t[1], hour: +t[2], minute: +t[3], raw: body[i] };
+      i++;
+    } else r.warnings.push('没有识别到 DDHHMMZ 观测时间');
+    while (body[i] === 'AUTO' || body[i] === 'COR' || body[i] === 'NIL' || body[i] === 'RTD') {
+      if (body[i] === 'AUTO') r.auto = true;
+      if (body[i] === 'COR') r.cor = true;
+      if (body[i] === 'NIL') r.nil = true;
+      i++;
+    }
+    if (r.nil) { r.ok = true; return r; }
+
+    var trendStart = -1;
+    for (var k = i; k < body.length; k++) {
+      if (body[k] === 'NOSIG' || body[k] === 'BECMG' || body[k] === 'TEMPO') { trendStart = k; break; }
+    }
+    var main = trendStart >= 0 ? body.slice(i, trendStart) : body.slice(i);
+    var trendToks = trendStart >= 0 ? body.slice(trendStart) : [];
+
+    var j = 0, tok, pending = null;
+    while (j < main.length) {
+      tok = main[j];
+      var w = parseWindTok(tok);
+      if (w && !r.wind) { r.wind = w; j++; continue; }
+      var vv = /^(\d{3})V(\d{3})$/.exec(tok);
+      if (vv && r.wind && !r.windVar) { r.windVar = { from: +vv[1], to: +vv[2] }; j++; continue; }
+      if (tok === 'CAVOK') { r.vis = { cavok: true, meters: 10000, sm: 10000 / 1609.344, plus: true }; j++; continue; }
+      if (/^\d$/.test(tok) && main[j + 1] && /SM$/.test(main[j + 1])) { pending = parseInt(tok, 10); j++; continue; }
+      var vis = parseVisTok(tok, pending);
+      if (vis && !r.vis) { r.vis = vis; pending = null; j++; continue; }
+      if (vis && r.vis && !r.minVis && vis.meters < r.vis.meters) { r.minVis = vis; j++; continue; }
+      var rv = parseRvrTok(tok);
+      if (rv) { r.rvr.push(rv); j++; continue; }
+      if (/^RE/.test(tok) && tok.length > 2) {
+        var rw = parseWeatherTok(tok.slice(2));
+        if (rw) { r.recent.push(rw); j++; continue; }
+      }
+      var wx = parseWeatherTok(tok);
+      if (wx) { r.weather.push(wx); j++; continue; }
+      var cl = parseCloudTok(tok);
+      if (cl) { if (cl.special) r.skySpecial = cl; else r.clouds.push(cl); j++; continue; }
+      if (tok === '/////////' || /^\/+$/.test(tok)) { j++; continue; }
+      var td = /^(M?\d{2}|\/\/)\/(M?\d{2}|\/\/)?$/.exec(tok);
+      if (td && r.temp === null) {
+        r.temp = td[1] === '//' ? null : (td[1][0] === 'M' ? -parseInt(td[1].slice(1), 10) : parseInt(td[1], 10));
+        r.dew = (!td[2] || td[2] === '//') ? null : (td[2][0] === 'M' ? -parseInt(td[2].slice(1), 10) : parseInt(td[2], 10));
+        j++; continue;
+      }
+      var q = /^Q(\d{4}|\/{4})$/.exec(tok);
+      if (q) {
+        var qv = q[1] === '////' ? { unknown: true } : { hPa: +q[1], inHg: +q[1] / 33.863886666667, src: 'Q' };
+        if (r.qnh) r.altSetting = qv; else r.qnh = qv;
+        j++; continue;
+      }
+      var a = /^A(\d{4}|\/{4})$/.exec(tok);
+      if (a) {
+        var av = a[1] === '////' ? { unknown: true } : { inHg: +a[1] / 100, hPa: (+a[1] / 100) * 33.863886666667, src: 'A' };
+        if (r.qnh) r.altSetting = av; else r.qnh = av;
+        j++; continue;
+      }
+      if (tok === 'WS' && main[j + 1]) {
+        if (main[j + 1] === 'ALL' && main[j + 2] === 'RWY') { r.windShear.push({ all: true, raw: 'WS ALL RWY' }); j += 3; continue; }
+        if (/^(RWY|R)\d{2}[LCR]?$/.test(main[j + 1])) { r.windShear.push({ rwy: main[j + 1], raw: 'WS ' + main[j + 1] }); j += 2; continue; }
+      }
+      var sea = /^W(M?\d{2}|\/\/)\/(S|H)(\d{1,3}|\/)$/.exec(tok);
+      if (sea) {
+        r.sea = { temp: sea[1] === '//' ? null : (sea[1][0] === 'M' ? -parseInt(sea[1].slice(1), 10) : parseInt(sea[1], 10)),
+          kind: sea[2], value: sea[3] === '/' ? null : parseInt(sea[3], 10), raw: tok };
+        j++; continue;
+      }
+      if (tok === 'R/SNOCLO' || tok === 'SNOCLO') { r.runwayState.push({ snoclo: true, raw: tok }); j++; continue; }
+      if (/^R(\d{2}[LCR]?|88|99)\/\/{4,6}$/.test(tok)) { r.runwayState.push({ rwy: tok.slice(1, tok.indexOf('/')), unknown: true, raw: tok }); j++; continue; }
+      if (tok === 'RE//') { r.recent.push({ unknown: true, raw: tok, text: '有最近天气但未编码' }); j++; continue; }
+      var rc = /^R(\d{2}[LCR]?|88|99)\/(?:CLRD|\/{4})(\d{2}|\/{2})$/.exec(tok);
+      if (rc) { r.runwayState.push({ rwy: rc[1], cleared: true, friction: rc[2], raw: tok }); j++; continue; }
+      var rs = /^R(\d{2}[LCR]?|88|99)\/(\d|\/)(\d|\/)(\d{2}|\/\/)(\d{2}|\/\/)$/.exec(tok);
+      if (rs) { r.runwayState.push({ rwy: rs[1], deposit: rs[2], contamination: rs[3], depth: rs[4], friction: rs[5], raw: tok }); j++; continue; }
+      if (/^(BLACK)?(BLU|WHT|GRN|YLO1|YLO2|YLO|AMB|RED)\+?$/.test(tok)) { (r.colourState = r.colourState || []).push(tok); j++; continue; }
+      r.unparsed.push(tok); j++;
+    }
+    // 趋势预报
+    if (trendToks.length) {
+      var cur = null;
+      for (var m2 = 0; m2 < trendToks.length; m2++) {
+        var tk = trendToks[m2];
+        if (tk === 'NOSIG') { r.trend.push({ type: 'NOSIG', items: [] }); cur = null; continue; }
+        if (tk === 'BECMG' || tk === 'TEMPO') { cur = { type: tk, items: [], at: [] }; r.trend.push(cur); continue; }
+        if (!cur) { r.unparsed.push(tk); continue; }
+        var ft = /^(FM|TL|AT)(\d{2})(\d{2})$/.exec(tk);
+        if (ft) { cur.at.push({ kind: ft[1], hour: +ft[2], minute: +ft[3] }); continue; }
+        var e = parseWindTok(tk) ? { kind: 'wind', v: parseWindTok(tk) }
+          : tk === 'CAVOK' ? { kind: 'vis', v: { cavok: true, meters: 10000 } }
+            : parseVisTok(tk, null) ? { kind: 'vis', v: parseVisTok(tk, null) }
+              : parseWeatherTok(tk) ? { kind: 'weather', v: parseWeatherTok(tk) }
+                : parseCloudTok(tk) ? { kind: 'cloud', v: parseCloudTok(tk) } : null;
+        if (e) cur.items.push(e); else r.unparsed.push(tk);
+      }
+    }
+    // 备注段里的高价值项
+    if (r.remarks) {
+      var rk = r.remarks.raw;
+      var slp = /\bSLP(\d{3})\b/.exec(rk);
+      if (slp) { var v3 = +slp[1]; r.remarks.slp = (v3 >= 500 ? 900 + v3 / 10 : 1000 + v3 / 10); }
+      var pt = /\bT([01])(\d{3})([01])(\d{3})\b/.exec(rk);
+      if (pt) r.remarks.preciseTemp = { t: (pt[1] === '1' ? -1 : 1) * (+pt[2]) / 10, d: (pt[3] === '1' ? -1 : 1) * (+pt[4]) / 10 };
+      var pk = /\bPK WND (\d{3})(\d{2,3})\/(\d{2,4})\b/.exec(rk);
+      if (pk) r.remarks.peakWind = { dir: +pk[1], speed: +pk[2], time: pk[3] };
+      var a2 = /\bA(\d{4})\b/.exec(rk);
+      if (a2 && !r.qnh) r.qnh = { inHg: +a2[1] / 100, hPa: (+a2[1] / 100) * 33.863886666667, src: 'RMK A' };
+    }
+    r.ok = r.station !== null && r.time !== null;
+    return r;
+  }
+
+  /** 云底（ceiling）：最低的 BKN/OVC/VV，单位 ft AGL；无则 null */
+  function ceilingFt(rep) {
+    var best = null;
+    for (var i = 0; i < rep.clouds.length; i++) {
+      var c = rep.clouds[i];
+      if ((c.cover === 'BKN' || c.cover === 'OVC' || c.cover === 'VV') && c.baseFt !== null) {
+        if (best === null || c.baseFt < best) best = c.baseFt;
+      }
+    }
+    return best;
+  }
+  /** 飞行气象类别（FAA/NWS 口径） */
+  function flightCategory(rep) {
+    var c = ceilingFt(rep);
+    var visSm = rep.vis ? (rep.vis.plus ? 99 : rep.vis.sm) : null;
+    if (c === null && visSm === null) return null;
+    var cat = 'VFR';
+    function worse(a, b) { var o = ['VFR', 'MVFR', 'IFR', 'LIFR']; return o.indexOf(a) > o.indexOf(b) ? a : b; }
+    if (c !== null) {
+      if (c < 500) cat = worse(cat, 'LIFR');
+      else if (c < 1000) cat = worse(cat, 'IFR');
+      else if (c <= 3000) cat = worse(cat, 'MVFR');
+    }
+    if (visSm !== null) {
+      if (visSm < 1) cat = worse(cat, 'LIFR');
+      else if (visSm < 3) cat = worse(cat, 'IFR');
+      else if (visSm <= 5) cat = worse(cat, 'MVFR');
+    }
+    return cat;
+  }
+  /** 跑道侧风/顺逆风分量（跑道号 ×10 = 磁航向） */
+  function runwayComponents(windDir, windSpeed, rwyHeading) {
+    var d = (windDir - rwyHeading) * Math.PI / 180;
+    return { head: windSpeed * Math.cos(d), cross: windSpeed * Math.sin(d) };
+  }
+
+  /* ---------------------- TAF ---------------------- */
+  function parseTaf(raw) {
+    var text = String(raw || '').replace(/=+\s*$/, '').replace(/\s+/g, ' ').trim().toUpperCase();
+    var r = { raw: text, station: null, issued: null, valid: null, amd: false, cor: false, nil: false, cnl: false, groups: [], unparsed: [], warnings: [], ok: false };
+    if (!text) { r.warnings.push('报文为空'); return r; }
+    var toks = text.split(' ');
+    var i = 0;
+    if (toks[i] === 'TAF') i++;
+    while (toks[i] === 'AMD' || toks[i] === 'COR' || toks[i] === 'RTD') { if (toks[i] === 'AMD') r.amd = true; else if (toks[i] === 'COR') r.cor = true; i++; }
+    if (toks[i] && /^[A-Z][A-Z0-9]{3}$/.test(toks[i])) { r.station = toks[i]; i++; }
+    if (toks[i] && /^\d{6}Z$/.test(toks[i])) { r.issued = { day: +toks[i].slice(0, 2), hour: +toks[i].slice(2, 4), minute: +toks[i].slice(4, 6) }; i++; }
+    while (toks[i] === 'AMD' || toks[i] === 'COR' || toks[i] === 'NIL') { if (toks[i] === 'NIL') r.nil = true; i++; }
+    if (toks[i] && /^\d{4}\/\d{4}$/.test(toks[i])) {
+      r.valid = { fromDay: +toks[i].slice(0, 2), fromHour: +toks[i].slice(2, 4), toDay: +toks[i].slice(5, 7), toHour: +toks[i].slice(7, 9) };
+      i++;
+    }
+    if (toks[i] === 'CNL') { r.cnl = true; r.ok = true; return r; }
+    var cur = { type: 'INIT', items: [], at: null, prob: null };
+    r.groups.push(cur);
+    for (; i < toks.length; i++) {
+      var tk = toks[i];
+      if (tk === 'RMK') { r.remarks = toks.slice(i + 1).join(' '); break; }
+      var fm = /^FM(\d{2})(\d{2})(\d{2})$/.exec(tk);
+      if (fm) { cur = { type: 'FM', from: { day: +fm[1], hour: +fm[2], minute: +fm[3] }, items: [] }; r.groups.push(cur); continue; }
+      if (tk === 'BECMG' || tk === 'TEMPO') { cur = { type: tk, items: [] }; r.groups.push(cur); continue; }
+      var pb = /^PROB(\d{2})$/.exec(tk);
+      if (pb) {
+        if (toks[i + 1] === 'TEMPO') { cur = { type: 'TEMPO', prob: +pb[1], items: [] }; r.groups.push(cur); i++; }
+        else { cur = { type: 'PROB', prob: +pb[1], items: [] }; r.groups.push(cur); }
+        continue;
+      }
+      var per = /^(\d{2})(\d{2})\/(\d{2})(\d{2})$/.exec(tk);
+      if (per) { cur.period = { fromDay: +per[1], fromHour: +per[2], toDay: +per[3], toHour: +per[4] }; continue; }
+      var tx = /^(TX|TN)(M?\d{2})\/(\d{2})(\d{2})Z$/.exec(tk);
+      if (tx) { (r.temps = r.temps || []).push({ kind: tx[1], value: tx[2][0] === 'M' ? -parseInt(tx[2].slice(1), 10) : parseInt(tx[2], 10), day: +tx[3], hour: +tx[4] }); continue; }
+      if (tk === 'CAVOK') { cur.items.push({ kind: 'vis', v: { cavok: true, meters: 10000, sm: 6.2 } }); continue; }
+      if (tk === 'NSW') { cur.items.push({ kind: 'weather', v: { nsw: true, text: '显著天气现象结束' } }); continue; }
+      var qn = /^QNH(\d{4})INS$/.exec(tk);
+      if (qn) { cur.items.push({ kind: 'qnh', inHg: +qn[1] / 100, hPa: (+qn[1] / 100) * 33.863886666667, raw: tk }); continue; }
+      if (tk === 'AMD' && toks[i + 1] === 'NOT' && toks[i + 2] === 'SKED') { r.amdNotSked = true; i += 2; continue; }
+      if (tk === 'INTER') { cur = { type: 'TEMPO', inter: true, items: [] }; r.groups.push(cur); continue; }
+      if (tk === 'WS' && /^\d{3}\/\d{5}KT$/.test(toks[i + 1] || '')) { cur.items.push({ kind: 'ws', raw: tk + ' ' + toks[i + 1] }); i++; continue; }
+      var wsl = /^WS(\d{3})\/(\d{3})(\d{2,3})KT$/.exec(tk);
+      if (wsl) { cur.items.push({ kind: 'ws', height: +wsl[1] * 100, dir: +wsl[2], speed: +wsl[3], raw: tk }); continue; }
+      var e = parseWindTok(tk) ? { kind: 'wind', v: parseWindTok(tk) }
+        : parseVisTok(tk, null) ? { kind: 'vis', v: parseVisTok(tk, null) }
+          : parseWeatherTok(tk) ? { kind: 'weather', v: parseWeatherTok(tk) }
+            : parseCloudTok(tk) ? { kind: 'cloud', v: parseCloudTok(tk) } : null;
+      if (e) cur.items.push(e); else r.unparsed.push(tk);
+    }
+    r.ok = r.station !== null && r.valid !== null;
+    return r;
+  }
+
+  WX.metar = {
+    parse: parseMetar, parseTaf: parseTaf, ceilingFt: ceilingFt, flightCategory: flightCategory,
+    runwayComponents: runwayComponents, fmtVis: fmtVis,
+    CLOUD_AMOUNT: CLOUD_AMOUNT, CLOUD_TYPE: CLOUD_TYPE, DESCRIPTOR: DESCRIPTOR,
+    PHENOM: PHENOM, INTENSITY: INTENSITY, TREND_TYPE: TREND_TYPE, KT2MS: KT2MS, MS2KT: MS2KT,
+    parseWind: parseWindTok, parseCloud: parseCloudTok, parseWeather: parseWeatherTok,
+    parseRvr: parseRvrTok, parseVis: parseVisTok
+  };
+  void reTest;
+})();
+
+/* 内置探空样本（怀俄明大学高空存档，已按 ln p 最大误差细化） */
+WX.SOUNDINGS = [{"id":"40430-2024-06-20-12","station":"40430","name":"OERK 利雅得 · 沙特","note":"沙漠深厚干绝热混合层，露点极低","time":"2024-06-20 12:00Z","levels":[[933.0,636.0,45.6,-3.4,120.0,3.6],[927.0,712.0,43.0,-2.0,155.0,5.2],[925.0,738.0,43.2,-1.8,150.0,5.2],[901.0,979.0,40.8,-2.0,140.0,5.2],[850.0,1513.0,35.4,-2.6,155.0,3.6],[821.0,1819.0,32.4,-3.1,170.0,6.2],[797.0,2080.0,29.8,-3.5,165.0,5.2],[784.0,2225.0,28.4,-3.8,185.0,8.2],[716.0,3024.0,20.6,-5.1,135.0,6.2],[706.0,3148.0,19.3,-5.3,145.0,5.7],[700.0,3223.0,18.6,-5.4,135.0,4.6],[640.0,3980.0,11.4,-6.6,170.0,1.0],[632.0,4084.0,10.4,-6.8,175.0,0.5],[595.0,4582.0,5.4,-7.6,136.0,0.9],[500.0,5970.0,-7.3,-10.0,25.0,2.1],[477.0,6335.0,-10.9,-10.9,11.0,4.7],[469.0,6465.0,-12.1,-13.2,5.0,5.7],[467.0,6497.0,-11.5,-17.5,4.0,6.0],[462.0,6581.0,-6.7,-35.7,1.0,6.6],[461.0,6598.0,-6.6,-40.1,0.0,6.7],[460.0,6615.0,-6.5,-44.5,1.0,6.7],[448.0,6818.0,-8.0,-44.1,10.0,7.2],[433.0,7080.0,-9.9,-43.5,15.0,5.2],[425.0,7224.0,-10.9,-43.3,350.0,5.2],[400.0,7690.0,-14.3,-42.3,10.0,3.6],[392.0,7843.0,-14.7,-44.7,9.0,3.3],[386.0,7960.0,-14.3,-43.3,9.0,3.1],[310.0,9580.0,-27.3,-49.1,0.0,0.0],[303.0,9749.0,-28.7,-49.7,242.0,2.5],[300.0,9820.0,-29.1,-54.1,190.0,3.6],[275.0,10431.0,-33.4,-57.0,220.0,5.2],[258.0,10879.0,-36.5,-59.1,225.0,7.2],[250.0,11100.0,-38.1,-60.1,205.0,7.2],[244.0,11266.0,-39.3,-61.6,185.0,5.2],[234.0,11553.0,-41.3,-64.3,193.0,5.9],[231.0,11639.0,-42.0,-63.9,195.0,6.2],[216.0,12091.0,-45.9,-61.9,168.0,7.8],[212.0,12215.0,-46.7,-63.5,160.0,8.2],[200.0,12600.0,-49.3,-68.3,180.0,9.8],[199.0,12633.0,-49.5,-68.5,180.0,9.8],[185.0,13107.0,-52.1,-71.9,160.0,14.4],[182.0,13213.0,-52.7,-72.7,159.0,14.3],[167.0,13754.0,-57.5,-74.4,155.0,13.9],[150.0,14430.0,-63.5,-76.5,175.0,19.0],[141.0,14807.0,-66.7,-77.0,175.0,22.6],[140.0,14850.0,-67.1,-77.1,175.0,21.9],[127.0,15428.0,-70.3,-79.5,170.0,11.3],[124.0,15569.0,-71.1,-80.0,155.0,10.3],[115.0,16016.0,-73.5,-81.8,145.0,15.4],[111.0,16226.0,-74.7,-82.7,147.0,19.8],[105.0,16548.0,-75.9,-86.1,150.0,26.8],[103.0,16659.0,-76.3,-87.3,152.0,23.5],[100.0,16830.0,-74.9,-86.9,155.0,18.5],[98.0,16945.0,-75.6,-87.3,150.0,12.4],[97.0,17004.0,-76.0,-87.4,115.0,6.2],[94.0,17183.0,-77.0,-88.0,135.0,10.3],[87.0,17625.0,-79.7,-89.4,105.0,11.3],[83.6,17853.0,-81.1,-90.1,105.0,14.9],[77.0,18323.0,-77.4,-89.2,130.0,16.5],[72.1,18698.0,-74.5,-88.5,89.0,16.5],[71.0,18788.0,-74.7,-89.2,80.0,16.5],[70.0,18870.0,-74.9,-89.9,75.0,18.0],[68.0,19038.0,-75.8,-90.1,75.0,20.6],[67.4,19089.0,-76.1,-90.1,80.0,21.6],[65.0,19303.0,-74.7,-90.1,100.0,25.7],[61.0,19678.0,-72.2,-90.2,125.0,22.6],[59.0,19874.0,-70.9,-90.2,120.0,14.4],[56.0,20182.0,-68.8,-90.3,120.0,13.9],[53.9,20408.0,-67.3,-90.3,89.0,14.6],[53.0,20509.0,-67.8,-90.4,75.0,14.9],[51.7,20658.0,-68.5,-90.5,88.0,16.5],[50.0,20860.0,-66.1,-91.1,105.0,18.5],[49.0,20984.0,-64.3,-90.6,110.0,17.5],[48.0,21110.0,-62.5,-90.1,100.0,17.0],[46.9,21253.0,-60.5,-89.5,104.0,18.3],[45.0,21510.0,-60.0,-89.0,110.0,20.6],[43.6,21707.0,-59.7,-88.7,113.0,19.4],[41.0,22092.0,-59.4,-88.5,120.0,17.0],[39.0,22406.0,-59.1,-88.4,90.0,12.9],[37.0,22736.0,-58.8,-88.3,100.0,10.8],[35.0,23084.0,-58.5,-88.1,70.0,13.9],[30.0,24050.0,-57.7,-87.7,95.0,19.0],[28.9,24286.0,-58.1,-87.1,90.0,20.4],[28.0,24488.0,-57.3,-86.9,85.0,21.6],[24.7,25286.0,-54.3,-86.3,97.0,18.3],[24.0,25473.0,-52.4,-85.7,100.0,17.5],[23.1,25721.0,-49.9,-84.9,91.0,18.9],[22.0,26042.0,-49.2,-84.5,80.0,20.6],[20.0,26670.0,-47.7,-83.7,85.0,22.6],[19.0,27010.0,-46.6,-83.0,95.0,24.7],[18.0,27369.0,-45.5,-82.3,105.0,21.6],[17.7,27480.0,-45.1,-82.1,103.0,20.7],[16.0,28149.0,-46.7,-82.7,90.0,14.9],[15.0,28576.0,-47.7,-83.2,80.0,17.5],[14.2,28939.0,-48.5,-83.5,84.0,22.8],[13.0,29530.0,-45.3,-82.5,90.0,31.4],[11.2,30528.0,-39.9,-80.9,108.0,21.3],[11.0,30651.0,-40.0,-81.0,110.0,20.1],[10.0,31300.0,-40.7,-81.7,95.0,16.5],[8.0,32816.0,-41.4,-82.4,80.0,22.1],[7.8,32988.0,-41.5,-82.5,null,null]]},{"id":"45004-2024-08-30-00","station":"45004","name":"香港京士柏 45004","note":"夏季热带海洋气团：整层近饱和、可降水量极大","time":"2024-08-30 00:00Z","levels":[[999.6,66.0,27.7,26.8,100.0,0.1],[925.0,754.0,24.2,21.4,134.0,5.1],[850.0,1490.0,19.3,17.8,153.0,3.1],[801.7,1993.0,17.4,13.1,161.0,4.6],[788.2,2138.0,17.1,9.6,156.0,4.9],[785.2,2171.0,17.2,5.8,158.0,5.4],[781.5,2212.0,16.6,11.3,158.0,6.0],[769.8,2340.0,16.7,6.5,152.0,5.6],[744.7,2622.0,14.4,8.4,137.0,6.0],[730.7,2783.0,14.5,4.5,130.0,5.2],[700.0,3144.0,12.1,5.3,139.0,5.4],[690.3,3262.0,12.4,-1.2,140.0,5.9],[683.4,3345.0,11.6,-0.0,145.0,5.8],[678.6,3404.0,11.0,4.8,146.0,5.5],[661.9,3612.0,9.9,2.0,151.0,6.5],[658.4,3656.0,10.0,-1.4,154.0,6.5],[642.6,3858.0,8.1,3.1,133.0,7.0],[626.8,4063.0,6.3,2.9,123.0,6.8],[622.1,4124.0,6.5,-3.5,121.0,5.9],[617.3,4188.0,6.3,-2.4,123.0,5.8],[614.1,4231.0,6.5,-7.4,125.0,6.3],[611.3,4268.0,6.0,-1.7,128.0,6.6],[600.1,4420.0,4.6,0.3,137.0,6.3],[585.6,4618.0,3.6,-3.3,143.0,6.7],[582.9,4655.0,3.4,-0.5,142.0,7.3],[577.9,4726.0,3.5,-6.8,136.0,7.5],[573.6,4787.0,3.6,-5.2,127.0,6.7],[566.1,4894.0,3.4,-10.1,122.0,7.0],[561.1,4965.0,2.8,-7.5,118.0,7.2],[560.0,4981.0,2.8,-9.5,116.0,7.1],[559.5,4989.0,2.7,-6.8,115.0,7.0],[546.1,5184.0,2.3,-14.1,93.0,6.2],[526.1,5484.0,0.0,-16.1,116.0,4.0],[521.5,5555.0,-0.7,-11.3,117.0,4.6],[517.1,5622.0,-1.2,-11.9,112.0,5.6],[508.3,5759.0,-1.4,-20.4,113.0,7.0],[505.8,5798.0,-1.7,-19.6,114.0,7.4],[504.1,5825.0,-2.0,-15.3,114.0,7.7],[500.0,5890.0,-2.5,-15.5,113.0,8.5],[491.7,6022.0,-3.6,-15.6,108.0,10.0],[488.2,6078.0,-3.8,-21.0,106.0,9.8],[477.5,6253.0,-5.0,-15.0,100.0,8.4],[473.4,6322.0,-5.3,-18.4,100.0,7.7],[454.4,6641.0,-7.4,-20.9,128.0,8.6],[450.9,6701.0,-8.0,-16.3,128.0,9.6],[443.7,6827.0,-8.9,-15.9,124.0,9.8],[428.9,7088.0,-10.3,-20.3,106.0,6.9],[423.2,7191.0,-10.6,-28.1,96.0,5.9],[418.1,7286.0,-11.3,-25.4,91.0,5.5],[411.8,7400.0,-11.2,-32.9,96.0,5.8],[400.0,7624.0,-12.5,-32.4,99.0,4.4],[396.2,7697.0,-12.7,-37.5,100.0,3.7],[372.7,8158.0,-16.5,-38.5,147.0,4.6],[359.0,8440.0,-18.4,-27.7,161.0,6.6],[356.3,8496.0,-18.5,-37.8,157.0,6.9],[354.8,8527.0,-18.6,-33.5,156.0,6.7],[348.8,8654.0,-19.7,-31.0,158.0,5.7],[342.8,8782.0,-20.4,-35.3,181.0,4.6],[341.9,8802.0,-20.5,-30.6,185.0,4.6],[336.3,8925.0,-21.3,-28.7,190.0,4.7],[328.1,9105.0,-22.7,-32.4,192.0,3.2],[325.1,9173.0,-22.8,-37.9,194.0,3.0],[322.8,9225.0,-22.9,-31.3,205.0,3.2],[320.5,9277.0,-23.4,-31.0,209.0,3.6],[316.1,9378.0,-24.2,-30.9,204.0,4.5],[314.4,9419.0,-24.1,-35.9,201.0,4.9],[311.2,9494.0,-24.4,-37.8,194.0,5.6],[300.0,9759.0,-26.5,-36.6,207.0,6.3],[294.9,9882.0,-27.6,-35.5,212.0,6.1],[285.7,10109.0,-29.3,-43.8,222.0,5.1],[281.2,10222.0,-30.2,-41.5,206.0,5.6],[278.2,10298.0,-30.8,-43.7,191.0,5.7],[277.4,10318.0,-30.8,-49.7,187.0,5.8],[272.9,10436.0,-31.6,-51.7,176.0,5.7],[250.0,11048.0,-36.8,-52.5,181.0,5.8],[238.1,11383.0,-39.9,-47.5,172.0,5.4],[235.9,11446.0,-40.4,-51.6,170.0,5.2],[235.3,11464.0,-40.4,-61.3,170.0,5.2],[234.9,11474.0,-40.4,-63.9,170.0,5.2],[234.2,11494.0,-40.5,-59.2,171.0,5.2],[233.1,11526.0,-40.8,-57.9,173.0,5.1],[217.9,11982.0,-44.8,-59.7,156.0,2.6],[213.2,12129.0,-45.8,-63.4,125.0,4.5],[210.7,12206.0,-46.4,-58.4,123.0,5.7],[207.4,12310.0,-47.2,-61.9,126.0,6.3],[200.0,12550.0,-49.5,-61.0,130.0,6.2],[193.1,12778.0,-51.7,-60.9,126.0,5.8],[190.0,12885.0,-52.0,-70.7,112.0,4.9],[186.3,13010.0,-52.9,-68.3,87.0,5.7],[181.4,13183.0,-53.5,-72.5,99.0,7.5],[179.3,13257.0,-54.2,-71.7,99.0,9.0],[176.0,13375.0,-55.2,-64.9,90.0,10.3],[173.0,13485.0,-55.3,-75.8,83.0,11.9],[167.8,13677.0,-56.9,-72.0,84.0,12.2],[158.8,14023.0,-59.9,-72.3,88.0,14.1],[156.3,14124.0,-60.9,-75.6,92.0,14.9],[153.3,14242.0,-61.9,-71.5,91.0,14.8],[150.0,14378.0,-63.1,-73.8,91.0,15.4],[146.1,14540.0,-64.4,-72.6,92.0,16.4],[139.8,14810.0,-66.0,-81.0,91.0,15.9],[128.2,15329.0,-69.9,-83.4,93.0,17.9],[118.8,15778.0,-73.1,-79.3,76.0,19.2],[109.8,16237.0,-75.5,-82.2,74.0,24.4],[100.0,16779.0,-75.2,-85.7,92.0,25.8],[70.0,18856.0,-72.7,-89.4,78.0,25.3],[62.5,19523.0,-73.2,-90.3,90.0,24.1],[54.8,20298.0,-66.8,-91.2,92.0,21.4],[50.0,20856.0,-65.9,-90.9,85.0,21.6],[41.0,22056.0,-66.1,-91.4,87.0,27.8],[36.9,22708.0,-60.3,-90.0,89.0,23.1],[32.4,23509.0,-58.6,-88.7,94.0,31.7],[30.0,24004.0,-56.2,-88.1,98.0,27.4],[29.1,24194.0,-54.1,-87.0,107.0,21.1],[26.0,24912.0,-56.3,-87.7,null,null],[24.2,25375.0,-52.4,-86.1,null,null],[20.0,26610.0,-50.3,-85.1,67.0,24.5],[17.7,27396.0,-47.7,-84.1,60.0,29.6],[15.9,28098.0,-50.2,-84.9,84.0,32.1],[12.0,29953.0,-42.8,-82.7,112.0,35.3],[10.7,30724.0,-42.6,-82.4,123.0,36.5]]},{"id":"47778-2024-08-05-00","station":"47778","name":"RJKB 潮岬 · 日本","note":"副高边缘的中纬度海洋气团","time":"2024-08-05 00:00Z","levels":[[1000.0,75.0,29.4,26.8,120.0,1.5],[989.0,174.0,27.2,25.4,101.0,1.8],[945.0,576.0,24.8,22.1,23.0,2.8],[936.0,660.0,26.2,14.2,7.0,3.1],[935.0,669.0,26.2,14.4,5.0,3.1],[925.0,764.0,26.0,16.0,5.0,3.1],[899.0,1014.0,24.1,16.2,25.0,1.0],[866.0,1341.0,21.6,16.4,350.0,3.1],[864.0,1361.0,21.4,16.4,359.0,3.0],[851.0,1493.0,21.0,16.0,56.0,2.1],[850.0,1503.0,21.0,15.0,60.0,2.1],[815.0,1867.0,18.8,15.4,30.0,5.2],[809.0,1930.0,18.4,15.5,32.0,5.2],[801.0,2016.0,18.4,12.4,34.0,5.2],[793.0,2102.0,18.2,10.2,36.0,5.2],[784.0,2200.0,17.2,14.3,39.0,5.2],[764.0,2419.0,16.0,13.1,45.0,5.2],[733.0,2771.0,14.1,11.1,10.0,3.1],[711.0,3030.0,12.7,9.6,15.0,2.1],[700.0,3162.0,12.0,8.9,355.0,3.1],[683.0,3367.0,10.7,8.0,325.0,1.0],[655.0,3715.0,8.6,6.4,335.0,2.1],[643.0,3870.0,7.6,5.7,313.0,2.1],[636.0,3960.0,7.7,2.3,300.0,2.1],[633.0,3999.0,7.8,0.8,288.0,2.3],[620.0,4169.0,7.0,-0.7,235.0,3.1],[585.0,4645.0,4.9,-5.1,200.0,3.1],[570.0,4858.0,4.0,-7.0,157.0,4.1],[541.0,5277.0,1.3,-9.7,70.0,6.2],[503.0,5863.0,-2.5,-13.5,75.0,3.3],[500.0,5910.0,-2.7,-16.7,75.0,3.1],[492.0,6037.0,-2.5,-24.5,75.0,2.7],[477.0,6280.0,-4.0,-23.2,75.0,2.1],[470.0,6396.0,-4.7,-22.6,90.0,3.1],[459.0,6582.0,-5.9,-21.7,60.0,3.1],[455.0,6651.0,-6.3,-21.3,66.0,3.3],[414.0,7376.0,-11.9,-25.4,125.0,5.2],[400.0,7640.0,-13.9,-26.9,140.0,7.2],[379.0,8048.0,-15.9,-32.9,127.0,5.3],[367.0,8288.0,-17.3,-34.7,120.0,4.1],[345.0,8750.0,-20.1,-38.1,67.0,1.4],[342.0,8814.0,-20.6,-38.5,60.0,1.0],[324.0,9208.0,-23.6,-40.7,100.0,3.1],[306.0,9626.0,-26.8,-43.1,105.0,4.1],[300.0,9770.0,-27.9,-43.9,130.0,3.1],[299.0,9794.0,-28.1,-44.0,125.0,3.1],[291.0,9989.0,-29.8,-44.6,70.0,4.1],[285.0,10139.0,-31.1,-45.1,80.0,4.1],[276.0,10364.0,-32.9,-46.6,95.0,4.1],[264.0,10677.0,-35.3,-48.7,65.0,4.1],[256.0,10893.0,-37.0,-50.2,95.0,4.1],[250.0,11060.0,-38.3,-51.3,90.0,5.2],[242.0,11282.0,-40.1,-51.1,98.0,5.0],[200.0,12550.0,-50.9,null,145.0,4.1],[190.0,12875.0,-53.1,null,150.0,4.1],[178.0,13287.0,-55.9,null,150.0,1.0],[167.0,13691.0,-58.7,null,50.0,2.1],[157.0,14081.0,-61.3,null,110.0,2.1],[150.0,14370.0,-63.3,null,85.0,4.1],[146.0,14534.0,-64.1,null,75.0,3.1],[136.0,14963.0,-66.2,null,85.0,4.1],[126.0,15426.0,-68.5,null,71.0,10.3],[122.0,15618.0,-68.9,null,65.0,12.9],[110.0,16234.0,-70.2,null,85.0,13.9],[109.0,16289.0,-70.3,null,85.0,13.9],[100.0,16800.0,-69.7,null,80.0,12.9],[98.0,16919.0,-69.8,null,90.0,13.9],[93.0,17228.0,-70.2,null,105.0,12.9],[88.0,17555.0,-70.5,null,90.0,9.8],[84.0,17829.0,-70.8,null,105.0,10.8],[79.0,18192.0,-71.3,null,85.0,9.8],[76.1,18412.0,-71.5,null,71.0,15.0],[75.0,18499.0,-70.6,null,65.0,17.0],[70.0,18910.0,-66.1,null,80.0,17.0],[68.9,19006.0,-65.5,null,84.0,17.0],[67.0,19178.0,-65.3,null,90.0,17.0],[63.0,19555.0,-64.8,null,85.0,10.8],[58.0,20061.0,-64.1,null,95.0,14.9],[55.0,20386.0,-63.7,null,75.0,16.0],[52.0,20730.0,-63.2,null,85.0,16.0],[50.0,20970.0,-62.9,null,75.0,14.9],[47.0,21358.0,-62.3,null,80.0,16.0],[36.0,23028.0,-59.6,null,90.0,18.0],[30.0,24170.0,-57.7,null,90.0,25.2],[29.1,24362.0,-58.3,null,90.0,24.9],[25.0,25334.0,-53.3,null,90.0,23.2],[22.6,25980.0,-49.9,null,93.0,25.9],[21.0,26461.0,-49.2,null,95.0,27.8],[20.0,26780.0,-48.7,null,95.0,28.8],[16.6,28008.0,-47.7,null,92.0,25.2],[15.0,28674.0,-48.9,null,90.0,23.2],[14.0,29128.0,-49.7,null,85.0,26.9],[13.0,29617.0,-48.9,null,80.0,30.9],[11.0,30720.0,-47.0,null,90.0,40.2],[10.9,30780.0,-46.9,null,90.0,40.2],[10.2,31218.0,-46.1,null,90.0,38.6],[10.0,31350.0,-44.9,null,90.0,38.1],[9.0,32065.0,-40.8,null,90.0,36.0],[8.3,32615.0,-37.7,null,90.0,37.5]]},{"id":"54511-2024-01-22-00","station":"54511","name":"北京 54511","note":"冬季强逆温：地面辐射冷却 + 下沉逆温，污染物被压在近地层","time":"2024-01-22 00:00Z","levels":[[1040.8,34.0,-10.1,-24.3,347.0,4.3],[1039.5,47.0,-9.8,-22.6,347.0,5.0],[1024.0,137.0,-10.9,-23.3,346.0,9.0],[1022.7,143.0,-11.0,-23.4,346.0,9.2],[1000.0,341.0,-12.3,-23.8,334.0,14.1],[999.9,342.0,-12.4,-23.9,334.0,14.1],[995.7,382.0,-12.4,-23.9,334.0,14.5],[981.3,508.0,-13.8,-24.3,334.0,15.8],[978.5,538.0,-13.4,-24.1,334.0,16.0],[946.7,786.0,-15.2,-25.2,335.0,17.5],[928.9,908.0,-16.0,-25.3,339.0,18.5],[925.0,932.0,-16.2,-25.3,340.0,18.7],[911.6,1051.0,-17.0,-25.7,342.0,19.4],[870.1,1395.0,-18.7,-27.1,354.0,20.8],[850.0,1564.0,-20.0,-27.6,354.0,21.6],[829.3,1713.0,-20.8,-27.8,353.0,22.4],[827.9,1728.0,-21.0,-28.0,353.0,22.3],[807.4,1903.0,-21.1,-29.2,356.0,20.7],[796.5,2006.0,-20.5,-32.7,358.0,19.8],[780.0,2157.0,-21.9,-34.2,2.0,18.2],[765.6,2300.0,-22.7,-35.1,5.0,16.7],[756.2,2392.0,-23.3,-35.4,7.0,16.2],[743.8,2524.0,-23.5,-35.3,10.0,15.5],[715.1,2826.0,-25.9,-36.3,4.0,14.6],[702.0,2963.0,-26.4,-37.4,356.0,14.1],[700.0,2987.0,-26.5,-37.4,354.0,14.0],[680.4,3196.0,-27.7,-37.0,339.0,13.0],[679.8,3201.0,-27.8,-37.0,339.0,13.0],[670.1,3313.0,-28.0,-38.2,336.0,13.4],[652.3,3516.0,-29.5,-39.9,332.0,14.1],[640.4,3638.0,-30.4,-40.2,330.0,15.4],[618.6,3873.0,-31.8,-39.1,327.0,18.0],[611.6,3958.0,-31.3,-38.8,326.0,18.8],[600.0,4086.0,-32.1,-39.3,325.0,20.0],[593.5,4161.0,-32.5,-39.9,324.0,20.7],[590.2,4200.0,-32.6,-40.4,324.0,20.8],[582.7,4296.0,-32.8,-41.6,324.0,21.1],[574.7,4398.0,-32.3,-42.0,323.0,21.5],[569.0,4472.0,-32.5,-43.2,323.0,21.7],[566.6,4501.0,-32.7,-43.2,323.0,21.8],[563.0,4546.0,-33.0,-42.9,324.0,21.7],[558.7,4608.0,-32.0,-42.3,325.0,21.7],[551.8,4693.0,-31.9,-43.7,326.0,21.6],[525.9,5022.0,-32.9,-45.6,327.0,21.0],[515.0,5164.0,-33.9,-47.8,327.0,20.6],[514.1,5182.0,-33.9,-47.9,327.0,20.6],[504.1,5312.0,-34.1,-48.9,326.0,20.6],[500.0,5369.0,-34.5,-48.8,325.0,20.5],[488.4,5537.0,-35.6,-49.0,324.0,20.5],[474.3,5722.0,-37.3,-50.1,321.0,21.4],[461.4,5909.0,-38.6,-52.4,318.0,22.2],[457.6,5970.0,-39.1,-52.7,318.0,22.6],[437.8,6268.0,-39.7,-54.7,317.0,24.6],[437.1,6281.0,-39.8,-54.7,317.0,24.7],[412.5,6671.0,-42.3,-56.7,315.0,24.8],[400.0,6897.0,-43.1,-58.2,315.0,25.3],[395.3,6980.0,-43.4,-58.6,314.0,25.5],[383.4,7198.0,-45.3,-59.9,312.0,25.9],[381.3,7232.0,-45.4,-59.9,312.0,26.0],[363.0,7548.0,-46.9,-61.1,308.0,26.4],[354.2,7707.0,-48.3,-62.4,306.0,26.7],[343.6,7892.0,-49.2,-63.0,304.0,27.2],[336.7,8024.0,-50.3,-64.0,302.0,27.6],[324.0,8262.0,-52.3,-65.6,299.0,26.9],[318.5,8367.0,-51.0,-64.5,298.0,26.6],[315.7,8421.0,-51.3,-64.5,297.0,26.5],[300.0,8789.0,-51.1,-64.4,289.0,28.4],[294.1,8921.0,-51.6,-65.0,286.0,29.5],[291.0,8996.0,-50.5,-64.2,285.0,30.2],[283.0,9175.0,-51.6,-65.7,282.0,31.9],[280.7,9230.0,-51.6,-65.9,281.0,32.4],[265.2,9580.0,-51.7,-66.7,281.0,34.6],[250.0,9971.0,-52.6,-68.1,281.0,36.9],[246.5,10057.0,-52.9,-68.5,281.0,37.4],[243.1,10154.0,-53.6,-69.3,280.0,37.8],[225.0,10625.0,-51.7,-68.4,276.0,39.3],[217.2,10857.0,-52.4,-69.6,275.0,39.9],[214.7,10934.0,-51.2,-68.7,275.0,40.1],[202.8,11320.0,-52.3,-70.4,273.0,41.7],[200.0,11413.0,-51.0,-69.4,273.0,42.2],[199.6,11419.0,-50.9,-69.3,273.0,42.2],[193.0,11653.0,-51.1,-69.8,271.0,43.5],[190.8,11746.0,-50.5,-69.4,271.0,44.0],[187.6,11859.0,-49.4,-68.6,271.0,44.0],[180.3,12121.0,-49.7,-69.1,271.0,44.0],[179.4,12172.0,-49.2,-68.7,271.0,44.0],[178.4,12200.0,-48.8,-68.4,271.0,43.8],[172.5,12420.0,-49.7,-69.4,271.0,41.8],[163.0,12789.0,-49.0,-69.0,271.0,38.8],[158.5,12959.0,-50.2,-70.2,270.0,37.5],[157.0,13024.0,-50.3,-70.3,270.0,37.0],[150.0,13293.0,-50.2,-70.4,269.0,35.8],[146.3,13452.0,-50.6,-70.7,269.0,35.1],[146.2,13459.0,-50.7,-70.8,269.0,35.0],[137.2,13886.0,-49.1,-69.6,269.0,29.9],[132.0,14161.0,-48.9,-69.5,266.0,30.0],[128.7,14320.0,-49.5,-70.1,265.0,30.1],[123.9,14595.0,-50.9,-71.4,266.0,27.9],[122.0,14718.0,-49.7,-70.5,266.0,27.0],[106.9,15557.0,-50.9,-71.5,263.0,22.6],[105.4,15622.0,-51.2,-71.9,263.0,22.2],[100.0,15937.0,-53.0,-73.5,263.0,22.1]]},{"id":"57494-2024-07-05-00","station":"57494","name":"武汉 57494","note":"盛夏高温高湿，午后热对流潜势","time":"2024-07-05 00:00Z","levels":[[1001.0,24.0,30.5,23.2,158.0,3.0],[1000.0,33.0,30.4,23.0,159.0,3.2],[980.2,191.0,29.2,21.5,194.0,8.3],[977.9,213.0,29.8,21.8,196.0,9.1],[944.6,533.0,27.9,20.1,211.0,19.5],[925.0,729.0,27.0,19.3,216.0,21.4],[909.9,873.0,26.0,18.5,220.0,22.7],[898.9,982.0,25.1,18.0,222.0,21.8],[868.7,1281.0,23.8,15.4,227.0,18.9],[850.0,1472.0,22.7,14.8,231.0,16.4],[841.1,1560.0,22.0,14.2,233.0,15.2],[830.3,1677.0,21.6,14.1,233.0,15.1],[774.6,2274.0,17.4,11.6,230.0,14.6],[761.4,2425.0,16.5,10.2,227.0,14.8],[757.3,2469.0,16.2,11.1,226.0,14.8],[748.9,2565.0,15.7,10.5,224.0,14.9],[741.3,2648.0,14.9,10.0,225.0,14.6],[729.6,2782.0,14.6,9.5,225.0,14.2],[715.2,2955.0,13.4,8.9,226.0,14.2],[700.0,3134.0,12.8,6.9,224.0,15.3],[697.9,3162.0,12.9,6.5,224.0,15.4],[692.3,3232.0,12.3,6.9,223.0,15.9],[674.6,3440.0,11.9,5.0,224.0,17.1],[668.8,3515.0,11.8,1.7,224.0,17.6],[659.9,3631.0,10.9,2.4,224.0,18.2],[650.9,3741.0,10.3,0.1,224.0,18.8],[638.5,3892.0,9.1,-0.7,224.0,19.6],[635.6,3932.0,8.7,0.2,224.0,19.8],[632.6,3973.0,8.9,-3.3,225.0,20.0],[622.9,4100.0,8.3,-6.0,229.0,20.4],[616.3,4187.0,7.9,-4.5,232.0,20.8],[609.5,4280.0,7.3,-4.8,235.0,21.1],[602.9,4372.0,6.7,-4.6,235.0,20.1],[600.0,4416.0,6.5,-5.3,235.0,19.7],[584.8,4624.0,5.4,-6.7,234.0,17.5],[583.7,4641.0,5.3,-7.8,234.0,17.4],[573.9,4778.0,4.3,-6.4,233.0,16.9],[565.7,4903.0,3.6,-8.1,232.0,16.4],[563.2,4937.0,3.2,-6.4,231.0,16.2],[561.0,4972.0,3.0,-7.1,231.0,16.1],[559.3,5000.0,3.0,-8.3,232.0,16.2],[552.4,5103.0,2.5,-8.6,233.0,16.4],[541.2,5257.0,1.3,-10.7,236.0,16.8],[536.3,5325.0,0.8,-9.8,237.0,16.8],[534.0,5359.0,0.6,-10.5,236.0,16.6],[532.9,5376.0,0.5,-8.3,236.0,16.5],[526.9,5468.0,-0.1,-8.5,234.0,15.9],[521.3,5565.0,-0.6,-11.3,233.0,15.3],[514.8,5651.0,-1.2,-12.2,231.0,14.8],[507.4,5764.0,-2.0,-14.8,229.0,14.8],[500.0,5887.0,-3.1,-14.5,226.0,14.9],[493.3,5992.0,-4.0,-14.3,224.0,14.9],[485.7,6117.0,-5.2,-13.0,221.0,15.6],[473.7,6315.0,-6.0,-16.4,216.0,16.6],[467.5,6418.0,-6.6,-14.1,216.0,16.6],[461.9,6520.0,-6.6,-15.2,215.0,16.4],[451.9,6674.0,-7.1,-14.5,215.0,16.1],[446.3,6776.0,-7.5,-14.5,215.0,14.7],[422.8,7185.0,-10.5,-16.9,223.0,9.4],[417.9,7275.0,-11.3,-17.1,230.0,8.7],[413.3,7361.0,-11.4,-18.4,236.0,8.1],[408.3,7451.0,-11.9,-21.0,243.0,7.4],[403.2,7554.0,-12.6,-20.4,251.0,6.8],[400.0,7621.0,-13.0,-22.9,258.0,6.9],[399.3,7633.0,-13.0,-23.4,259.0,6.9],[394.9,7712.0,-13.7,-22.7,267.0,7.0],[390.3,7809.0,-14.2,-23.9,277.0,7.1],[387.2,7866.0,-14.1,-24.3,283.0,7.2],[384.7,7911.0,-14.4,-23.8,283.0,7.3],[366.2,8279.0,-17.3,-30.5,284.0,8.1],[364.2,8319.0,-17.6,-30.9,282.0,8.0],[357.6,8466.0,-18.1,-42.5,278.0,7.7],[355.4,8511.0,-18.3,-44.5,276.0,7.6],[343.2,8778.0,-20.5,-46.6,270.0,7.2],[338.4,8886.0,-20.7,-47.0,268.0,7.1],[330.7,9061.0,-21.2,-43.6,257.0,7.3],[323.7,9226.0,-22.4,-43.1,246.0,7.4],[313.8,9440.0,-24.4,-44.2,240.0,6.4],[308.1,9566.0,-25.3,-40.8,236.0,5.8],[302.4,9707.0,-26.5,-39.6,244.0,4.8],[300.0,9758.0,-27.1,-39.7,247.0,4.5],[292.9,9917.0,-28.7,-39.1,256.0,3.5],[278.3,10285.0,-32.3,-39.7,283.0,3.4],[267.6,10567.0,-35.1,-41.2,286.0,3.6],[264.4,10653.0,-35.6,-41.0,287.0,3.7],[258.8,10806.0,-36.7,-43.5,283.0,3.4],[256.2,10879.0,-37.0,-45.9,281.0,3.2],[250.0,11040.0,-38.5,-48.5,281.0,3.0],[248.8,11069.0,-38.8,-49.1,285.0,3.1],[237.4,11391.0,-41.5,-52.2,332.0,4.7],[230.6,11564.0,-43.3,-54.0,334.0,7.5],[227.1,11644.0,-43.0,-55.3,335.0,8.9],[222.5,11786.0,-44.3,-59.2,337.0,11.0],[217.4,11922.0,-45.7,-60.8,335.0,12.1],[211.9,12101.0,-46.6,-60.5,332.0,13.6],[205.3,12342.0,-48.5,-59.3,334.0,13.6],[200.7,12503.0,-49.8,-61.2,335.0,13.5],[200.0,12534.0,-50.0,-61.8,335.0,13.4],[190.7,12873.0,-52.7,-65.9,332.0,11.9],[186.0,13027.0,-53.8,-67.7,326.0,12.6],[180.3,13243.0,-54.5,-71.8,317.0,13.6],[177.7,13329.0,-55.3,-74.2,317.0,14.0],[173.2,13514.0,-55.6,-77.9,316.0,15.0],[168.6,13680.0,-57.0,-82.6,316.0,15.2],[166.5,13742.0,-57.0,-83.5,317.0,14.9],[157.7,14044.0,-60.2,null,320.0,13.7],[152.6,14254.0,-61.2,null,319.0,13.2],[150.0,14363.0,-62.3,null,319.0,12.8],[148.1,14447.0,-63.0,null,319.0,12.3],[139.4,14861.0,-64.0,null,316.0,10.0],[133.0,15160.0,-65.9,null,311.0,8.7],[129.8,15319.0,-66.0,null,310.0,8.5],[123.8,15554.0,-68.9,null,310.0,8.3],[117.3,15898.0,-71.3,null,318.0,8.8],[106.7,16438.0,-72.9,null,344.0,9.4],[104.3,16578.0,-72.3,null,351.0,9.3],[104.0,16597.0,-71.8,null,352.0,9.3],[101.5,16725.0,-71.8,null,358.0,9.5],[101.0,16750.0,-71.4,null,359.0,9.5],[100.0,16795.0,-71.7,null,2.0,9.6]]},{"id":"58362-2024-06-20-00","station":"58362","name":"上海宝山 58362","note":"梅雨季暖湿平流，中低层深厚湿层","time":"2024-06-20 00:00Z","levels":[[1000.5,7.0,24.8,24.8,180.0,2.0],[1000.0,11.0,24.6,24.6,180.0,2.1],[998.9,14.0,24.2,24.2,180.0,2.2],[983.5,142.0,23.5,23.5,180.0,6.1],[977.5,195.0,23.2,23.2,183.0,7.2],[956.5,407.0,22.7,22.7,196.0,11.5],[950.8,456.0,22.7,22.7,199.0,11.9],[926.8,673.0,21.8,21.8,215.0,13.5],[925.0,694.0,21.8,21.8,216.0,13.5],[902.6,916.0,21.0,21.0,232.0,13.1],[879.1,1159.0,20.1,20.1,242.0,12.2],[852.6,1401.0,19.0,19.0,252.0,10.1],[850.0,1428.0,18.8,18.8,252.0,9.9],[809.4,1913.0,17.2,17.2,261.0,6.5],[799.9,2033.0,16.9,16.9,265.0,5.8],[786.6,2170.0,16.1,16.1,270.0,4.9],[775.8,2286.0,15.6,15.6,276.0,4.5],[761.9,2428.0,14.2,14.2,284.0,4.0],[761.4,2431.0,14.2,14.2,284.0,4.0],[739.8,2685.0,13.3,13.3,280.0,4.3],[715.5,2942.0,12.1,12.1,261.0,4.0],[706.0,3027.0,11.8,11.8,251.0,4.0],[700.0,3082.0,11.5,11.5,245.0,4.1],[686.1,3245.0,10.8,10.8,232.0,4.1],[657.5,3604.0,9.1,9.1,230.0,4.4],[631.6,3962.0,7.5,7.5,235.0,4.6],[624.4,4045.0,7.2,7.2,238.0,4.6],[603.6,4321.0,5.7,5.7,246.0,4.4],[600.0,4362.0,5.5,5.5,247.0,4.6],[580.2,4629.0,4.3,4.3,252.0,6.0],[548.7,5039.0,1.8,1.8,261.0,6.3],[547.2,5064.0,1.8,1.8,262.0,6.3],[523.4,5436.0,0.2,0.2,256.0,8.9],[522.7,5450.0,0.0,0.0,256.0,8.9],[511.3,5647.0,-1.0,-1.0,256.0,8.7],[507.1,5715.0,-0.3,-0.3,256.0,8.6],[501.8,5809.0,-0.4,-0.4,256.0,8.5],[500.0,5837.0,-0.4,-0.4,257.0,8.5],[497.5,5871.0,-0.6,-0.6,259.0,8.5],[495.3,5899.0,-0.9,-0.9,261.0,8.4],[494.6,5907.0,-1.6,-1.6,262.0,8.4],[492.1,5936.0,-2.4,-2.5,264.0,8.4],[487.6,6013.0,-3.4,-3.6,269.0,8.3],[484.6,6062.0,-3.7,-3.8,272.0,8.3],[478.4,6184.0,-4.1,-4.6,278.0,9.0],[470.1,6354.0,-4.9,-5.6,285.0,10.2],[467.3,6395.0,-5.5,-6.3,287.0,10.5],[465.3,6428.0,-5.7,-5.8,288.0,10.7],[464.4,6440.0,-5.9,-5.9,288.0,10.8],[457.3,6557.0,-7.2,-7.3,287.0,12.2],[450.4,6672.0,-7.9,-7.9,287.0,13.6],[437.3,6915.0,-9.2,-9.2,281.0,17.0],[425.4,7159.0,-10.1,-10.4,280.0,19.6],[424.7,7171.0,-10.2,-10.5,280.0,19.6],[411.4,7403.0,-11.7,-12.3,281.0,20.3],[400.0,7577.0,-12.7,-13.3,277.0,20.0],[397.5,7630.0,-12.9,-13.5,277.0,19.9],[377.9,7990.0,-15.4,-16.5,271.0,20.6],[362.2,8303.0,-17.5,-18.2,268.0,20.2],[361.3,8318.0,-17.6,-18.3,268.0,20.1],[347.3,8620.0,-19.3,-20.2,263.0,18.4],[346.4,8635.0,-19.4,-20.3,263.0,18.3],[343.4,8699.0,-19.1,-19.8,262.0,17.9],[335.5,8874.0,-20.0,-20.6,261.0,16.9],[318.6,9255.0,-22.5,-23.3,258.0,15.0],[317.4,9281.0,-22.7,-23.5,258.0,15.0],[304.6,9572.0,-25.1,-26.1,258.0,14.4],[302.1,9651.0,-26.1,-27.1,259.0,14.9],[300.0,9718.0,-26.3,-27.3,260.0,15.4],[293.5,9887.0,-27.4,-28.6,263.0,16.5],[280.4,10215.0,-30.7,-32.8,268.0,19.8],[278.5,10258.0,-31.3,-33.7,268.0,20.0],[274.8,10349.0,-32.1,-33.7,268.0,20.5],[267.5,10537.0,-33.6,-35.5,268.0,21.4],[265.8,10580.0,-34.0,-36.0,267.0,21.4],[254.8,10860.0,-35.6,-37.8,262.0,21.5],[254.6,10865.0,-35.6,-37.8,262.0,21.5],[250.0,11007.0,-36.6,-38.7,259.0,20.9],[232.8,11545.0,-40.3,-42.3,249.0,17.9],[221.8,11858.0,-43.2,-45.6,245.0,17.5],[218.1,11980.0,-44.2,-46.6,246.0,18.0],[200.0,12514.0,-49.5,-51.9,250.0,20.3],[199.3,12540.0,-49.7,-52.1,250.0,20.4],[178.8,13183.0,-56.3,-58.9,256.0,22.4],[176.7,13263.0,-56.9,-59.6,257.0,22.7],[169.2,13551.0,-59.1,-62.3,261.0,23.1],[167.4,13631.0,-59.5,-62.8,262.0,23.2],[160.5,13918.0,-61.3,null,267.0,22.9],[150.0,14329.0,-64.4,null,273.0,23.0],[148.9,14369.0,-64.8,null,274.0,23.0],[139.5,14774.0,-66.8,null,279.0,22.7],[136.0,14942.0,-67.6,null,282.0,22.8],[131.5,15124.0,-68.9,null,286.0,22.9],[121.0,15596.0,-70.6,null,295.0,23.4],[115.9,15812.0,-72.0,null,301.0,22.9],[113.3,15988.0,-71.7,null,306.0,22.6],[106.5,16392.0,-71.3,null,314.0,20.9],[100.0,16745.0,-72.5,null,320.0,17.9]]},{"id":"70026-2024-01-15-00","station":"70026","name":"PABR 乌特恰维克 · 阿拉斯加","note":"北极冬季：地面强逆温，整层水汽极少","time":"2024-01-15 00:00Z","levels":[[998.9,14.0,-14.8,-16.8,117.0,15.0],[996.8,30.0,-15.0,-17.7,104.0,9.8],[984.6,122.0,-15.9,-18.6,104.0,18.8],[967.8,252.0,-17.1,-19.0,112.0,21.4],[958.5,324.0,-16.7,-18.6,117.0,21.3],[952.8,370.0,-14.7,-16.5,118.0,20.4],[925.0,594.0,-14.9,-16.2,133.0,16.1],[892.9,861.0,-15.9,-16.9,133.0,14.2],[850.0,1231.0,-16.6,-18.1,136.0,18.2],[816.9,1529.0,-18.2,-19.2,145.0,18.1],[797.4,1709.0,-18.9,-19.9,153.0,14.1],[791.1,1768.0,-18.7,-21.7,154.0,13.5],[752.4,2139.0,-21.9,-22.3,152.0,13.7],[725.8,2403.0,-24.1,-24.7,152.0,13.5],[716.3,2499.0,-24.3,-29.1,163.0,12.5],[715.2,2510.0,-24.1,-31.8,165.0,12.4],[712.9,2534.0,-23.6,-42.9,168.0,12.2],[712.4,2540.0,-23.6,-44.0,168.0,12.1],[709.4,2570.0,-23.8,-43.1,172.0,11.8],[700.0,2667.0,-24.2,-45.0,180.0,11.0],[681.7,2860.0,-23.5,-49.8,196.0,9.6],[675.7,2926.0,-23.3,-48.8,203.0,9.5],[654.0,3164.0,-23.3,-51.9,216.0,9.7],[650.9,3198.0,-23.4,-51.4,218.0,10.2],[643.9,3278.0,-22.9,-54.5,217.0,10.4],[642.2,3297.0,-23.0,-53.4,217.0,10.4],[635.1,3378.0,-23.6,-54.9,219.0,10.7],[633.1,3401.0,-23.7,-54.0,219.0,11.0],[627.2,3470.0,-24.1,-56.2,220.0,12.1],[624.7,3499.0,-24.3,-55.5,221.0,12.3],[618.7,3570.0,-24.5,-58.6,221.0,12.6],[614.8,3615.0,-24.6,-57.5,221.0,12.4],[610.3,3669.0,-24.8,-59.7,220.0,12.4],[600.2,3790.0,-25.3,-60.8,219.0,14.5],[570.8,4153.0,-26.3,-60.8,230.0,15.7],[521.0,4810.0,-28.8,-64.2,243.0,19.6],[500.0,5104.0,-28.9,-65.0,247.0,18.4],[470.1,5544.0,-30.4,-64.9,249.0,25.4],[456.5,5752.0,-31.4,-65.8,253.0,23.0],[446.8,5904.0,-31.9,-64.6,252.0,23.9],[430.3,6169.0,-32.8,-67.0,256.0,25.9],[400.0,6679.0,-35.6,-62.5,260.0,26.4],[389.6,6862.0,-36.5,-61.7,259.0,28.0],[372.1,7180.0,-38.4,-62.6,261.0,25.8],[362.2,7364.0,-38.9,-65.5,261.0,20.8],[348.9,7622.0,-38.9,-66.1,262.0,18.2],[343.5,7727.0,-39.7,-69.4,262.0,17.4],[337.0,7859.0,-39.7,-65.6,261.0,16.7],[329.1,8021.0,-40.4,-71.9,262.0,14.5],[324.0,8127.0,-40.9,-73.1,259.0,12.8],[316.5,8286.0,-41.2,-72.1,249.0,12.0],[309.7,8433.0,-41.9,-73.0,234.0,11.1],[303.2,8577.0,-41.6,-70.1,232.0,12.0],[300.0,8648.0,-41.7,-70.3,231.0,12.4],[289.8,8882.0,-41.5,-70.3,224.0,13.9],[282.4,9058.0,-42.2,-71.0,237.0,10.1],[276.8,9193.0,-41.6,-71.1,232.0,9.3],[263.4,9530.0,-41.8,-74.1,233.0,9.6],[258.7,9652.0,-42.7,-76.2,241.0,8.8],[250.0,9882.0,-42.8,-77.3,241.0,10.7],[231.4,10403.0,-43.0,-78.3,268.0,7.1],[224.2,10617.0,-41.6,-78.3,275.0,5.8],[207.7,11135.0,-41.0,-78.6,236.0,4.7],[200.0,11391.0,-42.2,-78.9,265.0,4.5],[190.6,11717.0,-43.2,-79.8,284.0,6.3],[187.1,11842.0,-42.2,-79.6,309.0,5.7],[181.2,12059.0,-42.9,-80.1,319.0,5.9],[180.4,12087.0,-42.1,-79.7,325.0,6.0],[171.7,12422.0,-41.5,-79.5,303.0,4.4],[165.6,12665.0,-42.1,-79.8,289.0,7.1],[154.8,13122.0,-43.8,-80.6,250.0,1.1],[150.0,13332.0,-44.5,-81.0,206.0,2.2],[146.4,13493.0,-44.9,-81.4,267.0,5.4],[142.3,13687.0,-43.1,-81.0,275.0,6.5],[133.1,14134.0,-43.1,-80.9,310.0,12.5],[127.5,14423.0,-44.6,-81.5,335.0,10.5],[124.2,14601.0,-42.9,-81.2,349.0,7.4],[119.5,14860.0,-43.7,-81.4,304.0,3.4],[115.3,15097.0,-44.0,-81.6,250.0,8.6],[110.6,15381.0,-43.2,-81.4,270.0,5.2],[104.9,15734.0,-45.6,-82.1,327.0,6.6],[102.1,15914.0,-45.8,-82.5,302.0,3.6],[100.0,16052.0,-46.0,-82.6,253.0,6.8],[95.7,16344.0,-46.6,-83.0,268.0,12.2],[93.8,16475.0,-45.6,-83.0,280.0,13.8],[91.9,16614.0,-44.5,-82.4,295.0,11.3],[89.4,16797.0,-45.3,-82.5,303.0,5.7],[87.1,16971.0,-44.9,-82.5,272.0,2.8],[79.0,17622.0,-44.7,-82.5,280.0,13.7],[72.9,18159.0,-45.4,-82.8,279.0,3.6],[70.0,18430.0,-46.5,-83.5,255.0,7.9],[68.7,18553.0,-45.9,-83.4,274.0,8.0],[66.6,18757.0,-46.7,-83.8,287.0,10.7],[65.3,18887.0,-45.6,-83.4,306.0,9.3],[61.8,19254.0,-46.6,-83.6,303.0,7.3],[59.5,19508.0,-45.2,-83.3,332.0,7.4],[54.9,20043.0,-47.2,-84.0,310.0,8.2],[53.1,20261.0,-45.7,-83.8,320.0,6.7],[50.0,20665.0,-48.0,-84.0,333.0,6.9],[46.0,21208.0,-49.7,-84.8,352.0,8.8],[44.7,21398.0,-49.3,-85.4,339.0,4.6],[43.0,21649.0,-48.9,-85.6,310.0,5.6],[41.3,21914.0,-48.2,-85.2,310.0,14.4],[39.1,22275.0,-47.5,-85.2,325.0,13.7],[36.7,22692.0,-48.1,-85.5,327.0,10.6],[35.0,23006.0,-46.9,-84.9,334.0,9.6],[32.4,23512.0,-48.3,-85.2,333.0,18.1],[30.0,24028.0,-47.9,-85.5,329.0,12.3],[27.5,24593.0,-48.1,-85.8,333.0,12.7],[26.9,24736.0,-47.1,-85.8,331.0,13.5],[25.7,25037.0,-47.1,-85.3,333.0,13.3],[24.6,25330.0,-47.9,-85.7,339.0,17.9],[22.8,25826.0,-47.3,-85.9,345.0,18.5],[21.6,26181.0,-49.0,-86.4,348.0,24.0],[20.0,26701.0,-48.7,-86.6,353.0,20.3],[17.5,27563.0,-47.7,-86.4,351.0,20.9],[16.4,27989.0,-48.5,-86.9,345.0,19.0],[15.0,28577.0,-48.0,-86.5,350.0,26.1],[14.3,28890.0,-46.9,-85.8,356.0,22.5],[13.8,29125.0,-47.1,-85.9,358.0,24.7]]},{"id":"72249-2024-05-21-12","station":"72249","name":"KFWD 沃思堡 · 美国得州","note":"强对流爆发前的典型层结：低层暖湿、中层干侵入、强垂直风切变","time":"2024-05-21 12:00Z","levels":[[983.8,198.0,24.5,21.1,170.0,7.7],[925.0,736.0,20.1,18.4,187.0,18.0],[902.3,950.0,18.3,17.4,193.0,17.2],[886.3,1104.0,19.1,12.9,201.0,18.3],[885.0,1116.0,18.9,10.2,202.0,18.5],[883.4,1133.0,23.1,-2.1,204.0,18.6],[881.8,1149.0,23.6,-4.8,205.0,18.6],[880.1,1165.0,24.2,-11.0,206.0,18.5],[878.4,1182.0,24.5,-9.5,207.0,18.3],[875.2,1214.0,24.8,-12.6,209.0,17.9],[872.8,1238.0,25.7,-19.4,211.0,17.4],[867.5,1291.0,25.9,-12.4,214.0,16.6],[863.0,1337.0,25.7,-9.2,218.0,16.0],[856.0,1408.0,24.9,2.2,223.0,16.0],[853.7,1432.0,24.6,2.2,223.0,16.0],[852.0,1449.0,24.5,5.1,224.0,15.9],[850.0,1470.0,24.4,4.5,224.0,15.8],[844.8,1523.0,24.2,1.5,226.0,15.0],[836.8,1606.0,23.8,1.9,228.0,14.3],[832.9,1647.0,23.5,4.5,226.0,13.8],[817.2,1813.0,23.1,4.5,224.0,14.1],[804.8,1945.0,23.0,1.1,229.0,17.3],[801.9,1977.0,23.1,-3.1,229.0,17.6],[798.3,2016.0,23.0,-5.1,228.0,18.1],[774.5,2278.0,21.1,-3.2,230.0,15.7],[731.0,2773.0,16.7,-3.2,237.0,12.0],[704.3,3089.0,15.1,-14.3,238.0,9.6],[702.3,3113.0,15.1,-17.1,240.0,9.1],[700.0,3140.0,15.1,-15.7,243.0,8.8],[670.6,3502.0,12.0,-14.3,248.0,6.5],[600.0,4417.0,3.7,-16.6,263.0,8.9],[532.6,5369.0,-4.5,-17.9,253.0,12.7],[500.0,5863.0,-7.8,-22.8,260.0,18.6],[483.9,6116.0,-9.6,-25.4,258.0,22.0],[478.3,6207.0,-10.1,-28.3,259.0,22.3],[475.3,6255.0,-10.2,-32.3,261.0,22.8],[469.3,6353.0,-10.5,-33.6,262.0,24.0],[452.0,6641.0,-12.0,-33.4,261.0,25.8],[448.5,6701.0,-12.5,-28.3,263.0,26.8],[444.7,6765.0,-12.9,-26.6,266.0,28.3],[439.9,6847.0,-13.3,-28.8,268.0,29.5],[435.2,6930.0,-13.8,-35.5,269.0,30.3],[424.9,7111.0,-15.3,-34.9,270.0,30.6],[415.8,7274.0,-16.7,-31.3,270.0,28.9],[400.0,7563.0,-19.2,-33.3,271.0,30.3],[379.0,7961.0,-22.7,-34.0,271.0,32.1],[376.4,8011.0,-23.0,-31.6,271.0,32.5],[358.2,8372.0,-26.0,-36.9,268.0,32.2],[344.0,8664.0,-28.4,-34.9,265.0,32.2],[338.1,8788.0,-29.4,-37.3,262.0,31.8],[336.2,8827.0,-29.5,-34.5,261.0,31.9],[330.5,8949.0,-29.6,-33.4,258.0,31.7],[300.0,9632.0,-35.2,-38.9,265.0,35.2],[281.9,10062.0,-39.0,-42.2,267.0,36.0],[278.7,10141.0,-39.6,-40.8,266.0,36.9],[274.9,10235.0,-40.2,-43.7,265.0,37.5],[273.3,10273.0,-40.4,-41.8,265.0,37.5],[269.9,10360.0,-41.1,-42.6,264.0,37.9],[261.7,10568.0,-42.2,-48.7,262.0,40.5],[251.0,10849.0,-44.1,-49.5,263.0,44.7],[250.0,10876.0,-44.3,-46.8,263.0,45.1],[248.8,10909.0,-44.5,-46.2,263.0,45.7],[245.8,10990.0,-44.8,-51.0,262.0,46.2],[242.3,11085.0,-45.5,-50.3,262.0,45.3],[240.9,11125.0,-45.8,-52.5,262.0,45.1],[200.0,12333.0,-56.4,-60.7,268.0,49.0],[183.5,12874.0,-61.0,-65.0,273.0,53.2],[172.5,13257.0,-62.8,-68.9,280.0,56.6],[167.5,13440.0,-59.1,-72.6,285.0,47.6],[159.3,13752.0,-62.1,-74.0,283.0,38.9],[155.6,13896.0,-60.0,-78.3,279.0,32.8],[153.3,13989.0,-56.4,-79.9,272.0,31.8],[150.0,14129.0,-56.9,-80.2,267.0,30.6],[138.4,14632.0,-60.8,-82.0,263.0,33.9],[130.6,14995.0,-58.8,-84.5,263.0,24.9],[116.5,15705.0,-63.7,-88.4,276.0,24.9],[107.7,16182.0,-65.3,-88.9,250.0,12.2],[100.0,16632.0,-67.3,-89.1,238.0,17.0],[89.8,17276.0,-71.0,-90.4,239.0,24.9],[84.7,17619.0,-70.7,-90.4,253.0,20.3],[82.4,17784.0,-68.2,-90.0,243.0,12.4],[81.2,17873.0,-68.3,-89.5,231.0,10.5],[77.6,18141.0,-70.2,-90.3,214.0,12.1],[75.6,18298.0,-68.1,-89.6,211.0,9.0],[72.4,18557.0,-68.3,-90.3,241.0,7.7],[71.9,18599.0,-66.7,-89.7,241.0,7.5],[70.0,18763.0,-66.5,-89.4,231.0,10.2],[68.7,18872.0,-66.0,-89.8,230.0,7.4],[68.0,18938.0,-64.0,-89.1,206.0,5.1],[66.3,19092.0,-65.0,-88.9,184.0,6.3],[63.4,19363.0,-64.1,-88.7,194.0,10.2],[59.1,19794.0,-62.7,-88.8,171.0,2.3],[58.1,19899.0,-61.7,-88.3,134.0,2.8],[50.8,20729.0,-62.4,-88.8,167.0,5.6],[50.0,20830.0,-61.4,-88.7,168.0,3.4],[45.6,21399.0,-61.3,-88.5,46.0,0.6],[42.9,21778.0,-61.0,-88.6,77.0,8.0],[40.1,22197.0,-60.3,-88.3,63.0,5.5],[38.5,22451.0,-58.6,-87.9,68.0,10.6],[35.1,23031.0,-59.6,-87.9,71.0,8.3],[32.2,23567.0,-60.1,-88.3,92.0,15.3],[30.0,24017.0,-57.8,-87.6,115.0,11.2],[28.1,24422.0,-57.7,-87.5,116.0,5.8],[24.9,25191.0,-53.9,-85.6,77.0,9.8],[22.0,25993.0,-50.3,-84.0,97.0,6.5],[20.0,26623.0,-50.3,-83.8,93.0,6.9],[17.7,27411.0,-47.9,-83.0,147.0,6.8],[16.5,27871.0,-46.2,-82.4,86.0,0.2],[15.9,28119.0,-46.1,-82.1,117.0,5.9],[14.4,28772.0,-46.5,-82.5,116.0,4.4],[12.8,29555.0,-43.9,-81.6,58.0,3.5],[11.7,30153.0,-43.5,-81.4,139.0,0.4],[11.0,30569.0,-44.0,-81.8,232.0,5.6],[10.0,31238.0,-42.6,-81.3,290.0,3.2],[9.1,31842.0,-40.3,-80.8,190.0,2.7],[8.0,32734.0,-33.5,-77.1,288.0,2.6],[7.5,33182.0,-32.9,-76.7,70.0,3.1],[7.2,33467.0,-34.0,-77.4,54.0,4.0],[5.9,34858.0,-31.3,-75.6,120.0,9.4],[5.3,35610.0,-31.6,-75.8,102.0,5.9]]},{"id":"72393-2024-07-10-12","station":"72393","name":"KVBG 范登堡 · 美国加州","note":"海洋性层积云：强而薄的低层逆温，逆温之上骤然变干","time":"2024-07-10 12:00Z","levels":[[999.0,121.0,11.6,11.6,190.0,1.0],[976.5,305.0,10.6,10.6,350.0,2.1],[973.0,334.0,10.4,10.4,349.0,2.7],[955.0,488.0,25.0,9.0,341.0,6.1],[946.0,569.0,28.6,2.6,337.0,7.9],[941.4,610.0,28.9,3.1,335.0,8.8],[929.0,724.0,29.6,4.6,327.0,9.9],[925.0,761.0,29.6,5.6,325.0,10.3],[909.2,914.0,29.1,2.9,330.0,8.8],[882.0,1183.0,28.2,-1.8,321.0,5.1],[878.4,1219.0,27.8,-1.2,320.0,4.6],[850.0,1508.0,24.8,3.8,320.0,3.6],[848.4,1524.0,24.7,4.0,45.0,0.5],[845.0,1560.0,24.4,4.4,52.0,0.8],[819.3,1829.0,23.6,1.1,105.0,3.1],[803.0,2004.0,23.0,-1.0,131.0,2.2],[790.9,2134.0,22.0,-2.7,150.0,1.5],[763.3,2438.0,19.5,-6.6,175.0,2.1],[736.6,2743.0,17.0,-10.5,250.0,2.1],[711.0,3046.0,14.6,-14.4,184.0,3.8],[706.0,3106.0,15.8,-25.2,171.0,4.2],[700.0,3178.0,15.6,-23.4,155.0,4.6],[685.4,3353.0,14.5,-25.5,165.0,5.7],[660.7,3658.0,12.6,-29.1,155.0,7.2],[636.9,3962.0,10.6,-32.6,155.0,7.7],[613.9,4267.0,8.7,-36.2,165.0,8.2],[574.0,4825.0,5.2,-42.8,151.0,9.6],[570.3,4877.0,4.8,-42.8,150.0,9.8],[549.0,5182.0,2.2,-42.6,145.0,9.3],[528.5,5486.0,-0.4,-42.4,150.0,10.8],[500.0,5930.0,-4.1,-42.1,140.0,9.3],[489.3,6096.0,-5.7,-42.7,140.0,8.8],[452.1,6706.0,-11.4,-45.1,115.0,10.3],[417.7,7315.0,-17.2,-47.4,125.0,8.2],[416.0,7347.0,-17.5,-47.5,123.0,8.4],[401.1,7620.0,-19.7,-46.9,110.0,9.8],[400.0,7640.0,-19.9,-46.9,120.0,8.8],[368.4,8230.0,-24.4,-47.9,125.0,7.2],[353.1,8534.0,-26.7,-48.5,165.0,5.2],[338.3,8839.0,-29.0,-49.0,195.0,5.2],[324.2,9144.0,-31.3,-49.5,330.0,2.1],[300.0,9700.0,-35.5,-50.5,115.0,6.2],[297.7,9754.0,-36.0,-50.7,70.0,5.2],[284.9,10058.0,-38.7,-51.8,125.0,8.8],[284.0,10079.0,-38.9,-51.9,124.0,8.7],[278.0,10226.0,-37.7,-60.7,120.0,8.0],[260.5,10668.0,-40.6,-61.8,105.0,6.2],[250.0,10950.0,-42.5,-62.5,80.0,5.7],[249.1,10973.0,-42.6,-62.8,75.0,5.7],[227.5,11582.0,-45.3,-71.8,85.0,5.2],[226.0,11626.0,-45.5,-72.5,81.0,5.2],[207.4,12192.0,-49.5,-73.9,30.0,5.2],[205.0,12269.0,-50.1,-74.1,43.0,5.0],[200.0,12430.0,-50.5,-74.5,70.0,4.6],[197.9,12497.0,-50.9,-74.6,50.0,5.2],[188.6,12802.0,-52.5,-75.3,75.0,5.7],[179.8,13106.0,-54.1,-75.9,90.0,5.7],[163.4,13716.0,-57.4,-77.2,35.0,5.2],[150.0,14260.0,-60.3,-78.3,170.0,2.1],[143.0,14556.0,-62.3,-79.3,221.0,2.5],[127.9,15240.0,-64.6,-82.9,340.0,3.6],[121.0,15579.0,-65.7,-84.7,null,null],[118.0,15731.0,-65.9,-85.9,null,null]]},{"id":"72476-2024-07-08-00","station":"72476","name":"KGJT 大章克申 · 美国科罗拉多","note":"高原干对流：倒 V 型层结、云底极高、下击暴流潜势大","time":"2024-07-08 00:00Z","levels":[[849.7,1474.0,34.4,-4.5,332.0,4.7],[848.6,1486.0,34.1,-6.0,16.0,6.8],[844.1,1534.0,32.6,-13.3,16.0,6.8],[841.6,1563.0,32.1,-19.6,12.0,6.8],[831.8,1669.0,31.1,-19.3,345.0,7.7],[818.5,1808.0,28.8,-17.2,339.0,7.6],[787.5,2147.0,25.4,-14.3,339.0,8.6],[763.6,2417.0,22.7,-13.7,326.0,5.2],[700.0,3161.0,15.5,-13.4,317.0,5.7],[684.7,3347.0,13.7,-13.2,312.0,4.7],[653.6,3735.0,9.8,-12.7,309.0,8.3],[632.8,4002.0,7.3,-13.1,315.0,7.2],[621.3,4154.0,5.9,-14.5,323.0,7.1],[599.9,4439.0,3.0,-14.2,317.0,8.6],[579.7,4713.0,0.4,-14.2,323.0,8.1],[567.1,4890.0,-0.9,-17.0,333.0,5.4],[556.1,5046.0,-2.5,-17.9,312.0,4.8],[551.0,5119.0,-3.2,-18.2,308.0,6.2],[534.8,5353.0,-5.3,-21.9,312.0,11.2],[519.8,5575.0,-7.5,-21.6,302.0,10.9],[505.8,5788.0,-9.5,-24.0,302.0,13.6],[501.8,5848.0,-10.0,-23.7,302.0,13.7],[501.5,5853.0,-10.0,-22.4,302.0,13.7],[500.0,5876.0,-10.3,-22.3,301.0,13.4],[488.4,6057.0,-12.0,-21.9,298.0,14.3],[476.8,6240.0,-13.6,-24.8,297.0,14.2],[474.7,6274.0,-13.8,-25.5,298.0,13.8],[470.5,6341.0,-14.2,-29.2,300.0,13.0],[466.9,6399.0,-14.7,-30.8,297.0,11.8],[458.4,6538.0,-15.8,-32.7,307.0,11.1],[452.1,6642.0,-16.3,-37.9,311.0,10.3],[444.5,6769.0,-17.0,-41.7,317.0,11.2],[436.0,6914.0,-17.5,-43.7,322.0,14.5],[417.2,7242.0,-19.8,-43.6,323.0,15.3],[409.1,7387.0,-20.7,-40.4,321.0,16.6],[400.0,7553.0,-22.2,-39.2,318.0,17.1],[390.6,7727.0,-23.7,-37.8,318.0,17.5],[370.5,8112.0,-27.0,-39.7,315.0,19.0],[363.6,8246.0,-28.2,-39.3,313.0,20.4],[360.2,8312.0,-28.6,-40.4,311.0,21.1],[354.0,8438.0,-29.0,-49.7,312.0,22.7],[342.6,8669.0,-30.5,-48.8,314.0,22.6],[339.3,8740.0,-30.8,-50.8,313.0,22.8],[334.8,8832.0,-31.6,-51.9,314.0,24.0],[329.3,8951.0,-32.4,-48.7,316.0,25.5],[315.6,9249.0,-35.0,-49.8,313.0,24.7],[312.4,9320.0,-35.4,-51.5,313.0,24.8],[304.8,9490.0,-36.3,-58.5,317.0,25.5],[300.0,9600.0,-36.9,-60.3,319.0,24.4],[266.4,10410.0,-43.4,-60.2,321.0,24.8],[250.0,10835.0,-46.4,-61.6,322.0,24.7],[242.5,11037.0,-47.4,-63.7,319.0,24.4],[222.4,11604.0,-51.7,-66.8,321.0,25.0],[200.0,12285.0,-56.0,-68.5,320.0,23.7],[193.8,12484.0,-57.3,-69.9,324.0,25.3],[184.5,12795.0,-57.1,-70.2,318.0,24.2],[176.6,13073.0,-54.5,-71.5,316.0,27.7],[174.1,13164.0,-53.8,-73.1,321.0,29.1],[170.8,13287.0,-53.4,-75.3,321.0,25.7],[166.3,13459.0,-53.3,-81.9,320.0,23.3],[162.9,13591.0,-53.0,-81.7,325.0,25.2],[157.0,13830.0,-52.4,-81.4,317.0,20.6],[150.0,14125.0,-53.9,-82.0,330.0,14.6],[144.1,14381.0,-55.4,-83.1,321.0,14.2],[141.2,14511.0,-55.3,-83.1,317.0,16.3],[138.0,14659.0,-55.4,-83.2,309.0,13.8],[126.8,15194.0,-58.7,-85.3,283.0,16.0],[117.4,15676.0,-60.5,-86.5,286.0,17.1],[112.6,15933.0,-60.5,-86.5,292.0,18.9],[107.4,16225.0,-62.2,-87.6,288.0,21.2],[104.0,16427.0,-62.8,-88.3,297.0,20.2],[100.0,16667.0,-62.2,-88.1,305.0,16.7],[96.7,16877.0,-60.2,-86.8,323.0,10.6],[94.0,17050.0,-59.6,-86.1,349.0,7.1],[87.2,17518.0,-62.6,-87.8,350.0,6.2],[83.2,17810.0,-61.0,-86.8,1.0,7.5],[81.3,17953.0,-61.3,-86.9,22.0,2.8],[78.6,18159.0,-62.5,-87.5,121.0,1.2],[74.7,18472.0,-61.9,-87.2,292.0,1.5],[71.5,18745.0,-59.8,-85.8,55.0,6.5],[70.0,18876.0,-60.1,-85.7,77.0,7.3],[67.6,19094.0,-60.7,-86.0,53.0,3.8],[65.7,19272.0,-59.7,-85.6,34.0,0.7],[64.5,19388.0,-59.1,-85.1,96.0,2.5],[62.7,19566.0,-59.1,-84.9,31.0,0.4],[58.0,20052.0,-57.9,-83.8,54.0,6.1],[53.2,20597.0,-58.1,-83.7,84.0,6.8],[51.4,20816.0,-57.7,-83.5,79.0,3.7],[50.0,20986.0,-57.3,-83.1,83.0,7.1],[45.0,21650.0,-58.1,-83.4,94.0,5.9],[42.7,21983.0,-57.0,-82.8,98.0,8.6],[39.0,22557.0,-56.9,-82.5,81.0,3.8],[37.6,22788.0,-56.0,-82.0,76.0,9.9],[35.2,23208.0,-54.6,-80.7,65.0,8.4],[32.9,23639.0,-53.7,-79.8,72.0,14.9],[30.0,24233.0,-54.2,-80.0,87.0,14.4],[29.3,24384.0,-54.1,-79.9,98.0,14.6],[27.8,24717.0,-52.2,-78.8,104.0,12.1],[25.5,25279.0,-50.8,-77.6,112.0,14.9],[24.6,25510.0,-49.6,-76.8,103.0,12.6],[23.4,25841.0,-50.1,-76.5,87.0,9.9],[22.8,26006.0,-50.3,-76.6,88.0,11.8],[21.7,26330.0,-49.5,-76.1,93.0,14.4],[20.9,26574.0,-49.3,-75.9,89.0,10.6],[20.0,26862.0,-49.2,-75.6,91.0,13.5],[18.1,27517.0,-48.5,-75.2,75.0,9.7],[17.3,27818.0,-48.0,-74.6,88.0,15.9],[16.4,28165.0,-47.5,-74.5,92.0,11.0],[15.7,28451.0,-46.6,-74.0,96.0,15.2],[15.0,28759.0,-45.6,-73.2,86.0,13.1],[14.2,29121.0,-45.3,-72.6,70.0,15.0],[13.6,29408.0,-44.8,-72.3,80.0,13.1],[12.6,29914.0,-45.1,-72.2,92.0,13.7],[12.0,30240.0,-44.2,-71.8,81.0,13.8],[11.6,30469.0,-43.4,-71.3,80.0,10.5],[11.2,30701.0,-43.1,-70.9,66.0,16.5],[10.5,31132.0,-43.3,-70.7,62.0,16.7],[10.0,31461.0,-42.3,-69.8,72.0,19.3],[9.3,31950.0,-40.0,-68.0,64.0,20.0],[9.1,32102.0,-40.0,-67.9,69.0,19.9]]},{"id":"72558-2024-05-06-00","station":"72558","name":"KOAX 奥马哈 · 美国内布拉斯加","note":"大平原春季强风暴环境：低层急流 + 强 0–6 km 切变","time":"2024-05-06 00:00Z","levels":[[972.1,352.0,18.3,5.5,140.0,7.2],[965.0,418.0,16.8,3.0,126.0,7.1],[925.0,772.0,13.2,2.7,130.0,9.9],[886.2,1131.0,9.7,1.4,125.0,9.0],[878.8,1200.0,9.4,0.2,130.0,9.3],[871.7,1267.0,9.7,-3.6,138.0,10.0],[867.2,1310.0,10.3,-8.3,145.0,10.2],[863.8,1343.0,10.8,-13.2,149.0,10.2],[856.1,1418.0,10.7,-18.3,160.0,10.0],[850.0,1477.0,10.7,-16.1,169.0,9.8],[848.7,1490.0,10.7,-15.4,170.0,9.8],[844.3,1533.0,10.5,-9.9,174.0,9.9],[833.8,1637.0,10.3,-0.2,185.0,9.5],[826.7,1708.0,10.0,2.2,193.0,8.9],[805.5,1923.0,9.0,5.2,222.0,7.9],[789.9,2085.0,9.0,4.3,227.0,9.0],[751.1,2502.0,5.7,3.0,226.0,9.2],[700.0,3076.0,2.6,-2.1,214.0,10.2],[688.3,3211.0,1.7,-2.5,208.0,10.9],[658.2,3572.0,0.6,-5.9,204.0,11.1],[651.3,3655.0,0.0,-7.1,206.0,10.3],[640.0,3796.0,-0.7,-11.3,205.0,8.9],[634.2,3869.0,-1.0,-12.5,207.0,8.7],[600.2,4306.0,-4.2,-16.4,208.0,8.0],[591.3,4424.0,-5.0,-17.7,204.0,8.1],[581.4,4555.0,-5.7,-21.4,207.0,7.2],[576.8,4618.0,-5.9,-24.1,209.0,6.6],[568.1,4737.0,-6.5,-26.6,211.0,6.5],[562.8,4810.0,-6.9,-26.0,220.0,6.0],[557.1,4887.0,-7.6,-22.4,222.0,5.5],[542.4,5097.0,-8.9,-28.8,235.0,5.8],[537.9,5161.0,-9.4,-28.3,240.0,6.3],[528.5,5297.0,-10.0,-32.5,234.0,6.7],[528.2,5301.0,-10.0,-30.9,233.0,6.8],[523.7,5367.0,-10.5,-31.8,231.0,7.3],[500.0,5721.0,-12.9,-45.3,253.0,7.3],[488.3,5901.0,-14.3,-49.7,260.0,8.0],[484.0,5968.0,-14.7,-55.1,261.0,8.5],[480.2,6028.0,-15.2,-54.2,259.0,8.7],[475.8,6097.0,-15.8,-49.3,259.0,8.3],[467.0,6238.0,-16.8,-45.7,259.0,7.9],[462.9,6304.0,-17.3,-40.5,265.0,8.7],[461.5,6327.0,-17.5,-39.9,267.0,9.0],[435.1,6763.0,-21.6,-39.2,270.0,7.6],[427.8,6888.0,-22.7,-41.7,266.0,8.0],[417.9,7059.0,-24.2,-42.5,265.0,9.0],[413.9,7129.0,-24.7,-43.8,264.0,8.5],[408.9,7218.0,-25.2,-46.0,256.0,8.2],[400.0,7377.0,-25.9,-51.9,245.0,9.5],[391.4,7535.0,-26.8,-57.3,257.0,12.3],[380.9,7729.0,-28.2,-57.3,259.0,14.0],[377.9,7786.0,-28.5,-60.0,258.0,14.3],[375.1,7840.0,-28.7,-64.4,257.0,14.6],[372.4,7891.0,-29.0,-65.3,257.0,14.4],[353.1,8267.0,-32.4,-67.6,257.0,16.7],[346.2,8408.0,-33.4,-67.0,262.0,17.2],[340.4,8526.0,-34.0,-68.9,266.0,16.7],[300.0,9398.0,-40.5,-73.3,283.0,18.9],[272.2,10055.0,-45.1,-76.2,297.0,22.0],[260.3,10352.0,-47.6,-71.2,294.0,23.8],[250.0,10616.0,-50.1,-70.1,296.0,23.8],[241.9,10830.0,-51.9,-69.0,296.0,23.5],[233.3,11064.0,-53.5,-71.3,292.0,20.6],[225.3,11287.0,-55.0,-71.8,287.0,18.9],[216.5,11542.0,-56.4,-71.1,281.0,21.8],[207.9,11797.0,-58.6,-71.2,287.0,21.7],[200.0,12040.0,-59.7,-71.2,290.0,22.0],[184.6,12538.0,-61.9,-72.0,277.0,19.0],[176.7,12806.0,-62.4,-72.9,261.0,24.4],[172.6,12952.0,-60.7,-72.4,266.0,24.2],[168.7,13097.0,-58.3,-70.6,265.0,19.2],[161.9,13354.0,-58.7,-71.6,239.0,14.8],[155.7,13602.0,-57.2,-71.0,241.0,17.6],[150.0,13836.0,-57.0,-71.2,230.0,16.2],[140.9,14232.0,-58.8,-74.2,222.0,18.7],[134.6,14516.0,-58.2,-74.9,231.0,26.2],[128.0,14837.0,-55.8,-74.0,244.0,19.3],[116.0,15463.0,-56.5,-76.3,243.0,23.0],[105.6,16053.0,-57.7,-78.7,241.0,17.3],[100.0,16399.0,-58.0,-80.1,247.0,21.9],[96.6,16615.0,-57.1,-80.4,260.0,24.3],[95.0,16722.0,-56.6,-80.2,267.0,21.0],[91.1,16989.0,-56.9,-81.2,261.0,12.9],[87.0,17277.0,-56.3,-81.4,250.0,12.5],[82.6,17606.0,-57.1,-82.5,239.0,16.4],[76.7,18075.0,-59.1,-85.3,277.0,12.2],[72.2,18453.0,-59.5,-85.7,280.0,3.7],[70.0,18648.0,-59.7,-85.7,215.0,5.1],[66.7,18945.0,-59.9,-85.4,214.0,8.0],[62.7,19332.0,-62.8,-87.3,210.0,11.9],[60.4,19559.0,-63.4,-88.2,236.0,11.8],[58.7,19735.0,-62.0,-87.6,260.0,11.5],[57.4,19875.0,-60.7,-86.5,278.0,6.1],[55.7,20062.0,-60.5,-86.3,10.0,1.8],[54.2,20231.0,-60.4,-86.0,152.0,3.4],[50.0,20739.0,-57.8,-84.2,216.0,6.9],[46.6,21177.0,-57.9,-83.5,277.0,8.9],[42.9,21702.0,-57.8,-83.2,307.0,2.4],[39.1,22283.0,-57.7,-82.9,264.0,1.4],[37.1,22617.0,-56.7,-82.5,308.0,4.7],[33.0,23359.0,-54.5,-80.9,139.0,2.0],[31.5,23656.0,-54.5,-80.6,290.0,5.4],[30.0,23968.0,-54.8,-80.5,355.0,5.3],[28.2,24362.0,-54.4,-80.4,123.0,1.8],[26.7,24714.0,-52.5,-79.1,203.0,5.2],[24.3,25320.0,-53.5,-79.4,347.0,6.7],[23.2,25619.0,-52.9,-78.9,331.0,2.5],[20.0,26581.0,-50.7,-77.5,314.0,8.4],[17.5,27449.0,-49.4,-76.1,331.0,0.6],[16.5,27834.0,-48.0,-75.0,257.0,5.7],[15.5,28247.0,-47.3,-74.4,266.0,3.1],[14.1,28869.0,-46.2,-73.4,285.0,9.9],[12.8,29511.0,-44.9,-72.1,306.0,5.3],[12.1,29886.0,-44.1,-71.6,283.0,7.4],[10.9,30588.0,-42.8,-70.3,281.0,5.5],[10.6,30775.0,-42.7,-70.4,278.0,2.5],[10.0,31168.0,-41.8,-69.9,279.0,5.8],[9.2,31727.0,-39.9,-69.1,285.0,7.2],[8.7,32107.0,-38.9,-68.1,248.0,2.6],[7.9,32767.0,-37.9,-66.8,232.0,6.6]]},{"id":"74560-2024-04-16-00","station":"74560","name":"KILX 林肯 · 美国伊利诺伊","note":"冷锋前暖区：抬升凝结高度低、螺旋度大","time":"2024-04-16 00:00Z","levels":[[991.8,179.0,27.1,4.2,95.0,4.6],[979.7,287.0,25.7,1.5,109.0,8.1],[925.0,787.0,21.0,-0.7,99.0,5.0],[870.3,1310.0,16.0,-1.1,111.0,5.5],[850.0,1509.0,14.4,-3.1,114.0,4.1],[832.4,1685.0,14.2,-7.4,155.0,4.5],[820.0,1811.0,15.2,-6.3,162.0,5.7],[798.2,2039.0,13.1,-4.8,163.0,6.4],[752.5,2531.0,8.7,-5.5,155.0,4.6],[721.1,2880.0,5.9,-7.1,179.0,3.0],[712.9,2973.0,5.2,-9.4,205.0,3.2],[700.0,3123.0,3.9,-10.8,212.0,3.4],[690.6,3231.0,3.2,-13.1,231.0,2.5],[639.9,3844.0,-2.3,-11.2,222.0,7.2],[600.2,4348.0,-6.9,-15.0,255.0,6.3],[586.4,4528.0,-8.0,-17.2,255.0,7.7],[573.5,4702.0,-9.6,-18.0,260.0,9.3],[570.7,4738.0,-10.0,-18.0,259.0,9.3],[570.4,4743.0,-10.0,-17.2,259.0,9.3],[565.2,4814.0,-10.6,-18.3,257.0,8.7],[562.6,4850.0,-10.7,-20.8,258.0,8.7],[559.9,4886.0,-10.7,-24.9,259.0,8.8],[553.3,4975.0,-10.9,-30.6,261.0,8.3],[548.5,5043.0,-11.0,-36.5,265.0,7.5],[528.9,5321.0,-12.4,-41.4,281.0,7.3],[519.8,5455.0,-13.3,-40.9,290.0,7.4],[509.4,5607.0,-14.3,-42.5,283.0,7.8],[504.1,5688.0,-14.6,-45.8,279.0,8.7],[500.0,5747.0,-14.6,-51.7,286.0,9.0],[499.4,5758.0,-14.5,-52.9,287.0,9.1],[494.7,5829.0,-14.7,-55.9,294.0,9.2],[472.0,6182.0,-16.9,-57.4,296.0,7.7],[454.6,6465.0,-18.9,-58.6,291.0,12.4],[434.9,6792.0,-21.4,-60.3,281.0,13.5],[431.1,6856.0,-22.0,-59.9,281.0,14.0],[425.0,6962.0,-22.7,-53.9,281.0,15.2],[418.0,7084.0,-23.8,-50.9,286.0,16.5],[407.1,7276.0,-25.2,-50.4,286.0,16.7],[403.4,7341.0,-25.6,-55.3,286.0,17.1],[400.0,7403.0,-26.0,-58.3,287.0,17.2],[396.7,7462.0,-26.4,-58.3,288.0,16.9],[387.1,7640.0,-27.8,-55.1,290.0,17.8],[380.4,7763.0,-28.7,-54.6,288.0,18.6],[373.5,7894.0,-29.8,-52.2,288.0,19.9],[366.1,8036.0,-31.1,-51.8,288.0,21.0],[360.2,8151.0,-31.6,-53.1,286.0,23.6],[348.7,8381.0,-33.3,-61.5,286.0,22.5],[345.7,8442.0,-33.8,-62.8,287.0,22.3],[336.8,8623.0,-35.3,-62.4,288.0,23.9],[326.4,8840.0,-37.0,-60.2,290.0,24.8],[309.0,9217.0,-40.0,-60.1,290.0,26.4],[300.0,9418.0,-41.0,-62.3,286.0,28.4],[291.3,9617.0,-41.7,-66.2,284.0,33.6],[281.9,9838.0,-43.2,-67.1,285.0,39.6],[276.2,9976.0,-44.2,-69.1,284.0,42.0],[273.2,10050.0,-44.8,-66.2,283.0,43.2],[270.4,10119.0,-45.3,-65.0,283.0,44.1],[250.0,10636.0,-49.9,-61.8,280.0,47.4],[232.4,11110.0,-53.8,-60.9,281.0,47.6],[215.8,11580.0,-57.6,-62.9,278.0,49.9],[200.0,12056.0,-61.3,-66.9,277.0,50.5],[193.9,12249.0,-62.5,-67.8,277.0,52.2],[180.4,12689.0,-64.8,-71.4,284.0,46.8],[162.7,13325.0,-59.6,-68.7,290.0,40.9],[150.0,13834.0,-60.7,-71.4,296.0,37.1],[141.9,14180.0,-60.4,-72.2,293.0,34.1],[133.0,14581.0,-61.8,-74.6,294.0,35.3],[127.8,14829.0,-60.2,-74.3,291.0,34.1],[123.6,15038.0,-60.6,-75.4,291.0,31.1],[116.4,15408.0,-60.3,-76.3,285.0,34.0],[111.0,15705.0,-59.9,-76.8,291.0,26.6],[106.1,15987.0,-59.3,-77.2,292.0,26.2],[103.7,16133.0,-60.0,-77.8,290.0,21.8],[100.0,16359.0,-60.4,-79.1,284.0,23.3],[96.9,16554.0,-60.0,-79.2,289.0,23.7],[91.5,16909.0,-61.7,-81.6,280.0,23.7],[81.7,17620.0,-58.7,-81.6,300.0,26.1],[72.9,18321.0,-63.8,-86.5,314.0,19.0],[70.0,18569.0,-63.7,-87.5,306.0,18.6],[66.4,18895.0,-62.6,-87.8,307.0,13.2],[64.4,19084.0,-60.7,-87.2,317.0,16.8],[60.8,19442.0,-58.1,-85.4,336.0,9.7],[57.8,19760.0,-59.5,-86.0,329.0,7.6],[56.5,19906.0,-59.4,-85.9,332.0,8.7],[53.6,20234.0,-59.9,-86.2,341.0,0.9],[50.0,20666.0,-59.3,-85.8,274.0,2.7],[47.6,20973.0,-58.6,-85.4,315.0,5.4],[46.0,21190.0,-58.5,-85.2,255.0,3.8],[42.9,21629.0,-59.5,-85.5,282.0,2.2],[41.6,21817.0,-60.1,-85.9,267.0,4.4],[34.6,22967.0,-60.0,-85.8,312.0,7.5],[33.2,23225.0,-59.6,-85.7,335.0,7.8],[32.0,23453.0,-58.0,-84.8,352.0,5.3],[31.4,23576.0,-57.2,-84.2,353.0,7.3],[30.0,23862.0,-57.1,-84.0,355.0,6.9],[26.6,24622.0,-56.9,-83.6,337.0,1.3],[25.2,24965.0,-56.2,-83.1,334.0,8.1],[24.2,25221.0,-55.4,-82.5,336.0,2.5],[21.3,26036.0,-52.9,-80.6,223.0,1.6],[20.0,26446.0,-52.8,-80.6,171.0,4.6],[18.5,26945.0,-51.6,-79.6,311.0,3.1],[16.1,27841.0,-51.6,-79.7,345.0,6.0],[14.1,28709.0,-49.0,-78.5,330.0,2.2],[13.4,29041.0,-47.6,-77.6,200.0,6.7],[12.0,29766.0,-49.3,-77.9,242.0,4.0],[11.6,29988.0,-49.7,-78.2,243.0,9.1],[10.9,30390.0,-49.2,-78.3,261.0,7.8],[10.5,30637.0,-48.5,-78.0,276.0,10.4],[10.0,30953.0,-49.0,-78.2,276.0,10.2],[9.6,31220.0,-48.7,-78.7,278.0,10.6],[9.1,31570.0,-44.6,-76.6,286.0,16.4],[8.7,31876.0,-42.7,-74.8,291.0,9.2],[8.3,32187.0,-42.9,-74.6,289.0,11.6],[7.7,32692.0,-43.1,-74.7,286.0,21.3],[7.3,33049.0,-43.4,-75.0,284.0,14.6],[7.1,33233.0,-43.3,-75.1,265.0,14.5],[6.6,33721.0,-41.5,-74.2,289.0,15.4],[6.2,34146.0,-40.4,-73.6,252.0,8.4],[5.9,34483.0,-40.2,-73.5,258.0,13.3],[5.6,34835.0,-40.1,-73.3,295.0,13.5]]},{"id":"89532-2024-07-20-00","station":"89532","name":"Syowa 昭和站 · 南极","note":"极地严寒：地面 -30°C 量级、整层近乎无水汽","time":"2024-07-20 00:00Z","levels":[[995.0,21.0,-3.9,-4.4,50.0,17.5],[966.0,254.0,-5.0,-5.7,45.0,27.3],[925.0,595.0,-6.7,-7.5,25.0,26.2],[886.0,932.0,-7.9,-9.3,17.0,21.6],[857.0,1190.0,-9.8,-11.7,10.0,18.0],[850.0,1254.0,-10.3,-12.3,10.0,18.0],[705.0,2663.0,-21.4,-23.0,20.0,21.1],[704.0,2674.0,-21.5,-23.1,20.0,20.9],[700.0,2716.0,-21.5,-23.6,20.0,20.1],[690.0,2822.0,-21.9,-25.3,5.0,18.0],[662.0,3125.0,-23.1,-30.1,3.0,17.8],[555.0,4385.0,-30.4,-41.2,355.0,17.0],[500.0,5130.0,-34.7,-47.7,0.0,16.0],[469.0,5572.0,-37.8,-50.2,10.0,13.9],[447.0,5903.0,-40.1,-52.1,7.0,14.5],[400.0,6650.0,-46.7,null,0.0,16.0],[389.0,6831.0,-48.4,null,355.0,13.9],[343.0,7648.0,-55.9,null,11.0,13.9],[331.0,7872.0,-57.2,null,15.0,13.9],[305.0,8386.0,-60.1,null,3.0,18.2],[300.0,8490.0,-57.9,null,0.0,19.0],[296.0,8575.0,-57.1,null,359.0,19.3],[264.0,9290.0,-62.0,null,355.0,21.1],[250.0,9630.0,-64.3,null,10.0,17.0],[249.0,9654.0,-64.5,null,10.0,17.0],[248.0,9679.0,-64.7,null,9.0,17.2],[224.0,10295.0,-66.7,null,345.0,22.1],[219.0,10432.0,-67.2,null,350.0,22.1],[213.0,10600.0,-67.7,null,350.0,24.2],[200.0,10980.0,-66.3,null,330.0,23.2],[194.0,11165.0,-66.1,null,326.0,23.2],[173.0,11853.0,-68.0,null,310.0,23.2],[150.0,12710.0,-70.3,null,320.0,19.0],[129.0,13598.0,-72.7,null,315.0,18.0],[126.0,13736.0,-73.1,null,320.0,17.0],[115.0,14267.0,-73.9,null,315.0,27.8],[100.0,15080.0,-75.1,null,315.0,25.2],[91.0,15626.0,-76.4,null,300.0,35.0],[74.3,16798.0,-79.1,null,295.0,29.0],[74.0,16822.0,-79.1,null,295.0,28.8],[70.0,17140.0,-78.9,null,295.0,31.9],[68.0,17304.0,-78.8,null,290.0,37.1],[60.5,17966.0,-78.5,null,290.0,38.3],[51.0,18928.0,-80.5,null,290.0,40.2],[50.0,19040.0,-80.7,null,290.0,39.1],[48.0,19268.0,-81.1,null,285.0,35.0],[44.0,19754.0,-81.9,null,295.0,43.2],[42.0,20015.0,-82.3,null,295.0,38.1],[35.0,21034.0,-83.9,null,290.0,46.8],[32.9,21379.0,-84.5,null,293.0,45.1],[32.0,21533.0,-84.5,null,295.0,44.3],[31.0,21709.0,-84.5,null,290.0,52.0],[30.8,21744.0,-84.5,null,290.0,52.0],[30.0,21890.0,-84.5,null,290.0,49.9],[29.0,22077.0,-84.5,null,295.0,45.8],[26.0,22681.0,-84.3,null,290.0,47.9]]},{"id":"91285-2024-07-15-00","station":"91285","name":"PHTO 希洛 · 夏威夷","note":"信风逆温：低层湿层被 2 km 附近的下沉逆温封顶","time":"2024-07-15 00:00Z","levels":[[1017.3,12.0,27.4,18.4,48.0,7.0],[1015.9,23.0,25.7,17.7,49.0,5.5],[1000.0,162.0,24.4,17.4,56.0,6.5],[925.0,839.0,18.5,14.7,13.0,2.3],[850.0,1560.0,14.3,13.4,318.0,3.6],[838.9,1671.0,14.3,13.1,23.0,2.9],[837.8,1682.0,15.0,11.2,32.0,3.2],[835.6,1704.0,16.7,3.1,38.0,3.4],[828.2,1780.0,17.9,-0.9,61.0,2.6],[815.1,1917.0,17.7,1.3,88.0,3.6],[803.8,2036.0,17.5,-1.4,84.0,5.9],[769.8,2403.0,15.4,-1.5,104.0,5.3],[751.0,2612.0,14.6,-6.5,118.0,3.1],[744.4,2686.0,14.0,1.7,111.0,3.1],[737.2,2768.0,13.6,-2.4,96.0,3.7],[731.0,2839.0,13.1,-3.3,104.0,4.6],[700.0,3201.0,9.8,-4.7,108.0,5.9],[634.0,4012.0,2.0,-7.6,122.0,6.5],[621.8,4169.0,1.2,-14.8,114.0,3.6],[617.2,4228.0,1.5,-22.8,110.0,3.0],[608.6,4341.0,1.3,-27.2,94.0,2.6],[606.3,4371.0,1.9,-32.4,90.0,3.0],[602.2,4426.0,2.7,-36.2,91.0,3.5],[600.0,4456.0,3.1,-35.6,93.0,3.4],[591.6,4570.0,3.4,-39.1,95.0,3.0],[589.7,4596.0,3.2,-35.8,95.0,3.2],[584.9,4663.0,2.9,-34.5,95.0,3.4],[579.2,4741.0,2.7,-35.6,91.0,3.2],[556.8,5058.0,0.7,-32.5,65.0,2.7],[553.3,5108.0,0.6,-35.3,67.0,2.8],[551.5,5135.0,0.7,-40.7,70.0,2.9],[544.1,5243.0,0.3,-38.8,97.0,2.1],[540.8,5293.0,0.1,-42.0,110.0,1.6],[536.4,5357.0,-0.1,-40.5,85.0,1.1],[531.9,5425.0,0.2,-45.8,41.0,0.8],[500.0,5916.0,-3.3,-42.9,189.0,0.4],[491.5,6051.0,-3.9,-44.6,157.0,1.0],[455.9,6640.0,-8.2,-44.2,148.0,0.7],[433.9,7021.0,-10.4,-47.3,238.0,3.3],[425.5,7172.0,-11.4,-45.1,248.0,6.6],[418.9,7291.0,-11.6,-23.0,245.0,9.7],[400.0,7643.0,-14.4,-25.3,224.0,10.8],[382.9,7972.0,-17.1,-28.1,221.0,11.1],[371.2,8203.0,-19.1,-32.9,216.0,12.4],[368.6,8255.0,-19.5,-31.5,217.0,12.6],[364.3,8344.0,-20.1,-36.4,218.0,12.8],[361.7,8397.0,-20.6,-34.6,220.0,12.7],[360.4,8424.0,-20.8,-38.0,222.0,12.6],[359.2,8447.0,-21.0,-36.0,223.0,12.5],[355.7,8519.0,-21.4,-38.7,224.0,12.0],[340.7,8835.0,-24.4,-41.7,233.0,12.8],[333.2,8996.0,-25.6,-47.9,239.0,13.7],[322.8,9225.0,-27.4,-49.8,237.0,14.9],[321.6,9252.0,-27.2,-52.2,235.0,14.7],[315.2,9397.0,-27.9,-50.1,232.0,14.5],[313.6,9434.0,-28.1,-45.8,233.0,14.8],[310.8,9498.0,-28.4,-44.6,233.0,15.0],[300.0,9751.0,-30.5,-45.0,241.0,16.3],[298.3,9791.0,-30.8,-43.9,242.0,16.4],[284.6,10123.0,-33.9,-49.7,239.0,16.9],[278.6,10272.0,-34.9,-44.2,233.0,18.9],[263.4,10660.0,-38.6,-42.8,224.0,18.7],[258.6,10785.0,-39.6,-44.4,224.0,19.7],[254.9,10884.0,-39.8,-52.4,226.0,21.3],[250.0,11017.0,-40.9,-51.2,226.0,21.4],[234.5,11447.0,-44.8,-49.6,238.0,22.3],[222.5,11798.0,-48.2,-50.9,245.0,22.8],[221.9,11813.0,-48.3,-52.3,246.0,22.8],[220.8,11847.0,-47.7,-62.7,246.0,22.4],[219.1,11897.0,-47.9,-60.2,246.0,21.7],[217.8,11938.0,-47.7,-66.0,245.0,21.3],[213.1,12080.0,-48.6,-65.4,242.0,20.3],[211.3,12137.0,-48.7,-71.3,239.0,19.6],[210.1,12173.0,-48.9,-72.7,237.0,19.3],[207.2,12266.0,-49.5,-71.0,231.0,19.0],[200.0,12496.0,-50.4,-74.2,219.0,17.7],[150.0,14311.0,-65.1,-81.0,235.0,11.6],[142.9,14604.0,-65.9,-82.3,235.0,9.1],[122.1,15544.0,-73.5,-84.0,223.0,11.2],[106.3,16343.0,-78.3,-84.2,315.0,1.8],[100.0,16692.0,-77.0,-86.2,126.0,9.6],[95.1,16984.0,-74.3,-85.8,125.0,15.5],[93.4,17086.0,-74.6,-86.4,129.0,14.4],[90.6,17267.0,-71.9,-86.6,108.0,9.8],[84.3,17688.0,-72.2,-87.9,108.0,15.7],[81.1,17917.0,-72.8,-88.8,107.0,11.8],[72.0,18620.0,-69.0,-89.8,73.0,16.0],[70.0,18790.0,-69.6,-90.0,78.0,18.8],[55.9,20135.0,-68.6,-91.3,107.0,14.4],[52.1,20559.0,-64.9,-90.9,112.0,23.3],[50.0,20813.0,-64.0,-90.2,99.0,20.8],[44.3,21550.0,-64.2,-90.1,87.0,24.2],[39.4,22273.0,-60.6,-88.9,85.0,27.8],[36.4,22764.0,-61.4,-89.0,87.0,21.7],[34.3,23129.0,-59.3,-88.4,104.0,28.6],[31.7,23625.0,-61.1,-88.5,100.0,22.2],[30.0,23971.0,-61.3,-89.1,96.0,25.2],[27.9,24416.0,-57.2,-87.7,102.0,29.4],[26.4,24762.0,-58.5,-87.6,118.0,28.3],[25.4,25008.0,-56.1,-87.3,117.0,23.6],[24.2,25317.0,-56.8,-86.7,85.0,16.7],[22.7,25721.0,-55.4,-86.4,81.0,25.7],[21.7,26008.0,-52.7,-85.8,83.0,32.2],[21.3,26125.0,-51.2,-84.9,93.0,30.0],[20.0,26549.0,-51.4,-84.2,116.0,16.5],[19.3,26768.0,-51.6,-84.3,100.0,12.5],[18.3,27112.0,-51.0,-84.1,82.0,20.4],[17.7,27324.0,-52.4,-84.3,83.0,26.0],[15.5,28185.0,-52.2,-84.6,105.0,30.0],[14.7,28525.0,-51.3,-84.4,97.0,32.5],[13.9,28889.0,-47.2,-82.8,101.0,28.2],[12.6,29529.0,-50.6,-83.6,91.0,28.1],[11.6,30071.0,-49.0,-83.1,77.0,21.3],[10.5,30723.0,-46.9,-82.6,89.0,33.0],[10.0,31079.0,-44.6,-82.1,74.0,28.4],[9.0,31750.0,-43.2,-81.2,77.0,32.4],[7.7,32791.0,-43.5,-81.2,88.0,36.5],[7.4,33062.0,-43.0,-81.2,87.0,41.1],[6.9,33533.0,-40.0,-80.4,89.0,37.8],[6.3,34151.0,-38.8,-79.8,94.0,35.5]]}];
+</script>
+<script id="wx-app">/* 界面层：分区渲染 + SVG 绘图（全部 SVG，无 canvas；所有文字标签走统一避让器） */
+(function () {
+  'use strict';
+  var W = WX, M = WX.metar, D = WX.SOUNDINGS;
+  var SVGNS = 'http://www.w3.org/2000/svg';
+  var LS = 'wx-lab-v1';
+  var state = {
+    tab: 'sounding', sid: D[0].id, parcel: 'sb', custom: null,
+    metarText: '', rwy: 18, elevM: null, importOpen: false, importMsg: ''
+  };
+  try { var saved = JSON.parse(localStorage.getItem(LS) || '{}'); Object.assign(state, saved); } catch (e) { /* 首次访问 / 隐私模式 */ }
+  function save() { try { localStorage.setItem(LS, JSON.stringify(state)); } catch (e) { /* 配额或隐私模式，忽略 */ } }
+
+  function el(tag, attrs, kids) {
+    var n = document.createElement(tag);
+    if (attrs) for (var k in attrs) {
+      if (k === 'text') n.textContent = attrs[k];
+      else if (k === 'html') n.innerHTML = attrs[k];
+      else if (k === 'cls') n.className = attrs[k];
+      else if (attrs[k] !== null && attrs[k] !== undefined) n.setAttribute(k, attrs[k]);
+    }
+    (kids || []).forEach(function (c) { if (c) n.appendChild(typeof c === 'string' ? document.createTextNode(c) : c); });
+    return n;
+  }
+  function svg(tag, attrs) {
+    var n = document.createElementNS(SVGNS, tag);
+    for (var k in attrs) if (attrs[k] !== null && attrs[k] !== undefined) n.setAttribute(k, attrs[k]);
+    return n;
+  }
+  function fx(v, d) { return (v === null || v === undefined || !isFinite(v)) ? '—' : Number(v).toFixed(d === undefined ? 1 : d); }
+  function fint(v) { return (v === null || v === undefined || !isFinite(v)) ? '—' : String(Math.round(v)); }
+
+  /* ---------- 标签避让器：所有 SVG 文字都从这里过 ---------- */
+  function Placer(g, bounds) {
+    this.g = g; this.boxes = []; this.b = bounds; this.dropped = 0; this.drawn = [];
+  }
+  Placer.prototype.reserve = function (x, y, w, h) { this.boxes.push({ x: x, y: y, w: w, h: h }); };
+  Placer.prototype._hit = function (b) {
+    if (this.b && (b.x < this.b.x - 1 || b.y < this.b.y - 1 || b.x + b.w > this.b.x + this.b.w + 1 || b.y + b.h > this.b.y + this.b.h + 1)) return true;
+    for (var i = 0; i < this.boxes.length; i++) {
+      var o = this.boxes[i];
+      if (b.x < o.x + o.w && b.x + b.w > o.x && b.y < o.y + o.h && b.y + b.h > o.y) return true;
+    }
+    return false;
+  };
+  /** opts: {size, anchor, fill, weight, offsets:[[dx,dy]…], plate:true, force:true} */
+  Placer.prototype.text = function (x, y, s, opts) {
+    opts = opts || {};
+    var size = opts.size || 11, anchor = opts.anchor || 'start';
+    var w = String(s).length * size * 0.58, h = size * 1.1;
+    var offs = opts.offsets || [[0, 0]];
+    for (var i = 0; i < offs.length; i++) {
+      var dx = offs[i][0], dy = offs[i][1];
+      var bx = anchor === 'middle' ? x + dx - w / 2 : anchor === 'end' ? x + dx - w : x + dx;
+      var box = { x: bx, y: y + dy - h * 0.8, w: w, h: h };
+      if (!this._hit(box) || (opts.force && i === offs.length - 1)) {
+        if (opts.plate) {
+          this.g.appendChild(svg('rect', { x: box.x - 2, y: box.y - 1, width: w + 4, height: h + 2, fill: opts.plate === true ? '#fff' : opts.plate, opacity: 0.88 }));
+        }
+        var t = svg('text', { x: x + dx, y: y + dy, 'font-size': size, 'text-anchor': anchor, fill: opts.fill || '#333', 'font-weight': opts.weight || 400 });
+        t.textContent = s;
+        this.g.appendChild(t);
+        this.boxes.push(box); this.drawn.push(s);
+        return t;
+      }
+    }
+    this.dropped++;
+    return null;
+  };
+
+  /* ---------- 探空数据 ---------- */
+  function currentSounding() {
+    if (state.sid === 'custom' && state.custom) return state.custom;
+    var s = D.filter(function (x) { return x.id === state.sid; })[0];
+    return s || D[0];
+  }
+  /** 把 levels 拆成引擎要的数组，并做基本清洗 */
+  function prep(snd) {
+    var p = [], h = [], t = [], td = [], dir = [], spd = [];
+    snd.levels.forEach(function (r) {
+      if (r[0] === null || r[2] === null) return;
+      p.push(r[0]); h.push(r[1]); t.push(r[2]);
+      td.push(r[3] === null ? NaN : r[3]);
+      dir.push(r[4] === null ? NaN : r[4]); spd.push(r[5] === null ? NaN : r[5]);
+    });
+    var u = [], v = [];
+    for (var i = 0; i < p.length; i++) { var c = W.windComponents(spd[i], dir[i]); u.push(c.u); v.push(c.v); }
+    return { p: p, h: h, t: t, td: td, dir: dir, spd: spd, u: u, v: v, name: snd.name, note: snd.note, time: snd.time, station: snd.station };
+  }
+  var _cache = {};
+  function analyze(snd) {
+    var key = snd.id + '|' + snd.levels.length;
+    if (_cache[key]) return _cache[key];
+    var d = prep(snd), out = { d: d };
+    var pt = W.removeNans([d.p, d.t, d.td]);
+    out.clean = { p: pt[0], t: pt[1], td: pt[2] };
+    try { out.sb = W.surfaceBasedCapeCin(pt[0], pt[1], pt[2]); } catch (e) { out.sb = null; }
+    try { out.mu = W.mostUnstableCapeCin(pt[0], pt[1], pt[2]); } catch (e) { out.mu = null; }
+    try { out.ml = W.mixedLayerCapeCin(pt[0], pt[1], pt[2]); } catch (e) { out.ml = null; }
+    try { out.lcl = W.lcl(pt[0][0], pt[1][0], pt[2][0]); } catch (e) { out.lcl = null; }
+    try { out.prof = W.parcelProfile(pt[0], pt[1][0], pt[2][0]); } catch (e) { out.prof = null; }
+    try { out.li = out.prof ? W.liftedIndex(pt[0], pt[1], out.prof) : null; } catch (e) { out.li = null; }
+    try { out.ki = W.kIndex(pt[0], pt[1], pt[2]); } catch (e) { out.ki = null; }
+    try { out.tt = W.totalTotals(pt[0], pt[1], pt[2]); } catch (e) { out.tt = null; }
+    try { out.si = W.showalterIndex(pt[0], pt[1], pt[2]); } catch (e) { out.si = null; }
+    try { out.pw = W.precipitableWater(pt[0], pt[2]); } catch (e) { out.pw = null; }
+    try { out.dcape = W.downdraftCape(pt[0], pt[1], pt[2]); } catch (e) { out.dcape = null; }
+    try { out.sweat = W.sweatIndex(d.p, d.t, d.td, d.spd, d.dir); } catch (e) { out.sweat = null; }
+    // 特征高度
+    out.heights = {};
+    try {
+      out.heights.lcl = W.logInterp1d(out.lcl.p, d.p, d.h) - d.h[0];
+      if (out.sb && isFinite(out.sb.lfcP)) out.heights.lfc = W.logInterp1d(out.sb.lfcP, d.p, d.h) - d.h[0];
+      if (out.sb && isFinite(out.sb.elP)) out.heights.el = W.logInterp1d(out.sb.elP, d.p, d.h) - d.h[0];
+    } catch (e) { /* 层次不足 */ }
+    out.frz = crossHeight(d, 0);
+    out.wbz = wetBulbZero(d);
+    // 风场
+    out.wind = null;
+    try {
+      var wn = W.removeNans([d.p, d.u, d.v, d.h]);
+      if (wn[0].length > 3 && (wn[3][wn[3].length - 1] - wn[3][0]) > 6000) {
+        var b = W.bunkersStormMotion(wn[0], wn[1], wn[2], wn[3]);
+        var srh1 = W.stormRelativeHelicity(wn[3], wn[1], wn[2], 1000, { stormU: b.right.u, stormV: b.right.v });
+        var srh3 = W.stormRelativeHelicity(wn[3], wn[1], wn[2], 3000, { stormU: b.right.u, stormV: b.right.v });
+        var srh1L = W.stormRelativeHelicity(wn[3], wn[1], wn[2], 1000, { stormU: b.left.u, stormV: b.left.v });
+        var srh3L = W.stormRelativeHelicity(wn[3], wn[1], wn[2], 3000, { stormU: b.left.u, stormV: b.left.v });
+        out.wind = {
+          clean: wn, bunkers: b,
+          shear1: W.bulkShear(wn[0], wn[1], wn[2], wn[3], 1000),
+          shear3: W.bulkShear(wn[0], wn[1], wn[2], wn[3], 3000),
+          shear6: W.bulkShear(wn[0], wn[1], wn[2], wn[3], 6000),
+          srh1: srh1, srh3: srh3, srh1L: srh1L, srh3L: srh3L,
+          crit: W.criticalAngle(wn[0], wn[1], wn[2], wn[3], b.right.u, b.right.v),
+          mean6: W.weightedContinuousAverage(wn[0], [wn[1], wn[2]], { height: wn[3], depth: 6000, depthIsHeight: true })
+        };
+        var s6 = Math.hypot(out.wind.shear6.u, out.wind.shear6.v);
+        out.wind.scp = out.mu ? W.supercellComposite(out.mu.cape, srh3.total, s6) : null;
+        out.wind.stp = (out.sb && out.heights.lcl !== undefined) ? W.significantTornado(out.sb.cape, out.heights.lcl, srh1.total, s6) : null;
+        out.wind.ehi1 = out.sb ? W.energyHelicityIndex(out.sb.cape, srh1.total) : null;
+        out.wind.ehi3 = out.sb ? W.energyHelicityIndex(out.sb.cape, srh3.total) : null;
+      }
+    } catch (e) { out.wind = null; }
+    _cache[key] = out;
+    return out;
+  }
+  function crossHeight(d, target) {
+    for (var i = 0; i + 1 < d.t.length; i++) {
+      if ((d.t[i] - target) * (d.t[i + 1] - target) <= 0 && d.t[i] !== d.t[i + 1]) {
+        var f = (target - d.t[i]) / (d.t[i + 1] - d.t[i]);
+        return { h: d.h[i] + f * (d.h[i + 1] - d.h[i]), p: Math.exp(Math.log(d.p[i]) + f * (Math.log(d.p[i + 1]) - Math.log(d.p[i]))) };
+      }
+    }
+    return null;
+  }
+  function wetBulbZero(d) {
+    var tw = [];
+    for (var i = 0; i < d.p.length; i++) {
+      var v = isFinite(d.td[i]) ? W.wetBulbTemperature(d.p[i], d.t[i], d.td[i]) : NaN;
+      tw.push(v);
+    }
+    for (var j = 0; j + 1 < tw.length; j++) {
+      if (isFinite(tw[j]) && isFinite(tw[j + 1]) && tw[j] * tw[j + 1] <= 0 && tw[j] !== tw[j + 1]) {
+        var f = (0 - tw[j]) / (tw[j + 1] - tw[j]);
+        return { h: d.h[j] + f * (d.h[j + 1] - d.h[j]), p: Math.exp(Math.log(d.p[j]) + f * (Math.log(d.p[j + 1]) - Math.log(d.p[j]))), tw: tw };
+      }
+    }
+    return { h: null, p: null, tw: tw };
+  }
+
+  /* ---------- Skew-T 绘图 ---------- */
+  var SK = { L: 56, R: 74, T: 18, B: 40, W: 700, H: 720, TMIN: -102, TMAX: 42, PBOT: 1050, PTOP: 100, SKEW: 0.62 };
+  function skewGeom(cfg) {
+    var pw = cfg.W - cfg.L - cfg.R, ph = cfg.H - cfg.T - cfg.B;
+    var lnB = Math.log(cfg.PBOT), lnT = Math.log(cfg.PTOP);
+    function yFrac(p) { return (lnB - Math.log(p)) / (lnB - lnT); }
+    function y(p) { return cfg.T + ph - yFrac(p) * ph; }
+    function x(t, p) { return cfg.L + ((t - cfg.TMIN) / (cfg.TMAX - cfg.TMIN)) * pw + cfg.SKEW * yFrac(p) * pw; }
+    return { x: x, y: y, yFrac: yFrac, pw: pw, ph: ph, cfg: cfg };
+  }
+  function drawSkewT(a, opts) {
+    opts = opts || {};
+    var cfg = Object.assign({}, SK, opts.cfg || {});
+    var G = skewGeom(cfg), d = a.d;
+    var root = svg('svg', { viewBox: '0 0 ' + cfg.W + ' ' + cfg.H, width: cfg.W, height: cfg.H, role: 'img',
+      'aria-label': '斜温对数压力图：环境温度、露点与气块抬升曲线' });
+    var clipId = 'wx-clip-' + Math.random().toString(36).slice(2, 8);
+    var defs = svg('defs'); var cp = svg('clipPath', { id: clipId });
+    cp.appendChild(svg('rect', { x: cfg.L, y: cfg.T, width: G.pw, height: G.ph }));
+    defs.appendChild(cp); root.appendChild(defs);
+    var gGrid = svg('g', { 'clip-path': 'url(#' + clipId + ')' });
+    root.appendChild(gGrid);
+
+    // 等温线
+    for (var T0 = -140; T0 <= 60; T0 += 10) {
+      var x1 = G.x(T0, cfg.PBOT), y1 = G.y(cfg.PBOT), x2 = G.x(T0, cfg.PTOP), y2 = G.y(cfg.PTOP);
+      gGrid.appendChild(svg('line', { x1: x1, y1: y1, x2: x2, y2: y2, stroke: T0 === 0 ? '#7fb0d8' : '#dcdcdc', 'stroke-width': T0 === 0 ? 1.6 : 1 }));
+    }
+    // 等压线
+    var PLINES = [1000, 925, 850, 700, 600, 500, 400, 300, 250, 200, 150, 100];
+    PLINES.forEach(function (p) {
+      if (p > cfg.PBOT || p < cfg.PTOP) return;
+      gGrid.appendChild(svg('line', { x1: cfg.L, y1: G.y(p), x2: cfg.L + G.pw, y2: G.y(p), stroke: '#d0d0d0', 'stroke-width': 1 }));
+    });
+    // 干绝热线
+    for (var th = 220; th <= 500; th += 10) {
+      var pts = [];
+      for (var pp = cfg.PBOT; pp >= cfg.PTOP - 1; pp -= 10) {
+        var tt = th * Math.pow(pp / 1000, W.C.KAPPA) - W.C.ZEROC;
+        pts.push(G.x(tt, pp) + ',' + G.y(pp));
+      }
+      gGrid.appendChild(svg('polyline', { points: pts.join(' '), fill: 'none', stroke: '#f0c9a0', 'stroke-width': 1 }));
+    }
+    // 湿绝热线
+    if (opts.moist !== false) {
+      for (var tw = -20; tw <= 40; tw += 5) {
+        var levels = [], q;
+        for (q = cfg.PBOT; q >= cfg.PTOP - 1; q -= 25) levels.push(q);
+        var temps = W.moistLapse(levels, tw, cfg.PBOT), mp = [];
+        for (q = 0; q < levels.length; q++) if (isFinite(temps[q])) mp.push(G.x(temps[q], levels[q]) + ',' + G.y(levels[q]));
+        gGrid.appendChild(svg('polyline', { points: mp.join(' '), fill: 'none', stroke: '#a8d5b5', 'stroke-width': 1, 'stroke-dasharray': '1 0' }));
+      }
+    }
+    // 等饱和混合比线
+    if (opts.mix !== false) {
+      [0.1, 0.4, 1, 2, 4, 7, 10, 16, 24, 32].forEach(function (wv) {
+        var pts2 = [];
+        for (var pp2 = cfg.PBOT; pp2 >= 200; pp2 -= 25) {
+          var e = pp2 * (wv / 1000) / (W.C.EPS + wv / 1000);
+          var tdv = W.dewpointFromE(e);
+          pts2.push(G.x(tdv, pp2) + ',' + G.y(pp2));
+        }
+        gGrid.appendChild(svg('polyline', { points: pts2.join(' '), fill: 'none', stroke: '#7fbfd8', 'stroke-width': 1, 'stroke-dasharray': '5 4' }));
+      });
+    }
+    // CAPE / CIN 阴影
+    var parcel = state.parcel === 'mu' ? a.mu : state.parcel === 'ml' ? a.ml : a.sb;
+    var profPack = null;
+    try {
+      var c = a.clean;
+      if (state.parcel === 'mu' && a.mu && a.mu.parcel) {
+        var i0 = a.mu.parcel.idx;
+        profPack = W.parcelProfileWithLcl(c.p.slice(i0), c.t.slice(i0), c.td.slice(i0));
+      } else if (state.parcel === 'ml' && a.ml && a.ml.parcel) {
+        var mp2 = a.ml.parcel, pp3 = [mp2.p], tt3 = [mp2.t], dd3 = [mp2.td];
+        for (var z = 0; z < c.p.length; z++) if (c.p[z] < c.p[0] - 100) { pp3.push(c.p[z]); tt3.push(c.t[z]); dd3.push(c.td[z]); }
+        profPack = W.parcelProfileWithLcl(pp3, tt3, dd3);
+      } else {
+        profPack = W.parcelProfileWithLcl(c.p, c.t, c.td);
+      }
+    } catch (e) { profPack = null; }
+    if (profPack && parcel && isFinite(parcel.lfcP)) {
+      var elp = isFinite(parcel.elP) ? parcel.elP : profPack.p[profPack.p.length - 1];
+      shade(gGrid, G, profPack, parcel.lfcP, elp, '#f7c948', 0.5);
+      shade(gGrid, G, profPack, profPack.p[0], parcel.lfcP, '#6c8fb5', 0.35);
+    }
+    // 曲线
+    function line(px, tx, color, width, dash) {
+      var pts3 = [];
+      for (var i = 0; i < px.length; i++) if (isFinite(tx[i])) pts3.push(G.x(tx[i], px[i]) + ',' + G.y(px[i]));
+      gGrid.appendChild(svg('polyline', { points: pts3.join(' '), fill: 'none', stroke: color, 'stroke-width': width, 'stroke-linejoin': 'round', 'stroke-dasharray': dash || null }));
+    }
+    if (profPack) line(profPack.p, profPack.prof, 'var(--wx-parcel)', 2, '7 4');
+    line(d.p, d.td, 'var(--wx-dew)', 2.4);
+    line(d.p, d.t, 'var(--wx-temp)', 2.4);
+
+    // 坐标轴 + 标注（统一避让）
+    var gAx = svg('g'); root.appendChild(gAx);
+    var placer = new Placer(gAx, { x: 0, y: 0, w: cfg.W, h: cfg.H });
+    gAx.appendChild(svg('rect', { x: cfg.L, y: cfg.T, width: G.pw, height: G.ph, fill: 'none', stroke: '#000', 'stroke-width': 1.2 }));
+    PLINES.forEach(function (p) {
+      if (p > cfg.PBOT || p < cfg.PTOP) return;
+      placer.text(cfg.L - 6, G.y(p) + 4, String(p), { anchor: 'end', size: 11, fill: '#333', weight: 700 });
+    });
+    placer.text(cfg.L - 6, cfg.T - 6, 'hPa', { anchor: 'end', size: 10, fill: '#666' });
+    for (var tx2 = -100; tx2 <= 40; tx2 += 10) {
+      var xb = G.x(tx2, cfg.PBOT);
+      if (xb < cfg.L - 2 || xb > cfg.L + G.pw + 2) continue;
+      gAx.appendChild(svg('line', { x1: xb, y1: cfg.T + G.ph, x2: xb, y2: cfg.T + G.ph + 4, stroke: '#000' }));
+      placer.text(xb, cfg.T + G.ph + 17, String(tx2), { anchor: 'middle', size: 11, fill: '#333' });
+    }
+    placer.text(cfg.L + G.pw / 2, cfg.H - 6, '温度 (°C，等温线向右倾斜 45°)', { anchor: 'middle', size: 11, fill: '#666' });
+
+    // 风羽
+    var bx = cfg.L + G.pw + 10;
+    gAx.appendChild(svg('line', { x1: bx + 26, y1: cfg.T, x2: bx + 26, y2: cfg.T + G.ph, stroke: '#e0e0e0' }));
+    var lastY = -99;
+    for (var i2 = 0; i2 < d.p.length; i2++) {
+      if (d.p[i2] < cfg.PTOP || !isFinite(d.spd[i2]) || !isFinite(d.dir[i2])) continue;
+      var yy = G.y(d.p[i2]);
+      if (Math.abs(yy - lastY) < 21) continue;
+      lastY = yy;
+      gAx.appendChild(windBarb(bx + 26, yy, d.spd[i2] * W.metar.MS2KT, d.dir[i2]));
+    }
+    placer.text(bx + 26, cfg.T - 5, '风', { anchor: 'middle', size: 10, fill: '#666' });
+
+    // 关键高度标注（先 reserve 曲线端点，标注挑空侧）
+    function mark(p, label, color) {
+      if (!isFinite(p) || p > cfg.PBOT || p < cfg.PTOP) return;
+      var yy = G.y(p);
+      gAx.appendChild(svg('line', { x1: cfg.L, y1: yy, x2: cfg.L + 26, y2: yy, stroke: color, 'stroke-width': 2 }));
+      placer.text(cfg.L + 30, yy + 4, label, { size: 11, fill: color, weight: 700, plate: true, offsets: [[0, 0], [0, -13], [0, 13], [0, -26]] });
+    }
+    if (a.lcl) mark(a.lcl.p, 'LCL ' + fint(a.lcl.p) + ' hPa', '#8a5a00');
+    if (parcel && isFinite(parcel.lfcP)) mark(parcel.lfcP, 'LFC ' + fint(parcel.lfcP), '#b3261e');
+    if (parcel && isFinite(parcel.elP)) mark(parcel.elP, 'EL ' + fint(parcel.elP), '#1f5fb0');
+    if (a.frz) mark(a.frz.p, '0°C 层', '#337ab7');
+    root._placer = placer;
+    return root;
+  }
+  function shade(g, G, pack, pTop0, pBot0, color, op) {
+    var hi = Math.max(pTop0, pBot0), lo = Math.min(pTop0, pBot0);
+    var up = [], down = [];
+    for (var i = 0; i < pack.p.length; i++) {
+      var p = pack.p[i];
+      if (p > hi || p < lo) continue;
+      if (!isFinite(pack.prof[i]) || !isFinite(pack.t[i])) continue;
+      up.push(G.x(pack.prof[i], p) + ',' + G.y(p));
+      down.unshift(G.x(pack.t[i], p) + ',' + G.y(p));
+    }
+    if (up.length < 2) return;
+    g.appendChild(svg('polygon', { points: up.concat(down).join(' '), fill: color, opacity: op, stroke: 'none' }));
+  }
+  function windBarb(cx, cy, kt, dir) {
+    var g = svg('g', { transform: 'translate(' + cx + ',' + cy + ') rotate(' + dir + ')' });
+    if (kt < 2.5) { g.appendChild(svg('circle', { cx: 0, cy: 0, r: 4, fill: 'none', stroke: '#333' })); return g; }
+    var L = 22;
+    g.appendChild(svg('line', { x1: 0, y1: 0, x2: 0, y2: L, stroke: '#111', 'stroke-width': 1.3 }));
+    var rem = Math.round(kt / 5) * 5, pos = L, step = 4.4;
+    while (rem >= 50) { g.appendChild(svg('polygon', { points: '0,' + pos + ' 0,' + (pos - step) + ' -9,' + pos, fill: '#111' })); pos -= step * 1.5; rem -= 50; }
+    while (rem >= 10) { g.appendChild(svg('line', { x1: 0, y1: pos, x2: -9, y2: pos + 2.6, stroke: '#111', 'stroke-width': 1.3 })); pos -= step; rem -= 10; }
+    if (rem >= 5) { g.appendChild(svg('line', { x1: 0, y1: pos, x2: -4.5, y2: pos + 1.3, stroke: '#111', 'stroke-width': 1.3 })); }
+    return g;
+  }
+
+  /* ---------- 风矢端图 ---------- */
+  function drawHodograph(a) {
+    var S = 470, C = S / 2;
+    var root = svg('svg', { viewBox: '0 0 ' + S + ' ' + S, width: S, height: S, style: 'width:100%;max-width:' + S + 'px',
+      role: 'img', 'aria-label': '风矢端图（Hodograph）' });
+    var w = a.wind;
+    var maxR = 30;
+    if (w) {
+      for (var i = 0; i < w.clean[1].length; i++) if (w.clean[3][i] - w.clean[3][0] <= 12000) maxR = Math.max(maxR, Math.hypot(w.clean[1][i], w.clean[2][i]) + 4);
+    }
+    var sc = (C - 34) / maxR;
+    var g = svg('g'); root.appendChild(g);
+    var placer = new Placer(g, { x: 0, y: 0, w: S, h: S });
+    var ringStep = maxR > 45 ? 20 : 10;
+    for (var r = ringStep; r <= maxR; r += ringStep) {
+      g.appendChild(svg('circle', { cx: C, cy: C, r: r * sc, fill: 'none', stroke: '#e0e0e0' }));
+    }
+    g.appendChild(svg('line', { x1: 10, y1: C, x2: S - 10, y2: C, stroke: '#c8c8c8' }));
+    g.appendChild(svg('line', { x1: C, y1: 10, x2: C, y2: S - 10, stroke: '#c8c8c8' }));
+    // 环标签放在**下半轴**（轨迹通常在上半/右半），且在画轨迹之前画 —— 不垫白底，免得擦断曲线
+    for (var r2 = ringStep; r2 <= maxR; r2 += ringStep) {
+      placer.text(C - 4, C + r2 * sc + 4, String(r2), { anchor: 'end', size: 10, fill: '#888' });
+    }
+    placer.text(S - 8, C - 6, 'u →', { anchor: 'end', size: 10, fill: '#888' });
+    placer.text(C + 6, 14, 'v ↑ (m/s)', { size: 10, fill: '#888' });
+    if (!w) {
+      placer.text(C, C, '这份探空的测风层次不足 6 km，画不出风矢端图', { anchor: 'middle', size: 12, fill: '#666', force: true });
+      root._placer = placer; return root;
+    }
+    var bands = [[0, 1000, '#c62828'], [1000, 3000, '#e08a00'], [3000, 6000, '#1f7a3f'], [6000, 9000, '#1f5fb0'], [9000, 12000, '#6a3fb0']];
+    var h0 = w.clean[3][0];
+    // 先把所有标记点（高度点 + 三个风暴移动矢量）占位，再放文字 —— 否则后画的菱形会盖住先放好的标签
+    var marks = [];
+    [0, 1000, 3000, 6000, 9000].forEach(function (z) {
+      var uu0 = W.interp1d(h0 + z, w.clean[3], w.clean[1]), vv0 = W.interp1d(h0 + z, w.clean[3], w.clean[2]);
+      if (isFinite(uu0)) marks.push([C + uu0 * sc, C - vv0 * sc]);
+    });
+    [w.bunkers.right, w.bunkers.left, w.bunkers.mean].forEach(function (m) { marks.push([C + m.u * sc, C - m.v * sc]); });
+    marks.forEach(function (m) { placer.reserve(m[0] - 8, m[1] - 8, 16, 16); });
+    bands.forEach(function (b) {
+      var pts = [];
+      for (var i = 0; i < w.clean[1].length; i++) {
+        var z = w.clean[3][i] - h0;
+        if (z < b[0] - 1 || z > b[1] + 1) continue;
+        pts.push((C + w.clean[1][i] * sc) + ',' + (C - w.clean[2][i] * sc));
+      }
+      if (pts.length > 1) g.appendChild(svg('polyline', { points: pts.join(' '), fill: 'none', stroke: b[2], 'stroke-width': 3, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' }));
+    });
+    // 高度标点（先占位，再放短标签）
+    [0, 1000, 3000, 6000, 9000].forEach(function (z) {
+      var uu = W.interp1d(h0 + z, w.clean[3], w.clean[1]), vv = W.interp1d(h0 + z, w.clean[3], w.clean[2]);
+      if (!isFinite(uu)) return;
+      var px = C + uu * sc, py = C - vv * sc;
+      g.appendChild(svg('circle', { cx: px, cy: py, r: 3.6, fill: '#111' }));
+      placer.text(px, py - 10, (z / 1000) + ' km', { anchor: 'middle', size: 10, fill: '#111', weight: 700, plate: true, offsets: [[0, 0], [0, 20], [-18, 4], [18, 4], [0, -22]] });
+    });
+    function motion(m, label, color) {
+      var px = C + m.u * sc, py = C - m.v * sc;
+      g.appendChild(svg('path', { d: 'M' + (px - 6) + ',' + py + ' L' + px + ',' + (py - 6) + ' L' + (px + 6) + ',' + py + ' L' + px + ',' + (py + 6) + ' Z', fill: color, stroke: '#fff', 'stroke-width': 1 }));
+      placer.text(px + 10, py + 4, label, { size: 10, fill: color, weight: 700, plate: true, offsets: [[0, 0], [0, -14], [0, 16], [-10 - label.length * 6.5, 0]] });
+    }
+    motion(w.bunkers.right, 'RM 右移', '#b3261e');
+    motion(w.bunkers.left, 'LM 左移', '#1f5fb0');
+    motion(w.bunkers.mean, '平均风', '#555');
+    root._placer = placer;
+    return root;
+  }
+
+  /* ---------- 通用小构件 ---------- */
+  function kvGrid(items) {
+    var g = el('div', { cls: 'wx-kv' });
+    items.forEach(function (it) {
+      if (!it) return;
+      var d = el('div', null, [el('dt', { text: it[0] }), el('dd', null, [document.createTextNode(it[1]), it[2] ? el('small', { text: it[2] }) : null])]);
+      if (it[3]) d.style.background = it[3];
+      g.appendChild(d);
+    });
+    return g;
+  }
+  function table(head, rows, cls) {
+    var wrap = el('div', { cls: 'wx-tblwrap' });
+    var t = el('table', { cls: 'wx-tbl' + (cls ? ' ' + cls : '') });
+    var thead = el('thead'), tr = el('tr');
+    head.forEach(function (h) { tr.appendChild(el('th', { text: h })); });
+    thead.appendChild(tr); t.appendChild(thead);
+    var tb = el('tbody');
+    rows.forEach(function (r) {
+      var x = el('tr');
+      r.forEach(function (c) { x.appendChild(el('td', typeof c === 'object' && c !== null ? c : { text: String(c) })); });
+      tb.appendChild(x);
+    });
+    t.appendChild(tb); wrap.appendChild(t);
+    return wrap;
+  }
+  function sec(title, over) {
+    var d = el('div', { cls: 'wx-sec' });
+    if (over) d.appendChild(el('p', { cls: 'wx-over', text: over }));
+    d.appendChild(el('h2', { cls: 'wx-h2', text: title }));
+    return d;
+  }
+  function soundingPicker(onChange) {
+    var s = el('select', { cls: 'wx-sel', id: 'wx-snd-pick', 'aria-label': '选择探空' });
+    D.forEach(function (x) { s.appendChild(el('option', { value: x.id, text: x.name + ' · ' + x.time.slice(0, 10) })); });
+    if (state.custom) s.appendChild(el('option', { value: 'custom', text: '自定义：' + state.custom.name }));
+    s.value = state.sid;
+    s.addEventListener('change', function () { state.sid = s.value; save(); onChange(); });
+    return s;
+  }
+  function parcelPicker(onChange) {
+    var s = el('select', { cls: 'wx-sel', id: 'wx-parcel-pick', 'aria-label': '选择气块' });
+    [['sb', '地面气块 SB（surface-based）'], ['ml', '混合层气块 ML（最低 100 hPa 混合）'], ['mu', '最不稳定气块 MU（最低 300 hPa 内 θe 最大）']]
+      .forEach(function (o) { s.appendChild(el('option', { value: o[0], text: o[1] })); });
+    s.value = state.parcel;
+    s.addEventListener('change', function () { state.parcel = s.value; save(); onChange(); });
+    return s;
+  }
+
+  /* ---------- 分区：探空图 ---------- */
+  function renderSounding(root) {
+    root.innerHTML = '';
+    var snd = currentSounding(), a = analyze(snd);
+    var head = sec('Skew-T 斜温对数压力图', '探空');
+    head.appendChild(el('p', { cls: 'wx-lead', text: snd.name + ' · ' + snd.time + '（' + (snd.note || '自定义探空') + '）。红线是环境温度，绿线是露点，紫色虚线是所选气块的抬升路径；黄色块是正浮力面积（CAPE），蓝灰色块是负浮力（CIN）。' }));
+    root.appendChild(head);
+    var ctl = el('div', { cls: 'wx-3col' });
+    ctl.appendChild(el('div', null, [el('label', { cls: 'wx-lab', for: 'wx-snd-pick', text: '探空样本' }), soundingPicker(rerender)]));
+    ctl.appendChild(el('div', null, [el('label', { cls: 'wx-lab', for: 'wx-parcel-pick', text: '气块口径' }), parcelPicker(rerender)]));
+    var imp = el('div', null, [el('label', { cls: 'wx-lab', text: '自定义' }),
+      el('div', { cls: 'wx-btnrow' }, [
+        el('button', { cls: 'wx-btn', id: 'wx-open-import', type: 'button', text: '粘一份自己的探空' })])]);
+    ctl.appendChild(imp);
+    root.appendChild(ctl);
+
+    // 导入面板的开合状态要跨重渲染保留：导入成功后会 rerender，若每次都折叠回去，
+    // 「清除自定义」按钮和刚才的提示就一起消失了（2026-09-08 集成测试实撞）。
+    var importBox = el('div', { cls: 'wx-card wx-card--soft', id: 'wx-import-box' });
+    if (!state.importOpen) importBox.hidden = true;
+    importBox.style.marginTop = '16px';
+    importBox.appendChild(el('p', { cls: 'wx-over', text: '粘贴探空数据' }));
+    importBox.appendChild(el('p', { cls: 'wx-note', text: '支持两种格式：① 怀俄明大学 TEXT:LIST 的整段表格（含 PRES/HGHT/TEMP/DWPT… 表头）；② 每行「气压 高度 温度 露点 [风向 风速]」，用空格、逗号或制表符分隔。气压 hPa、高度 m、温度 °C、风向 度、风速 m/s。' }));
+    var ta = el('textarea', { cls: 'wx-ta', id: 'wx-import-ta', placeholder: '1000.0  110  27.4  24.1  190  6.2\n925.0   760  22.0  20.5  205  9.0\n…' });
+    importBox.appendChild(ta);
+    var msg = el('div', { id: 'wx-import-msg', cls: 'wx-note', text: state.importMsg || '' });
+    importBox.appendChild(el('div', { cls: 'wx-btnrow' }, [
+      el('button', { cls: 'wx-btn wx-btn--primary', id: 'wx-do-import', type: 'button', text: '解析并使用' }),
+      el('button', { cls: 'wx-btn', id: 'wx-clear-import', type: 'button', text: '清除自定义' }), msg]));
+    root.appendChild(importBox);
+    root.querySelector('#wx-open-import').addEventListener('click', function () {
+      importBox.hidden = !importBox.hidden;
+      state.importOpen = !importBox.hidden; save();
+      if (!importBox.hidden) ta.focus();
+    });
+    root.querySelector('#wx-do-import').addEventListener('click', function () { doImport(ta.value, msg); });
+    root.querySelector('#wx-clear-import').addEventListener('click', function () {
+      state.custom = null; state.importMsg = '已清除自定义探空，回到内置样本。';
+      if (state.sid === 'custom') state.sid = D[0].id;
+      save(); rerender();
+    });
+
+    var grid = el('div', { cls: 'wx-2col' });
+    grid.style.marginTop = '20px';
+    var chart = el('div', { cls: 'wx-chartbox', id: 'wx-skewt-box' });
+    chart.appendChild(drawSkewT(a));
+    var leftCol = el('div', { style: 'min-width:0' }, [chart]);
+    leftCol.appendChild(el('div', { cls: 'wx-legend' }, [
+      legendItem('var(--wx-temp)', '环境温度'), legendItem('var(--wx-dew)', '露点'),
+      legendItem('var(--wx-parcel)', '气块抬升路径'), legendItem('#f0c9a0', '干绝热线'),
+      legendItem('#a8d5b5', '湿绝热线'), legendItem('#7fbfd8', '等饱和混合比线')]));
+    grid.appendChild(leftCol);
+
+    var right = el('div', { style: 'min-width:0' });
+    var parcel = state.parcel === 'mu' ? a.mu : state.parcel === 'ml' ? a.ml : a.sb;
+    var pname = state.parcel === 'mu' ? 'MU' : state.parcel === 'ml' ? 'ML' : 'SB';
+    right.appendChild(el('h3', { cls: 'wx-h3', text: pname + ' 气块读数' }));
+    right.appendChild(kvGrid([
+      ['CAPE', parcel ? fint(parcel.cape) : '—', 'J/kg', parcel && parcel.cape > 1000 ? 'var(--wx-yellow)' : null],
+      ['CIN', parcel ? fint(parcel.cin) : '—', 'J/kg'],
+      ['LCL', a.lcl ? fint(a.lcl.p) : '—', 'hPa'],
+      ['LCL 高度', a.heights.lcl !== undefined ? fint(a.heights.lcl) : '—', 'm AGL'],
+      ['LFC', parcel && isFinite(parcel.lfcP) ? fint(parcel.lfcP) : '无', 'hPa'],
+      ['EL 平衡高度', parcel && isFinite(parcel.elP) ? fint(parcel.elP) : '无', 'hPa'],
+      ['抬升指数 LI', fx(a.li, 1), '°C'],
+      ['可降水量 PW', fx(a.pw, 1), 'mm'],
+      ['0°C 层', a.frz ? fint(a.frz.h) : '—', 'm'],
+      ['湿球 0°C 层', a.wbz && a.wbz.h !== null ? fint(a.wbz.h) : '—', 'm'],
+      ['K 指数', fx(a.ki, 1), '°C'],
+      ['全总指数 TT', fx(a.tt, 1), '°C']
+    ]));
+    right.appendChild(el('p', { cls: 'wx-note', id: 'wx-verdict', text: verdict(a, parcel) }));
+    grid.appendChild(right);
+    root.appendChild(grid);
+
+    var lv = sec('逐层读数', '密集数据点在图上会互相压住，这里给可读的数字');
+    lv.appendChild(el('p', { cls: 'wx-lead', text: '共 ' + a.d.p.length + ' 层。θ 是位温，θe 是相当位温，θw 是湿球位温，Tw 是湿球温度，Tv 是虚温。' }));
+    root.appendChild(lv);
+    root.appendChild(levelTable(a));
+  }
+  function legendItem(color, label) {
+    return el('span', null, [el('i', { cls: 'wx-swatch', style: 'background:' + color }), document.createTextNode(label)]);
+  }
+  function verdict(a, parcel) {
+    var out = [];
+    if (!parcel || !isFinite(parcel.cape) || parcel.cape < 1) out.push('这条廓线上该气块没有正浮力，抬升到哪里都比环境冷 —— 不具备自由对流条件。');
+    else {
+      var c = parcel.cape;
+      out.push('CAPE ' + fint(c) + ' J/kg：' + (c < 300 ? '很弱' : c < 1000 ? '弱到中等' : c < 2500 ? '中等偏强' : c < 4000 ? '强' : '极强') + '。');
+      if (parcel.cin < -100) out.push('CIN ' + fint(parcel.cin) + ' J/kg 的盖子很厚，没有足够抬升就发不起来。');
+      else if (parcel.cin < -25) out.push('有 ' + fint(parcel.cin) + ' J/kg 的抑制，需要一点抬升触发。');
+      else out.push('抑制很弱，容易触发。');
+    }
+    if (a.pw !== null && isFinite(a.pw)) out.push('整层可降水量 ' + fx(a.pw, 1) + ' mm。');
+    if (a.wind && a.wind.shear6) {
+      var s6 = Math.hypot(a.wind.shear6.u, a.wind.shear6.v);
+      out.push('0–6 km 深层切变 ' + fx(s6, 1) + ' m/s' + (s6 >= 20 ? '，够超级单体的量级。' : s6 >= 12 ? '，属于组织化多单体量级。' : '，偏弱。'));
+    }
+    return out.join('');
+  }
+  function levelTable(a) {
+    var d = a.d, rows = [];
+    for (var i = 0; i < d.p.length; i++) {
+      var td = d.td[i], has = isFinite(td);
+      rows.push([
+        fx(d.p[i], 1), fint(d.h[i]), fx(d.t[i], 1), has ? fx(td, 1) : '—',
+        has ? fint(W.rhFromDewpoint(d.t[i], td) * 100) : '—',
+        has ? fx(W.satMixingRatio(d.p[i], td) * 1000, 2) : '—',
+        fx(W.potentialTemperature(d.p[i], d.t[i]), 1),
+        has ? fx(W.equivalentPotentialTemperature(d.p[i], d.t[i], td), 1) : '—',
+        has ? fx(W.wetBulbPotentialTemperature(d.p[i], d.t[i], td), 1) : '—',
+        has ? fx(W.wetBulbTemperature(d.p[i], d.t[i], td), 1) : '—',
+        has ? fx(W.virtualTemperatureFromDewpoint(d.p[i], d.t[i], td), 1) : '—',
+        isFinite(d.dir[i]) ? fint(d.dir[i]) : '—',
+        isFinite(d.spd[i]) ? fx(d.spd[i], 1) : '—'
+      ]);
+    }
+    return table(['气压 hPa', '高度 m', 'T °C', 'Td °C', 'RH %', '混合比 g/kg', 'θ K', 'θe K', 'θw K', 'Tw °C', 'Tv °C', '风向 °', '风速 m/s'], rows);
+  }
+
+  /* ---------- 探空导入 ---------- */
+  function parseSoundingText(txt) {
+    var lines = String(txt || '').split(/\r?\n/), rows = [], warn = [];
+    var wyoming = /PRES\s+HGHT\s+TEMP\s+DWPT/i.test(txt);
+    lines.forEach(function (ln) {
+      if (!ln.trim()) return;
+      if (/[A-Za-z]{3}/.test(ln) && !/^[\s\d.,\-]+$/.test(ln)) return;      // 表头/说明行
+      var cells;
+      if (wyoming && ln.length >= 21) {
+        cells = [ln.slice(0, 7), ln.slice(7, 14), ln.slice(14, 21), ln.slice(21, 28), ln.slice(42, 49), ln.slice(49, 56)]
+          .map(function (s) { return s.trim(); });
+      } else {
+        cells = ln.trim().split(/[\s,;\t]+/);
+      }
+      var n = cells.map(function (c) { return c === '' ? null : Number(c); });
+      if (n.length < 3 || !isFinite(n[0]) || n[0] === null) return;
+      var p = n[0], h = n[1], t = n[2], td = n.length > 3 ? n[3] : null;
+      var dir = n.length > 4 ? n[4] : null, spd = n.length > 5 ? n[5] : null;
+      if (!isFinite(p) || p <= 0 || p > 1200) return;
+      if (t === null || !isFinite(t)) return;
+      rows.push([p, isFinite(h) ? h : null, t, (td === null || !isFinite(td)) ? null : td,
+        (dir === null || !isFinite(dir)) ? null : dir, (spd === null || !isFinite(spd)) ? null : spd]);
+    });
+    rows.sort(function (a, b) { return b[0] - a[0]; });
+    var out = [];
+    rows.forEach(function (r) { if (!out.length || r[0] < out[out.length - 1][0]) out.push(r); });
+    if (out.some(function (r) { return r[1] === null; })) {
+      warn.push('有层次缺高度，已用标准大气补出位势高（只影响按高度分层的切变/螺旋度）。');
+      out.forEach(function (r) { if (r[1] === null) r[1] = W.isaHeightFromPressure(r[0] * 100); });
+    }
+    return { rows: out, warn: warn };
+  }
+  function doImport(txt, msgEl) {
+    var res = parseSoundingText(txt);
+    msgEl.className = 'wx-note';
+    if (res.rows.length < 4) {
+      msgEl.className = 'wx-note';
+      msgEl.textContent = '只认出 ' + res.rows.length + ' 个有效层次（至少要 4 层）。检查一下每行是不是「气压 高度 温度 露点」。';
+      return;
+    }
+    state.custom = { id: 'custom', name: '自定义探空', note: '你粘进来的数据', time: new Date().toISOString().slice(0, 16) + 'Z', station: '—', levels: res.rows };
+    state.sid = 'custom';
+    state.importOpen = true;
+    state.importMsg = '已载入 ' + res.rows.length + ' 层。' + res.warn.join('');
+    _cache = {};
+    save();
+    msgEl.textContent = state.importMsg;
+    rerender();
+  }
+
+  /* ---------- 分区：对流参数 ---------- */
+  function renderParams(root) {
+    root.innerHTML = '';
+    var snd = currentSounding(), a = analyze(snd);
+    var h = sec('三种气块的对流参数', '参数');
+    h.appendChild(el('p', { cls: 'wx-lead', text: snd.name + ' · ' + snd.time + '。三种气块口径都按 MetPy 的定义：SB 取地面那一层；ML 取最低 100 hPa 的位温与混合比加权平均后放回地面气压；MU 取最低 300 hPa 内相当位温最大的那一层。CAPE/CIN 一律做虚温订正。' }));
+    root.appendChild(h);
+    var pk = el('div', { style: 'max-width:420px;margin-bottom:18px' }, [el('label', { cls: 'wx-lab', for: 'wx-snd-pick2', text: '探空样本' })]);
+    var sel = soundingPicker(rerender); sel.id = 'wx-snd-pick2';
+    pk.appendChild(sel); root.appendChild(pk);
+
+    var rows = [];
+    [['SB 地面气块', a.sb], ['ML 混合层气块', a.ml], ['MU 最不稳定气块', a.mu]].forEach(function (x) {
+      var v = x[1];
+      rows.push([x[0], v ? fint(v.cape) : '—', v ? fint(v.cin) : '—',
+        v && isFinite(v.lfcP) ? fint(v.lfcP) : '无', v && isFinite(v.elP) ? fint(v.elP) : '无',
+        v && isFinite(v.lfcP) && isFinite(v.elP) ? fint(hgt(a, v.elP) - hgt(a, v.lfcP)) : '—']);
+    });
+    root.appendChild(table(['气块', 'CAPE J/kg', 'CIN J/kg', 'LFC hPa', 'EL hPa', '云体厚度 m'], rows));
+
+    var s2 = sec('稳定度与水汽指数');
+    root.appendChild(s2);
+    root.appendChild(kvGrid([
+      ['抬升指数 LI', fx(a.li, 1), '°C'],
+      ['沙氏指数 SI', fx(a.si, 1), '°C'],
+      ['K 指数', fx(a.ki, 1), '°C'],
+      ['全总指数 TT', fx(a.tt, 1), '°C'],
+      ['SWEAT', fint(a.sweat), ''],
+      ['可降水量 PW', fx(a.pw, 1), 'mm'],
+      ['下沉有效位能 DCAPE', a.dcape ? fint(a.dcape.dcape) : '—', 'J/kg'],
+      ['LCL 高度', a.heights.lcl !== undefined ? fint(a.heights.lcl) : '—', 'm AGL'],
+      ['LFC 高度', a.heights.lfc !== undefined ? fint(a.heights.lfc) : '—', 'm AGL'],
+      ['EL 高度', a.heights.el !== undefined ? fint(a.heights.el) : '—', 'm AGL'],
+      ['0°C 层高度', a.frz ? fint(a.frz.h) : '—', 'm'],
+      ['湿球 0°C 层', a.wbz && a.wbz.h !== null ? fint(a.wbz.h) : '—', 'm']
+    ]));
+    root.appendChild(el('p', { cls: 'wx-note', text: '读法：LI / SI 为负说明 500 hPa 上气块比环境暖，越负越不稳定；K 指数看的是中低层温湿与 700 hPa 干层；TT 是 850 与 500 hPa 的温度露点组合；DCAPE 大意味着下沉气流可以被蒸发冷却加速，是雷暴大风的指标之一；湿球 0°C 层偏低时冰雹更容易落到地面还没化完。' }));
+
+    var s3 = sec('气块起点');
+    root.appendChild(s3);
+    var prows = [];
+    if (a.sb) prows.push(['SB', fx(a.clean.p[0], 1), fx(a.clean.t[0], 1), fx(a.clean.td[0], 1), fx(W.equivalentPotentialTemperature(a.clean.p[0], a.clean.t[0], a.clean.td[0]), 1)]);
+    if (a.ml && a.ml.parcel) prows.push(['ML', fx(a.ml.parcel.p, 1), fx(a.ml.parcel.t, 2), fx(a.ml.parcel.td, 2), fx(W.equivalentPotentialTemperature(a.ml.parcel.p, a.ml.parcel.t, a.ml.parcel.td), 1)]);
+    if (a.mu && a.mu.parcel) prows.push(['MU', fx(a.mu.parcel.p, 1), fx(a.mu.parcel.t, 2), fx(a.mu.parcel.td, 2), fx(W.equivalentPotentialTemperature(a.mu.parcel.p, a.mu.parcel.t, a.mu.parcel.td), 1)]);
+    root.appendChild(table(['气块', '起始气压 hPa', '起始温度 °C', '起始露点 °C', 'θe K'], prows));
+
+    if (a.dcape && a.dcape.p && a.dcape.p.length > 1) {
+      var s4 = sec('下沉气块路径（DCAPE）');
+      root.appendChild(s4);
+      root.appendChild(el('p', { cls: 'wx-lead', text: '从 700–500 hPa 之间 θe 最低的那一层取气块，先降到湿球温度，再沿湿绝热下沉到地面。' }));
+      var dr = [];
+      for (var i = 0; i < a.dcape.p.length; i += Math.max(1, Math.floor(a.dcape.p.length / 14))) {
+        dr.push([fx(a.dcape.p[i], 1), fx(a.dcape.trace[i], 2), fx(W.interp1d(a.dcape.p[i], a.clean.p.slice().reverse(), a.clean.t.slice().reverse()), 2)]);
+      }
+      root.appendChild(table(['气压 hPa', '下沉气块 °C', '环境 °C'], dr));
+    }
+  }
+  function hgt(a, p) { return W.logInterp1d(p, a.d.p, a.d.h); }
+
+  /* ---------- 分区：风与风暴 ---------- */
+  function renderWind(root) {
+    root.innerHTML = '';
+    var snd = currentSounding(), a = analyze(snd), w = a.wind;
+    var h = sec('风矢端图与风暴参数', '风');
+    h.appendChild(el('p', { cls: 'wx-lead', text: '风矢端图把各高度的风画成一条从原点出发的折线：线越长越弯，垂直风切变与螺旋度越大。菱形是 Bunkers 方法推出的右移/左移超级单体移动矢量。' }));
+    root.appendChild(h);
+    var pk = el('div', { style: 'max-width:420px;margin-bottom:18px' }, [el('label', { cls: 'wx-lab', for: 'wx-snd-pick3', text: '探空样本' })]);
+    var sel = soundingPicker(rerender); sel.id = 'wx-snd-pick3'; pk.appendChild(sel); root.appendChild(pk);
+
+    var grid = el('div', { cls: 'wx-2col' });
+    var box = el('div', { cls: 'wx-chartbox', id: 'wx-hodo-box' });
+    box.appendChild(drawHodograph(a));
+    var left = el('div', { style: 'min-width:0' }, [box]);
+    left.appendChild(el('div', { cls: 'wx-legend' }, [
+      legendItem('#c62828', '0–1 km'), legendItem('#e08a00', '1–3 km'),
+      legendItem('#1f7a3f', '3–6 km'), legendItem('#1f5fb0', '6–9 km'), legendItem('#6a3fb0', '9–12 km'),
+      legendItem('#b3261e', 'RM 右移超级单体'), legendItem('#1f5fb0', 'LM 左移超级单体'), legendItem('#555', '平均风 = 0–6 km 气压加权平均')]));
+    grid.appendChild(left);
+
+    var right = el('div', { style: 'min-width:0' });
+    if (!w) {
+      right.appendChild(el('div', { cls: 'wx-alert', text: '这份探空的测风数据不足 6 km（或缺测太多），风暴参数算不了。换一份样本，或在探空图那一页粘一份带风向风速的数据。' }));
+    } else {
+      var s6 = Math.hypot(w.shear6.u, w.shear6.v), s1 = Math.hypot(w.shear1.u, w.shear1.v), s3 = Math.hypot(w.shear3.u, w.shear3.v);
+      right.appendChild(el('h3', { cls: 'wx-h3', text: '切变与螺旋度' }));
+      right.appendChild(kvGrid([
+        ['0–1 km 切变', fx(s1, 1), 'm/s'],
+        ['0–3 km 切变', fx(s3, 1), 'm/s'],
+        ['0–6 km 切变', fx(s6, 1), 'm/s', s6 >= 20 ? 'var(--wx-yellow)' : null],
+        ['SRH 0–1 km (右移)', fint(w.srh1.total), 'm²/s²'],
+        ['SRH 0–3 km (右移)', fint(w.srh3.total), 'm²/s²'],
+        ['SRH 0–1 km (左移)', fint(w.srh1L.total), 'm²/s²'],
+        ['SRH 0–3 km (左移)', fint(w.srh3L.total), 'm²/s²'],
+        ['临界角', fint(w.crit), '°'],
+        ['超级单体合成 SCP', fx(w.scp, 2), ''],
+        ['显著龙卷参数 STP', fx(w.stp, 2), ''],
+        ['能量螺旋度 EHI 0–1', fx(w.ehi1, 2), ''],
+        ['能量螺旋度 EHI 0–3', fx(w.ehi3, 2), '']
+      ]));
+      var rm = w.bunkers.right, lm = w.bunkers.left, mn = w.bunkers.mean;
+      right.appendChild(el('h3', { cls: 'wx-h3', text: '风暴移动矢量', style: 'margin-top:18px' }));
+      right.appendChild(table(['矢量', 'u m/s', 'v m/s', '风速 m/s', '来向 °'], [
+        ['右移 RM', fx(rm.u, 2), fx(rm.v, 2), fx(Math.hypot(rm.u, rm.v), 1), fint(W.windDirection(rm.u, rm.v))],
+        ['左移 LM', fx(lm.u, 2), fx(lm.v, 2), fx(Math.hypot(lm.u, lm.v), 1), fint(W.windDirection(lm.u, lm.v))],
+        ['0–6 km 平均风', fx(mn.u, 2), fx(mn.v, 2), fx(Math.hypot(mn.u, mn.v), 1), fint(W.windDirection(mn.u, mn.v))]
+      ]));
+      right.appendChild(el('p', { cls: 'wx-note', text: '读法：0–6 km 切变 ≥20 m/s 且 MUCAPE 够大时，超级单体是可能的；SRH 0–1 km 越大、LCL 越低，近地面涡旋越容易被拉伸。SCP/STP/EHI 是把这些量拼成的经验合成指数，只做量级参考，不是预报结论。' }));
+    }
+    grid.appendChild(right);
+    root.appendChild(grid);
+
+    var s5 = sec('各高度风与风矢端点');
+    root.appendChild(s5);
+    var rows = [];
+    if (w) {
+      var h0 = w.clean[3][0];
+      [0, 250, 500, 1000, 1500, 2000, 3000, 4000, 5000, 6000, 8000, 9000, 10000, 12000].forEach(function (z) {
+        var uu = W.interp1d(h0 + z, w.clean[3], w.clean[1]), vv = W.interp1d(h0 + z, w.clean[3], w.clean[2]);
+        if (!isFinite(uu) || !isFinite(vv)) return;
+        rows.push([String(z), fx(uu, 2), fx(vv, 2), fx(Math.hypot(uu, vv), 1), fint(W.windDirection(uu, vv)),
+          fx(Math.hypot(uu, vv) * W.metar.MS2KT, 1)]);
+      });
+    }
+    root.appendChild(table(['高度 m AGL', 'u m/s', 'v m/s', '风速 m/s', '风向 °', '风速 kt'], rows));
+  }
+
+  /* ---------- 分区：METAR / TAF ---------- */
+  var SAMPLE_METAR = [
+    'METAR ZBAA 080700Z VRB01MPS CAVOK 25/10 Q1019 NOSIG',
+    'METAR VHHH 080630Z 09014KT 060V120 9999 FEW015 SCT045 30/25 Q1006 NOSIG',
+    'SPECI KSTC 080708Z AUTO 14016G21KT 3/4SM TS BR SCT015 OVC025 18/18 A2990 RMK AO2 LTG DSNT SE TSB0656 P0037 T01830178',
+    'METAR WSSS 080700Z 16006KT 9999 FEW018CB SCT300 29/25 Q1008 NOSIG',
+    'METAR EGLL 080650Z 25012KT 8000 -RA BKN008 OVC012 14/13 Q1002 TEMPO 4000 RA BKN006'
+  ].join('\n');
+  function renderMetar(root) {
+    root.innerHTML = '';
+    var h = sec('METAR / TAF 解码', '报文');
+    h.appendChild(el('p', { cls: 'wx-lead', text: '把原始报文粘进来，逐组拆成中文明码，并算出云底、飞行气象类别、跑道侧风与顺逆风分量、密度高度与气压高度。认不出来的组会原样列出来，不会被悄悄丢掉。' }));
+    root.appendChild(h);
+    var ta = el('textarea', { cls: 'wx-ta', id: 'wx-metar-ta', 'aria-label': 'METAR 或 TAF 原始报文',
+      placeholder: 'METAR ZBAA 080700Z VRB01MPS CAVOK 25/10 Q1019 NOSIG' });
+    ta.value = state.metarText || SAMPLE_METAR;
+    root.appendChild(el('div', null, [el('label', { cls: 'wx-lab', for: 'wx-metar-ta', text: '原始报文（一行一份，METAR / SPECI / TAF 都可以）' }), ta]));
+    var ctl = el('div', { cls: 'wx-3col' });
+    ctl.style.margin = '14px 0 4px';
+    var rw = el('input', { cls: 'wx-in', id: 'wx-rwy', type: 'number', min: '1', max: '36', step: '1', value: String(state.rwy) });
+    ctl.appendChild(el('div', null, [el('label', { cls: 'wx-lab', for: 'wx-rwy', text: '跑道号（用于侧风分量，18 = 磁航向 180°）' }), rw]));
+    var ev = el('input', { cls: 'wx-in', id: 'wx-elev', type: 'number', step: '1', value: state.elevM === null ? '' : String(state.elevM), placeholder: '留空则按海平面算' });
+    ctl.appendChild(el('div', null, [el('label', { cls: 'wx-lab', for: 'wx-elev', text: '机场标高（m，用于场面气压与密度高度）' }), ev]));
+    ctl.appendChild(el('div', null, [el('label', { cls: 'wx-lab', text: ' ' }),
+      el('div', { cls: 'wx-btnrow' }, [
+        el('button', { cls: 'wx-btn wx-btn--primary', id: 'wx-decode', type: 'button', text: '解码' }),
+        el('button', { cls: 'wx-btn', id: 'wx-sample', type: 'button', text: '放一组样例' })])]));
+    root.appendChild(ctl);
+    var out = el('div', { id: 'wx-metar-out' });
+    out.style.marginTop = '20px';
+    root.appendChild(out);
+    function run() {
+      state.metarText = ta.value;
+      state.rwy = Math.max(1, Math.min(36, parseInt(rw.value, 10) || 18));
+      state.elevM = ev.value === '' ? null : Number(ev.value);
+      save();
+      decodeAll(ta.value, out);
+    }
+    root.querySelector('#wx-decode').addEventListener('click', run);
+    root.querySelector('#wx-sample').addEventListener('click', function () { ta.value = SAMPLE_METAR; run(); });
+    ta.addEventListener('input', function () { state.metarText = ta.value; });
+    run();
+  }
+  function decodeAll(txt, out) {
+    out.innerHTML = '';
+    var lines = String(txt || '').split(/\r?\n/).map(function (s) { return s.trim(); }).filter(Boolean);
+    if (!lines.length) { out.appendChild(el('div', { cls: 'wx-alert', text: '还没有报文可解码。' })); return; }
+    // 多行 TAF 合并
+    var reports = [], cur = null;
+    lines.forEach(function (l) {
+      if (/^(TAF|METAR|SPECI)\b/.test(l) || /^[A-Z][A-Z0-9]{3} \d{6}Z/.test(l) || !cur) { if (cur) reports.push(cur); cur = l; }
+      else cur += ' ' + l;
+    });
+    if (cur) reports.push(cur);
+    reports.forEach(function (raw) {
+      out.appendChild(/^TAF\b/.test(raw) || / \d{4}\/\d{4} /.test(raw) ? tafCard(raw) : metarCard(raw));
+    });
+  }
+  function metarCard(raw) {
+    var r = M.parse(raw), card = el('div', { cls: 'wx-card' });
+    card.style.marginBottom = '18px';
+    card.appendChild(el('p', { cls: 'wx-mono', text: r.raw, style: 'margin:0 0 12px;color:#111' }));
+    if (!r.ok) {
+      card.appendChild(el('div', { cls: 'wx-alert wx-alert--err', text: '这条报文缺少地名代码或观测时间，只能部分解读：' + r.warnings.join('；') }));
+    }
+    var cat = M.flightCategory(r), ceil = M.ceilingFt(r);
+    var tags = el('div', { cls: 'wx-btnrow' });
+    tags.style.marginBottom = '12px';
+    tags.appendChild(el('span', { cls: 'wx-badge wx-badge--y', text: (r.type || 'METAR') + ' ' + (r.station || '????') }));
+    if (r.time) tags.appendChild(el('span', { cls: 'wx-badge', text: '当月 ' + r.time.day + ' 日 ' + pad2(r.time.hour) + ':' + pad2(r.time.minute) + ' UTC' }));
+    if (r.auto) tags.appendChild(el('span', { cls: 'wx-badge', text: '自动观测' }));
+    if (r.cor) tags.appendChild(el('span', { cls: 'wx-badge', text: '更正报' }));
+    if (cat) tags.appendChild(el('span', { cls: 'wx-badge wx-badge--' + cat.toLowerCase(), text: cat }));
+    card.appendChild(tags);
+    card.appendChild(el('p', { cls: 'wx-lead', style: 'margin-bottom:14px', text: plainLanguage(r) }));
+
+    var items = [];
+    if (r.wind) {
+      var wd = r.wind.vrb ? '风向不定' : r.wind.unknown ? '风向缺测' : fint(r.wind.dir) + '°';
+      items.push(['风', wd + ' / ' + (r.wind.speed === null ? '—' : fx(r.wind.speedMs, 1)), 'm/s']);
+      if (r.wind.gust) items.push(['阵风', fx(r.wind.gustMs, 1), 'm/s']);
+      if (r.windVar) items.push(['风向摆动', r.windVar.from + '–' + r.windVar.to, '°']);
+      if (r.wind.speedMs !== null && r.wind.dir !== null) {
+        var c = M.runwayComponents(r.wind.dir, r.wind.speedMs, state.rwy * 10);
+        items.push(['跑道 ' + pad2(state.rwy) + ' 侧风', fx(Math.abs(c.cross), 1) + (c.cross >= 0 ? ' 右' : ' 左'), 'm/s',
+          Math.abs(c.cross) >= 7.7 ? 'var(--wx-yellow)' : null]);
+        items.push([c.head >= 0 ? '顶风分量' : '顺风分量', fx(Math.abs(c.head), 1), 'm/s']);
+      }
+    }
+    if (r.vis) items.push(['能见度', r.vis.cavok ? 'CAVOK' : M.fmtVis(r.vis), r.vis.cavok ? '≥10 km' : '']);
+    if (r.temp !== null) items.push(['气温', fx(precise(r, 't'), 1), '°C']);
+    if (r.dew !== null) items.push(['露点', fx(precise(r, 'd'), 1), '°C']);
+    if (r.temp !== null && r.dew !== null) {
+      items.push(['相对湿度', fint(W.rhFromDewpoint(precise(r, 't'), precise(r, 'd')) * 100), '%']);
+      items.push(['湿球温度', fx(W.wetBulbTemperature(stationP(r), precise(r, 't'), precise(r, 'd')), 1), '°C']);
+    }
+    if (ceil !== null) items.push(['云底', fint(ceil) + ' ft', '(' + fint(ceil * 0.3048) + ' m)']);
+    if (r.qnh && r.qnh.hPa) {
+      items.push(['修正海压 QNH', fx(r.qnh.hPa, 1), 'hPa']);
+      items.push(['QNH', fx(r.qnh.inHg, 2), 'inHg']);
+      var elev = state.elevM === null ? 0 : state.elevM;
+      var stp = W.altimeterToStationPressure(r.qnh.hPa, elev);
+      items.push(['场面气压 QFE', fx(stp, 1), 'hPa']);
+      items.push(['气压高度', fint(W.pressureAltitude(stp) * 3.28084) + ' ft', '(' + fint(W.pressureAltitude(stp)) + ' m)']);
+      if (r.temp !== null) {
+        var da = W.densityAltitude(stp, precise(r, 't'), r.dew === null ? undefined : precise(r, 'd'));
+        items.push(['密度高度', fint(da * 3.28084) + ' ft', '(' + fint(da) + ' m)', da - elev > 900 ? 'var(--wx-yellow)' : null]);
+      }
+    }
+    if (r.remarks && r.remarks.slp) items.push(['海平面气压 SLP', fx(r.remarks.slp, 1), 'hPa']);
+    card.appendChild(kvGrid(items));
+
+    if (r.clouds.length || r.skySpecial) {
+      var crows = r.clouds.map(function (c) {
+        return [c.vv ? '垂直能见度 VV' : (c.coverUnknown ? '云量缺测' : (c.cover + ' ' + (M.CLOUD_AMOUNT[c.cover] || ''))),
+          c.baseFt === null ? '缺测' : fint(c.baseFt) + ' ft',
+          c.baseFt === null ? '—' : fint(c.baseFt * 0.3048) + ' m',
+          c.type ? (M.CLOUD_TYPE[c.type] || c.type) : (c.typeUnknown ? '云状缺测' : '—')];
+      });
+      if (r.skySpecial) crows.push([r.skySpecial.special, '—', '—', r.skySpecial.text]);
+      card.appendChild(el('h3', { cls: 'wx-h3', text: '云', style: 'margin:18px 0 8px' }));
+      card.appendChild(table(['云量', '云底 (ft)', '云底 (m)', '云状'], crows));
+    }
+    if (r.weather.length || r.recent.length) {
+      card.appendChild(el('h3', { cls: 'wx-h3', text: '天气现象', style: 'margin:18px 0 8px' }));
+      card.appendChild(table(['编码', '含义', '类别'],
+        r.weather.map(function (x) { return [x.raw || 'NSW', x.text, '现时']; })
+          .concat(r.recent.map(function (x) { return [x.raw || 'RE', x.text, '最近']; }))));
+    }
+    if (r.rvr.length) {
+      card.appendChild(el('h3', { cls: 'wx-h3', text: '跑道视程 RVR', style: 'margin:18px 0 8px' }));
+      card.appendChild(table(['跑道', '数值', '变化趋势'], r.rvr.map(function (x) {
+        var s = (x.prefix === 'M' ? '小于 ' : x.prefix === 'P' ? '大于 ' : '') + x.min + ' ' + x.unit;
+        if (x.max) s += ' 到 ' + (x.maxPrefix === 'P' ? '大于 ' : '') + x.max + ' ' + x.unit;
+        return [x.rwy, s, x.trend === 'U' ? '上升' : x.trend === 'D' ? '下降' : x.trend === 'N' ? '无变化' : '—'];
+      })));
+    }
+    if (r.trend.length) {
+      card.appendChild(el('h3', { cls: 'wx-h3', text: '趋势预报', style: 'margin:18px 0 8px' }));
+      var trows = r.trend.map(function (t) {
+        var when = (t.at || []).map(function (x) { return (x.kind === 'FM' ? '自 ' : x.kind === 'TL' ? '至 ' : '于 ') + pad2(x.hour) + ':' + pad2(x.minute); }).join('，');
+        return [M.TREND_TYPE[t.type] || t.type, when || '—', (t.items || []).map(itemText).join('；') || '—'];
+      });
+      card.appendChild(table(['类型', '时间', '内容'], trows));
+    }
+    if (r.windShear.length) card.appendChild(el('div', { cls: 'wx-alert', text: '风切变告警：' + r.windShear.map(function (x) { return x.all ? '全部跑道' : x.rwy; }).join('、') }));
+    if (r.unparsed.length) card.appendChild(el('div', { cls: 'wx-alert', id: 'wx-unparsed', text: '有 ' + r.unparsed.length + ' 组没认出来（原样列出，不臆测）：' + r.unparsed.join(' ') }));
+    if (r.remarks && r.remarks.raw) card.appendChild(el('p', { cls: 'wx-note', text: '备注段原文：' + r.remarks.raw }));
+    return card;
+  }
+  function precise(r, k) {
+    if (r.remarks && r.remarks.preciseTemp) return k === 't' ? r.remarks.preciseTemp.t : r.remarks.preciseTemp.d;
+    return k === 't' ? r.temp : r.dew;
+  }
+  function stationP(r) {
+    var elev = state.elevM === null ? 0 : state.elevM;
+    if (r.qnh && r.qnh.hPa) return W.altimeterToStationPressure(r.qnh.hPa, elev);
+    return 1013.25;
+  }
+  function pad2(n) { return (n < 10 ? '0' : '') + n; }
+  function itemText(it) {
+    if (it.kind === 'wind') return '风 ' + (it.v.vrb ? '不定' : fint(it.v.dir) + '°') + ' ' + fx(it.v.speedMs, 1) + ' m/s' + (it.v.gust ? '，阵风 ' + fx(it.v.gustMs, 1) : '');
+    if (it.kind === 'vis') return '能见度 ' + M.fmtVis(it.v);
+    if (it.kind === 'weather') return it.v.text;
+    if (it.kind === 'cloud') return it.v.special ? it.v.text : ((it.v.vv ? '垂直能见度' : M.CLOUD_AMOUNT[it.v.cover] || it.v.cover) + ' ' + (it.v.baseFt === null ? '缺测' : it.v.baseFt + ' ft'));
+    if (it.kind === 'qnh') return 'QNH ' + fx(it.hPa, 0) + ' hPa';
+    if (it.kind === 'ws') return '低空风切变 ' + (it.raw || '');
+    return it.raw || '';
+  }
+  function plainLanguage(r) {
+    var s = [];
+    if (r.station) s.push(r.station + ' 机场');
+    if (r.time) s.push('当月 ' + r.time.day + ' 日世界时 ' + pad2(r.time.hour) + ':' + pad2(r.time.minute) + ' 的观测');
+    if (r.wind) {
+      if (r.wind.calm) s.push('地面静风');
+      else if (r.wind.vrb) s.push('风向不定，风速 ' + fx(r.wind.speedMs, 1) + ' m/s');
+      else if (r.wind.dir !== null) s.push('风从 ' + fint(r.wind.dir) + '° 吹来，' + fx(r.wind.speedMs, 1) + ' m/s' + (r.wind.gust ? '，阵风 ' + fx(r.wind.gustMs, 1) + ' m/s' : ''));
+    }
+    if (r.vis) s.push('能见度 ' + M.fmtVis(r.vis));
+    if (r.weather.length) s.push('现时天气：' + r.weather.map(function (x) { return x.text; }).join('、'));
+    var ceil = M.ceilingFt(r);
+    if (ceil !== null) s.push('云底 ' + fint(ceil) + ' ft（约 ' + fint(ceil * 0.3048) + ' m）');
+    else if (r.clouds.length) s.push('有云但不构成云底（无 5/8 以上的云层）');
+    if (r.temp !== null && r.dew !== null) s.push('气温 ' + fx(precise(r, 't'), 1) + '°C／露点 ' + fx(precise(r, 'd'), 1) + '°C');
+    if (r.qnh && r.qnh.hPa) s.push('QNH ' + fx(r.qnh.hPa, 0) + ' hPa');
+    var cat = M.flightCategory(r);
+    if (cat) s.push('飞行气象类别 ' + cat + (cat === 'VFR' ? '（目视飞行条件）' : cat === 'MVFR' ? '（边缘目视）' : cat === 'IFR' ? '（仪表飞行条件）' : '（低于仪表最低标准）'));
+    return s.join('，') + '。';
+  }
+  function tafCard(raw) {
+    var t = M.parseTaf(raw), card = el('div', { cls: 'wx-card' });
+    card.style.marginBottom = '18px';
+    card.appendChild(el('p', { cls: 'wx-mono', text: t.raw, style: 'margin:0 0 12px' }));
+    var tags = el('div', { cls: 'wx-btnrow' });
+    tags.style.marginBottom = '12px';
+    tags.appendChild(el('span', { cls: 'wx-badge wx-badge--y', text: 'TAF ' + (t.station || '????') }));
+    if (t.valid) tags.appendChild(el('span', { cls: 'wx-badge', text: '有效期 ' + t.valid.fromDay + '日' + pad2(t.valid.fromHour) + 'Z → ' + t.valid.toDay + '日' + pad2(t.valid.toHour) + 'Z' }));
+    if (t.amd) tags.appendChild(el('span', { cls: 'wx-badge', text: '修订报' }));
+    card.appendChild(tags);
+    var rows = t.groups.map(function (g) {
+      var when = g.type === 'FM' ? ('自 ' + g.from.day + '日' + pad2(g.from.hour) + ':' + pad2(g.from.minute) + 'Z')
+        : g.period ? (g.period.fromDay + '日' + pad2(g.period.fromHour) + 'Z–' + g.period.toDay + '日' + pad2(g.period.toHour) + 'Z') : '起始时段';
+      var label = g.type === 'INIT' ? '基本预报' : g.type === 'FM' ? '转为' : g.type === 'BECMG' ? '渐变为' : g.type === 'TEMPO' ? '短时' : g.type;
+      if (g.prob) label = (g.prob + '% 概率 ') + label;
+      if (g.inter) label = '间歇 ' + label;
+      return [label, when, g.items.map(itemText).join('；') || '—'];
+    });
+    card.appendChild(table(['类型', '时间', '内容'], rows));
+    if (t.temps && t.temps.length) {
+      card.appendChild(el('p', { cls: 'wx-note', text: '预报温度：' + t.temps.map(function (x) { return (x.kind === 'TX' ? '最高 ' : '最低 ') + x.value + '°C（' + x.day + '日' + pad2(x.hour) + 'Z）'; }).join('，') }));
+    }
+    if (t.unparsed.length) card.appendChild(el('div', { cls: 'wx-alert', text: '有 ' + t.unparsed.length + ' 组没认出来：' + t.unparsed.join(' ') }));
+    return card;
+  }
+
+  /* ---------- 分区：湿空气与高度 ---------- */
+  function renderCalc(root) {
+    root.innerHTML = '';
+    var h = sec('湿空气与高度换算', '计算器');
+    h.appendChild(el('p', { cls: 'wx-lead', text: '左边给气压、温度和一个湿度量，右边把整套湿空气参数一次算全；下面是 ICAO 标准大气与高度表拨正。' }));
+    root.appendChild(h);
+    var grid = el('div', { cls: 'wx-2col' });
+    var form = el('div', { cls: 'wx-card wx-card--soft' });
+    function num(id, label, val, step, min, max) {
+      var i = el('input', { cls: 'wx-in', id: id, type: 'number', value: String(val), step: String(step), min: min === undefined ? null : String(min), max: max === undefined ? null : String(max) });
+      form.appendChild(el('div', { style: 'margin-bottom:12px' }, [el('label', { cls: 'wx-lab', for: id, text: label }), i]));
+      return i;
+    }
+    var pIn = num('wx-c-p', '气压 (hPa)', 1000, 0.1, 1, 1100);
+    var tIn = num('wx-c-t', '温度 (°C)', 26, 0.1, -100, 60);
+    var modeSel = el('select', { cls: 'wx-sel', id: 'wx-c-mode' });
+    [['td', '露点 (°C)'], ['rh', '相对湿度 (%)'], ['w', '混合比 (g/kg)'], ['tw', '湿球温度 (°C)']].forEach(function (o) { modeSel.appendChild(el('option', { value: o[0], text: o[1] })); });
+    form.appendChild(el('div', { style: 'margin-bottom:12px' }, [el('label', { cls: 'wx-lab', for: 'wx-c-mode', text: '湿度以什么给出' }), modeSel]));
+    var vIn = num('wx-c-v', '湿度值', 20, 0.1);
+    var out = el('div', { style: 'min-width:0' });
+    grid.appendChild(form); grid.appendChild(out); root.appendChild(grid);
+
+    function calc() {
+      var p = Number(pIn.value), t = Number(tIn.value), v = Number(vIn.value), mode = modeSel.value;
+      out.innerHTML = '';
+      if (!isFinite(p) || !isFinite(t) || !isFinite(v) || p <= 0 || p > 1100) {
+        out.appendChild(el('div', { cls: 'wx-alert wx-alert--err', id: 'wx-calc-err', text: '气压要在 1–1100 hPa 之间，温度与湿度值要是数字。' }));
+        return;
+      }
+      var td;
+      if (mode === 'td') td = v;
+      else if (mode === 'rh') { if (v <= 0 || v > 100) { out.appendChild(el('div', { cls: 'wx-alert wx-alert--err', id: 'wx-calc-err', text: '相对湿度要在 0–100% 之间。' })); return; } td = W.dewpointFromRH(t, v / 100); }
+      else if (mode === 'w') { if (v <= 0) { out.appendChild(el('div', { cls: 'wx-alert wx-alert--err', id: 'wx-calc-err', text: '混合比要大于 0。' })); return; } td = W.dewpointFromE(W.vaporPressureFromW(p, v / 1000)); }
+      else { td = solveTdFromTw(p, t, v); if (td === null) { out.appendChild(el('div', { cls: 'wx-alert wx-alert--err', id: 'wx-calc-err', text: '这个湿球温度在该气压和干球温度下无解（湿球必须落在露点和干球之间）。' })); return; } }
+      if (td > t + 0.05) { out.appendChild(el('div', { cls: 'wx-alert wx-alert--err', id: 'wx-calc-err', text: '露点比气温还高（过饱和），检查输入。' })); return; }
+      if (W.svp(td) >= p) { out.appendChild(el('div', { cls: 'wx-alert wx-alert--err', id: 'wx-calc-err', text: '这个温度下的饱和水汽压已经超过总气压，物理上不成立。' })); return; }
+      var w = W.satMixingRatio(p, td), l = W.lcl(p, t, td);
+      out.appendChild(el('h3', { cls: 'wx-h3', text: '湿空气参数' }));
+      out.appendChild(kvGrid([
+        ['露点', fx(td, 2), '°C'],
+        ['相对湿度', fx(W.rhFromDewpoint(t, td) * 100, 1), '%'],
+        ['水汽压', fx(W.svp(td), 3), 'hPa'],
+        ['饱和水汽压', fx(W.svp(t), 3), 'hPa'],
+        ['混合比', fx(w * 1000, 3), 'g/kg'],
+        ['比湿', fx(W.specificHumidityFromW(w) * 1000, 3), 'g/kg'],
+        ['虚温', fx(W.virtualTemperatureFromDewpoint(p, t, td), 2), '°C'],
+        ['湿球温度', fx(W.wetBulbTemperature(p, t, td), 2), '°C'],
+        ['位温 θ', fx(W.potentialTemperature(p, t), 2), 'K'],
+        ['相当位温 θe', fx(W.equivalentPotentialTemperature(p, t, td), 2), 'K'],
+        ['湿球位温 θw', fx(W.wetBulbPotentialTemperature(p, t, td), 2), 'K'],
+        ['空气密度', fx(W.density(p, t, w), 4), 'kg/m³'],
+        ['抬升凝结高度 LCL', fx(l.p, 1), 'hPa'],
+        ['LCL 温度', fx(l.t, 2), '°C'],
+        ['体感（热指数）', fx(W.heatIndex(t, Math.min(1, W.rhFromDewpoint(t, td))), 1), '°C']
+      ]));
+      out.appendChild(el('p', { cls: 'wx-note', id: 'wx-calc-note', text: '相对湿度按「水面饱和」口径（含 0°C 以下的过冷水面），与 MetPy 默认一致；若按冰面算，同温度下的相对湿度会更高。' }));
+    }
+    [pIn, tIn, vIn].forEach(function (x) { x.addEventListener('input', calc); });
+    modeSel.addEventListener('change', function () {
+      var d = { td: [20, 0.1], rh: [70, 1], w: [12, 0.1], tw: [22, 0.1] }[modeSel.value];
+      vIn.value = String(d[0]); vIn.step = String(d[1]); calc();
+    });
+    calc();
+
+    // 标准大气 + 高度表
+    var s2 = sec('ICAO 标准大气与高度表拨正');
+    root.appendChild(s2);
+    root.appendChild(el('p', { cls: 'wx-lead', text: '给出机场标高与 QNH，算出场面气压、气压高度和密度高度 —— 高原、高温、高湿的日子里密度高度会远高于场地实际标高，直接决定起飞距离和爬升率。' }));
+    var g2 = el('div', { cls: 'wx-3col' });
+    function num2(id, label, val, step) {
+      var i = el('input', { cls: 'wx-in', id: id, type: 'number', value: String(val), step: String(step) });
+      g2.appendChild(el('div', null, [el('label', { cls: 'wx-lab', for: id, text: label }), i]));
+      return i;
+    }
+    var eIn = num2('wx-a-elev', '机场标高 (m)', 1200, 1);
+    var qIn = num2('wx-a-qnh', 'QNH (hPa)', 1013, 0.1);
+    var atIn = num2('wx-a-t', '场面温度 (°C)', 32, 0.1);
+    var adIn = num2('wx-a-td', '场面露点 (°C)', 20, 0.1);
+    root.appendChild(g2);
+    var aout = el('div'); aout.style.marginTop = '16px'; root.appendChild(aout);
+    function calcAlt() {
+      var e = Number(eIn.value), q = Number(qIn.value), t = Number(atIn.value), d = Number(adIn.value);
+      aout.innerHTML = '';
+      if (!isFinite(e) || !isFinite(q) || !isFinite(t) || q < 850 || q > 1100) {
+        aout.appendChild(el('div', { cls: 'wx-alert wx-alert--err', id: 'wx-alt-err', text: 'QNH 要在 850–1100 hPa 之间，标高与温度要是数字。' }));
+        return;
+      }
+      var stp = W.altimeterToStationPressure(q, e);
+      var pa = W.pressureAltitude(stp);
+      var da = W.densityAltitude(stp, t, isFinite(d) ? Math.min(d, t) : undefined);
+      var isa = W.isaAt(W.geometricToGeopotential(e));
+      aout.appendChild(kvGrid([
+        ['场面气压 QFE', fx(stp, 1), 'hPa'],
+        ['气压高度', fint(pa) + ' m', '(' + fint(pa * 3.28084) + ' ft)'],
+        ['密度高度', fint(da) + ' m', '(' + fint(da * 3.28084) + ' ft)', da - e > 900 ? 'var(--wx-yellow)' : null],
+        ['密度高度比标高高', fint(da - e) + ' m', '(' + fint((da - e) * 3.28084) + ' ft)'],
+        ['该高度的标准大气温度', fx(isa.T - W.C.ZEROC, 1), '°C'],
+        ['温度偏离标准大气', fx(t - (isa.T - W.C.ZEROC), 1), 'K'],
+        ['标准大气气压', fx(isa.p / 100, 1), 'hPa'],
+        ['实际空气密度', fx((stp * 100) / (W.C.Rd * W.virtualTemperature(t + W.C.ZEROC, isFinite(d) ? W.satMixingRatio(stp, Math.min(d, t)) : 0)), 4), 'kg/m³']
+      ]));
+      var rows = [];
+      [0, 1000, 2000, 3000, 5000, 8000, 10000, 12000, 16000, 20000].forEach(function (z) {
+        var s = W.isaAt(z);
+        rows.push([fint(z), fint(z * 3.28084), fx(s.T - W.C.ZEROC, 2), fx(s.p / 100, 2), fx(s.rho, 4)]);
+      });
+      aout.appendChild(el('h3', { cls: 'wx-h3', text: 'ICAO 标准大气表', style: 'margin:20px 0 8px' }));
+      aout.appendChild(table(['位势高 m', '≈ ft', '温度 °C', '气压 hPa', '密度 kg/m³'], rows));
+      aout.appendChild(el('p', { cls: 'wx-note', text: '本表由 ISO 2533 / ICAO 标准大气的分层公式现算（T₀ 288.15 K、p₀ 1013.25 hPa、对流层递减率 6.5 K/km、R 287.05287 J/(kg·K)），已与 Python 的 ambiance 库逐点核对。' }));
+    }
+    [eIn, qIn, atIn, adIn].forEach(function (x) { x.addEventListener('input', calcAlt); });
+    calcAlt();
+
+    // 侧风
+    var s3 = sec('跑道侧风分量');
+    root.appendChild(s3);
+    var g3 = el('div', { cls: 'wx-3col' });
+    function num3(id, label, val, step) {
+      var i = el('input', { cls: 'wx-in', id: id, type: 'number', value: String(val), step: String(step) });
+      g3.appendChild(el('div', null, [el('label', { cls: 'wx-lab', for: id, text: label }), i]));
+      return i;
+    }
+    var rIn = num3('wx-x-rwy', '跑道号 (01–36)', 18, 1);
+    var dIn = num3('wx-x-dir', '风向 (°)', 210, 1);
+    var sIn = num3('wx-x-spd', '风速 (m/s)', 9, 0.1);
+    root.appendChild(g3);
+    var xout = el('div'); xout.style.marginTop = '16px'; root.appendChild(xout);
+    function calcX() {
+      var rr = Number(rIn.value), dd = Number(dIn.value), ss = Number(sIn.value);
+      xout.innerHTML = '';
+      if (!isFinite(rr) || rr < 1 || rr > 36 || !isFinite(dd) || !isFinite(ss) || ss < 0) {
+        xout.appendChild(el('div', { cls: 'wx-alert wx-alert--err', id: 'wx-x-err', text: '跑道号要在 01–36 之间，风向 0–360，风速不能是负数。' }));
+        return;
+      }
+      var c = M.runwayComponents(dd, ss, rr * 10);
+      xout.appendChild(kvGrid([
+        ['跑道磁航向', fint(rr * 10), '°'],
+        ['侧风分量', fx(Math.abs(c.cross), 2) + (c.cross >= 0 ? ' 自右' : ' 自左'), 'm/s', Math.abs(c.cross) >= 7.7 ? 'var(--wx-yellow)' : null],
+        ['侧风分量', fx(Math.abs(c.cross) * W.metar.MS2KT, 1), 'kt'],
+        [c.head >= 0 ? '顶风分量' : '顺风分量', fx(Math.abs(c.head), 2), 'm/s'],
+        [c.head >= 0 ? '顶风分量' : '顺风分量', fx(Math.abs(c.head) * W.metar.MS2KT, 1), 'kt'],
+        ['风与跑道夹角', fint(Math.abs(((dd - rr * 10 + 540) % 360) - 180)), '°']
+      ]));
+      xout.appendChild(el('p', { cls: 'wx-note', text: c.head < 0 ? '注意：这是顺风起降。' : '侧风 15 kt（约 7.7 m/s）以上时多数轻型机接近侧风限制，具体以该机型的最大演示侧风为准。' }));
+    }
+    [rIn, dIn, sIn].forEach(function (x) { x.addEventListener('input', calcX); });
+    calcX();
+  }
+  /** 由湿球温度反解露点（湿球在 [露点, 干球] 上单调） */
+  function solveTdFromTw(p, t, tw) {
+    if (tw > t + 1e-6) return null;
+    var lo = -120, hi = t;
+    if (W.wetBulbTemperature(p, t, hi) < tw - 1e-6) return null;
+    for (var i = 0; i < 90; i++) {
+      var mid = (lo + hi) / 2;
+      var v = W.wetBulbTemperature(p, t, mid);
+      if (!isFinite(v)) { lo = mid; continue; }
+      if (v < tw) lo = mid; else hi = mid;
+    }
+    var res = (lo + hi) / 2;
+    return Math.abs(W.wetBulbTemperature(p, t, res) - tw) < 0.01 ? res : null;
+  }
+
+  /* ---------- 分区：口径与验证 ---------- */
+  var VERIFY = {
+    total: 0,
+    // 这些数字是离线对拍套件（从发布出去的这份 HTML 里抠引擎复跑）实际打印出来的，不是估的。
+    // total 单独钉死成套件跑出来的那个字面量，不由 rows 求和推导 —— 同源推导的守卫恒真，测不出改错。
+    total: 78683,
+    rows: [
+      ['MetPy 1.7.1 · 14 份真实探空逐层与逐参数', 644, '饱和水汽压/混合比/相对湿度/位温/相当位温/湿球位温/虚温/密度/湿球温度/风分量/气块廓线/LCL/SB·ML·MU 的 CAPE·CIN·LFC·EL/LI·K·TT·SI·PW·DCAPE/切变·Bunkers·SRH·临界角'],
+      ['MetPy 1.7.1 · 随机输入 fuzz', 51274, '2991 组随机 (气压, 温度, 露点) 标量 + 400 条随机廓线；含热指数与风寒'],
+      ['NOAA Aviation Weather Center 官方解码 + python-metar', 22301, '1538 份当日真实 METAR：站号/温度/露点/风向/风速/修正海压/云层/能见度/飞行类别/观测日'],
+      ['ambiance（ISO 2533 / ICAO 标准大气）+ psychrolib 口径上界', 3607, '900 个高度上的位势高/温度/气压/密度，加气压↔高度与密度→高度的反解自洽，再加 ASHRAE 口径差的上界守卫'],
+      ['822 份真实 TAF 的结构解析 + 能力清单守卫 + 报文重建往返', 857, '每份 TAF 都要解出地名代码与有效期；页面上列出的 22 种天气现象、8 种描述符、4 种云量逐条验证真能解出来；600 份报文拆开重拼再解，关键字段必须一致']
+    ]
+  };
+
+  function renderAbout(root) {
+    root.innerHTML = '';
+    var h = sec('数值口径与验证', '说明');
+    h.appendChild(el('p', { cls: 'wx-lead', text: '气象计算里同一个名字常常对应好几套公式，算出来的数会差一截。这一页把本工具用的是哪一套写清楚，并列出交叉验证的规模 —— 这些数字是离线对拍套件实际跑出来的，不是估的。' }));
+    root.appendChild(h);
+
+    var rows = VERIFY.rows.map(function (r) { return [r[0], { text: String(r[1]), 'data-wx-n': String(r[1]) }, r[2]]; });
+    root.appendChild(table(['对拍对象', '断言条数', '覆盖内容'], rows));
+    root.appendChild(el('p', { cls: 'wx-note' , html: '合计 <b id="wx-verify-total" data-wx-total="' + VERIFY.total + '">' + VERIFY.total.toLocaleString('en-US') + '</b> 条，0 条失败。离线套件是从**发布出去的这份 HTML** 里把引擎抠出来重跑的，不是跑开发态源码。'.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>') }));
+
+    var s2 = sec('用的是哪一套公式');
+    root.appendChild(s2);
+    root.appendChild(table(['量', '本工具的口径', '备注'], [
+      ['饱和水汽压', '潜热随温度线性变化的克劳修斯-克拉珀龙积分解（MetPy 1.7 的现行式）', '不是常见的 Bolton(1980) 经验式；两者在 -40…50°C 相差最多约 0.5%'],
+      ['由水汽压反解露点', 'Bolton(1980) 的经验反式', 'MetPy 自己也是这么配的：它的正算与反算不同源，往返最大差 0.26 K（55°C 处）。本工具照抄这一配置以便逐位对齐'],
+      ['抬升凝结高度 LCL', 'Romps(2017) 的解析解（Lambert W 的 −1 支）', '不是迭代法；页内自带 Lambert W 实现，与 SciPy 的 lambertw 对齐'],
+      ['湿绝热（假绝热）', '把 MetPy 的同一条常微分方程用自适应 Dormand-Prince RK45 在 ln p 上积分', '本工具比 MetPy 的默认解算更收敛：与 DOP853/Radau(1e-13) 一致到 2e-10 °C，MetPy 默认设置在同一算例上偏 8.7e-5 °C'],
+      ['CAPE / CIN', '虚温订正后按 −Rd·∫(T′v−Tv) d(ln p) 积分，LFC 取最低、EL 取最高', '与 MetPy 的 cape_cin 逐位一致（含穿越点插值与零点补插）'],
+      ['相当位温 θe', 'Bolton(1980) 式 (21)+(39)', ''],
+      ['湿球位温 θw', 'Davies-Jones(2008) 的多项式反解', ''],
+      ['SWEAT 指数', '美国空军气象局经典式', '⚠️ 单源：MetPy 没有这一项，未与第二套实现对拍'],
+      ['标准大气', 'ISO 2533 / ICAO：T₀ 288.15 K、p₀ 1013.25 hPa、R 287.05287', '与 ambiance 在对流层逐位一致；平流层以上因 ISO 公布的是取整后的分层基准气压而相差 ≤2.1×10⁻⁶ 相对量'],
+      ['飞行气象类别', 'FAA/NWS：云底 <500 ft 或能见度 <1 sm 为 LIFR，依此分档', '与 NOAA 的 fltCat 在 1453 份报文上一致'],
+      ['密度高度', '按虚温算实际密度，再在标准大气里反查高度', '给了露点就做湿度订正；不给就按干空气算']
+    ]));
+
+    var s3 = sec('与第二套实现（ASHRAE / psychrolib）的差异');
+    root.appendChild(s3);
+    root.appendChild(el('p', { cls: 'wx-lead', text: '这不是误差，是口径差。同一个「相对湿度 70%」，两套标准给出的水汽含量本来就不完全相同。' }));
+    root.appendChild(table(['量（水面段，5°C 以上）', '与 psychrolib 的最大差'], [
+      ['饱和水汽压', '0.650%'],
+      ['露点', '0.175 K'],
+      ['湿球温度', '0.650 K'],
+      ['湿空气密度', '0.00059 kg/m³'],
+      ['0°C 以下', 'psychrolib 自动切到冰面饱和，本工具恒用过冷水面 —— 同温度下相对湿度口径相差可达 78.7%，这一段两者不可直接比']
+    ]));
+
+    var s4 = sec('数据来源与边界');
+    root.appendChild(s4);
+    root.appendChild(el('div', { cls: 'wx-3col' }, [
+      el('div', { cls: 'wx-card' }, [el('h3', { cls: 'wx-h3', text: '探空样本' }),
+        el('p', { cls: 'wx-note', text: '14 份真实探空取自怀俄明大学高空资料存档（2024 年），涵盖强对流、高原干对流、冬季逆温、热带海洋、信风逆温、沙漠、北极与南极。原始高分辨率廓线按「以 ln p 为横轴的最大误差」细化到 56–120 层，保留逆温与干层结构。' })]),
+      el('div', { cls: 'wx-card' }, [el('h3', { cls: 'wx-h3', text: '报文样本' }),
+        el('p', { cls: 'wx-note', text: '对拍用的 1538 份 METAR 与 822 份 TAF 取自美国国家气象局 Aviation Weather Center 的公开接口，覆盖东亚、北美、欧洲、南亚、大洋洲、南美与非洲。' })]),
+      el('div', { cls: 'wx-card' }, [el('h3', { cls: 'wx-h3', text: '这工具不做什么' }),
+        el('p', { cls: 'wx-note', text: '不联网取实时数据（页面完全离线运行，你粘什么它算什么）；不做预报；合成指数（SCP/STP/EHI/SWEAT）只是把若干参数拼起来的经验量，不能当作结论。飞行决策请以官方气象服务与放行程序为准。' })])
+    ]));
+
+    var s5 = sec('现场复算（这几个数是打开页面时当场算的）');
+    root.appendChild(s5);
+    var demoP = 1000, demoT = 26, demoTd = 20;
+    var dl = W.lcl(demoP, demoT, demoTd);
+    var isa5 = W.isaAt(5000);
+    root.appendChild(table(['算例', '结果'], [
+      ['LCL(1000 hPa, 26°C, 露点 20°C) 的气压', { text: fx(dl.p, 4) + ' hPa', id: 'wx-live-lcl' }],
+      ['同上的 LCL 温度', { text: fx(dl.t, 4) + ' °C', id: 'wx-live-lclt' }],
+      ['标准大气 5000 m 位势高处的气压', { text: fx(isa5.p / 100, 4) + ' hPa', id: 'wx-live-isa' }],
+      ['湿球温度(1000 hPa, 26°C, 露点 20°C)', { text: fx(W.wetBulbTemperature(demoP, demoT, demoTd), 4) + ' °C', id: 'wx-live-tw' }]
+    ]));
+  }
+
+  /* ---------- 分区切换 ---------- */
+  var PANELS = { sounding: renderSounding, params: renderParams, wind: renderWind, metar: renderMetar, calc: renderCalc, about: renderAbout };
+  var rendered = {};
+  function show(tab) {
+    state.tab = tab; save();
+    Object.keys(PANELS).forEach(function (k) {
+      var p = document.getElementById('wx-p-' + k), b = document.getElementById('wx-tab-' + k);
+      var on = k === tab;
+      p.hidden = !on;
+      b.setAttribute('aria-selected', on ? 'true' : 'false');
+      if (on && !rendered[k]) { PANELS[k](p); rendered[k] = true; }
+    });
+  }
+  function rerender() {
+    _cache = {};
+    rendered = {};
+    Object.keys(PANELS).forEach(function (k) { if (k !== state.tab) document.getElementById('wx-p-' + k).innerHTML = ''; });
+    PANELS[state.tab](document.getElementById('wx-p-' + state.tab));
+    rendered[state.tab] = true;
+  }
+  function init() {
+    var tabs = Array.prototype.slice.call(document.querySelectorAll('.wx-tab'));
+    tabs.forEach(function (b, i) {
+      b.addEventListener('click', function () { show(b.id.replace('wx-tab-', '')); });
+      b.addEventListener('keydown', function (ev) {
+        var d = ev.key === 'ArrowRight' ? 1 : ev.key === 'ArrowLeft' ? -1 : 0;
+        if (!d) return;
+        ev.preventDefault();
+        var n = tabs[(i + d + tabs.length) % tabs.length];
+        n.focus(); n.click();
+      });
+    });
+    if (!PANELS[state.tab]) state.tab = 'sounding';
+    if (state.sid !== 'custom' && !D.some(function (x) { return x.id === state.sid; })) state.sid = D[0].id;
+    if (state.sid === 'custom' && !state.custom) state.sid = D[0].id;
+    show(state.tab);
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
+})();
+</script>
