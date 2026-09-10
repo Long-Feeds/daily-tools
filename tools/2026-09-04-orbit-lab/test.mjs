@@ -52,7 +52,10 @@ export default async ({ page, toolURL, screenshot, assert }) => {
   const live = page.locator('#ol-live');
   const lat = parseFloat(await live.getAttribute('data-lat'));
   const alt = parseFloat(await live.getAttribute('data-alt'));
-  A(Math.abs(lat) <= 51.7, `ISS 星下点纬度不可能超过倾角，实得 ${lat}`);
+  // 倾角 51.6° 是**地心**倾角，而星下点给的是**大地纬度**：arctan(tan i /(1−f)²) = 51.794°，
+  // 再留 TLE 倾角漂移的余量 ⇒ 上界取 51.85。原来写 51.7 会在 ISS 正好走到最高纬度时随机变红
+  // （2026-09-10 实撞：实得 51.7772，同一份代码下一次跑又是绿的），属计时性 flake。
+  A(Math.abs(lat) <= 51.85, `ISS 星下点纬度不可能超过倾角对应的大地纬度，实得 ${lat}`);
   A(alt > 380 && alt < 460, `ISS 高度应在 380–460 km，实得 ${alt}`);
 
   /* ---------- 3. 切到别的卫星：深空分支 ---------- */
