@@ -1,0 +1,3030 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>排队与产能工作台 · Queue Lab</title>
+<meta name="description" content="Erlang 定坐席、排队网络找瓶颈、离散事件仿真验证、日内排班出班表 —— 纯前端，零后端。">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+[hidden]{display:none!important}
+:root{
+  --ql-ink:#111111; --ql-canvas:#ffffff; --ql-cloud:#f5f5f5; --ql-charcoal:#39393b;
+  --ql-ash:#4b4b4d; --ql-mute:#707072; --ql-stone:#9e9ea0;
+  --ql-hair:#cacacb; --ql-hair-soft:#e5e5e5;
+  --ql-sale:#d30005; --ql-sale-deep:#780700; --ql-ok:#007d48; --ql-info:#1151ff;
+  --ql-s1:8px; --ql-s2:12px; --ql-s3:18px; --ql-s4:24px; --ql-s5:30px; --ql-sec:48px;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--ql-canvas);color:var(--ql-ink);
+  font-family:'Inter',-apple-system,BlinkMacSystemFont,system-ui,'PingFang SC','Microsoft YaHei',sans-serif;
+  font-size:16px;line-height:1.5;-webkit-font-smoothing:antialiased}
+.ql-num,input[type=number],table.ql-tbl td,table.ql-tbl th{font-variant-numeric:tabular-nums;
+  font-feature-settings:'tnum' 1}
+a{color:var(--ql-ink)}
+.ql-wrap{max-width:1180px;margin:0 auto;padding:0 var(--ql-s4)}
+
+/* ── 顶栏 ── */
+.ql-top{height:56px;display:flex;align-items:center;background:var(--ql-canvas);
+  box-shadow:inset 0 -1px 0 var(--ql-hair-soft)}
+.ql-back{font-size:14px;font-weight:500;text-decoration:none;display:inline-flex;align-items:center;
+  gap:6px;padding:8px 0}
+.ql-back:hover{text-decoration:underline}
+
+/* ── campaign hero（Nike 的招牌：黑底 + 巨号全大写标题） ── */
+.ql-hero{background:var(--ql-ink);color:#fff;margin-bottom:var(--ql-sec)}
+.ql-hero-in{max-width:1180px;margin:0 auto;padding:var(--ql-s5) var(--ql-s4) var(--ql-s4);
+  display:grid;grid-template-columns:minmax(0,1fr) minmax(0,520px);gap:var(--ql-s4);align-items:center}
+.ql-eyebrow{margin:0 0 var(--ql-s2);font-size:12px;font-weight:500;letter-spacing:.14em;color:#9e9ea0}
+.ql-display{margin:0;font-family:'Anton',Impact,'Helvetica Neue',Arial,sans-serif;font-weight:400;
+  font-size:clamp(46px,8.4vw,96px);line-height:.88;letter-spacing:-.005em}
+.ql-lede{margin:var(--ql-s3) 0 0;font-size:16px;line-height:1.6;color:#d7d7d8;max-width:46ch}
+.ql-hero-fig{width:100%;height:auto;display:block}
+.ql-hero-kv{display:flex;gap:var(--ql-s4);margin-top:var(--ql-s4);flex-wrap:wrap}
+.ql-hero-kv b{display:block;font-size:22px;font-weight:500;line-height:1.2}
+.ql-hero-kv span{font-size:12px;font-weight:500;color:#9e9ea0}
+
+/* ── 页签（Nike 的 filter chip） ── */
+.ql-tabs{position:sticky;top:0;z-index:20;background:var(--ql-canvas);
+  box-shadow:inset 0 -1px 0 var(--ql-hair-soft)}
+.ql-tabs-in{max-width:1180px;margin:0 auto;padding:var(--ql-s2) var(--ql-s4);display:flex;gap:var(--ql-s1);
+  overflow-x:auto;-webkit-overflow-scrolling:touch}
+.ql-chip{flex:0 0 auto;border:1px solid var(--ql-hair);background:var(--ql-canvas);color:var(--ql-ink);
+  font:500 15px/1.5 'Inter',sans-serif;padding:8px 18px;border-radius:9999px;cursor:pointer;white-space:nowrap}
+.ql-chip:hover{border-color:var(--ql-ink)}
+.ql-chip[aria-selected=true],.ql-chip.ql-on{background:var(--ql-ink);color:#fff;border-color:var(--ql-ink)}
+.ql-chip:focus-visible{outline:2px solid var(--ql-info);outline-offset:2px}
+
+/* ── 版块 ── */
+.ql-pane{padding-top:var(--ql-s4);padding-bottom:var(--ql-sec)}
+.ql-sec-head{display:flex;align-items:baseline;gap:var(--ql-s2);margin:var(--ql-sec) 0 var(--ql-s3);
+  padding-top:var(--ql-s3);border-top:1px solid var(--ql-hair)}
+.ql-pane>.ql-sec-head:first-child{margin-top:0;border-top:0;padding-top:0}
+.ql-sec-no{font-family:'Anton',Impact,sans-serif;font-weight:400;font-size:22px;color:var(--ql-stone)}
+.ql-sec-head h2{margin:0;font-size:clamp(22px,3vw,32px);font-weight:500;line-height:1.2}
+.ql-sec-head p{margin:0;font-size:14px;color:var(--ql-mute)}
+
+/* ── 表单 ── */
+.ql-grid{display:grid;gap:var(--ql-s4)}
+.ql-cols{display:grid;grid-template-columns:minmax(0,320px) minmax(0,1fr);gap:var(--ql-s4);align-items:start}
+.ql-field{display:block;margin-bottom:var(--ql-s2);min-width:0}
+.ql-field>span{display:block;font-size:12px;font-weight:500;color:var(--ql-mute);margin-bottom:4px}
+input[type=number],input[type=text],select{width:100%;min-width:110px;height:40px;padding:0 10px;
+  border:1px solid var(--ql-hair);border-radius:0;background:var(--ql-canvas);color:var(--ql-ink);
+  font:500 15px/1 'Inter',sans-serif}
+select{height:40px;padding-right:8px}
+input[type=number]:focus,select:focus,input[type=text]:focus{outline:2px solid var(--ql-ink);outline-offset:-2px;border-color:var(--ql-ink)}
+input[type=number]:disabled,select:disabled{background:var(--ql-cloud);color:var(--ql-stone)}
+.ql-btn{height:44px;min-width:110px;padding:0 26px;border:0;border-radius:9999px;background:var(--ql-ink);
+  color:#fff;font:500 15px/1 'Inter',sans-serif;cursor:pointer}
+.ql-btn:hover{background:#000}
+.ql-btn.ql-alt{background:var(--ql-cloud);color:var(--ql-ink)}
+.ql-btn:focus-visible{outline:2px solid var(--ql-info);outline-offset:2px}
+.ql-btnrow{display:flex;gap:var(--ql-s1);flex-wrap:wrap;margin-top:var(--ql-s2)}
+.ql-seg{display:flex;gap:6px;flex-wrap:wrap}
+.ql-seg .ql-chip{font-size:14px;padding:7px 15px}
+fieldset{border:1px solid var(--ql-hair);border-radius:0;padding:var(--ql-s2) var(--ql-s2) 2px;margin:0 0 var(--ql-s2);min-width:0}
+legend{font-size:12px;font-weight:500;color:var(--ql-mute);padding:0 6px}
+
+/* ── 卡片 / 读数（Nike：零圆角、零阴影，靠 hairline 和 cloud 分层） ── */
+.ql-card{background:var(--ql-canvas);border:1px solid var(--ql-hair);padding:var(--ql-s3);min-width:0}
+.ql-card.ql-flat{border:0;background:var(--ql-cloud);padding:var(--ql-s3)}
+.ql-answer{background:var(--ql-ink);color:#fff;padding:var(--ql-s4);min-width:0}
+.ql-answer .ql-big{font-family:'Anton',Impact,sans-serif;font-weight:400;
+  font-size:clamp(56px,11vw,104px);line-height:.9;display:block;font-variant-numeric:tabular-nums}
+.ql-answer .ql-big small{font-size:.28em;font-family:'Inter',sans-serif;font-weight:500;margin-left:10px}
+.ql-answer p{margin:var(--ql-s2) 0 0;font-size:14px;color:#c9c9ca}
+.ql-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(132px,1fr));margin-top:var(--ql-s4);
+  border-top:1px solid var(--ql-hair);border-left:1px solid var(--ql-hair)}
+/* 用每格自己的右/下边框拼网格线。早先写的是「gap:1px + 容器底色」，
+   格子数不是列数整数倍时，最后一行的空位会露出一整块灰色底 —— 人工看图才发现。 */
+.ql-kpi{background:var(--ql-canvas);padding:var(--ql-s2) var(--ql-s3);min-width:0;
+  border-right:1px solid var(--ql-hair);border-bottom:1px solid var(--ql-hair)}
+.ql-kpi dt{font-size:11.5px;font-weight:500;color:var(--ql-mute);margin:0 0 4px}
+.ql-kpi dd{margin:0;font-size:21px;font-weight:500;line-height:1.25;font-variant-numeric:tabular-nums;
+  overflow-wrap:anywhere}
+.ql-kpi dd u{display:block;font-size:11.5px;font-weight:400;color:var(--ql-mute);text-decoration:none;margin-top:2px}
+.ql-hit{color:var(--ql-ok)}
+.ql-miss{color:var(--ql-sale)}
+
+/* ── 表格 ── */
+.ql-scroll{overflow-x:auto;min-width:0}
+table.ql-tbl{border-collapse:collapse;width:100%;font-size:14px}
+table.ql-tbl th,table.ql-tbl td{padding:9px 10px;text-align:right;border-bottom:1px solid var(--ql-hair-soft);
+  white-space:nowrap}
+table.ql-tbl th:first-child,table.ql-tbl td:first-child{text-align:left}
+table.ql-tbl thead th{font-size:12px;font-weight:500;color:var(--ql-mute);border-bottom:1px solid var(--ql-hair)}
+table.ql-tbl tbody tr.ql-pick{background:var(--ql-cloud);font-weight:500}
+table.ql-tbl td input[type=number],table.ql-tbl td input[type=text]{height:32px;min-width:100px;font-size:13.5px}
+table.ql-tbl.ql-edit th,table.ql-tbl.ql-edit td{padding:5px 4px}
+.ql-badge{display:inline-block;border:1px solid var(--ql-hair);border-radius:9999px;padding:3px 11px;
+  font-size:12px;font-weight:500}
+.ql-badge.ql-b-dark{background:var(--ql-ink);color:#fff;border-color:var(--ql-ink)}
+
+/* ── 图 ── */
+.ql-figs{display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:var(--ql-s4)}
+.ql-fig{border:1px solid var(--ql-hair);padding:var(--ql-s2) var(--ql-s2) 4px;min-width:0}
+.ql-fig h3{margin:0 0 4px;font-size:13px;font-weight:500}
+.ql-fig p{margin:0 0 6px;font-size:12px;color:var(--ql-mute)}
+.ql-fig svg{width:100%;height:auto;display:block;overflow:visible}
+.ql-legend{display:flex;gap:var(--ql-s2);flex-wrap:wrap;font-size:12px;color:var(--ql-mute);margin:6px 0 8px}
+.ql-legend i{display:inline-block;width:16px;height:3px;vertical-align:middle;margin-right:5px}
+
+/* ── 说明 / 提示 ── */
+.ql-hintbox{border-left:3px solid var(--ql-ink);background:var(--ql-cloud);padding:var(--ql-s2) var(--ql-s3);
+  font-size:13.5px;line-height:1.65;margin:var(--ql-s2) 0}
+.ql-warn{border-left-color:var(--ql-sale);color:var(--ql-sale-deep)}
+.ql-prose{font-size:15px;line-height:1.75;max-width:78ch}
+.ql-prose h3{font-size:16px;font-weight:500;margin:var(--ql-s4) 0 var(--ql-s1)}
+.ql-prose code{background:var(--ql-cloud);padding:1px 5px;font-size:13.5px;
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.ql-foot{border-top:1px solid var(--ql-hair);padding:var(--ql-s4) 0 var(--ql-sec);font-size:12px;color:var(--ql-mute)}
+@media (max-width:860px){
+  .ql-hero-in{grid-template-columns:minmax(0,1fr)}
+  .ql-cols{grid-template-columns:minmax(0,1fr)}
+}
+@media (max-width:520px){
+  .ql-wrap,.ql-hero-in,.ql-tabs-in{padding-left:16px;padding-right:16px}
+  body{font-size:15px}
+}
+</style>
+</head>
+<body>
+<header class="ql-top"><div class="ql-wrap"><a class="ql-back" href="../../">← 返回工具集</a></div></header>
+
+<section class="ql-hero">
+  <div class="ql-hero-in">
+    <div>
+      <p class="ql-eyebrow">QUEUE LAB · 排队论 与 产能规划</p>
+      <h1 class="ql-display">要开<br>几个窗口</h1>
+      <p class="ql-lede">话务量、坐席数、服务水平、放弃率 —— 这几个数之间只差一条 Erlang 公式。
+        这里把它连同排队网络、离散事件仿真和日内排班一起搬进浏览器：改一个数，答案当场重算。</p>
+      <div class="ql-hero-kv">
+        <div><b id="ql-hero-c" class="ql-num">—</b><span>所需服务台</span></div>
+        <div><b id="ql-hero-sl" class="ql-num">—</b><span>服务水平</span></div>
+        <div><b id="ql-hero-occ" class="ql-num">—</b><span>占用率</span></div>
+      </div>
+    </div>
+    <svg id="ql-heroFig" class="ql-hero-fig" viewBox="0 0 520 260" role="img"
+         aria-label="当前算例的排队示意：左侧是排队中的来话，右侧是各个服务台"></svg>
+  </div>
+</section>
+
+<nav class="ql-tabs"><div class="ql-tabs-in" role="tablist" id="ql-tabbar">
+  <button class="ql-chip" role="tab" data-tab="cap"   aria-selected="true">容量计算器</button>
+  <button class="ql-chip" role="tab" data-tab="model" aria-selected="false">排队模型库</button>
+  <button class="ql-chip" role="tab" data-tab="net"   aria-selected="false">排队网络</button>
+  <button class="ql-chip" role="tab" data-tab="sim"   aria-selected="false">离散事件仿真</button>
+  <button class="ql-chip" role="tab" data-tab="shift" aria-selected="false">日内排班</button>
+  <button class="ql-chip" role="tab" data-tab="notes" aria-selected="false">口径与验证</button>
+</div></nav>
+
+<main class="ql-wrap">
+  <!-- ══════════ 1 容量计算器 ══════════ -->
+  <section id="ql-pane-cap" class="ql-pane" role="tabpanel" aria-label="容量计算器">
+    <div class="ql-sec-head"><span class="ql-sec-no">01</span>
+      <h2>容量计算器</h2><p>给定话务量与服务目标，求最少要几个服务台</p></div>
+    <div class="ql-cols">
+      <div>
+        <label class="ql-field"><span>场景预设</span>
+          <select id="ql-c-preset">
+            <option value="hotline">客服热线 · 300 通/时 · AHT 180 秒</option>
+            <option value="triage">急诊分诊 · 18 人/时 · 处理 12 分钟</option>
+            <option value="cashier">超市收银 · 240 人/时 · 结账 70 秒</option>
+            <option value="api">API 服务池 · 4200 请求/时 · 1.2 秒</option>
+            <option value="trunk">中继线路 · 900 呼/时 · 通话 150 秒</option>
+          </select></label>
+        <label class="ql-field"><span>到达量（每小时）</span>
+          <input type="number" id="ql-c-calls" value="300" min="0" step="1"></label>
+        <label class="ql-field"><span>平均处理时长 AHT（秒）</span>
+          <input type="number" id="ql-c-aht" value="180" min="0.1" step="1"></label>
+        <fieldset><legend>排队模型</legend>
+          <div class="ql-seg" id="ql-c-modelseg">
+            <button class="ql-chip ql-on" data-cmodel="mmc">不会放弃 · Erlang C</button>
+            <button class="ql-chip" data-cmodel="erlangA">会放弃 · Erlang A</button>
+            <button class="ql-chip" data-cmodel="mmcc">不排队 · Erlang B</button>
+          </div>
+          <label class="ql-field" style="margin-top:12px"><span>平均耐心（秒，仅 Erlang A）</span>
+            <input type="number" id="ql-c-patience" value="90" min="1" step="1" disabled></label>
+        </fieldset>
+        <label class="ql-field"><span>服务目标</span>
+          <select id="ql-c-goal">
+            <option value="sl">T 秒内应答比例 ≥ 目标</option>
+            <option value="asa">平均应答时长 ≤ 目标</option>
+            <option value="abandon">放弃率 ≤ 目标</option>
+            <option value="occ">服务台占用率 ≤ 目标</option>
+            <option value="block">阻塞率 ≤ 目标</option>
+          </select></label>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <label class="ql-field"><span id="ql-c-lab1">应答时限 T（秒）</span>
+            <input type="number" id="ql-c-goalT" value="20" min="0" step="1"></label>
+          <label class="ql-field"><span id="ql-c-lab2">目标（%）</span>
+            <input type="number" id="ql-c-goalX" value="80" min="0" step="1"></label>
+        </div>
+        <label class="ql-field"><span>收缩率 shrinkage（%，休息/会议/培训）</span>
+          <input type="number" id="ql-c-shrink" value="30" min="0" max="95" step="1"></label>
+      </div>
+      <div>
+        <div class="ql-answer">
+          <span class="ql-big" id="ql-c-answer">—</span>
+          <p id="ql-c-answer-sub">—</p>
+        </div>
+        <div class="ql-hintbox" id="ql-c-note">—</div>
+        <dl class="ql-kpis" id="ql-c-kpis">
+          <div class="ql-kpi"><dt>话务量 a</dt><dd><span id="ql-c-a">—</span><u>爱尔兰（Erlang）</u></dd></div>
+          <div class="ql-kpi"><dt>服务台占用率</dt><dd><span id="ql-c-occ">—</span><u>ρ = a / c</u></dd></div>
+          <div class="ql-kpi"><dt>需要等待的比例</dt><dd><span id="ql-c-pw">—</span><u>P(等待 &gt; 0)</u></dd></div>
+          <div class="ql-kpi"><dt>平均应答 ASA</dt><dd><span id="ql-c-asa">—</span><u>全体来话平均等待</u></dd></div>
+          <div class="ql-kpi"><dt>服务水平</dt><dd><span id="ql-c-sl">—</span><u id="ql-c-slsub">T 秒内接起</u></dd></div>
+          <div class="ql-kpi"><dt>放弃 / 阻塞率</dt><dd><span id="ql-c-ab">—</span><u id="ql-c-absub">挂断或被拒的比例</u></dd></div>
+          <div class="ql-kpi"><dt>平均排队人数</dt><dd><span id="ql-c-lq">—</span><u>队列里的平均人数</u></dd></div>
+          <div class="ql-kpi"><dt>每台每小时处理</dt><dd><span id="ql-c-thr">—</span><u>含空闲时间摊薄</u></dd></div>
+        </dl>
+        <div class="ql-figs" style="margin-top:24px">
+          <div class="ql-fig"><h3>服务台数 → 服务水平</h3>
+            <p>每加一个台位能买到多少服务水平；虚线是目标线</p>
+            <svg id="ql-fig-sl" viewBox="0 0 520 250"></svg></div>
+          <div class="ql-fig"><h3>服务台数 → 平均应答 与 占用率</h3>
+            <p>占用率越高越省钱，但等待时间是非线性爆炸的；纵轴取对数刻度</p>
+            <div class="ql-legend"><span><i style="background:#111111"></i>平均应答（秒）</span>
+              <span><i style="background:#d30005"></i>占用率</span></div>
+            <svg id="ql-fig-asa" viewBox="0 0 520 250"></svg></div>
+        </div>
+        <div class="ql-sec-head"><span class="ql-sec-no">02</span><h2>边际效益表</h2>
+          <p>多一个人、少一个人，各项指标怎么变</p></div>
+        <div class="ql-scroll"><table class="ql-tbl" id="ql-c-table">
+          <thead><tr><th>服务台数</th><th>服务水平</th><th>平均应答</th><th>占用率</th>
+            <th>放弃/阻塞</th><th>平均队长</th><th>达标</th></tr></thead>
+          <tbody id="ql-c-tbody"></tbody></table></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════ 2 模型库 ══════════ -->
+  <section id="ql-pane-model" class="ql-pane" role="tabpanel" aria-label="排队模型库" hidden>
+    <div class="ql-sec-head"><span class="ql-sec-no">03</span><h2>排队模型库</h2>
+      <p>11 个模型，同一套指标口径；每个都给出公式出处</p></div>
+    <div class="ql-cols">
+      <div>
+        <label class="ql-field"><span>模型</span><select id="ql-m-model"></select></label>
+        <div id="ql-m-fields"></div>
+        <fieldset id="ql-m-prio" hidden><legend>优先级分类（第 1 类最优先）</legend>
+          <div class="ql-scroll"><table class="ql-tbl"><thead><tr><th>类</th><th>λ（个/秒）</th>
+            <th>E[S]（秒）</th><th>cv²</th><th></th></tr></thead><tbody id="ql-m-classes"></tbody></table></div>
+          <div class="ql-btnrow"><button class="ql-btn ql-alt" id="ql-m-addclass">＋ 加一类</button>
+            <button class="ql-chip" id="ql-m-preempt" aria-pressed="false">抢占式</button></div>
+        </fieldset>
+        <div class="ql-hintbox" id="ql-m-formula">—</div>
+      </div>
+      <div>
+        <dl class="ql-kpis" id="ql-m-kpis" style="margin-top:0">
+          <div class="ql-kpi"><dt>利用率 ρ</dt><dd><span id="ql-m-rho">—</span><u>单台服务台的忙碌比例</u></dd></div>
+          <div class="ql-kpi"><dt>等待概率</dt><dd><span id="ql-m-pw">—</span><u>到达时要排队的比例</u></dd></div>
+          <div class="ql-kpi"><dt>平均等待 Wq</dt><dd><span id="ql-m-wq">—</span><u>排队时长</u></dd></div>
+          <div class="ql-kpi"><dt>平均逗留 W</dt><dd><span id="ql-m-w">—</span><u>含服务时长</u></dd></div>
+          <div class="ql-kpi"><dt>平均队长 Lq</dt><dd><span id="ql-m-lq">—</span><u>人</u></dd></div>
+          <div class="ql-kpi"><dt>系统内人数 L</dt><dd><span id="ql-m-l">—</span><u>人（含在服务的）</u></dd></div>
+          <div class="ql-kpi"><dt>损失率</dt><dd><span id="ql-m-loss">—</span><u id="ql-m-losssub">放弃 / 阻塞</u></dd></div>
+          <div class="ql-kpi"><dt>有效吞吐</dt><dd><span id="ql-m-thr">—</span><u>个/秒（真正被服务完的）</u></dd></div>
+        </dl>
+        <div class="ql-hintbox" id="ql-m-little">—</div>
+        <div class="ql-figs">
+          <div class="ql-fig"><h3 id="ql-fig-a-title">系统内人数的平稳分布</h3>
+            <p id="ql-fig-a-note">每根柱是「系统里恰好有 n 个人」的概率</p>
+            <svg id="ql-fig-dist" viewBox="0 0 520 250"></svg></div>
+          <div class="ql-fig"><h3>平均等待随利用率变化</h3>
+            <p>其余参数不动、只放大到达率；圆点是当前工况</p>
+            <svg id="ql-fig-rho" viewBox="0 0 520 250"></svg></div>
+        </div>
+        <div id="ql-m-prioout" hidden>
+          <div class="ql-sec-head"><span class="ql-sec-no">04</span><h2>各优先级分类</h2>
+            <p>守恒律：Σ ρ<sub>k</sub>·Wq<sub>k</sub> 与优先级排序无关，优先级只是重新分配等待</p></div>
+          <div class="ql-scroll"><table class="ql-tbl"><thead><tr><th>类</th><th>λ</th><th>E[S]</th>
+            <th>ρ</th><th>平均等待</th><th>平均逗留</th><th>平均队长</th></tr></thead>
+            <tbody id="ql-m-priotbody"></tbody></table></div>
+          <div class="ql-hintbox" id="ql-m-conserve">—</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════ 3 网络 ══════════ -->
+  <section id="ql-pane-net" class="ql-pane" role="tabpanel" aria-label="排队网络" hidden>
+    <div class="ql-sec-head"><span class="ql-sec-no">05</span><h2>排队网络</h2>
+      <p>多个环节串起来时，瓶颈在哪、加机器加在哪</p></div>
+    <div class="ql-seg" id="ql-n-seg" style="margin-bottom:24px">
+      <button class="ql-chip ql-on" data-nettab="open">开放网络 · Jackson</button>
+      <button class="ql-chip" data-nettab="closed">闭合网络 · 精确 MVA</button>
+    </div>
+
+    <div id="ql-n-open">
+      <div class="ql-figs" style="margin-bottom:24px">
+        <div class="ql-fig"><h3>节点</h3><p>每个节点是一组共享队列的服务台</p>
+          <div class="ql-scroll"><table class="ql-tbl ql-edit"><thead><tr><th>节点</th><th>服务率 μ（个/秒）</th>
+            <th>台数 c</th><th>外部到达 γ</th><th></th></tr></thead><tbody id="ql-n-nodes"></tbody></table></div>
+          <div class="ql-btnrow"><button class="ql-btn ql-alt" id="ql-n-add">＋ 加节点</button>
+            <button class="ql-btn ql-alt" id="ql-n-demo">载入示例</button></div>
+        </div>
+        <div class="ql-fig"><h3>路由矩阵 P[i][j]</h3><p>在 i 完成后去 j 的概率；每行之和 ≤ 1，余下的就是离开系统</p>
+          <div class="ql-scroll"><table class="ql-tbl ql-edit" id="ql-n-route"></table></div>
+        </div>
+      </div>
+      <div class="ql-hintbox" id="ql-n-note">—</div>
+      <div class="ql-scroll"><table class="ql-tbl" id="ql-n-out"><thead><tr><th>节点</th><th>到达率 λ</th>
+        <th>利用率</th><th>平均队长 L</th><th>平均逗留 W</th><th>等待概率</th></tr></thead>
+        <tbody id="ql-n-tbody"></tbody></table></div>
+      <div class="ql-figs" style="margin-top:24px">
+        <div class="ql-fig"><h3>网络结构与负载</h3>
+          <p>方块按利用率填充，红色是瓶颈节点</p>
+          <svg id="ql-fig-net" viewBox="0 0 520 280"></svg></div>
+        <div class="ql-fig"><h3>各节点排队人数构成</h3>
+          <p>横条长度 = 该节点平均积压人数</p>
+          <svg id="ql-fig-nbar" viewBox="0 0 520 280"></svg></div>
+      </div>
+    </div>
+
+    <div id="ql-n-closed" hidden>
+      <div class="ql-figs" style="margin-bottom:24px">
+        <div class="ql-fig"><h3>服务站</h3><p>每个作业在该站的单次服务时间与访问次数</p>
+          <div class="ql-scroll"><table class="ql-tbl ql-edit"><thead><tr><th>站</th><th>单次服务 S（秒）</th>
+            <th>访问次数 V</th><th>台数 c</th><th></th></tr></thead><tbody id="ql-k-stations"></tbody></table></div>
+          <div class="ql-btnrow"><button class="ql-btn ql-alt" id="ql-k-add">＋ 加站</button>
+            <button class="ql-btn ql-alt" id="ql-k-demo">载入示例</button></div>
+        </div>
+        <div class="ql-fig"><h3>负载</h3><p>并发用户数与两次请求之间的思考时间</p>
+          <label class="ql-field"><span>并发用户数 N</span>
+            <input type="number" id="ql-k-N" value="20" min="1" max="500" step="1"></label>
+          <label class="ql-field"><span>思考时间 Z（秒，两次请求之间的间隔）</span>
+            <input type="number" id="ql-k-Z" value="1" min="0" step="0.1"></label>
+        </div>
+      </div>
+      <div class="ql-hintbox" id="ql-k-note">—</div>
+      <dl class="ql-kpis" style="margin-top:0">
+        <div class="ql-kpi"><dt>吞吐量 X</dt><dd><span id="ql-k-X">—</span><u>次/秒</u></dd></div>
+        <div class="ql-kpi"><dt>响应时间 R</dt><dd><span id="ql-k-R">—</span><u>不含思考时间</u></dd></div>
+        <div class="ql-kpi"><dt>瓶颈站</dt><dd><span id="ql-k-bn">—</span><u>每台需求最大的那个</u></dd></div>
+        <div class="ql-kpi"><dt>拐点并发 N*</dt><dd><span id="ql-k-Nstar">—</span><u>再加并发只增等待</u></dd></div>
+      </dl>
+      <div class="ql-scroll" style="margin-top:24px"><table class="ql-tbl"><thead><tr><th>站</th><th>服务需求 D=V·S</th>
+        <th>利用率</th><th>平均积压</th><th>单次驻留 R</th><th>本站总驻留</th></tr></thead>
+        <tbody id="ql-k-tbody"></tbody></table></div>
+      <div class="ql-figs" style="margin-top:24px">
+        <div class="ql-fig"><h3>吞吐量 — 并发曲线</h3>
+          <p>黑线是精确 MVA，灰虚线是两条渐近界（轻载斜线与瓶颈平台）</p>
+          <svg id="ql-fig-mvax" viewBox="0 0 520 250"></svg></div>
+        <div class="ql-fig"><h3>响应时间 — 并发曲线</h3>
+          <p>灰虚线是下界 max(ΣD, N·D<sub>max</sub> − Z)</p>
+          <svg id="ql-fig-mvar" viewBox="0 0 520 250"></svg></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════ 4 仿真 ══════════ -->
+  <section id="ql-pane-sim" class="ql-pane" role="tabpanel" aria-label="离散事件仿真" hidden>
+    <div class="ql-sec-head"><span class="ql-sec-no">06</span><h2>离散事件仿真</h2>
+      <p>公式靠不住的时候就跑一遍：任意变异系数、放弃、容量上限都能试</p></div>
+    <div class="ql-cols">
+      <div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <label class="ql-field"><span>到达率 λ（个/秒）</span>
+            <input type="number" id="ql-s-lam" value="9" min="0.001" step="0.1"></label>
+          <label class="ql-field"><span>服务台数 c</span>
+            <input type="number" id="ql-s-c" value="10" min="1" step="1"></label>
+          <label class="ql-field"><span>平均服务时长（秒）</span>
+            <input type="number" id="ql-s-es" value="1" min="0.001" step="0.1"></label>
+          <label class="ql-field"><span>服务时长 cv²</span>
+            <input type="number" id="ql-s-cs2" value="1" min="0" step="0.1"></label>
+          <label class="ql-field"><span>到达间隔 cv²</span>
+            <input type="number" id="ql-s-ca2" value="1" min="0" step="0.1"></label>
+          <label class="ql-field"><span>服务时长分布</span>
+            <select id="ql-s-svcdist">
+              <option value="auto">按 cv² 两矩拟合</option>
+              <option value="lognormal">对数正态</option>
+              <option value="exp">指数</option>
+              <option value="det">确定型</option>
+            </select></label>
+          <label class="ql-field"><span>平均耐心（秒，0 = 不会放弃）</span>
+            <input type="number" id="ql-s-pat" value="0" min="0" step="1"></label>
+          <label class="ql-field"><span>系统容量 K（0 = 不限）</span>
+            <input type="number" id="ql-s-K" value="0" min="0" step="1"></label>
+          <label class="ql-field"><span>客户数</span>
+            <input type="number" id="ql-s-n" value="200000" min="1000" max="3000000" step="1000"></label>
+          <label class="ql-field"><span>随机种子</span>
+            <input type="number" id="ql-s-seed" value="20260918" min="0" step="1"></label>
+          <label class="ql-field"><span>服务水平时限（秒）</span>
+            <input type="number" id="ql-s-slT" value="0.2" min="0" step="0.1"></label>
+        </div>
+        <div class="ql-btnrow"><button class="ql-btn" id="ql-s-run">跑一遍仿真</button>
+          <button class="ql-btn ql-alt" id="ql-s-sync">同步容量页参数</button></div>
+        <div class="ql-hintbox" id="ql-s-status">按「跑一遍仿真」开始。固定种子 ⇒ 同样的参数每次得到同样的结果。</div>
+      </div>
+      <div>
+        <div class="ql-scroll"><table class="ql-tbl" id="ql-s-table"><thead><tr><th>指标</th>
+          <th>仿真实测</th><th>批均值 95% 区间</th><th>解析解</th><th>相对差</th></tr></thead>
+          <tbody id="ql-s-tbody"><tr><td colspan="5" style="text-align:left;color:var(--ql-mute)">还没跑。</td></tr></tbody></table></div>
+        <div class="ql-figs" style="margin-top:24px">
+          <div class="ql-fig"><h3>系统内人数的时间轨迹</h3>
+            <p>预热之后的前 1200 个事件；横轴是仿真时间（秒）</p>
+            <svg id="ql-fig-trace" viewBox="0 0 520 250"></svg></div>
+          <div class="ql-fig"><h3>等待时长分布</h3>
+            <p>黑柱是仿真实测的直方图，红线是解析解的分布（有则画）</p>
+            <svg id="ql-fig-hist" viewBox="0 0 520 250"></svg></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════ 5 排班 ══════════ -->
+  <section id="ql-pane-shift" class="ql-pane" role="tabpanel" aria-label="日内排班" hidden>
+    <div class="ql-sec-head"><span class="ql-sec-no">07</span><h2>日内排班</h2>
+      <p>逐时段定员 → 加收缩率 → 排成等长班次；班次数是可证明的最优解</p></div>
+    <div class="ql-cols">
+      <div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <label class="ql-field"><span>平均处理时长（秒）</span>
+            <input type="number" id="ql-w-aht" value="210" min="1" step="1"></label>
+          <label class="ql-field"><span>时段长度（分钟）</span>
+            <select id="ql-w-slot"><option value="30">30</option><option value="60">60</option></select></label>
+          <label class="ql-field"><span>应答时限 T（秒）</span>
+            <input type="number" id="ql-w-slT" value="20" min="0" step="1"></label>
+          <label class="ql-field"><span>服务水平目标（%）</span>
+            <input type="number" id="ql-w-slX" value="80" min="1" max="99.9" step="1"></label>
+          <label class="ql-field"><span>收缩率（%）</span>
+            <input type="number" id="ql-w-shrink" value="30" min="0" max="95" step="1"></label>
+          <label class="ql-field"><span>班次长度（小时）</span>
+            <input type="number" id="ql-w-shiftlen" value="4" min="0.5" max="12" step="0.5"></label>
+        </div>
+        <div class="ql-btnrow">
+          <button class="ql-btn ql-alt" id="ql-w-preset">载入双峰话务曲线</button>
+          <button class="ql-btn ql-alt" id="ql-w-flat">载入平峰曲线</button>
+        </div>
+        <fieldset style="margin-top:18px"><legend>逐时段来话量（可直接改）</legend>
+          <div id="ql-w-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(112px,1fr));gap:6px"></div>
+        </fieldset>
+      </div>
+      <div>
+        <div class="ql-hintbox" id="ql-w-summary">—</div>
+        <div class="ql-figs">
+          <div class="ql-fig"><h3>需求 与 班次覆盖</h3>
+            <p>灰阶梯是每时段的上岗人数需求，黑阶梯是排出来的班次覆盖</p>
+            <div class="ql-legend"><span><i style="background:#9e9ea0"></i>需求</span>
+              <span><i style="background:#111111"></i>覆盖</span></div>
+            <svg id="ql-fig-cover" viewBox="0 0 520 250"></svg></div>
+          <div class="ql-fig"><h3>逐时段服务水平与占用率</h3>
+            <p>取整到人以后，实际服务水平总会高于目标一点</p>
+            <div class="ql-legend"><span><i style="background:#111111"></i>服务水平</span>
+              <span><i style="background:#d30005"></i>占用率</span></div>
+            <svg id="ql-fig-wsl" viewBox="0 0 520 250"></svg></div>
+        </div>
+        <div class="ql-sec-head"><span class="ql-sec-no">08</span><h2>班表</h2><p>每个班次的起止与人数</p></div>
+        <div class="ql-scroll"><table class="ql-tbl"><thead><tr><th>班次</th><th>起</th><th>止</th>
+          <th>人数</th></tr></thead><tbody id="ql-w-shifts"></tbody></table></div>
+        <div class="ql-sec-head"><span class="ql-sec-no">09</span><h2>逐时段明细</h2><p>各时段的话务量、定员与达成情况</p></div>
+        <div class="ql-scroll"><table class="ql-tbl"><thead><tr><th>时段</th><th>来话</th><th>话务量 a</th>
+          <th>需求席</th><th>上岗人数</th><th>服务水平</th><th>平均应答</th><th>占用率</th></tr></thead>
+          <tbody id="ql-w-tbody"></tbody></table></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════ 6 说明 ══════════ -->
+  <section id="ql-pane-notes" class="ql-pane" role="tabpanel" aria-label="口径与验证" hidden>
+    <div class="ql-sec-head"><span class="ql-sec-no">10</span><h2>模型清单</h2>
+      <p>页面上算得出来的全部模型，以及每个的公式出处</p></div>
+    <div class="ql-scroll"><table class="ql-tbl" id="ql-model-list"><thead><tr><th>模型</th><th>引擎 id</th>
+      <th>适用场景</th><th>公式出处</th></tr></thead><tbody id="ql-model-tbody"></tbody></table></div>
+    <div class="ql-sec-head"><span class="ql-sec-no">11</span><h2>口径与验证</h2>
+      <p>每个数字都指得到具体一次计算</p></div>
+    <div class="ql-prose" id="ql-notes-prose"></div>
+  </section>
+</main>
+
+<footer class="ql-wrap ql-foot">
+  <p>排队与产能工作台 · Queue Lab —— 纯前端单页，零后端；所有参数存在浏览器本地。
+     <a href="../../">← 回到每日工具集</a></p>
+</footer>
+
+<script id="ql-engine">/* Queue Lab 引擎 · 第 1 部分：数值底座
+ * 顶层必须用 var（词法声明不会挂到 node:vm 的上下文上，offline-harness 会取不到 QL）。
+ */
+var QL = (function () {
+  'use strict';
+
+  // ── 通用数值 ──────────────────────────────────────────────
+  function fact(n) { var r = 1, i; for (i = 2; i <= n; i++) r *= i; return r; }
+
+  /* Erlang B：阻塞率 B(c, a)，M/M/c/c。用递推式，数值上无溢出风险。
+   * B(0,a)=1；B(n,a) = a·B(n-1,a) / (n + a·B(n-1,a))。 */
+  function erlangB(c, a) {
+    if (!(a >= 0) || !(c >= 0)) return NaN;
+    var b = 1, n;
+    for (n = 1; n <= c; n++) b = a * b / (n + a * b);
+    return b;
+  }
+
+  /* Erlang C：等待概率 C(c, a)，M/M/c。由 Erlang B 导出（Erlang 的 B→C 变换）。
+   * 仅当 a < c 才有稳态；否则队列发散，返回 1。 */
+  function erlangC(c, a) {
+    if (!(a >= 0) || !(c >= 1)) return NaN;
+    if (a >= c) return 1;
+    var b = erlangB(c, a), rho = a / c;
+    return b / (1 - rho * (1 - b));
+  }
+
+  /* 生灭链平稳分布：lam[n] = n→n+1 的速率（n = 0..N-1），mu[n] = (n+1)→n 的速率。
+   * 用逐项比值累乘 + 溢出时整体缩放，避免 a^n/n! 直接算爆掉。 */
+  function bdStationary(lam, mu) {
+    var N = lam.length, p = new Float64Array(N + 1), n, s = 0, i;
+    p[0] = 1;
+    for (n = 1; n <= N; n++) {
+      p[n] = mu[n - 1] > 0 ? p[n - 1] * lam[n - 1] / mu[n - 1] : 0;
+      if (p[n] > 1e250) { for (i = 0; i <= n; i++) p[i] *= 1e-250; }
+    }
+    for (n = 0; n <= N; n++) s += p[n];
+    for (n = 0; n <= N; n++) p[n] /= s;
+    return p;
+  }
+
+  /* 线性方程组 Ax=b：高斯消元 + 部分主元。A 会被就地改写。 */
+  function solveLinear(A, b) {
+    var n = b.length, i, j, k, piv, mx, t, x = new Array(n).fill(0);
+    var M = A.map(function (r, idx) { return r.slice().concat([b[idx]]); });
+    for (k = 0; k < n; k++) {
+      piv = k; mx = Math.abs(M[k][k]);
+      for (i = k + 1; i < n; i++) if (Math.abs(M[i][k]) > mx) { mx = Math.abs(M[i][k]); piv = i; }
+      if (mx < 1e-14) return null;
+      if (piv !== k) { t = M[k]; M[k] = M[piv]; M[piv] = t; }
+      for (i = k + 1; i < n; i++) {
+        var f = M[i][k] / M[k][k];
+        if (f === 0) continue;
+        for (j = k; j <= n; j++) M[i][j] -= f * M[k][j];
+      }
+    }
+    for (i = n - 1; i >= 0; i--) {
+      var s2 = M[i][n];
+      for (j = i + 1; j < n; j++) s2 -= M[i][j] * x[j];
+      x[i] = s2 / M[i][i];
+    }
+    return x;
+  }
+
+  /* 均匀化（uniformization）：给定吸收型 CTMC 的一步转移，算 t 时刻落在吸收态的概率。
+   * 走均匀化而不是相型闭式（Σ ±e^{-r_i t} 的部分分式），是因为后者在速率接近时会
+   * 灾难性相消 —— 排队位置一多就完全失真。
+   * 两个数值细节都是踩出来的：
+   *  ① 泊松权重**不能**从 e^{-Λt} 起步累乘：Λt > 745 时它直接下溢成 0，函数会安静地
+   *     返回 0（实撞：SL(t→∞) 本该等于「最终被应答的概率」，却返回 0）。改成以众数
+   *     为中心用比值递推算相对权重，最后除以总和归一（Fox–Glynn 的思路）。
+   *  ② 吸收一旦完成（瞬态态上的质量 < 1e-15），后面所有步的结果都一样，直接把剩下
+   *     的权重一次性乘上去 —— 否则 t 很大时要空跑上百万步。
+   *   step(v, out)：把概率向量按均匀化 DTMC 推进一步；doneIdx：全部吸收态的下标。
+   */
+  function uniformize(v0, step, Lam, t, absorbIdx, doneIdx, maxSteps) {
+    var lt = Lam * t;
+    if (!(lt > 0)) return v0[absorbIdx];
+    var cap = maxSteps || 400000;
+    var m0 = Math.floor(lt), TOL = 1e-17, k, w;
+    // 相对权重：以 k = m0 为 1，向两侧递推到可忽略为止
+    var upN = 0; w = 1;
+    for (k = m0; upN < cap; k++) { upN++; w = w * lt / (k + 1); if (w < TOL) break; }
+    var dn = []; w = 1;
+    for (k = m0; k > 0; k--) { w = w * k / lt; if (w < TOL) break; dn.push(w); }
+    var lo = m0 - dn.length, hi = m0 + upN - 1, sum = 0, i;
+    var rel = new Float64Array(hi - lo + 1);
+    for (i = 0; i < dn.length; i++) rel[dn.length - 1 - i] = dn[i];
+    w = 1;
+    for (k = m0; k <= hi; k++) { rel[k - lo] = w; w = w * lt / (k + 1); }
+    for (i = 0; i < rel.length; i++) sum += rel[i];
+
+    var v = v0.slice(), nx = new Float64Array(v.length);
+    var acc = 0, cum = 0, j;
+    for (k = 0; k <= hi && k <= cap; k++) {
+      if (k >= lo) { var pw = rel[k - lo] / sum; acc += pw * v[absorbIdx]; cum += pw; }
+      var absorbed = 0;
+      for (j = 0; j < doneIdx.length; j++) absorbed += v[doneIdx[j]];
+      if (absorbed > 1 - 1e-15) { acc += v[absorbIdx] * (1 - cum); return acc; }
+      step(v, nx);
+      var tmp = v; v = nx; nx = tmp;
+    }
+    acc += v[absorbIdx] * (1 - cum);
+    return acc;
+  }
+
+  // ── 随机数与分布（供离散事件仿真用；固定种子 ⇒ 完全可复现） ───────────
+  function mulberry32(seed) {
+    var a = seed >>> 0;
+    return function () {
+      a = (a + 0x6D2B79F5) >>> 0;
+      var t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  /* 两矩拟合：给定均值 m 与平方变异系数 cs2，构造一个采样器。
+   *   cs2 = 0      → 确定型
+   *   0 < cs2 < 1  → 爱尔朗混合（E_{k-1} / E_k，同速率），可精确命中任意 cs2（Whitt 1982）
+   *   cs2 = 1      → 指数
+   *   cs2 > 1      → 平衡均值超指数 H2
+   * 另可强制指定 lognormal（真实服务时长最常见的形状）。 */
+  function makeSampler(kind, mean, cs2, rnd) {
+    var m = mean, k, p, rate, r1, r2, sig, mu;
+    if (kind === 'det' || (kind === 'auto' && cs2 === 0)) return function () { return m; };
+    if (kind === 'exp' || (kind === 'auto' && Math.abs(cs2 - 1) < 1e-12)) {
+      return function () { return -m * Math.log(1 - rnd()); };
+    }
+    if (kind === 'lognormal') {
+      sig = Math.sqrt(Math.log(1 + cs2)); mu = Math.log(m) - sig * sig / 2;
+      return function () {
+        var u1 = 1 - rnd(), u2 = rnd();
+        var z = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+        return Math.exp(mu + sig * z);
+      };
+    }
+    if (cs2 < 1) {   // 爱尔朗混合
+      k = Math.ceil(1 / cs2);
+      if (k < 2) k = 2;
+      p = (k * cs2 - Math.sqrt(k * (1 + cs2) - k * k * cs2)) / (1 + cs2);
+      if (!(p >= 0)) p = 0; if (p > 1) p = 1;
+      rate = (k - p) / m;
+      return function () {
+        var n = rnd() < p ? k - 1 : k, s = 0, i;
+        for (i = 0; i < n; i++) s += -Math.log(1 - rnd());
+        return s / rate;
+      };
+    }
+    // H2（平衡均值）：p/r1 = (1-p)/r2 = m/2
+    p = 0.5 * (1 + Math.sqrt((cs2 - 1) / (cs2 + 1)));
+    r1 = 2 * p / m; r2 = 2 * (1 - p) / m;
+    return function () {
+      var r = rnd() < p ? r1 : r2;
+      return -Math.log(1 - rnd()) / r;
+    };
+  }
+
+  // ── 小顶堆（仿真事件队列） ──────────────────────────────
+  function Heap(cmp) { this.a = []; this.cmp = cmp || function (x, y) { return x - y; }; }
+  Heap.prototype.push = function (v) {
+    var a = this.a, i = a.length; a.push(v);
+    while (i > 0) { var p = (i - 1) >> 1; if (this.cmp(a[i], a[p]) < 0) { var t = a[i]; a[i] = a[p]; a[p] = t; i = p; } else break; }
+  };
+  Heap.prototype.peek = function () { return this.a.length ? this.a[0] : null; };
+  Heap.prototype.pop = function () {
+    var a = this.a, top = a[0], last = a.pop();
+    if (a.length) {
+      a[0] = last;
+      var i = 0, n = a.length;
+      for (;;) {
+        var l = 2 * i + 1, r = l + 1, s = i;
+        if (l < n && this.cmp(a[l], a[s]) < 0) s = l;
+        if (r < n && this.cmp(a[r], a[s]) < 0) s = r;
+        if (s === i) break;
+        var t = a[i]; a[i] = a[s]; a[s] = t; i = s;
+      }
+    }
+    return top;
+  };
+  Heap.prototype.size = function () { return this.a.length; };
+
+  return { erlangB: erlangB, erlangC: erlangC, bdStationary: bdStationary, solveLinear: solveLinear,
+           uniformize: uniformize, mulberry32: mulberry32, makeSampler: makeSampler, Heap: Heap, fact: fact };
+})();
+
+/* Queue Lab 引擎 · 第 2 部分：排队模型
+ * 每个模型返回统一的指标对象：
+ *   { ok, a, rho, lamEff, Pw, Pblock, Pab, L, Lq, W, Wq, dist[], slAt(t) }
+ *   a      = 到达强度（爱尔兰数）= λ·E[S]
+ *   rho    = 单个服务台的利用率 = λ_eff·E[S]/c
+ *   Pw     = 到达者需要排队等待的概率
+ *   dist[] = 系统内人数的平稳分布（仅生灭模型有精确解）
+ */
+(function (QL) {
+  'use strict';
+  var erlangB = QL.erlangB, erlangC = QL.erlangC, bd = QL.bdStationary;
+
+  /* P(Erlang(k, r) ≤ t)：用递推的泊松项累加，避免阶乘溢出 */
+  function erlangCDF(k, r, t) {
+    if (!(t > 0)) return 0;
+    var x = r * t, term = Math.exp(-x), s = term, i;
+    for (i = 1; i < k; i++) { term *= x / i; s += term; }
+    return 1 - s;
+  }
+
+  function bdMetrics(pi, c, lam, mu, opts) {
+    var o = opts || {}, N = pi.length - 1, n, L = 0, Lq = 0, busy = 0;
+    for (n = 0; n <= N; n++) { L += n * pi[n]; if (n > c) Lq += (n - c) * pi[n]; busy += Math.min(n, c) * pi[n]; }
+    return { L: L, Lq: Lq, busy: busy };
+  }
+
+  // ── M/M/c（含 c=1 的 M/M/1） ───────────────────────────
+  function mmc(p) {
+    var lam = p.lam, mu = p.mu, c = Math.round(p.c);
+    var a = lam / mu, rho = a / c;
+    if (!(lam > 0) || !(mu > 0) || !(c >= 1)) return { ok: false, why: '参数必须为正' };
+    /* ρ 判稳要留余量：300 通/时 ÷ AHT 180 秒算出来的 a = 14.999999999999998，于是 c=15 时
+     * ρ = 1 − 1.1e−16 会被判成「稳定」，Wq 解出 1e17 秒（30 亿年）。这个伪解本身无害，
+     * 但它会把「服务台数 → 平均应答」那张对数图的量程撑成 22 个数量级，刻度几乎全被
+     * 避让器丢掉 —— 人工看图才发现。ρ 落在 1 的 1e−12 邻域内一律按发散处理。 */
+    if (rho >= 1 - 1e-12) return { ok: false, why: '负载 a=' + a.toFixed(3) + ' 与服务台数 ' + c
+      + ' 相差不到 1e-12，队列实际上发散', a: a, rho: rho };
+    var Pw = erlangC(c, a);
+    var Lq = Pw * rho / (1 - rho), Wq = Lq / lam, W = Wq + 1 / mu, L = lam * W;
+    // 截断长度要封顶：ρ→1 时 log(1e-13)/log(ρ) 会趋向无穷，直接把数组开爆
+    // （定员扫描会从 ρ≈0.999 的那一档开始试，实撞 RangeError: Invalid array length）。
+    var tail = Math.min(200000, Math.max(60, Math.ceil(Math.log(1e-13) / Math.log(rho))));
+    var N = c + tail, i, lamv = null, muv = null, dist = null;
+    if (!p.noDist) {
+      lamv = []; muv = [];
+      for (i = 0; i < N; i++) { lamv.push(lam); muv.push(Math.min(i + 1, c) * mu); }
+      dist = bd(lamv, muv);
+    }
+    return {
+      ok: true, model: 'mmc', a: a, rho: rho, lam: lam, lamEff: lam, lamServed: lam, c: c, ES: 1 / mu,
+      Pw: Pw, Pblock: 0, Pab: 0, L: L, Lq: Lq, W: W, Wq: Wq, busy: a, dist: dist,
+      slAt: function (t) { return 1 - Pw * Math.exp(-(c * mu - lam) * t); }
+    };
+  }
+
+  // ── M/M/c/K：系统容量 K（含正在服务的），满了就被拒 ──────────
+  function mmck(p) {
+    var lam = p.lam, mu = p.mu, c = Math.round(p.c), K = Math.round(p.K);
+    if (!(lam > 0) || !(mu > 0) || !(c >= 1)) return { ok: false, why: '参数必须为正' };
+    if (K < c) return { ok: false, why: '系统容量 K 不能小于服务台数 c' };
+    var i, lamv = [], muv = [];
+    for (i = 0; i < K; i++) { lamv.push(lam); muv.push(Math.min(i + 1, c) * mu); }
+    var pi = bd(lamv, muv), m = bdMetrics(pi, c);
+    var Pb = pi[K], lamEff = lam * (1 - Pb);
+    var Pw = 0; for (i = c; i < K; i++) Pw += pi[i];
+    return {
+      ok: true, model: 'mmck', a: lam / mu, rho: lamEff / (c * mu), lam: lam, lamEff: lamEff,
+      lamServed: lamEff, c: c, K: K,
+      ES: 1 / mu, Pw: Pw, Pblock: Pb, Pab: 0, L: m.L, Lq: m.Lq, W: m.L / lamEff, Wq: m.Lq / lamEff,
+      busy: m.busy, dist: pi,
+      slAt: function (t) {
+        var s = 0, n;
+        for (n = 0; n < c; n++) s += pi[n];
+        for (n = c; n < K; n++) s += pi[n] * erlangCDF(n - c + 1, c * mu, t);
+        return s / (1 - Pb);
+      }
+    };
+  }
+
+  // ── M/M/c/c：无队列，占满即拒（Erlang B / 中继线定容量） ────────
+  function mmcc(p) { var r = mmck({ lam: p.lam, mu: p.mu, c: p.c, K: p.c }); if (r.ok) r.model = 'mmcc'; return r; }
+
+  // ── M/M/∞：服务台无限（自助式、并发连接数） ──────────────
+  function mminf(p) {
+    var lam = p.lam, mu = p.mu, a = lam / mu, i, lamv = [], muv = [];
+    if (!(lam > 0) || !(mu > 0)) return { ok: false, why: '参数必须为正' };
+    var N = Math.max(20, Math.ceil(a + 10 * Math.sqrt(a + 1)) + 10);
+    for (i = 0; i < N; i++) { lamv.push(lam); muv.push((i + 1) * mu); }
+    return { ok: true, model: 'mminf', a: a, rho: 0, lam: lam, lamEff: lam, lamServed: lam, c: Infinity, ES: 1 / mu,
+      Pw: 0, Pblock: 0, Pab: 0, L: a, Lq: 0, W: 1 / mu, Wq: 0, busy: a, dist: bd(lamv, muv),
+      slAt: function () { return 1; } };
+  }
+
+  // ── M/M/c//N：有限源（N 台机器 / N 个用户，c 个维修工） ───────
+  function mmcN(p) {
+    var lam1 = p.lam1, mu = p.mu, c = Math.round(p.c), N = Math.round(p.N);
+    if (!(lam1 > 0) || !(mu > 0) || !(c >= 1) || !(N >= 1)) return { ok: false, why: '参数必须为正' };
+    if (c > N) c = N;
+    var i, lamv = [], muv = [];
+    for (i = 0; i < N; i++) { lamv.push((N - i) * lam1); muv.push(Math.min(i + 1, c) * mu); }
+    var pi = bd(lamv, muv), m = bdMetrics(pi, c), lamEff = 0, Pw = 0, up = 0;
+    for (i = 0; i <= N; i++) { lamEff += (N - i) * lam1 * pi[i]; up += (N - i) * pi[i]; if (i >= c) Pw += pi[i]; }
+    return { ok: true, model: 'mmcN', a: lamEff / mu, rho: lamEff / (c * mu), lam: lamEff, lamEff: lamEff, lamServed: lamEff,
+      c: c, N: N, ES: 1 / mu, Pw: Pw, Pblock: 0, Pab: 0, L: m.L, Lq: m.Lq,
+      W: m.L / lamEff, Wq: m.Lq / lamEff, busy: m.busy, avail: up / N, dist: pi,
+      slAt: function (t) {
+        var s = 0, n;
+        for (n = 0; n < c; n++) s += pi[n];
+        for (n = c; n <= N; n++) s += pi[n] * erlangCDF(n - c + 1, c * mu, t);
+        return s;
+      } };
+  }
+
+  // ── M/M/c+M（Erlang A）：等待者以速率 θ 放弃 ───────────────
+  function erlangA(p) {
+    var lam = p.lam, mu = p.mu, c = Math.round(p.c), th = p.theta;
+    if (!(lam > 0) || !(mu > 0) || !(c >= 1)) return { ok: false, why: '参数必须为正' };
+    if (!(th > 0)) return mmc(p);                 // θ=0 退化为 M/M/c
+    // 截断：死亡率随 n 线性增长，尾部衰减极快；到 π 足够小为止
+    var N = c + 40, pi, i, lamv, muv, guard = 0;
+    for (;;) {
+      lamv = []; muv = [];
+      for (i = 0; i < N; i++) { lamv.push(lam); muv.push(Math.min(i + 1, c) * mu + Math.max(0, i + 1 - c) * th); }
+      pi = bd(lamv, muv);
+      if (pi[N] < 1e-15 || N > 20000 || ++guard > 20) break;
+      N = Math.ceil(N * 1.7);
+    }
+    var m = bdMetrics(pi, c), Pw = 0;
+    for (i = c; i <= N; i++) Pw += pi[i];
+    var Pab = th * m.Lq / lam;                    // 速率平衡恒等式：放弃率 = θ·E[Lq]/λ
+    var lamServed = lam * (1 - Pab);
+    var J = N - c;                                // 排队位置 0..J
+    /* 排队位置 j 的三个量，一条向下的递推（全是正项，无相消）：
+     *   g_j = P(最终被应答 | 起始位置 j)          g_{-1} = 1
+     *   h_j = E[等待时长·1{被应答} | 起始位置 j]  h_{-1} = 0
+     *   u_j = E[等待时长（不论结局） | 起始位置 j] u_{-1} = 0
+     * 其中 r_j = cμ + jθ + θ 是位置 j 的总离开率，前进概率 p_j = (cμ + jθ)/r_j。
+     * 它给出两条与上面「Pab = θLq/λ」「Wq = Lq/λ」完全独立的核对路径。 */
+    var g = 1, h = 0, u = 0, Pserved = 0, EwServed = 0, Ewait = 0, rj, pj, j;
+    for (j = 0; j < c; j++) Pserved += pi[j];
+    for (j = 0; j <= J; j++) {
+      rj = c * mu + j * th + th; pj = (c * mu + j * th) / rj;
+      h = g * pj / rj + pj * h;                   // 先用上一层的 g（= g_{j-1}）
+      u = 1 / rj + pj * u;
+      g = pj * g;
+      Pserved += pi[c + j] * g; EwServed += pi[c + j] * h; Ewait += pi[c + j] * u;
+    }
+    return { ok: true, model: 'erlangA', a: lam / mu, rho: lamServed / (c * mu), lam: lam, lamEff: lam,
+      lamServed: lamServed, c: c, theta: th, ES: 1 / mu, Pw: Pw, Pblock: 0, Pab: Pab, L: m.L, Lq: m.Lq,
+      W: m.L / lam, Wq: m.Lq / lam, busy: m.busy, dist: pi,
+      Pserved: Pserved, WqServed: Pserved > 0 ? EwServed / Pserved : 0, WqAll: Ewait,
+      /* P(在 t 秒内被应答)。排队位置 j 的动态：以 cμ+jθ 前进一格、以 θ 自己放弃。
+       * 用均匀化推进吸收链（部分分式闭式在速率密集时会灾难性相消）。 */
+      slAt: function (t) {
+        var S = J + 1, ABS = S, LOST = S + 1, n = S + 2, k;
+        var Lam = c * mu + (J + 1) * th;
+        var v0 = new Float64Array(n);
+        for (k = 0; k < c; k++) v0[ABS] += pi[k];             // 无需等待，立刻接通
+        for (k = c; k <= N; k++) v0[k - c] += pi[k];
+        if (!(t > 0)) return v0[ABS];
+        var adv = new Float64Array(S), own = new Float64Array(S);
+        for (k = 0; k < S; k++) { adv[k] = (c * mu + k * th) / Lam; own[k] = th / Lam; }
+        function step(v, out) {
+          out.fill(0);
+          for (var j = 0; j < S; j++) {
+            var x = v[j]; if (x === 0) continue;
+            out[j === 0 ? ABS : j - 1] += x * adv[j];
+            out[LOST] += x * own[j];
+            out[j] += x * (1 - adv[j] - own[j]);
+          }
+          out[ABS] += v[ABS]; out[LOST] += v[LOST];
+        }
+        return QL.uniformize(v0, step, Lam, t, ABS, [ABS, LOST]);
+      } };
+  }
+
+  // ── M/G/1（Pollaczek–Khinchine） ────────────────────────
+  function mg1(p) {
+    var lam = p.lam, ES = p.ES, cs2 = p.cs2;
+    if (!(lam > 0) || !(ES > 0) || !(cs2 >= 0)) return { ok: false, why: '参数必须为正（cs² 可为 0）' };
+    var rho = lam * ES;
+    if (rho >= 1) return { ok: false, why: '利用率 ρ=' + rho.toFixed(3) + ' ≥ 1，队列发散', rho: rho };
+    var Lq = rho * rho * (1 + cs2) / (2 * (1 - rho)), Wq = Lq / lam;
+    return { ok: true, model: 'mg1', a: rho, rho: rho, lam: lam, lamEff: lam, lamServed: lam, c: 1, ES: ES, cs2: cs2,
+      Pw: rho, Pblock: 0, Pab: 0, Lq: Lq, Wq: Wq, W: Wq + ES, L: Lq + rho, busy: rho, dist: null };
+  }
+
+  // ── M/G/1 优先级（非抢占 / 抢占-恢复） ────────────────────
+  function mg1Priority(p) {
+    var cl = p.classes, pre = !!p.preempt, k, i;
+    var lamT = 0, W0 = 0, rho = [], sig = [0], ok = true;
+    for (k = 0; k < cl.length; k++) {
+      if (!(cl[k].lam > 0) || !(cl[k].ES > 0) || !(cl[k].cs2 >= 0)) ok = false;
+      rho[k] = cl[k].lam * cl[k].ES;
+      lamT += cl[k].lam;
+      W0 += cl[k].lam * cl[k].ES * cl[k].ES * (1 + cl[k].cs2) / 2;   // Σ λ_i E[S_i²]/2
+      sig[k + 1] = sig[k] + rho[k];
+    }
+    if (!ok) return { ok: false, why: '每一类的 λ / E[S] 必须为正' };
+    var rhoT = sig[cl.length];
+    if (rhoT >= 1) return { ok: false, why: '总利用率 ρ=' + rhoT.toFixed(3) + ' ≥ 1，队列发散', rho: rhoT };
+    var per = [], Wq, W, W0k = 0, Lq = 0, L = 0, Wqbar = 0;
+    for (k = 0; k < cl.length; k++) {
+      W0k += cl[k].lam * cl[k].ES * cl[k].ES * (1 + cl[k].cs2) / 2;
+      if (pre) {
+        W = W0k / ((1 - sig[k]) * (1 - sig[k + 1])) + cl[k].ES / (1 - sig[k]);
+        Wq = W - cl[k].ES;
+      } else {
+        Wq = W0 / ((1 - sig[k]) * (1 - sig[k + 1]));
+        W = Wq + cl[k].ES;
+      }
+      per.push({ lam: cl[k].lam, ES: cl[k].ES, cs2: cl[k].cs2, rho: rho[k], Wq: Wq, W: W,
+                 Lq: cl[k].lam * Wq, L: cl[k].lam * W });
+      Lq += cl[k].lam * Wq; L += cl[k].lam * W; Wqbar += cl[k].lam * Wq;
+    }
+    return { ok: true, model: 'mg1p', preempt: pre, classes: per, a: rhoT, rho: rhoT, lam: lamT,
+      lamEff: lamT, lamServed: lamT, c: 1, Pw: rhoT, Pblock: 0, Pab: 0, Lq: Lq, L: L, Wq: Wqbar / lamT,
+      W: L / lamT, busy: rhoT, W0: W0, dist: null };
+  }
+
+  // ── G/G/c：Allen–Cunneen 近似（不是精确解，页面上照实标注） ───
+  function ggc(p) {
+    var lam = p.lam, ES = p.ES, c = Math.round(p.c), ca2 = p.ca2, cs2 = p.cs2;
+    if (!(lam > 0) || !(ES > 0) || !(c >= 1) || !(ca2 >= 0) || !(cs2 >= 0)) return { ok: false, why: '参数必须为正（cv² 可为 0）' };
+    var base = mmc({ lam: lam, mu: 1 / ES, c: c });
+    if (!base.ok) return base;
+    var f = (ca2 + cs2) / 2, Wq = base.Wq * f, Lq = lam * Wq;
+    return { ok: true, model: 'ggc', approx: true, a: base.a, rho: base.rho, lam: lam, lamEff: lam, lamServed: lam, c: c,
+      ES: ES, ca2: ca2, cs2: cs2, Pw: base.Pw, Pblock: 0, Pab: 0, Lq: Lq, Wq: Wq,
+      W: Wq + ES, L: Lq + base.a, busy: base.a, dist: null, factor: f };
+  }
+
+  /* 统一入口：按模型 id 分派。`MODELS` 同时是页面上「能力清单」的数据源 —— 
+   * 测试会遍历它逐个跑一遍，确保清单上列出来的模型都真的算得出来。 */
+  var MODELS = [
+    { id: 'mm1',      name: 'M/M/1',      desc: '单服务台、指数到达与服务',                 fields: ['lam', 'mu'],                   src: '生灭链闭式' },
+    { id: 'mmc',      name: 'M/M/c',      desc: 'c 个并行服务台、共享一条队（Erlang C）',    fields: ['lam', 'mu', 'c'],              src: 'Erlang C' },
+    { id: 'mmck',     name: 'M/M/c/K',    desc: '系统容量上限 K，满了拒绝',                 fields: ['lam', 'mu', 'c', 'K'],         src: '有限生灭链' },
+    { id: 'mmcc',     name: 'M/M/c/c',    desc: '无排队，占满即拒（Erlang B / 中继线）',      fields: ['lam', 'mu', 'c'],              src: 'Erlang B' },
+    { id: 'mminf',    name: 'M/M/∞',      desc: '服务台无限（自助、并发连接）',              fields: ['lam', 'mu'],                   src: '泊松分布' },
+    { id: 'mmcN',     name: 'M/M/c//N',   desc: '有限源：N 台机器 / c 个维修工',            fields: ['lam1', 'mu', 'c', 'N'],        src: '机器维修模型' },
+    { id: 'erlangA',  name: 'M/M/c+M',    desc: '等待者会放弃（Erlang A）',                fields: ['lam', 'mu', 'c', 'theta'],     src: '生灭链 + 均匀化' },
+    { id: 'mg1',      name: 'M/G/1',      desc: '一般服务时长，由 cv² 刻画',                fields: ['lam', 'ES', 'cs2'],            src: 'Pollaczek–Khinchine' },
+    { id: 'md1',      name: 'M/D/1',      desc: '服务时长固定（cv²=0）',                   fields: ['lam', 'ES'],                   src: 'P-K 的 cs²=0 特例' },
+    { id: 'mg1p',     name: 'M/G/1 优先级', desc: '多优先级，非抢占或抢占-恢复',             fields: ['classes', 'preempt'],          src: 'Cobham / 抢占-恢复公式' },
+    { id: 'ggc',      name: 'G/G/c',      desc: '到达与服务都一般（近似）',                 fields: ['lam', 'ES', 'c', 'ca2', 'cs2'], src: 'Allen–Cunneen 近似' }
+  ];
+
+  function solveModel(id, p) {
+    switch (id) {
+      case 'mm1': return mmc({ lam: p.lam, mu: p.mu, c: 1 });
+      case 'mmc': return mmc(p);
+      case 'mmck': return mmck(p);
+      case 'mmcc': return mmcc(p);
+      case 'mminf': return mminf(p);
+      case 'mmcN': return mmcN(p);
+      case 'erlangA': return erlangA(p);
+      case 'mg1': return mg1(p);
+      case 'md1': return mg1({ lam: p.lam, ES: p.ES, cs2: 0 });
+      case 'mg1p': return mg1Priority(p);
+      case 'ggc': return ggc(p);
+      default: return { ok: false, why: '未知模型 ' + id };
+    }
+  }
+
+  QL.erlangCDF = erlangCDF;
+  QL.mmc = mmc; QL.mmck = mmck; QL.mmcc = mmcc; QL.mminf = mminf; QL.mmcN = mmcN;
+  QL.erlangA = erlangA; QL.mg1 = mg1; QL.mg1Priority = mg1Priority; QL.ggc = ggc;
+  QL.MODELS = MODELS; QL.solveModel = solveModel;
+})(QL);
+
+/* Queue Lab 引擎 · 第 3 部分：排队网络
+ *  · jackson()  开网络：解流量方程后每个节点独立按 M/M/c 算（Jackson 乘积形式）
+ *  · mva()      闭网络：精确均值分析（Reiser–Lavenberg，含多服务台站）
+ *  · bounds()   闭网络的渐近上界（容量规划里最先看的两条线）
+ */
+(function (QL) {
+  'use strict';
+
+  /* 开放 Jackson 网络。
+   *   nodes:  [{ name, mu, c }]
+   *   gamma:  外部到达率数组
+   *   P:      路由矩阵，P[i][j] = 在 i 完成后去 j 的概率；1-Σ_j P[i][j] = 离开系统
+   * 流量方程 λ_j = γ_j + Σ_i λ_i P[i][j]，即 (I - Pᵀ) λ = γ。 */
+  function jackson(cfg) {
+    var nodes = cfg.nodes, gamma = cfg.gamma, P = cfg.P, n = nodes.length, i, j;
+    for (i = 0; i < n; i++) {
+      var rs = 0;
+      for (j = 0; j < n; j++) rs += P[i][j];
+      if (rs > 1 + 1e-9) return { ok: false, why: '第 ' + (i + 1) + ' 个节点的路由概率之和 ' + rs.toFixed(3) + ' > 1' };
+      if (!(nodes[i].mu > 0) || !(nodes[i].c >= 1)) return { ok: false, why: '第 ' + (i + 1) + ' 个节点的服务率与台数必须为正' };
+      if (!(gamma[i] >= 0)) return { ok: false, why: '外部到达率不能为负' };
+    }
+    var A = [], b = [];
+    for (i = 0; i < n; i++) {
+      A.push([]);
+      for (j = 0; j < n; j++) A[i].push((i === j ? 1 : 0) - P[j][i]);
+      b.push(gamma[i]);
+    }
+    var lam = QL.solveLinear(A, b);
+    if (!lam) return { ok: false, why: '流量方程无解（路由矩阵奇异，可能存在无法离开的闭环）' };
+    for (i = 0; i < n; i++) if (!(lam[i] >= -1e-12)) return { ok: false, why: '流量方程解出负到达率，请检查路由矩阵' };
+
+    var per = [], Ltot = 0, Lqtot = 0, gtot = 0, bottleneck = -1, bmax = -1;
+    for (i = 0; i < n; i++) {
+      gtot += gamma[i];
+      var li = Math.max(lam[i], 0);
+      var r = li > 0 ? QL.mmc({ lam: li, mu: nodes[i].mu, c: nodes[i].c })
+                     : { ok: true, a: 0, rho: 0, Pw: 0, L: 0, Lq: 0, W: 0, Wq: 0 };
+      if (!r.ok) {
+        return { ok: false, why: '节点「' + nodes[i].name + '」不稳定：到达率 ' + li.toFixed(4)
+          + ' ≥ 处理能力 ' + (nodes[i].c * nodes[i].mu).toFixed(4), lam: lam, badNode: i };
+      }
+      per.push({ name: nodes[i].name, lam: li, mu: nodes[i].mu, c: nodes[i].c, rho: r.rho,
+                 L: r.L, Lq: r.Lq, W: r.W, Wq: r.Wq, Pw: r.Pw });
+      Ltot += r.L; Lqtot += r.Lq;
+      if (r.rho > bmax) { bmax = r.rho; bottleneck = i; }
+    }
+    return { ok: true, lam: lam, nodes: per, L: Ltot, Lq: Lqtot, gammaTotal: gtot,
+             W: gtot > 0 ? Ltot / gtot : 0, bottleneck: bottleneck, rhoMax: bmax };
+  }
+
+  /* 闭合网络精确 MVA（Reiser–Lavenberg 1980），支持多服务台站。
+   *   stations: [{ name, S(每次访问的服务时间), V(访问次数), c(服务台数) }]
+   *   N: 并发作业数（用户数）   Z: 思考时间（延迟站，V=1）
+   * 到达定理：population 为 n 的作业到达某站时，看到的是 population n-1 的平衡分布。
+   *   R_k(n) = (S_k/m_k)·[1 + Q_k(n-1) + Σ_{j=0}^{m_k-2}(m_k-1-j)·p_k(j|n-1)]
+   *   X(n)   = n / (Z + Σ_k V_k R_k(n))
+   *   Q_k(n) = X(n)·V_k·R_k(n)
+   *   p_k(j|n) = D_k·X(n)·p_k(j-1|n-1)/min(j,m_k)，  p_k(0|n) 由「忙服务台数 = X·D_k」补齐
+   */
+  function mva(cfg) {
+    var st = cfg.stations, N = Math.round(cfg.N), Z = cfg.Z || 0, K = st.length, i, j, n;
+    if (!(K >= 1)) return { ok: false, why: '至少要有一个服务站' };
+    if (!(N >= 1)) return { ok: false, why: '并发作业数 N 必须 ≥ 1' };
+    if (!(Z >= 0)) return { ok: false, why: '思考时间不能为负' };
+    for (i = 0; i < K; i++) {
+      if (!(st[i].S > 0) || !(st[i].V > 0) || !(st[i].c >= 1))
+        return { ok: false, why: '第 ' + (i + 1) + ' 个站的服务时间 / 访问次数 / 台数必须为正' };
+    }
+    var D = st.map(function (s) { return s.V * s.S; });
+    var m = st.map(function (s) { return Math.round(s.c); });
+    var Q = new Array(K).fill(0);
+    // p[i][j] = 站 i 上恰有 j 个作业的概率（只需 j = 0..m_i-1）
+    var p = st.map(function (s, k) { var a = new Array(Math.max(1, m[k])).fill(0); a[0] = 1; return a; });
+    var X = 0, R = new Array(K).fill(0), hist = [];
+    for (n = 1; n <= N; n++) {
+      var denom = Z;
+      for (i = 0; i < K; i++) {
+        var extra = 0;
+        for (j = 0; j <= m[i] - 2; j++) extra += (m[i] - 1 - j) * p[i][j];
+        R[i] = (st[i].S / m[i]) * (1 + Q[i] + extra);
+        denom += st[i].V * R[i];
+      }
+      X = n / denom;
+      var pPrev = p.map(function (a) { return a.slice(); });
+      for (i = 0; i < K; i++) {
+        Q[i] = X * st[i].V * R[i];
+        if (m[i] > 1) {
+          var s0 = 0;
+          for (j = m[i] - 1; j >= 1; j--) {
+            p[i][j] = D[i] * X * pPrev[i][j - 1] / Math.min(j, m[i]);
+          }
+          for (j = 1; j <= m[i] - 1; j++) s0 += (m[i] - j) * p[i][j];
+          p[i][0] = 1 - (X * D[i] + s0) / m[i];
+        }
+      }
+      hist.push({ n: n, X: X, R: denom - Z, Q: Q.slice() });
+    }
+    var Rsys = 0;
+    for (i = 0; i < K; i++) Rsys += st[i].V * R[i];
+    var per = [];
+    for (i = 0; i < K; i++) {
+      per.push({ name: st[i].name, S: st[i].S, V: st[i].V, c: m[i], D: D[i],
+                 U: X * D[i] / m[i], Q: Q[i], R: R[i], Rtot: st[i].V * R[i], X: X * st[i].V });
+    }
+    return { ok: true, X: X, R: Rsys, N: N, Z: Z, stations: per, hist: hist,
+             Nthink: N - X * Rsys, bounds: bounds(cfg) };
+  }
+
+  /* 闭网络的渐近界：轻载看「N/(D+Z)」，重载看「1/瓶颈站每台需求」。 */
+  function bounds(cfg) {
+    var st = cfg.stations, N = cfg.N, Z = cfg.Z || 0, i;
+    var Dsum = 0, Dmax = 0, bi = 0;
+    for (i = 0; i < st.length; i++) {
+      var d = st[i].V * st[i].S;
+      Dsum += d;
+      var per = d / Math.round(st[i].c);
+      if (per > Dmax) { Dmax = per; bi = i; }
+    }
+    return { Dsum: Dsum, Dmax: Dmax, bottleneck: bi,
+             Xmax: Math.min(N / (Dsum + Z), 1 / Dmax),
+             Xlight: N / (Dsum + Z), Xheavy: 1 / Dmax,
+             Rmin: Math.max(Dsum, N * Dmax - Z),
+             Nstar: (Dsum + Z) / Dmax };
+  }
+
+  QL.jackson = jackson; QL.mva = mva; QL.closedBounds = bounds;
+})(QL);
+
+/* Queue Lab 引擎 · 第 4 部分：定员与排班
+ *  · minServers()   给定服务目标，求最少服务台数（各指标对 c 单调，逐台递增即可）
+ *  · staffPlan()    逐时段定员 + 收缩率折算
+ *  · coverShifts()  等长班次覆盖：贪心，且**可证明最优**
+ */
+(function (QL) {
+  'use strict';
+
+  /* 目标 goal:
+   *   { kind:'sl',  T, target }   T 秒内应答比例 ≥ target
+   *   { kind:'asa', target }      平均应答时长 ≤ target
+   *   { kind:'occ', target }      坐席占用率 ≤ target
+   *   { kind:'abandon', target }  放弃率 ≤ target（需 Erlang A）
+   *   { kind:'block', target }    阻塞率 ≤ target（需 Erlang B / 有限队列）
+   * 返回 { c, metrics, curve:[{c, sl, asa, occ, ab, ok}] } */
+  function minServers(modelId, params, goal, opt) {
+    var o = opt || {}, cmax = o.cmax || 2000, curve = [], best = null;
+    var c0 = Math.max(1, Math.floor((params.lam || 0) / (params.mu || 1)));
+    var cStart = Math.max(1, c0 - 3);
+    for (var c = cStart; c <= cmax; c++) {
+      var p = { noDist: true }; for (var k in params) p[k] = params[k];
+      p.c = c;
+      if (modelId === 'mmck' && p.K != null && p.K < c) p.K = c;
+      var r = QL.solveModel(modelId, p);
+      var row = { c: c, ok: false, feasible: !!r.ok };
+      if (r.ok) {
+        row.sl = r.slAt ? r.slAt(goal.T != null ? goal.T : 20) : NaN;
+        row.asa = r.Wq;
+        row.occ = r.rho;
+        row.ab = r.Pab || 0;
+        row.block = r.Pblock || 0;
+        row.Lq = r.Lq;
+        row.ok = meets(r, goal);
+      }
+      curve.push(row);
+      if (row.ok && !best) { best = { c: c, metrics: r }; if (curve.length >= 1 && c - cStart >= 0) { } }
+      if (best && c >= best.c + Math.max(8, Math.round(best.c * 0.35))) break;   // 曲线多画一段就够了
+    }
+    return { ok: !!best, c: best ? best.c : null, metrics: best ? best.metrics : null, curve: curve,
+             why: best ? null : '在 ' + cmax + ' 个服务台以内无法达标' };
+  }
+
+  function meets(r, goal) {
+    switch (goal.kind) {
+      case 'sl': return r.slAt ? r.slAt(goal.T) >= goal.target - 1e-12 : false;
+      case 'asa': return r.Wq <= goal.target + 1e-12;
+      case 'occ': return r.rho <= goal.target + 1e-12;
+      case 'abandon': return (r.Pab || 0) <= goal.target + 1e-12;
+      case 'block': return (r.Pblock || 0) <= goal.target + 1e-12;
+      default: return false;
+    }
+  }
+
+  /* 逐时段定员。intervals: [{ label, calls, aht }]，每个时段长 slotMin 分钟。
+   *   到达率 λ = calls / (slotMin·60)  次/秒；服务率 μ = 1/aht
+   *   shrinkage：休息/会议/培训等不可用时间比例 ⇒ 上岗人数 = ceil(需求 / (1-shrinkage)) */
+  function staffPlan(cfg) {
+    var iv = cfg.intervals, slot = cfg.slotMin * 60, sh = cfg.shrinkage || 0, rows = [], i;
+    var goal = cfg.goal, modelId = cfg.model || 'mmc';
+    var totReq = 0, totStaff = 0, totCalls = 0;
+    for (i = 0; i < iv.length; i++) {
+      var calls = iv[i].calls, aht = iv[i].aht;
+      if (!(calls > 0)) {
+        rows.push({ label: iv[i].label, calls: calls || 0, aht: aht, a: 0, req: 0, staff: 0,
+                    sl: 1, asa: 0, occ: 0, ab: 0 });
+        continue;
+      }
+      var lam = calls / slot, mu = 1 / aht;
+      var p = { lam: lam, mu: mu };
+      if (modelId === 'erlangA') p.theta = 1 / cfg.patience;
+      var r = minServers(modelId, p, goal, { cmax: 5000 });
+      var req = r.ok ? r.c : NaN;
+      var staff = r.ok ? Math.ceil(req / (1 - sh)) : NaN;
+      var m = r.metrics;
+      rows.push({ label: iv[i].label, calls: calls, aht: aht, a: lam / mu, req: req, staff: staff,
+                  sl: m ? m.slAt(goal.T != null ? goal.T : 20) : NaN, asa: m ? m.Wq : NaN,
+                  occ: m ? m.rho : NaN, ab: m ? (m.Pab || 0) : 0 });
+      if (r.ok) { totReq += req; totStaff += staff; }
+      totCalls += calls;
+    }
+    return { rows: rows, totalCalls: totCalls, agentSlots: totReq, staffedSlots: totStaff,
+             agentHours: totReq * cfg.slotMin / 60, staffedHours: totStaff * cfg.slotMin / 60,
+             shrinkage: sh };
+  }
+
+  /* 等长班次覆盖：需求 req[t]（人），班次长 L 个时段，班次必须完整落在 [0, T) 内。
+   * 从左往右扫，遇到缺口就在**能覆盖 t 且向右伸得最远**的那个起点补班 —— 
+   * 该起点是 min(t, T-L)。交换论证给出最优性：任何可行解里覆盖 t 的班次都可以
+   * 替换成这个起点的班次而不减少任何位置的覆盖。所以贪心的班次总数 = 最优值。 */
+  function coverShifts(req, L, opt) {
+    var T = req.length, o = opt || {}, i;
+    L = Math.max(1, Math.min(Math.round(L), T));
+    var cover = new Array(T).fill(0), shifts = new Array(T).fill(0), total = 0;
+    for (i = 0; i < T; i++) {
+      var need = Math.max(0, Math.ceil(req[i] - 1e-9) - cover[i]);
+      if (need <= 0) continue;
+      var s = Math.min(i, T - L);
+      shifts[s] += need; total += need;
+      for (var j = s; j < s + L; j++) cover[j] += need;
+    }
+    var over = 0, reqSum = 0;
+    for (i = 0; i < T; i++) { over += cover[i] - req[i]; reqSum += req[i]; }
+    var list = [];
+    for (i = 0; i < T; i++) if (shifts[i] > 0) list.push({ start: i, n: shifts[i], end: i + L });
+    return { shifts: shifts, list: list, cover: cover, total: total, L: L,
+             slots: total * L, reqSlots: reqSum, overSlots: over,
+             overPct: reqSum > 0 ? over / reqSum : 0 };
+  }
+
+  QL.minServers = minServers; QL.staffPlan = staffPlan; QL.coverShifts = coverShifts; QL.goalMet = meets;
+})(QL);
+
+/* Queue Lab 引擎 · 第 5 部分：离散事件仿真（单节点、c 个服务台、FCFS）
+ * 支持：任意到达/服务变异系数、放弃（耐心）、系统容量上限。
+ * 固定种子 ⇒ 结果完全可复现（测试要能断死数字，不能每跑一次都不一样）。
+ * 它与解析公式**没有任何共享代码**，所以「仿真 vs 闭式」是一条真正独立的交叉验证。
+ */
+(function (QL) {
+  'use strict';
+
+  function simulate(cfg) {
+    var lam = cfg.lam, c = Math.round(cfg.c), ES = cfg.ES;
+    var n = Math.round(cfg.n || 50000), warm = Math.round(cfg.warmup != null ? cfg.warmup : Math.min(5000, Math.floor(n * 0.1)));
+    if (!(lam > 0) || !(ES > 0) || !(c >= 1) || !(n >= 100)) return { ok: false, why: '仿真参数不合法（客户数至少 100）' };
+    var K = cfg.K > 0 ? Math.round(cfg.K) : Infinity;
+    if (K < c) K = c;
+    var rnd = QL.mulberry32((cfg.seed >>> 0) || 20260918);
+    var iat = QL.makeSampler(cfg.arrDist || 'auto', 1 / lam, cfg.ca2 == null ? 1 : cfg.ca2, rnd);
+    var svc = QL.makeSampler(cfg.svcDist || 'auto', ES, cfg.cs2 == null ? 1 : cfg.cs2, rnd);
+    var pat = cfg.patience > 0 ? QL.makeSampler(cfg.patDist || 'exp', cfg.patience, cfg.patCs2 == null ? 1 : cfg.patCs2, rnd) : null;
+    var slT = cfg.slT != null ? cfg.slT : 20;
+
+    var t = 0, nArr = 0, nRes = 0, busy = 0;
+    var comp = new QL.Heap(function (a, b) { return a - b; });
+    var dead = new QL.Heap(function (a, b) { return a.t - b.t; });
+    var q = [], qh = 0;                                   // 队列 + 头指针（避免 shift 的 O(n)）
+    var tNextArr = iat();
+    var t0 = 0, areaL = 0, areaLq = 0, started = false;
+    var nServed = 0, nAband = 0, nBlocked = 0, nAcc = 0, nWaited = 0, nSLok = 0;
+    var sumWq = 0, sumW = 0, sumWqServed = 0;
+    var batchB = Math.max(8, Math.min(40, Math.floor((n - warm) / 500))), batch = [], bAcc = 0, bCnt = 0;
+    var perBatch = Math.max(1, Math.floor((n - warm) / batchB));
+    var hist = new Float64Array(41), histS = new Float64Array(41);
+    var histMax = cfg.histMax > 0 ? cfg.histMax : Math.max(slT * 4, 1e-9);
+    var trace = [], traceCap = 1200;
+
+    function inSys() { return busy + (q.length - qh); }
+    function advance(dt) {
+      if (!started || dt <= 0) return;
+      var qq = q.length - qh;
+      areaL += (busy + qq) * dt; areaLq += qq * dt;
+    }
+    function note() {
+      if (started && trace.length < traceCap) trace.push([t - t0, busy + (q.length - qh)]);
+    }
+    function resolve(cust, wait, servedFlag) {
+      if (cust.i < warm) { nRes++; return; }
+      nAcc++; nRes++;
+      sumWq += wait;
+      if (servedFlag) {
+        nServed++; sumW += wait + cust.st; sumWqServed += wait;
+        if (wait <= slT) nSLok++;
+      } else { nAband++; sumW += wait; }
+      if (wait > 1e-12) nWaited++;
+      var b = Math.min(40, Math.floor(wait / histMax * 40));
+      if (b < 0) b = 0;
+      hist[b]++;
+      if (servedFlag) histS[b]++;   // 只统计「最终被应答」的那批，好和解析的 P(应答且等待≤t) 对得上
+      bAcc += wait; bCnt++;
+      if (bCnt >= perBatch) { batch.push(bAcc / bCnt); bAcc = 0; bCnt = 0; }
+    }
+    function startService(cust) {
+      busy++;
+      cust.st = svc();
+      comp.push(t + cust.st);
+      return cust;
+    }
+
+    var guard = 0;
+    while (nRes < n && ++guard < n * 40 + 1000000) {
+      var tA = nArr < n ? tNextArr : Infinity;
+      var tC = comp.size() ? comp.peek() : Infinity;
+      var tD = Infinity;
+      while (dead.size()) { var d = dead.peek(); if (d.gone) { dead.pop(); continue; } tD = d.t; break; }
+      var tn = Math.min(tA, tC, tD);
+      if (!isFinite(tn)) break;
+      advance(tn - t);
+      t = tn;
+      if (tA <= tC && tA <= tD) {
+        var cust = { i: nArr, arr: t, st: 0 };
+        nArr++; tNextArr = t + iat();
+        if (nArr - 1 === warm) { started = true; t0 = t; areaL = 0; areaLq = 0; }
+        if (inSys() >= K) {
+          if (cust.i >= warm) { nBlocked++; } 
+          nRes++;
+        } else if (busy < c) {
+          startService(cust);
+          resolve(cust, 0, true);
+        } else {
+          q.push(cust);
+          if (pat) { cust.dl = { t: t + pat(), gone: false, cust: cust }; dead.push(cust.dl); }
+        }
+      } else if (tC <= tD) {
+        comp.pop(); busy--;
+        if (q.length - qh > 0) {
+          var nx = q[qh++]; if (qh > 4096 && qh * 2 > q.length) { q = q.slice(qh); qh = 0; }
+          if (nx.dl) nx.dl.gone = true;
+          var w = t - nx.arr;
+          startService(nx);
+          resolve(nx, w, true);
+        }
+      } else {
+        var rec = dead.pop(); rec.gone = true;
+        var idx = -1, i;
+        for (i = qh; i < q.length; i++) if (q[i] === rec.cust) { idx = i; break; }
+        if (idx >= 0) q.splice(idx, 1);
+        resolve(rec.cust, t - rec.cust.arr, false);
+      }
+      note();
+    }
+    var span = t - t0;
+    var Lsim = span > 0 ? areaL / span : 0, Lqsim = span > 0 ? areaLq / span : 0;
+    var lamAcc = span > 0 ? nAcc / span : 0;
+    var mean = 0, sd = 0, i2;
+    for (i2 = 0; i2 < batch.length; i2++) mean += batch[i2];
+    mean = batch.length ? mean / batch.length : 0;
+    for (i2 = 0; i2 < batch.length; i2++) sd += (batch[i2] - mean) * (batch[i2] - mean);
+    sd = batch.length > 1 ? Math.sqrt(sd / (batch.length - 1)) : 0;
+    var half = batch.length > 1 ? 1.96 * sd / Math.sqrt(batch.length) : 0;
+    var nOffered = nAcc + nBlocked;
+    return {
+      ok: true, n: n, warmup: warm, tEnd: t, span: span, seed: (cfg.seed >>> 0) || 20260918,
+      nOffered: nOffered, nAcc: nAcc, nServed: nServed, nAband: nAband, nBlocked: nBlocked,
+      L: Lsim, Lq: Lqsim, lamAcc: lamAcc,
+      Wq: nAcc ? sumWq / nAcc : 0, W: nAcc ? sumW / nAcc : 0,
+      WqServed: nServed ? sumWqServed / nServed : 0,
+      Pw: nAcc ? nWaited / nAcc : 0,
+      Pab: nOffered ? nAband / nOffered : 0,
+      Pblock: nOffered ? nBlocked / nOffered : 0,
+      slAll: nOffered ? nSLok / nOffered : 0,
+      slAcc: nAcc ? nSLok / nAcc : 0,
+      util: span > 0 ? (Lsim - Lqsim) / c : 0,
+      ciWq: [Math.max(0, mean - half), mean + half], ciHalf: half, batches: batch.length,
+      hist: Array.prototype.slice.call(hist), histServed: Array.prototype.slice.call(histS),
+      histMax: histMax, trace: trace, slT: slT
+    };
+  }
+
+  QL.simulate = simulate;
+})(QL);
+
+/* Queue Lab 引擎 · 第 6 部分：状态序列化（分享链接 / localStorage）
+ * 这是一对「打印器 + 解析器」，按站内规矩必须有随机 round-trip fuzz 兜底：
+ * base64 与 UTF-8 的组合是经典雷区（本工具的状态里带中文标签，btoa 直接喂会抛
+ * InvalidCharacterError），所以先 encodeURIComponent 转成单字节再编码。
+ */
+(function (QL) {
+  'use strict';
+  function toB64(s) {
+    var bytes = unescape(encodeURIComponent(s));
+    var b = typeof btoa === 'function' ? btoa(bytes) : Buffer.from(bytes, 'binary').toString('base64');
+    return b.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  }
+  function fromB64(s) {
+    var b = s.replace(/-/g, '+').replace(/_/g, '/');
+    while (b.length % 4) b += '=';
+    var bytes = typeof atob === 'function' ? atob(b) : Buffer.from(b, 'base64').toString('binary');
+    return decodeURIComponent(escape(bytes));
+  }
+  function encodeState(o) { return toB64(JSON.stringify(o)); }
+  function decodeState(s) {
+    try { var o = JSON.parse(fromB64(s)); return (o && typeof o === 'object') ? o : null; }
+    catch (e) { return null; }
+  }
+  QL.encodeState = encodeState; QL.decodeState = decodeState;
+})(QL);
+</script>
+<script>/* 本站通用的 SVG 绘图骨架：Frame（坐标框 + 刻度 + 裁剪）+ Placer（文字避让器）。
+ *
+ * 固化背景：09-14 journal 明写「这套 Placer 每期都在重写，值得连同保守盒 + 退让位一起抽进
+ * 公共脚手架」，09-15（SVG 机器人图）与 09-16（12 张图）又各重写一遍。本文件 = 09-16 版，
+ * 已经把历次踩过的坑都焊进去了：
+ *   ① 每一段文字（**含坐标轴刻度**）都走 Placer，撞了就按退让位挪、全撞就丢（07-28…08-11 共 7 次事故）；
+ *   ② 退让位第一顺位要落在数据的空侧，带 plate 的标注会擦掉底下的曲线（08-07）；
+ *   ③ 刻度档位按「刻度个数最接近目标」挑，不是「第一个 ≥ raw 的步长」（08-27 y 轴塌成 2 根）；
+ *   ④ setDomain **允许上下界倒置**（俯视图要 y 向下）—— 强行要求 ymax > ymin 会把整张图画空（09-16）；
+ *   ⑤ 曲线一律 clip 到绘图矩形，越界分支不许糊到坐标轴外（09-16）。
+ *
+ * 用法（作为 app 的第一个源文件内联进页面即可）：
+ *   node tools/build-inline.mjs --template page.template.html --out index.html \
+ *     --inline '/*APP*\/=<本文件>,app_part1.js,…'
+ *   var F = new AEPlot.Frame('fig-id', { pad: { l: 56, r: 18, t: 16, b: 38 } });
+ *   F.setDomain(x0, x1, y0, y1);
+ *   F.axes({ xlabel: '…', ylabel: '…', xfmt: fn, yfmt: fn });
+ *   F.path(pts, { stroke: '#da291c' }); F.dot(x, y); F.vline(x); F.hline(y);
+ *   F.P.text(px, py, '标注', { size: 10, fill: '#fff', plate: true, offsets: [[0,0],[0,-13],[0,20]] });
+ * 需要宿主提供一个 fmt(v, d) 数字格式函数：new Frame(id, { fmt: myFmt })，默认用内置的。
+ */
+var AEPlot = (function () {
+  'use strict';
+  var SVGNS = 'http://www.w3.org/2000/svg';
+  /* 主题色。09-16 抽出来时把 Ferrari 的深色写死在 axes/Placer 里，浅色设计系统（Expo）
+   * 用起来刻度与网格几乎看不见 —— 2026-09-17 改成可覆盖，默认值与旧版逐字相同。
+   * 用法：AEPlot.theme({ grid:'#f0f0f3', axis:'#dcdee0', tick:'#60646c', label:'#999' }); */
+  var TH = { grid: '#282828', axis: '#303030', tick: '#8f8f8f', label: '#666',
+             text: '#969696', plate: '#181818', series: '#da291c' };
+  function theme(o) { for (var k in o) if (o[k] != null) TH[k] = o[k]; return TH; }
+  function $(id) { return document.getElementById(id); }
+  function fmt(v, d) {
+    if (v == null || !isFinite(v)) return '—';
+    var x = +v;
+    if (Math.abs(x) >= 1e6 || (Math.abs(x) < 1e-4 && x !== 0)) return x.toExponential(d == null ? 3 : d);
+    var s = x.toFixed(d == null ? 3 : d);
+    if (/^-0\.?0*$/.test(s)) s = s.slice(1);
+    return s;
+  }
+  // ── SVG 基础 ──
+  function el(tag, attrs, parent) {
+    var n = document.createElementNS(SVGNS, tag), k;
+    for (k in attrs) if (attrs[k] != null) n.setAttribute(k, attrs[k]);
+    if (parent) parent.appendChild(n);
+    return n;
+  }
+  function clear(node) { while (node.firstChild) node.removeChild(node.firstChild); }
+
+  /* 文字避让器：**这张图上的每一段文字**都必须经过它（含坐标轴刻度）。
+   * 教训来源：07-28/07-29/07-30/08-05/08-07/08-08/08-11 连撞 7 次标签重叠，
+   * 全部逃过 DOM 断言，只有人工看图才发现。 */
+  function Placer(svg, w, h) {
+    this.svg = svg; this.w = w; this.h = h; this.boxes = []; this.drawn = 0; this.dropped = 0;
+  }
+  Placer.prototype.measure = function (text, size) {
+    var n = 0, i, c;
+    for (i = 0; i < text.length; i++) {
+      c = text.charCodeAt(i);
+      n += (c > 0x2e80 && c < 0xa000) || (c >= 0xff00 && c <= 0xffef) ? 1 : 0.6;
+    }
+    return n * size;
+  };
+  Placer.prototype.hit = function (b) {
+    if (b.x < -1 || b.y < -1 || b.x + b.w > this.w + 1 || b.y + b.h > this.h + 1) return true;  // 出画布
+    for (var i = 0; i < this.boxes.length; i++) {
+      var o = this.boxes[i];
+      if (b.x < o.x + o.w && o.x < b.x + b.w && b.y < o.y + o.h && o.y < b.y + b.h) return true;
+    }
+    return false;
+  };
+  Placer.prototype.reserve = function (x, y, w, h) { this.boxes.push({ x: x, y: y, w: w, h: h }); };
+  /* opts: {size, fill, anchor, weight, offsets:[[dx,dy]…], plate:bool} */
+  Placer.prototype.text = function (x, y, str, opts) {
+    var o = opts || {}, size = o.size || 11, anchor = o.anchor || 'middle';
+    var tw = this.measure(str, size) + 3, th = size + 3;
+    var offs = o.offsets || [[0, 0]], i, dx, dy, bx, by, box = null, ox = 0, oy = 0;
+    for (i = 0; i < offs.length; i++) {
+      dx = offs[i][0]; dy = offs[i][1];
+      bx = x + dx - (anchor === 'middle' ? tw / 2 : anchor === 'end' ? tw : 0);
+      by = y + dy - th + 2;
+      if (!this.hit({ x: bx, y: by, w: tw, h: th })) { box = { x: bx, y: by, w: tw, h: th }; ox = dx; oy = dy; break; }
+    }
+    if (!box) { this.dropped++; return null; }
+    this.boxes.push(box); this.drawn++;
+    if (o.plate) el('rect', { x: box.x, y: box.y, width: box.w, height: box.h, fill: o.plate === true ? TH.plate : o.plate, opacity: 0.88 }, this.svg);
+    var t = el('text', { x: x + ox, y: y + oy, 'text-anchor': anchor, 'font-size': size, fill: o.fill || TH.text,
+      'font-weight': o.weight || 400, 'font-family': 'inherit' }, this.svg);
+    t.textContent = str;
+    return t;
+  };
+
+  /* 直角坐标绘图框 */
+  function Frame(svgId, opt) {
+    var svg = $(svgId), o = opt || {};
+    clear(svg);
+    var vb = svg.getAttribute('viewBox').split(/\s+/).map(Number);
+    this.svg = svg; this.W = vb[2]; this.H = vb[3];
+    // 宿主传进来的 fmt 以前只存不用：axes() 里写死了模块自带的 fmt，
+    // 于是 `new Frame(id, { fmt: myFmt })` 会被**静默忽略**（2026-09-18 实撞，
+    // 「各节点排队人数」那张图的 x 轴因此打出了 3 位小数）。这里收起来，下面用它。
+    this.fmt = o.fmt || fmt;
+    this.pad = o.pad || { l: 56, r: 18, t: 16, b: 38 };
+    this.x0 = this.pad.l; this.x1 = this.W - this.pad.r;
+    this.y0 = this.H - this.pad.b; this.y1 = this.pad.t;
+    this.P = new Placer(svg, this.W, this.H);
+    // 裁剪：曲线一律夹在绘图矩形内（否则超出量程的分支会画到坐标轴外、糊到图例上）
+    this.clipId = 'ae-clip-' + svgId + '-' + Math.random().toString(36).slice(2, 8);
+    var defs = el('defs', {}, svg);
+    var cp = el('clipPath', { id: this.clipId }, defs);
+    el('rect', { x: this.pad.l, y: this.pad.t, width: this.W - this.pad.l - this.pad.r,
+      height: this.H - this.pad.t - this.pad.b }, cp);
+    this.setDomain(o.xmin == null ? 0 : o.xmin, o.xmax == null ? 1 : o.xmax, o.ymin == null ? 0 : o.ymin, o.ymax == null ? 1 : o.ymax);
+  }
+  Frame.prototype.setDomain = function (xmin, xmax, ymin, ymax) {
+    // 只修「退化」（上下界相等/非数），**不能**强行要求 ymax > ymin ——
+    // 俯视图要把 y 轴倒过来画（2026-09-16 实撞：平面形状图整张空白，
+    // 因为这里把倒置域改写成了 [ymin, ymin+1]，机翼落在域外）。
+    if (!isFinite(xmin) || !isFinite(xmax) || xmax === xmin) { xmin = xmin || 0; xmax = xmin + 1; }
+    if (!isFinite(ymin) || !isFinite(ymax) || ymax === ymin) { ymin = ymin || 0; ymax = ymin + 1; }
+    this.xmin = xmin; this.xmax = xmax; this.ymin = ymin; this.ymax = ymax;
+  };
+  Frame.prototype.sx = function (x) { return this.x0 + (x - this.xmin) / (this.xmax - this.xmin) * (this.x1 - this.x0); };
+  Frame.prototype.sy = function (y) { return this.y0 + (y - this.ymin) / (this.ymax - this.ymin) * (this.y1 - this.y0); };
+  /* 刻度档位：按「刻度个数最接近目标」挑，而不是「第一个 ≥ raw 的步长」
+   * （2026-08-27 教训：后者会把 y 轴塌成 2 根刻度）。 */
+  Frame.prototype.ticks = function (min, max, target) {
+    var span = max - min, best = null, mag, s, i, cand, cnt;
+    if (!(span > 0)) return [min];
+    for (mag = Math.floor(Math.log10(span)) - 1; mag <= Math.floor(Math.log10(span)) + 1; mag++) {
+      var base = Math.pow(10, mag);
+      var steps = [1, 2, 2.5, 5, 10];
+      for (i = 0; i < steps.length; i++) {
+        s = steps[i] * base;
+        cnt = Math.floor(max / s) - Math.ceil(min / s) + 1;
+        if (cnt < 2 || cnt > 24) continue;
+        cand = Math.abs(cnt - (target || 6));
+        if (best === null || cand < best.score) best = { step: s, score: cand };
+      }
+    }
+    if (!best) return [min, max];
+    var out = [], v0 = Math.ceil(min / best.step) * best.step;
+    for (var v = v0; v <= max + best.step * 1e-6; v += best.step) out.push(Math.abs(v) < best.step * 1e-9 ? 0 : v);
+    return out;
+  };
+  Frame.prototype.axes = function (o) {
+    var op = o || {}, i, t, px, py;
+    // 域可以是**倒置**的（阿贝图 x 轴从大到小、俯视图 y 轴向下），取刻度前先排序，
+    // 否则 ticks() 拿到负 span 直接 return [min]，整条轴只剩一个刻度
+    // （2026-09-17 实撞：阿贝图 x 轴只画出一个孤零零的「89」）。
+    var xt = op.xticks || this.ticks(Math.min(this.xmin, this.xmax), Math.max(this.xmin, this.xmax), 6);
+    var yt = op.yticks || this.ticks(Math.min(this.ymin, this.ymax), Math.max(this.ymin, this.ymax), 6);
+    el('rect', { x: this.x0, y: this.y1, width: this.x1 - this.x0, height: this.y0 - this.y1, fill: 'none', stroke: TH.axis }, this.svg);
+    for (i = 0; i < yt.length; i++) {
+      py = this.sy(yt[i]);
+      if (py < this.y1 - 0.5 || py > this.y0 + 0.5) continue;
+      el('line', { x1: this.x0, y1: py, x2: this.x1, y2: py, stroke: TH.grid }, this.svg);
+      this.P.text(this.x0 - 6, py + 4, (op.yfmt || this.fmt)(yt[i]), { anchor: 'end', size: 10, fill: TH.tick,
+        offsets: [[0, 0], [0, -9], [0, 9]] });
+    }
+    for (i = 0; i < xt.length; i++) {
+      px = this.sx(xt[i]);
+      if (px < this.x0 - 0.5 || px > this.x1 + 0.5) continue;
+      el('line', { x1: px, y1: this.y0, x2: px, y2: this.y1, stroke: TH.grid }, this.svg);
+      this.P.text(px, this.y0 + 16, (op.xfmt || this.fmt)(xt[i]), { anchor: 'middle', size: 10, fill: TH.tick });
+    }
+    if (op.xlabel) this.P.text((this.x0 + this.x1) / 2, this.H - 6, op.xlabel, { size: 11, fill: TH.label });
+    if (op.ylabel) {
+      var t2 = el('text', { x: 12, y: (this.y0 + this.y1) / 2, 'font-size': 11, fill: TH.label, 'text-anchor': 'middle',
+        transform: 'rotate(-90 12 ' + ((this.y0 + this.y1) / 2) + ')' }, this.svg);
+      t2.textContent = op.ylabel;
+      this.P.reserve(4, this.y1, 16, this.y0 - this.y1);
+    }
+  };
+  Frame.prototype.path = function (pts, o) {
+    var op = o || {}, d = '', i, px, py, started = false;
+    for (i = 0; i < pts.length; i++) {
+      if (pts[i] == null || !isFinite(pts[i][0]) || !isFinite(pts[i][1])) { started = false; continue; }
+      px = this.sx(pts[i][0]); py = this.sy(pts[i][1]);
+      d += (started ? 'L' : 'M') + px.toFixed(2) + ' ' + py.toFixed(2) + ' ';
+      started = true;
+    }
+    if (!d) return null;
+    return el('path', { d: d, fill: op.fill || 'none', stroke: op.stroke || TH.series, 'stroke-width': op.width || 1.6,
+      'stroke-dasharray': op.dash, opacity: op.opacity, 'stroke-linejoin': 'round', 'stroke-linecap': 'round',
+      'clip-path': op.noclip ? null : 'url(#' + this.clipId + ')' }, this.svg);
+  };
+  Frame.prototype.dot = function (x, y, o) {
+    var op = o || {};
+    return el('circle', { cx: this.sx(x), cy: this.sy(y), r: op.r || 3.2, fill: op.fill || TH.series,
+      stroke: op.stroke, 'stroke-width': op.width }, this.svg);
+  };
+  Frame.prototype.vline = function (x, o) {
+    var op = o || {};
+    return el('line', { x1: this.sx(x), y1: this.y0, x2: this.sx(x), y2: this.y1, stroke: op.stroke || '#5a5a5a',
+      'stroke-width': op.width || 1, 'stroke-dasharray': op.dash || '4 4' }, this.svg);
+  };
+  Frame.prototype.hline = function (y, o) {
+    var op = o || {};
+    return el('line', { x1: this.x0, y1: this.sy(y), x2: this.x1, y2: this.sy(y), stroke: op.stroke || '#5a5a5a',
+      'stroke-width': op.width || 1, 'stroke-dasharray': op.dash || '4 4' }, this.svg);
+  };
+
+
+  /* 对数轴刻度：在 [lo, hi]（以 10 为底的指数）区间里挑 1/2/5 × 10^k 这些档，
+   * 返回**真值**数组（调用方自己取 log 当域坐标、并用 yfmt 把它换算回来显示）。
+   * 2026-09-18 抽出：等待时间 / 成本 / 误差这类跨几个数量级的量，线性轴会把
+   * 关心的那一段全压在零线附近（实撞：16 席要 2.2 分钟、19 席只要 11 秒）。
+   * ⚠️ 配套的一条硬规矩：域要**夹**在关注点附近若干个数量级内 —— 只要有一个
+   * 病态点（比如 ρ=1-1e-16 解出 1e17）就能把量程撑到刻度全被避让器丢光。 */
+  function logTicks(lo, hi) {
+    var out = [], k, m, v, lg;
+    for (k = Math.floor(lo); k <= Math.ceil(hi); k++) {
+      for (m = 0; m < 3; m++) {
+        v = [1, 2, 5][m] * Math.pow(10, k);
+        lg = Math.log(v) / Math.LN10;
+        if (lg >= lo - 1e-9 && lg <= hi + 1e-9) out.push(v);
+      }
+    }
+    return out;
+  }
+
+  return { Frame: Frame, Placer: Placer, el: el, clear: clear, fmt: fmt, theme: theme, TH: TH,
+           logTicks: logTicks };
+})();
+
+/* Queue Lab · 页面层 1/5：公共工具、页签、存储、图表主题 */
+var QLA = (function () {
+  'use strict';
+  var INK = '#111111', SALE = '#d30005', MUTE = '#707072', STONE = '#9e9ea0',
+      CLOUD = '#f5f5f5', HAIR = '#cacacb', OKC = '#007d48';
+  AEPlot.theme({ grid: '#ececec', axis: HAIR, tick: MUTE, label: STONE, text: INK,
+                 plate: '#ffffff', series: INK });
+
+  function $(id) { return document.getElementById(id); }
+  function all(sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); }
+  function num(id, dflt) { var v = parseFloat($(id).value); return isFinite(v) ? v : dflt; }
+  function txt(id, s) { var e = $(id); if (e) e.textContent = s; }
+  function clear(n) { while (n.firstChild) n.removeChild(n.firstChild); }
+  function el(tag, cls, parent, text) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text != null) n.textContent = text;
+    if (parent) parent.appendChild(n);
+    return n;
+  }
+
+  /* 数字格式：大数加千分位，小数按位数；非有限值统一成「—」 */
+  function nf(v, d) {
+    if (v == null || !isFinite(v)) return '—';
+    d = d == null ? 2 : d;
+    var s = Math.abs(v) >= 1e7 ? v.toExponential(2) : v.toFixed(d);
+    if (Math.abs(v) >= 1000 && Math.abs(v) < 1e7) {
+      var p = s.split('.');
+      p[0] = p[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+      s = p.join('.');
+    }
+    return s;
+  }
+  /* 百分数：小于 1% 时自动多给几位 —— 中继线 0.87% 的阻塞率被四舍五入成「0.9%」
+   * 会丢掉定容量真正关心的那一位（实撞）。 */
+  function pct(v, d) {
+    if (v == null || !isFinite(v)) return '—';
+    if (d == null) d = Math.abs(v) > 0 && Math.abs(v) < 0.001 ? 3 : (Math.abs(v) < 0.01 ? 2 : 1);
+    return nf(v * 100, d) + '%';
+  }
+  /* 时长：毫秒 / 秒 / 分钟三档，避免「0.003 秒」这种读不出来的读数 */
+  function ts(v, d) {
+    if (v == null || !isFinite(v)) return '—';
+    if (v < 1) return nf(v * 1000, 0) + ' 毫秒';
+    if (v < 90) return nf(v, d == null ? 1 : d) + ' 秒';
+    if (v < 5400) return nf(v / 60, 1) + ' 分钟';
+    return nf(v / 3600, 1) + ' 小时';
+  }
+
+  // ── 页签 ──
+  var TABS = ['cap', 'model', 'net', 'sim', 'shift', 'notes'], onTab = {};
+  function showTab(id) {
+    for (var i = 0; i < TABS.length; i++) {
+      var on = TABS[i] === id;
+      $('ql-pane-' + TABS[i]).hidden = !on;
+    }
+    all('#ql-tabbar .ql-chip').forEach(function (b) {
+      b.setAttribute('aria-selected', b.dataset.tab === id ? 'true' : 'false');
+    });
+    QLA.tab = id;
+    if (onTab[id]) onTab[id]();
+    // 切页后如果已经滚过了版块标题，把它带回视野（否则会落在粘性页签条下面看不见）
+    if (ready) {
+      var pane = $('ql-pane-' + id);
+      var top = pane.getBoundingClientRect().top + window.pageYOffset - 72;
+      if (window.pageYOffset > top) window.scrollTo(0, Math.max(0, top));
+    }
+    save();
+  }
+
+  // ── 本地存储（只存参数，不存结果） ──
+  var KEY = 'ql.state.v1', collectors = [], appliers = [], ready = false;
+  function save() {
+    if (!ready) return;
+    var st = { tab: QLA.tab };
+    for (var i = 0; i < collectors.length; i++) collectors[i](st);
+    try { localStorage.setItem(KEY, QL.encodeState(st)); } catch (e) { /* 隐私模式下静默 */ }
+  }
+  function load() {
+    try {
+      var raw = localStorage.getItem(KEY);
+      if (!raw) return null;
+      return QL.decodeState(raw);
+    } catch (e) { return null; }
+  }
+  function register(collect, apply) { collectors.push(collect); appliers.push(apply); }
+  function boot() {
+    var st = load();
+    if (st) { for (var i = 0; i < appliers.length; i++) { try { appliers[i](st); } catch (e) { } } }
+    ready = true;
+    showTab(st && TABS.indexOf(st.tab) >= 0 ? st.tab : 'cap');
+  }
+
+  /* 把一组控件绑上「改动即重算」。number 输入用 input 事件，select 用 change。 */
+  function bind(ids, fn) {
+    ids.forEach(function (id) {
+      var e = $(id);
+      if (!e) return;
+      e.addEventListener('input', function () { fn(); save(); });
+      e.addEventListener('change', function () { fn(); save(); });
+    });
+  }
+  /* chip 组：单选，点中的加 ql-on */
+  function segment(containerId, attr, fn) {
+    var box = $(containerId);
+    box.addEventListener('click', function (ev) {
+      var b = ev.target.closest('.ql-chip');
+      if (!b || !box.contains(b)) return;
+      all('.ql-chip', box).forEach(function (x) { x.classList.toggle('ql-on', x === b); });
+      fn(b.dataset[attr]);
+      save();
+    });
+    return {
+      get: function () { var a = box.querySelector('.ql-chip.ql-on'); return a ? a.dataset[attr] : null; },
+      set: function (v) {
+        all('.ql-chip', box).forEach(function (x) { x.classList.toggle('ql-on', x.dataset[attr] === v); });
+      }
+    };
+  }
+
+  /* 右轴刻度：AEPlot 的 Frame 只画左轴，这里补一组右侧标签（全部走 Placer 避让）。
+   * pairs = [[域内 y 值, 文本], …] */
+  function rightAxis(F, pairs, label, color) {
+    var i, py;
+    for (i = 0; i < pairs.length; i++) {
+      py = F.sy(pairs[i][0]);
+      if (py < F.y1 - 0.5 || py > F.y0 + 0.5) continue;
+      F.P.text(F.x1 + 6, py + 4, pairs[i][1], { anchor: 'start', size: 10, fill: color || SALE });
+    }
+    if (label) F.P.text(F.x1, F.y1 - 6, label, { anchor: 'end', size: 10, fill: color || SALE });
+  }
+  /* 对数轴刻度：在 [lo, hi]（以 10 为底的指数）里挑 1/2/5 × 10^k 这些档 */
+  function logTicks(lo, hi) {
+    var out = [], k, m, v;
+    for (k = Math.floor(lo); k <= Math.ceil(hi); k++) {
+      for (m = 0; m < 3; m++) {
+        v = [1, 2, 5][m] * Math.pow(10, k);
+        var lg = Math.log(v) / Math.LN10;
+        if (lg >= lo - 1e-9 && lg <= hi + 1e-9) out.push(v);
+      }
+    }
+    return out;
+  }
+
+  function figFrame(id, pad) {
+    return new AEPlot.Frame(id, { pad: pad || { l: 54, r: 54, t: 16, b: 34 }, fmt: nf });
+  }
+  /* 条形图：把 x 当类别画柱，柱宽自适应；标签一律经 Placer */
+  function bars(F, vals, opt) {
+    var o = opt || {}, n = vals.length, i, w = (F.x1 - F.x0) / Math.max(n, 1);
+    for (i = 0; i < n; i++) {
+      var h = F.y0 - F.sy(vals[i]);
+      if (!(h > 0)) continue;
+      AEPlot.el('rect', { x: F.x0 + i * w + w * 0.14, y: F.sy(vals[i]),
+        width: Math.max(1, w * 0.72), height: h, fill: o.fill || INK, opacity: o.opacity }, F.svg);
+    }
+  }
+  function empty(id, msg) {
+    var F = figFrame(id, { l: 20, r: 20, t: 20, b: 20 });
+    F.P.text(F.W / 2, F.H / 2, msg, { size: 13, fill: MUTE });
+  }
+
+  return { $: $, all: all, num: num, txt: txt, clear: clear, el: el, nf: nf, pct: pct, ts: ts,
+           showTab: showTab, onTab: onTab, register: register, boot: boot, save: save, bind: bind,
+           segment: segment, figFrame: figFrame, bars: bars, rightAxis: rightAxis, empty: empty,
+           logTicks: logTicks,
+           INK: INK, SALE: SALE, MUTE: MUTE, STONE: STONE, CLOUD: CLOUD, HAIR: HAIR, OK: OKC, tab: 'cap' };
+})();
+
+/* Queue Lab · 页面层 2/5：容量计算器 */
+(function (A) {
+  'use strict';
+  var $ = A.$, nf = A.nf, pct = A.pct, ts = A.ts;
+  var PRESETS = {
+    hotline: { calls: 300, aht: 180, model: 'mmc', goal: 'sl', T: 20, X: 80, pat: 90 },
+    triage: { calls: 18, aht: 720, model: 'erlangA', goal: 'sl', T: 600, X: 90, pat: 1800 },
+    cashier: { calls: 240, aht: 70, model: 'mmc', goal: 'asa', T: 60, X: 60, pat: 300 },
+    api: { calls: 4200, aht: 1.2, model: 'mmc', goal: 'sl', T: 0.5, X: 99, pat: 5 },
+    trunk: { calls: 900, aht: 150, model: 'mmcc', goal: 'block', T: 20, X: 1, pat: 60 }
+  };
+  var GOALLAB = {
+    sl: ['应答时限 T（秒）', '目标应答比例（%）'],
+    asa: ['服务水平时限 T（秒，仅展示）', '平均应答上限（秒）'],
+    abandon: ['服务水平时限 T（秒，仅展示）', '放弃率上限（%）'],
+    occ: ['服务水平时限 T（秒，仅展示）', '占用率上限（%）'],
+    block: ['服务水平时限 T（秒，仅展示）', '阻塞率上限（%）']
+  };
+  var ALLOWED = { mmc: ['sl', 'asa', 'occ'], erlangA: ['sl', 'asa', 'abandon', 'occ'], mmcc: ['block'] };
+  var seg, last = null;
+
+  function readGoal(model) {
+    var g = $('ql-c-goal').value;
+    if (ALLOWED[model].indexOf(g) < 0) { g = ALLOWED[model][0]; $('ql-c-goal').value = g; }
+    var T = A.num('ql-c-goalT', 20), X = A.num('ql-c-goalX', 80);
+    if (g === 'sl') return { kind: 'sl', T: T, target: X / 100 };
+    if (g === 'asa') return { kind: 'asa', target: X, T: T };
+    if (g === 'abandon') return { kind: 'abandon', target: X / 100, T: T };
+    if (g === 'occ') return { kind: 'occ', target: X / 100, T: T };
+    return { kind: 'block', target: X / 100, T: T };
+  }
+
+  function compute() {
+    var model = seg.get() || 'mmc';
+    $('ql-c-patience').disabled = model !== 'erlangA';
+    var opts = $('ql-c-goal').options, i;
+    for (i = 0; i < opts.length; i++) opts[i].disabled = ALLOWED[model].indexOf(opts[i].value) < 0;
+    var goal = readGoal(model);
+    var lab = GOALLAB[goal.kind];
+    $('ql-c-lab1').textContent = lab[0];
+    $('ql-c-lab2').textContent = lab[1];
+
+    var calls = A.num('ql-c-calls', 0), aht = A.num('ql-c-aht', 1);
+    var lam = calls / 3600, mu = 1 / aht, shrink = Math.min(0.95, Math.max(0, A.num('ql-c-shrink', 0) / 100));
+    var p = { lam: lam, mu: mu };
+    if (model === 'erlangA') p.theta = 1 / Math.max(1e-6, A.num('ql-c-patience', 90));
+    if (!(calls > 0) || !(aht > 0)) {
+      $('ql-c-answer').textContent = '—';
+      $('ql-c-answer-sub').textContent = '请填入正的到达量与处理时长。';
+      $('ql-c-note').className = 'ql-hintbox ql-warn';
+      $('ql-c-note').textContent = '到达量与平均处理时长都必须大于 0。';
+      A.empty('ql-fig-sl', '等待有效输入'); A.empty('ql-fig-asa', '等待有效输入');
+      A.clear($('ql-c-tbody'));
+      return;
+    }
+    var res = QL.minServers(model, p, goal, { cmax: 4000 });
+    last = { res: res, model: model, goal: goal, lam: lam, mu: mu, aht: aht, shrink: shrink, p: p };
+    render(last);
+    A.save();
+  }
+
+  function render(S) {
+    var res = S.res, m = res.metrics, a = S.lam / S.mu;
+    var box = $('ql-c-note');
+    if (!res.ok) {
+      $('ql-c-answer').textContent = '—';
+      $('ql-c-answer-sub').textContent = res.why || '无解';
+      box.className = 'ql-hintbox ql-warn';
+      box.textContent = '在 4000 个服务台以内都达不到这个目标 —— 通常意味着目标本身不可达（比如占用率上限低于 a/c 的极限）。';
+    } else {
+      var staff = Math.ceil(res.c / (1 - S.shrink));
+      $('ql-c-answer').innerHTML = '';
+      var big = $('ql-c-answer');
+      big.appendChild(document.createTextNode(String(res.c)));
+      var sm = document.createElement('small'); sm.textContent = '个服务台'; big.appendChild(sm);
+      $('ql-c-answer-sub').textContent = '按 ' + pct(S.shrink, 0) + ' 收缩率折算，实际要排 ' + staff
+        + ' 人上岗；话务量 ' + nf(a, 2) + ' 爱尔兰。';
+      box.className = 'ql-hintbox';
+      var prev = res.curve.filter(function (r) { return r.c === res.c - 1; })[0];
+      box.textContent = '少一个台位（' + (res.c - 1) + ' 个）就达不到目标'
+        + (prev && prev.feasible ? '：那时' + goalWord(S.goal, prev) : '（队列已经发散）')
+        + '。多一个台位（' + (res.c + 1) + ' 个）的边际收益见下表。';
+    }
+    var kpi = {
+      'ql-c-a': nf(a, 2), 'ql-c-occ': m ? pct(m.rho) : '—', 'ql-c-pw': m ? pct(m.Pw) : '—',
+      'ql-c-asa': m && S.model !== 'mmcc' ? ts(m.Wq, 1) : '—',
+      'ql-c-sl': m && m.slAt ? pct(m.slAt(S.goal.T)) : '—',
+      'ql-c-ab': m ? pct(S.model === 'mmcc' ? m.Pblock : (m.Pab || 0)) : '—',
+      'ql-c-lq': m ? nf(m.Lq, 2) : '—',
+      'ql-c-thr': m ? nf(m.lamServed * 3600 / m.c, 1) : '—'
+    };
+    for (var k in kpi) A.txt(k, kpi[k]);
+    $('ql-c-slsub').textContent = A.num('ql-c-goalT', 20) + ' 秒内接起';
+    $('ql-c-absub').textContent = S.model === 'mmcc' ? '占满被拒的比例' : (S.model === 'erlangA' ? '等不及挂断的比例' : '本模型假设不放弃');
+    A.txt('ql-hero-c', res.ok ? String(res.c) : '—');
+    A.txt('ql-hero-sl', m && m.slAt ? pct(m.slAt(S.goal.T), 0) : '—');
+    A.txt('ql-hero-occ', m ? pct(m.rho, 0) : '—');
+    drawHero(S);
+    drawSL(S); drawASA(S); table(S);
+  }
+
+  function goalWord(goal, row) {
+    if (goal.kind === 'sl') return '服务水平只有 ' + pct(row.sl);
+    if (goal.kind === 'asa') return '平均应答要 ' + ts(row.asa, 1);
+    if (goal.kind === 'abandon') return '放弃率会到 ' + pct(row.ab);
+    if (goal.kind === 'occ') return '占用率会到 ' + pct(row.occ);
+    return '阻塞率会到 ' + pct(row.block);
+  }
+
+  // ── hero 示意图：左边排队的人，右边服务台 ──
+  function drawHero(S) {
+    var svg = $('ql-heroFig');
+    AEPlot.clear(svg);
+    var m = S.res.metrics;
+    if (!m) return;
+    var c = m.c, lq = Math.round(m.Lq), i;
+    var cols = Math.min(10, Math.max(4, Math.ceil(Math.sqrt(Math.min(c, 60)))));
+    var shown = Math.min(c, 60), sz = 20, gap = 5;
+    var gx = 520 - (cols * (sz + gap)) - 4, gy = 44;
+    AEPlot.el('text', { x: gx, y: 30, 'font-size': 11, fill: '#9e9ea0' }, svg)
+      .textContent = '服务台 ' + c + (c > shown ? '（只画前 60 个）' : '');
+    var busyN = Math.round(m.rho * shown);
+    for (i = 0; i < shown; i++) {
+      var r = Math.floor(i / cols), cc = i % cols;
+      AEPlot.el('rect', { x: gx + cc * (sz + gap), y: gy + r * (sz + gap), width: sz, height: sz,
+        fill: i < busyN ? '#ffffff' : 'none', stroke: '#6a6a6c' }, svg);
+    }
+    var qn = Math.min(lq, 26), qy = gy + 6;
+    AEPlot.el('text', { x: 8, y: 30, 'font-size': 11, fill: '#9e9ea0' }, svg)
+      .textContent = '队列里平均 ' + nf(m.Lq, 1) + ' 人';
+    for (i = 0; i < qn; i++) {
+      AEPlot.el('rect', { x: 8 + (i % 13) * 14, y: qy + Math.floor(i / 13) * 14, width: 9, height: 9,
+        fill: '#d30005' }, svg);
+    }
+    if (lq > qn) AEPlot.el('text', { x: 8, y: qy + 44, 'font-size': 11, fill: '#9e9ea0' }, svg)
+      .textContent = '…共 ' + lq + ' 人';
+    // 进入箭头
+    AEPlot.el('path', { d: 'M8 ' + (gy + 92) + ' H' + (gx - 16), stroke: '#6a6a6c', 'stroke-width': 1.2,
+      fill: 'none', 'stroke-dasharray': '5 5' }, svg);
+    AEPlot.el('path', { d: 'M' + (gx - 22) + ' ' + (gy + 87) + ' l6 5 l-6 5 z', fill: '#6a6a6c' }, svg);
+    AEPlot.el('text', { x: 8, y: gy + 108, 'font-size': 11, fill: '#9e9ea0' }, svg)
+      .textContent = '到达 ' + nf(S.lam * 3600, 0) + ' 个/小时 · 平均处理 ' + ts(S.aht, 0);
+  }
+
+  // ── 图 A：服务台数 → 服务水平 ──
+  function drawSL(S) {
+    var cur = S.res.curve.filter(function (r) { return r.feasible; });
+    if (!cur.length) { A.empty('ql-fig-sl', '当前参数下没有可稳定的台位数'); return; }
+    var key = S.goal.kind === 'block' ? 'block' : (S.goal.kind === 'abandon' ? 'ab' : 'sl');
+    var F = A.figFrame('ql-fig-sl', { l: 52, r: 18, t: 16, b: 36 });
+    var xs = cur.map(function (r) { return r.c; });
+    var ys = cur.map(function (r) { return r[key]; });
+    var ymax = Math.max.apply(null, ys), ymin = Math.min.apply(null, ys);
+    F.setDomain(xs[0] - 0.5, xs[xs.length - 1] + 0.5, 0, Math.min(1, Math.max(ymax * 1.08, 0.05)));
+    if (key !== 'sl') F.setDomain(xs[0] - 0.5, xs[xs.length - 1] + 0.5, 0, Math.max(ymax * 1.1, 1e-4));
+    F.axes({ xlabel: '服务台数 c', ylabel: key === 'sl' ? '服务水平' : (key === 'ab' ? '放弃率' : '阻塞率'),
+      yfmt: function (v) { return nf(v * 100, v > 0 && v < 0.01 ? 2 : 0) + '%'; },
+      xfmt: function (v) { return nf(v, 0); } });
+    if (S.goal.kind === 'sl' || S.goal.kind === 'abandon' || S.goal.kind === 'block') {
+      var tgt = S.goal.target;
+      if (tgt >= F.ymin && tgt <= F.ymax) {
+        F.hline(tgt, { stroke: A.SALE, dash: '5 4' });
+        F.P.text(F.x1 - 4, F.sy(tgt) - 5, '目标 ' + pct(tgt, tgt < 0.01 ? 2 : 0),
+          { anchor: 'end', size: 10, fill: A.SALE, plate: true });
+      }
+    }
+    F.path(cur.map(function (r) { return [r.c, r[key]]; }), { stroke: A.INK, width: 2 });
+    cur.forEach(function (r) { F.dot(r.c, r[key], { r: 2.4, fill: A.INK }); });
+    if (S.res.ok) {
+      var pick = cur.filter(function (r) { return r.c === S.res.c; })[0];
+      F.vline(S.res.c, { stroke: A.OK, dash: '4 4' });
+      F.dot(S.res.c, pick[key], { r: 5, fill: A.OK });
+      F.P.text(F.sx(S.res.c), F.sy(pick[key]) - 10, S.res.c + ' 台 · ' + pct(pick[key], 1),
+        { size: 11, weight: 500, fill: A.OK, plate: true,
+          offsets: [[0, 0], [0, 22], [-46, 0], [46, 0], [0, -14]] });
+    }
+  }
+
+  // ── 图 B：ASA（左轴，**对数**秒）+ 占用率（右轴） ──
+  function drawASA(S) {
+    var cur = S.res.curve.filter(function (r) { return r.feasible && isFinite(r.asa) && r.asa > 0; });
+    if (cur.length < 2) { A.empty('ql-fig-asa', '当前参数下没有可稳定的台位数'); return; }
+    /* 等待时间对台位数是指数级塌缩的（16 席要 2.2 分钟、19 席只要 11 秒），
+     * 线性纵轴会把关心的那一段全压在零线附近 —— 人工看图才发现，改成对数轴。 */
+    // 左边距要留够：「500 毫秒」这类刻度有 44px 宽，54px 的左边距会让它压到旋转的轴标题上
+    var F = A.figFrame('ql-fig-asa', { l: 78, r: 52, t: 16, b: 36 });
+    var lg = cur.map(function (r) { return Math.log(r.asa) / Math.LN10; });
+    var lo = Math.min.apply(null, lg), hi = Math.max.apply(null, lg);
+    /* 再保一道：把量程夹在答案附近 ±2.2 个数量级内。哪怕有一个台位数落在 ρ≈1 上
+     * 解出天文数字，也不会把整张图的刻度撑到没法读。 */
+    var anchor = null, ii;
+    for (ii = 0; ii < cur.length; ii++) if (cur[ii].c === S.res.c) anchor = lg[ii];
+    if (anchor == null) anchor = (lo + hi) / 2;
+    lo = Math.max(lo, anchor - 2.2); hi = Math.min(hi, anchor + 2.2);
+    if (hi - lo < 0.6) { var mid = (hi + lo) / 2; lo = mid - 0.3; hi = mid + 0.3; }
+    var pad = (hi - lo) * 0.10;
+    F.setDomain(cur[0].c - 0.5, cur[cur.length - 1].c + 0.5, lo - pad, hi + pad);
+    var tk = A.logTicks(F.ymin, F.ymax);
+    F.axes({ xlabel: '服务台数 c', ylabel: '平均应答', xfmt: function (v) { return nf(v, 0); },
+      yticks: tk.map(function (v) { return Math.log(v) / Math.LN10; }),
+      yfmt: function (v) { return ts(Math.pow(10, v), 0); } });
+    A.rightAxis(F, [0, 0.25, 0.5, 0.75, 1].map(function (u) {
+      return [F.ymin + u * (F.ymax - F.ymin), nf(u * 100, 0) + '%'];
+    }), '占用率');
+    F.path(cur.map(function (r, i) { return [r.c, lg[i]]; }), { stroke: A.INK, width: 2 });
+    F.path(cur.map(function (r) { return [r.c, F.ymin + r.occ * (F.ymax - F.ymin)]; }),
+      { stroke: A.SALE, width: 1.6, dash: '5 4' });
+    if (S.res.ok) {
+      var k = -1, i;
+      for (i = 0; i < cur.length; i++) if (cur[i].c === S.res.c) k = i;
+      if (k >= 0) {
+        F.dot(S.res.c, lg[k], { r: 5, fill: A.OK });
+        /* 退让位第一顺位落在**曲线下方**：这条线单调递减，下方是空的；
+         * 默认往上/往右会让白底把红色占用率虚线擦断一截（2026-08-07 教训）。 */
+        F.P.text(F.sx(S.res.c), F.sy(lg[k]) + 6, ts(cur[k].asa, 1) + ' · 占用 ' + pct(cur[k].occ, 0),
+          { size: 11, weight: 500, fill: A.INK, plate: true,
+            offsets: [[-34, 16], [34, 16], [0, 24], [-70, 0], [0, -16]] });
+      }
+    }
+  }
+
+  function table(S) {
+    var tb = $('ql-c-tbody');
+    A.clear(tb);
+    var c0 = S.res.ok ? S.res.c : (S.res.curve[0] ? S.res.curve[0].c : 1);
+    var rows = S.res.curve.filter(function (r) { return r.c >= c0 - 3 && r.c <= c0 + 4; });
+    if (!rows.length) rows = S.res.curve.slice(0, 8);
+    rows.forEach(function (r) {
+      var tr = A.el('tr', r.c === c0 && S.res.ok ? 'ql-pick' : '', tb);
+      A.el('td', '', tr, String(r.c));
+      A.el('td', '', tr, r.feasible ? pct(r.sl) : '发散');
+      A.el('td', '', tr, r.feasible && isFinite(r.asa) ? ts(r.asa, 1) : '—');
+      A.el('td', '', tr, r.feasible ? pct(r.occ) : '—');
+      A.el('td', '', tr, r.feasible ? pct(S.model === 'mmcc' ? r.block : r.ab) : '—');
+      A.el('td', '', tr, r.feasible ? nf(r.Lq, 2) : '—');
+      var td = A.el('td', '', tr);
+      var b = A.el('span', 'ql-badge' + (r.ok ? ' ql-b-dark' : ''), td, r.ok ? '达标' : '未达标');
+      b.className += r.ok ? '' : '';
+    });
+  }
+
+  function init() {
+    seg = A.segment('ql-c-modelseg', 'cmodel', compute);
+    A.bind(['ql-c-calls', 'ql-c-aht', 'ql-c-patience', 'ql-c-goal', 'ql-c-goalT', 'ql-c-goalX', 'ql-c-shrink'], compute);
+    $('ql-c-preset').addEventListener('change', function () {
+      var p = PRESETS[$('ql-c-preset').value];
+      if (!p) return;
+      $('ql-c-calls').value = p.calls; $('ql-c-aht').value = p.aht;
+      $('ql-c-goal').value = p.goal; $('ql-c-goalT').value = p.T; $('ql-c-goalX').value = p.X;
+      $('ql-c-patience').value = p.pat;
+      seg.set(p.model);
+      compute();
+    });
+    A.register(function (st) {
+      st.cap = { calls: $('ql-c-calls').value, aht: $('ql-c-aht').value, model: seg.get(),
+        goal: $('ql-c-goal').value, T: $('ql-c-goalT').value, X: $('ql-c-goalX').value,
+        pat: $('ql-c-patience').value, shrink: $('ql-c-shrink').value, preset: $('ql-c-preset').value };
+    }, function (st) {
+      var c = st.cap; if (!c) return;
+      $('ql-c-calls').value = c.calls; $('ql-c-aht').value = c.aht; $('ql-c-goal').value = c.goal;
+      $('ql-c-goalT').value = c.T; $('ql-c-goalX').value = c.X; $('ql-c-patience').value = c.pat;
+      $('ql-c-shrink').value = c.shrink; if (c.preset) $('ql-c-preset').value = c.preset;
+      seg.set(c.model || 'mmc');
+    });
+    A.onTab.cap = compute;
+    QLA.capState = function () { return last; };
+  }
+  A.initCap = init;
+})(QLA);
+
+/* Queue Lab · 页面层 3/5：排队模型库 */
+(function (A) {
+  'use strict';
+  var $ = A.$, nf = A.nf, pct = A.pct, ts = A.ts;
+  var FIELDS = {
+    lam:   { label: '到达率 λ（个/秒）', dflt: 9, min: 0.0001, step: 0.5 },
+    mu:    { label: '服务率 μ（个/秒/台）', dflt: 1, min: 0.0001, step: 0.1 },
+    c:     { label: '服务台数 c', dflt: 10, min: 1, step: 1 },
+    K:     { label: '系统容量 K（含在服务的）', dflt: 20, min: 1, step: 1 },
+    N:     { label: '源数量 N（机器 / 用户台数）', dflt: 10, min: 1, step: 1 },
+    lam1:  { label: '每个源的到达率 λ₁（个/秒）', dflt: 0.2, min: 0.0001, step: 0.05 },
+    pat:   { label: '平均耐心（秒）', dflt: 2, min: 0.01, step: 0.5 },
+    ES:    { label: '平均服务时长 E[S]（秒）', dflt: 1, min: 0.0001, step: 0.1 },
+    cs2:   { label: '服务时长 cv²', dflt: 3, min: 0, step: 0.25 },
+    ca2:   { label: '到达间隔 cv²', dflt: 0.5, min: 0, step: 0.25 }
+  };
+  var USES = {
+    mm1: ['lam', 'mu'], mmc: ['lam', 'mu', 'c'], mmck: ['lam', 'mu', 'c', 'K'],
+    mmcc: ['lam', 'mu', 'c'], mminf: ['lam', 'mu'], mmcN: ['lam1', 'mu', 'c', 'N'],
+    erlangA: ['lam', 'mu', 'c', 'pat'], mg1: ['lam', 'ES', 'cs2'], md1: ['lam', 'ES'],
+    mg1p: [], ggc: ['lam', 'ES', 'c', 'ca2', 'cs2']
+  };
+  var FORMULA = {
+    mm1: 'Lq = ρ²/(1−ρ)，Wq = Lq/λ。最经典的那一个。',
+    mmc: '等待概率用 Erlang C：C(c,a) = B/(1−ρ(1−B))，其中 B 是 Erlang B 的递推值；Wq = C/(cμ−λ)，P(等待 ≤ t) = 1 − C·e^−(cμ−λ)t。',
+    mmck: '有限生灭链直接求平稳分布；阻塞率 = π_K，有效到达率 λ(1−π_K)。',
+    mmcc: '无队列，阻塞率就是 Erlang B：B(c,a) = a·B(c−1,a)/(c + a·B(c−1,a))，B(0,a)=1。电话中继线定容量的老标准。',
+    mminf: '平稳分布是参数为 a = λ/μ 的泊松分布，L = a，没有等待。',
+    mmcN: '机器维修模型：到达率随「还在运行的机器数」递减，λ_n = (N−n)λ₁，所以负载会自我封顶。',
+    erlangA: '在 M/M/c 上给每个等待者加一个速率 θ 的放弃时钟。放弃率由速率平衡精确给出：P(放弃) = θ·E[Lq]/λ；「T 秒内被应答」用均匀化推进吸收链得到。',
+    mg1: 'Pollaczek–Khinchine：Lq = ρ²(1+cv²)/(2(1−ρ))。服务时长的**方差**和均值一样重要 —— cv² 翻倍，排队就翻倍。',
+    md1: 'M/G/1 在 cv²=0 的特例：Lq = ρ²/(2(1−ρ))，正好是 M/M/1 的一半。',
+    mg1p: '非抢占用 Cobham 公式 Wq_k = W₀/((1−σ_{k−1})(1−σ_k))；抢占-恢复另加一项 E[S_k]/(1−σ_{k−1})。W₀ = Σ λ_i·E[S_i²]/2。',
+    ggc: 'Allen–Cunneen **近似**：Wq ≈ Wq(M/M/c)·(ca²+cv²)/2。到达与服务都非指数时没有闭式解，这是工程上最常用的两矩近似。'
+  };
+  var vals = {}, model = 'mmc', classes = [{ lam: 0.2, ES: 1, cs2: 1 }, { lam: 0.4, ES: 0.8, cs2: 2 }],
+      preempt = false, lastRes = null;
+
+  function key(id, f) { return id + '.' + f; }
+  function get(f) { var v = vals[key(model, f)]; return v == null ? FIELDS[f].dflt : v; }
+
+  function buildFields() {
+    var box = $('ql-m-fields');
+    A.clear(box);
+    (USES[model] || []).forEach(function (f) {
+      var d = FIELDS[f];
+      var lab = A.el('label', 'ql-field', box);
+      A.el('span', '', lab, d.label);
+      var inp = A.el('input', '', lab);
+      inp.type = 'number'; inp.min = d.min; inp.step = d.step; inp.value = get(f);
+      inp.id = 'ql-mf-' + f;
+      inp.addEventListener('input', function () {
+        vals[key(model, f)] = parseFloat(inp.value);
+        compute();
+      });
+    });
+    $('ql-m-prio').hidden = model !== 'mg1p';
+    $('ql-m-prioout').hidden = model !== 'mg1p';
+    if (model === 'mg1p') buildClasses();
+  }
+
+  function buildClasses() {
+    var tb = $('ql-m-classes');
+    A.clear(tb);
+    classes.forEach(function (cl, i) {
+      var tr = A.el('tr', '', tb);
+      A.el('td', '', tr, '第 ' + (i + 1) + ' 类');
+      ['lam', 'ES', 'cs2'].forEach(function (k) {
+        var td = A.el('td', '', tr);
+        var inp = A.el('input', '', td);
+        inp.type = 'number'; inp.min = k === 'cs2' ? 0 : 0.0001; inp.step = 0.05;
+        inp.value = cl[k]; inp.className = 'ql-cls-' + k;
+        inp.addEventListener('input', function () { cl[k] = parseFloat(inp.value); compute(); });
+      });
+      var td2 = A.el('td', '', tr);
+      if (classes.length > 1) {
+        var b = A.el('button', 'ql-chip', td2, '删');
+        b.addEventListener('click', function () { classes.splice(i, 1); buildClasses(); compute(); });
+      }
+    });
+  }
+
+  function params() {
+    if (model === 'mg1p') return { classes: classes.slice(), preempt: preempt };
+    var p = {};
+    (USES[model] || []).forEach(function (f) {
+      if (f === 'pat') p.theta = 1 / Math.max(1e-9, get('pat'));
+      else p[f] = get(f);
+    });
+    return p;
+  }
+
+  function compute() {
+    var p = params(), r = QL.solveModel(model, p);
+    lastRes = r;
+    var meta = QL.MODELS.filter(function (x) { return x.id === model; })[0];
+    var extra = '';
+    // 有限源模型真正关心的是「机器可用率」，通用指标格里没有它的位置，补在说明里
+    if (model === 'mmcN' && r.ok && r.avail != null)
+      extra = ' 当前配置下的机器可用率（平均有多少比例的机器在正常运行）= ' + pct(r.avail, 2) + '。';
+    $('ql-m-formula').textContent = (meta ? meta.desc + '。' : '') + (FORMULA[model] || '') + extra;
+    if (!r.ok) {
+      ['ql-m-rho', 'ql-m-pw', 'ql-m-wq', 'ql-m-w', 'ql-m-lq', 'ql-m-l', 'ql-m-loss', 'ql-m-thr']
+        .forEach(function (id) { A.txt(id, '—'); });
+      $('ql-m-little').className = 'ql-hintbox ql-warn';
+      $('ql-m-little').textContent = r.why || '参数不合法';
+      A.empty('ql-fig-dist', r.why || '无解'); A.empty('ql-fig-rho', r.why || '无解');
+      A.clear($('ql-m-priotbody'));
+      A.save();
+      return;
+    }
+    A.txt('ql-m-rho', model === 'mminf' ? '不适用' : pct(r.rho));
+    A.txt('ql-m-pw', pct(r.Pw));
+    A.txt('ql-m-wq', ts(r.Wq, 2));
+    A.txt('ql-m-w', ts(r.W, 2));
+    A.txt('ql-m-lq', nf(r.Lq, 3));
+    A.txt('ql-m-l', nf(r.L, 3));
+    var loss = r.Pab > 0 ? r.Pab : r.Pblock;
+    A.txt('ql-m-loss', loss > 0 ? pct(loss) : '0%');
+    $('ql-m-losssub').textContent = r.Pab > 0 ? '等不及放弃' : (r.Pblock > 0 ? '容量满被拒' : '本模型无损失');
+    A.txt('ql-m-thr', nf(r.lamServed, 4));
+    var lhs = r.L, rhs = r.lamEff * r.W;
+    $('ql-m-little').className = 'ql-hintbox';
+    $('ql-m-little').textContent = 'Little 定律自检：L = ' + nf(lhs, 6) + '，λ·W = ' + nf(rhs, 6)
+      + '，相对差 ' + (Math.abs(lhs - rhs) / Math.max(lhs, 1e-12)).toExponential(1)
+      + (r.approx ? '。注意本模型是**近似解**，不是精确解。' : '。');
+    drawA(r); drawB(r);
+    if (model === 'mg1p') prioTable(r);
+    A.save();
+  }
+
+  function prioTable(r) {
+    var tb = $('ql-m-priotbody');
+    A.clear(tb);
+    var cons = 0;
+    r.classes.forEach(function (c, i) {
+      var tr = A.el('tr', '', tb);
+      A.el('td', '', tr, '第 ' + (i + 1) + ' 类');
+      A.el('td', '', tr, nf(c.lam, 3));
+      A.el('td', '', tr, ts(c.ES, 2));
+      A.el('td', '', tr, pct(c.rho));
+      A.el('td', '', tr, ts(c.Wq, 2));
+      A.el('td', '', tr, ts(c.W, 2));
+      A.el('td', '', tr, nf(c.Lq, 3));
+      cons += c.rho * c.Wq;
+    });
+    $('ql-m-conserve').textContent = 'Σ ρ_k·Wq_k = ' + nf(cons, 6)
+      + '，理论值 ρ·W₀/(1−ρ) = ' + nf(r.rho * r.W0 / (1 - r.rho), 6)
+      + '。把优先级顺序打乱，这个和不会变 —— 优先级只搬运等待，不消灭等待。';
+  }
+
+  // ── 图 A：平稳分布（生灭模型）或 Wq–cv² 曲线 ──
+  function drawA(r) {
+    if (r.dist) {
+      $('ql-fig-a-title').textContent = '系统内人数的平稳分布';
+      $('ql-fig-a-note').textContent = '每根柱是「系统里恰好有 n 个人」的概率；红线之后是要排队的区域';
+      var d = r.dist, cum = 0, top = 0, i;
+      for (i = 0; i < d.length; i++) { cum += d[i]; top = i; if (cum > 0.9995) break; }
+      top = Math.max(top, Math.min(d.length - 1, 6));
+      if (top > 60) top = 60;
+      var vals2 = Array.prototype.slice.call(d, 0, top + 1);
+      var F = A.figFrame('ql-fig-dist', { l: 54, r: 18, t: 16, b: 36 });
+      F.setDomain(-0.5, top + 0.5, 0, Math.max.apply(null, vals2) * 1.12);
+      F.axes({ xlabel: '系统内人数 n', ylabel: '概率', xfmt: function (v) { return nf(v, 0); },
+        yfmt: function (v) { return nf(v, 3); } });
+      A.bars(F, vals2, { fill: A.INK });
+      if (isFinite(r.c) && r.c <= top) {
+        F.vline(r.c - 0.5, { stroke: A.SALE, dash: '4 4' });
+        F.P.text(F.sx(r.c - 0.5) + 4, F.y1 + 14, 'n ≥ c 要排队', { anchor: 'start', size: 10,
+          fill: A.SALE, plate: true, offsets: [[0, 0], [0, 14], [-8, 28]] });
+      }
+    } else {
+      $('ql-fig-a-title').textContent = '平均等待随服务时长 cv² 变化';
+      $('ql-fig-a-note').textContent = 'M/G/1 族没有队长分布的闭式；但方差的影响可以精确画出来';
+      var F2 = A.figFrame('ql-fig-dist', { l: 58, r: 18, t: 16, b: 36 });
+      var base = params(), pts = [], cs, rr, cur = model === 'mg1p' ? null : (base.cs2 || 0);
+      for (cs = 0; cs <= 8.0001; cs += 0.1) {
+        var pp = {};
+        for (var k in base) pp[k] = base[k];
+        if (model === 'mg1p') {
+          pp.classes = base.classes.map(function (c) { return { lam: c.lam, ES: c.ES, cs2: cs }; });
+        } else pp.cs2 = cs;
+        rr = QL.solveModel(model, pp);
+        if (rr.ok) pts.push([cs, rr.Wq]);
+      }
+      if (!pts.length) { A.empty('ql-fig-dist', '当前参数下没有稳态'); return; }
+      var ymax = Math.max.apply(null, pts.map(function (q) { return q[1]; }));
+      F2.setDomain(0, 8, 0, ymax * 1.12);
+      F2.axes({ xlabel: '服务时长 cv²', ylabel: '平均等待（秒）',
+        yfmt: function (v) { return v >= 60 ? nf(v / 60, 1) + '分' : nf(v, v < 1 ? 2 : 1); } });
+      F2.path(pts, { stroke: A.INK, width: 2 });
+      if (cur != null && cur >= 0 && cur <= 8) {
+        F2.dot(cur, r.Wq, { r: 5, fill: A.SALE });
+        F2.P.text(F2.sx(cur), F2.sy(r.Wq) - 10, 'cv²=' + nf(cur, 2) + ' · ' + ts(r.Wq, 2),
+          { size: 11, weight: 500, fill: A.INK, plate: true,
+            offsets: [[0, 0], [0, 24], [-56, 0], [56, 0]] });
+      }
+    }
+  }
+
+  // ── 图 B：Wq 随利用率变化 ──
+  function drawB(r) {
+    var base = params(), pts = [], f, scaleKey = model === 'mmcN' ? 'lam1' : 'lam';
+    for (f = 0.04; f <= 1.9; f += 0.02) {
+      var pp = {};
+      for (var k in base) pp[k] = base[k];
+      if (model === 'mg1p') pp.classes = base.classes.map(function (c) { return { lam: c.lam * f, ES: c.ES, cs2: c.cs2 }; });
+      else pp[scaleKey] = base[scaleKey] * f;
+      var rr = QL.solveModel(model, pp);
+      if (rr.ok && isFinite(rr.Wq) && rr.rho > 0) pts.push([rr.rho, rr.Wq]);
+    }
+    if (pts.length < 2) { A.empty('ql-fig-rho', '这个模型不随负载变化'); return; }
+    var F = A.figFrame('ql-fig-rho', { l: 58, r: 18, t: 16, b: 36 });
+    var cap = r.Wq > 0 ? r.Wq * 6 : Math.max.apply(null, pts.map(function (q) { return q[1]; }));
+    var ymax = Math.min(Math.max.apply(null, pts.map(function (q) { return q[1]; })), Math.max(cap, 1e-6));
+    var xmax = Math.max.apply(null, pts.map(function (q) { return q[0]; }));
+    F.setDomain(0, Math.min(1, xmax * 1.02), 0, ymax * 1.1);
+    F.axes({ xlabel: '服务台利用率 ρ', ylabel: '平均等待（秒）',
+      xfmt: function (v) { return nf(v * 100, 0) + '%'; },
+      yfmt: function (v) { return v >= 60 ? nf(v / 60, 1) + '分' : nf(v, v < 1 ? 2 : 1); } });
+    F.path(pts, { stroke: A.INK, width: 2 });
+    F.dot(r.rho, r.Wq, { r: 5, fill: A.SALE });
+    F.P.text(F.sx(r.rho), F.sy(r.Wq) - 10, '当前：ρ=' + pct(r.rho, 1) + ' · ' + ts(r.Wq, 2),
+      { size: 11, weight: 500, fill: A.INK, plate: true,
+        offsets: [[-6, -4], [0, 26], [-70, 0], [70, 0], [0, -20]] });
+  }
+
+  function init() {
+    var sel = $('ql-m-model');
+    QL.MODELS.forEach(function (m) {
+      var o = document.createElement('option');
+      o.value = m.id; o.textContent = m.name;   // 描述放公式框，别塞进下拉（320px 列里会被截断）
+      sel.appendChild(o);
+    });
+    sel.value = 'mmc';
+    sel.addEventListener('change', function () { model = sel.value; buildFields(); compute(); A.save(); });
+    $('ql-m-addclass').addEventListener('click', function () {
+      if (classes.length >= 5) return;
+      classes.push({ lam: 0.1, ES: 1, cs2: 1 });
+      buildClasses(); compute();
+    });
+    $('ql-m-preempt').addEventListener('click', function () {
+      preempt = !preempt;
+      $('ql-m-preempt').setAttribute('aria-pressed', preempt ? 'true' : 'false');
+      $('ql-m-preempt').classList.toggle('ql-on', preempt);
+      $('ql-m-preempt').textContent = preempt ? '抢占式（开）' : '抢占式';
+      compute();
+    });
+    A.register(function (st) {
+      st.mdl = { model: model, vals: vals, classes: classes, preempt: preempt };
+    }, function (st) {
+      if (!st.mdl) return;
+      model = st.mdl.model || 'mmc'; vals = st.mdl.vals || {};
+      if (st.mdl.classes && st.mdl.classes.length) classes = st.mdl.classes;
+      preempt = !!st.mdl.preempt;
+      sel.value = model;
+      $('ql-m-preempt').setAttribute('aria-pressed', preempt ? 'true' : 'false');
+      $('ql-m-preempt').classList.toggle('ql-on', preempt);
+      $('ql-m-preempt').textContent = preempt ? '抢占式（开）' : '抢占式';
+    });
+    A.onTab.model = function () { buildFields(); compute(); };
+  }
+  A.initModel = init;
+})(QLA);
+
+/* Queue Lab · 页面层 4/5：排队网络（开放 Jackson + 闭合 MVA） */
+(function (A) {
+  'use strict';
+  var $ = A.$, nf = A.nf, pct = A.pct, ts = A.ts;
+  var DEMO_OPEN = {
+    nodes: [{ name: '网关', mu: 120, c: 1, gamma: 30 },
+            { name: '应用服务', mu: 40, c: 3, gamma: 0 },
+            { name: '数据库', mu: 90, c: 1, gamma: 0 }],
+    P: [[0, 1, 0], [0, 0, 0.7], [0, 1, 0]]
+  };
+  var DEMO_CLOSED = [{ name: 'CPU', S: 0.012, V: 1, c: 1 },
+                     { name: '磁盘 A', S: 0.02, V: 3, c: 1 },
+                     { name: '磁盘 B', S: 0.035, V: 1.5, c: 1 }];
+  var nodes = JSON.parse(JSON.stringify(DEMO_OPEN.nodes));
+  var P = JSON.parse(JSON.stringify(DEMO_OPEN.P));
+  var stations = JSON.parse(JSON.stringify(DEMO_CLOSED));
+  var sub = 'open', seg;
+
+  // ───────── 开放网络 ─────────
+  function buildNodes() {
+    var tb = $('ql-n-nodes');
+    A.clear(tb);
+    nodes.forEach(function (nd, i) {
+      var tr = A.el('tr', '', tb);
+      var td0 = A.el('td', '', tr);
+      var nm = A.el('input', '', td0); nm.type = 'text'; nm.value = nd.name;
+      nm.addEventListener('input', function () { nd.name = nm.value; calcOpen(); });
+      [['mu', 0.0001, 1], ['c', 1, 1], ['gamma', 0, 1]].forEach(function (spec) {
+        var td = A.el('td', '', tr);
+        var inp = A.el('input', '', td);
+        inp.type = 'number'; inp.min = spec[1]; inp.step = spec[2]; inp.value = nd[spec[0]];
+        inp.addEventListener('input', function () { nd[spec[0]] = parseFloat(inp.value); calcOpen(); });
+      });
+      var td3 = A.el('td', '', tr);
+      if (nodes.length > 1) {
+        var b = A.el('button', 'ql-chip', td3, '删');
+        b.addEventListener('click', function () {
+          nodes.splice(i, 1); P.splice(i, 1);
+          P.forEach(function (row) { row.splice(i, 1); });
+          buildNodes(); buildRoute(); calcOpen();
+        });
+      }
+    });
+  }
+  function buildRoute() {
+    var t = $('ql-n-route');
+    A.clear(t);
+    var thead = A.el('thead', '', t), hr = A.el('tr', '', thead);
+    A.el('th', '', hr, '从 \\ 到');
+    nodes.forEach(function (nd) { A.el('th', '', hr, nd.name); });
+    A.el('th', '', hr, '离开系统');
+    var tb = A.el('tbody', '', t);
+    nodes.forEach(function (nd, i) {
+      var tr = A.el('tr', '', tb);
+      A.el('td', '', tr, nd.name);
+      var sum = 0;
+      nodes.forEach(function (_, j) {
+        var td = A.el('td', '', tr);
+        var inp = A.el('input', '', td);
+        inp.type = 'number'; inp.min = 0; inp.max = 1; inp.step = 0.05;
+        inp.value = P[i][j];
+        inp.addEventListener('input', function () { P[i][j] = parseFloat(inp.value) || 0; buildRoute(); calcOpen(); });
+        sum += P[i][j];
+      });
+      A.el('td', '', tr, nf(Math.max(0, 1 - sum), 2));
+    });
+  }
+  function calcOpen() {
+    var r = QL.jackson({ nodes: nodes, gamma: nodes.map(function (n) { return n.gamma || 0; }), P: P });
+    var box = $('ql-n-note'), tb = $('ql-n-tbody');
+    A.clear(tb);
+    if (!r.ok) {
+      box.className = 'ql-hintbox ql-warn';
+      box.textContent = r.why;
+      A.empty('ql-fig-net', '网络无稳态'); A.empty('ql-fig-nbar', '网络无稳态');
+      A.save();
+      return;
+    }
+    box.className = 'ql-hintbox';
+    var bn = r.nodes[r.bottleneck];
+    box.textContent = '外部进来 ' + nf(r.gammaTotal, 3) + ' 个/秒，系统里平均积压 ' + nf(r.L, 2)
+      + ' 个，平均逗留 ' + ts(r.W, 2) + '。瓶颈是「' + bn.name + '」，利用率 ' + pct(bn.rho)
+      + '；这是唯一值得先加机器的地方。';
+    r.nodes.forEach(function (n, i) {
+      var tr = A.el('tr', i === r.bottleneck ? 'ql-pick' : '', tb);
+      A.el('td', '', tr, n.name);
+      A.el('td', '', tr, nf(n.lam, 3));
+      var td = A.el('td', '', tr, pct(n.rho));
+      if (n.rho > 0.85) td.className = 'ql-miss';
+      A.el('td', '', tr, nf(n.L, 3));
+      A.el('td', '', tr, ts(n.W, 3));
+      A.el('td', '', tr, pct(n.Pw));
+    });
+    drawNet(r); drawNbar(r);
+    A.save();
+  }
+  function drawNet(r) {
+    var svg = $('ql-fig-net');
+    AEPlot.clear(svg);
+    var n = r.nodes.length, W = 520, H = 280, bw = Math.min(104, (W - 40) / n - 16), bh = 64;
+    var xs = [], i, j;
+    for (i = 0; i < n; i++) xs.push(24 + (W - 48 - bw) * (n === 1 ? 0.5 : i / (n - 1)));
+    var y = 112;
+    var Pl = new AEPlot.Placer(svg, W, H);
+    for (i = 0; i < n; i++) {
+      var nd = r.nodes[i], isB = i === r.bottleneck;
+      AEPlot.el('rect', { x: xs[i], y: y, width: bw, height: bh, fill: '#ffffff',
+        stroke: isB ? A.SALE : A.INK, 'stroke-width': isB ? 2 : 1 }, svg);
+      AEPlot.el('rect', { x: xs[i], y: y + bh - Math.max(0, Math.min(1, nd.rho)) * bh,
+        width: bw, height: Math.max(0, Math.min(1, nd.rho)) * bh,
+        fill: isB ? A.SALE : A.INK, opacity: 0.16 }, svg);
+      Pl.reserve(xs[i], y, bw, bh);
+      var t1 = AEPlot.el('text', { x: xs[i] + bw / 2, y: y + 26, 'text-anchor': 'middle',
+        'font-size': 12, 'font-weight': 500, fill: A.INK }, svg);
+      t1.textContent = nd.name;
+      var t2 = AEPlot.el('text', { x: xs[i] + bw / 2, y: y + 44, 'text-anchor': 'middle',
+        'font-size': 11, fill: isB ? A.SALE : A.MUTE }, svg);
+      t2.textContent = pct(nd.rho, 0) + ' · ' + nd.c + ' 台';
+      if (nd.lam > 0 && r.nodes[i].name != null) {
+        Pl.text(xs[i] + bw / 2, y + bh + 16, 'λ=' + nf(nd.lam, 2),
+          { size: 10, fill: A.MUTE, offsets: [[0, 0], [0, 14], [0, 28]] });
+      }
+      var g = nodes[i].gamma || 0;
+      if (g > 0) {
+        AEPlot.el('path', { d: 'M' + (xs[i] + bw / 2) + ' 44 V' + (y - 8), stroke: A.INK,
+          'stroke-width': 1.3, fill: 'none' }, svg);
+        AEPlot.el('path', { d: 'M' + (xs[i] + bw / 2 - 5) + ' ' + (y - 9) + ' h10 l-5 8 z', fill: A.INK }, svg);
+        Pl.text(xs[i] + bw / 2, 38, '外部 ' + nf(g, 2) + '/秒',
+          { size: 10, fill: A.INK, offsets: [[0, 0], [0, -14], [0, -28]] });
+      }
+    }
+    for (i = 0; i < n; i++) for (j = 0; j < n; j++) {
+      if (!(P[i][j] > 0) || i === j) continue;
+      var x1 = xs[i] + bw / 2, x2 = xs[j] + bw / 2;
+      var up = i < j, yy = up ? y : y + bh, cy = up ? y - 46 : y + bh + 52;
+      AEPlot.el('path', { d: 'M' + x1 + ' ' + yy + ' Q' + ((x1 + x2) / 2) + ' ' + cy + ' ' + x2 + ' ' + yy,
+        stroke: A.MUTE, 'stroke-width': 1.2, fill: 'none' }, svg);
+      Pl.text((x1 + x2) / 2, up ? cy + 16 : cy - 4, nf(P[i][j], 2),
+        { size: 10, fill: A.MUTE, plate: '#ffffff', offsets: [[0, 0], [0, -13], [0, 13], [-26, 0], [26, 0]] });
+    }
+  }
+  function drawNbar(r) {
+    var F = A.figFrame('ql-fig-nbar', { l: 92, r: 24, t: 14, b: 34 });
+    var mx = Math.max.apply(null, r.nodes.map(function (n) { return n.L; }));
+    F.setDomain(0, Math.max(mx * 1.18, 1e-6), -0.5, r.nodes.length - 0.5);
+    F.axes({ xlabel: '平均积压人数 L', yticks: [], xfmt: function (v) { return nf(v, v < 10 ? 1 : 0); } });
+    r.nodes.forEach(function (n, i) {
+      var y0 = F.sy(i - 0.32), y1 = F.sy(i + 0.32);
+      AEPlot.el('rect', { x: F.x0, y: Math.min(y0, y1), width: Math.max(0, F.sx(n.L) - F.x0),
+        height: Math.abs(y1 - y0), fill: i === r.bottleneck ? A.SALE : A.INK }, F.svg);
+      F.P.text(F.x0 - 6, F.sy(i) + 4, n.name, { anchor: 'end', size: 11, fill: A.INK });
+      F.P.text(F.sx(n.L) + 6, F.sy(i) + 4, nf(n.L, 2), { anchor: 'start', size: 10, fill: A.MUTE,
+        offsets: [[0, 0], [0, -12], [0, 12]] });
+    });
+  }
+
+  // ───────── 闭合网络 ─────────
+  function buildStations() {
+    var tb = $('ql-k-stations');
+    A.clear(tb);
+    stations.forEach(function (st, i) {
+      var tr = A.el('tr', '', tb);
+      var td0 = A.el('td', '', tr);
+      var nm = A.el('input', '', td0); nm.type = 'text'; nm.value = st.name;
+      nm.addEventListener('input', function () { st.name = nm.value; calcClosed(); });
+      [['S', 0.0001, 0.005], ['V', 0.01, 0.5], ['c', 1, 1]].forEach(function (spec) {
+        var td = A.el('td', '', tr);
+        var inp = A.el('input', '', td);
+        inp.type = 'number'; inp.min = spec[1]; inp.step = spec[2]; inp.value = st[spec[0]];
+        inp.addEventListener('input', function () { st[spec[0]] = parseFloat(inp.value); calcClosed(); });
+      });
+      var td3 = A.el('td', '', tr);
+      if (stations.length > 1) {
+        var b = A.el('button', 'ql-chip', td3, '删');
+        b.addEventListener('click', function () { stations.splice(i, 1); buildStations(); calcClosed(); });
+      }
+    });
+  }
+  function calcClosed() {
+    var N = Math.round(A.num('ql-k-N', 20)), Z = A.num('ql-k-Z', 5);
+    var r = QL.mva({ stations: stations, N: N, Z: Z });
+    var box = $('ql-k-note'), tb = $('ql-k-tbody');
+    A.clear(tb);
+    if (!r.ok) {
+      box.className = 'ql-hintbox ql-warn'; box.textContent = r.why;
+      ['ql-k-X', 'ql-k-R', 'ql-k-bn', 'ql-k-Nstar'].forEach(function (id) { A.txt(id, '—'); });
+      A.empty('ql-fig-mvax', '无解'); A.empty('ql-fig-mvar', '无解');
+      A.save(); return;
+    }
+    var b = r.bounds, bn = stations[b.bottleneck];
+    box.className = 'ql-hintbox';
+    box.textContent = 'N = ' + N + ' 个并发用户时，系统每秒能完成 ' + nf(r.X, 3) + ' 次请求，'
+      + '每次请求要等 ' + ts(r.R, 3) + '。瓶颈是「' + bn.name + '」（每台服务需求 ' + ts(b.Dmax, 4)
+      + '），它把吞吐量封在 ' + nf(b.Xheavy, 3) + ' 次/秒；并发超过 N* ≈ ' + nf(b.Nstar, 1)
+      + ' 之后再加人只会变成排队。';
+    A.txt('ql-k-X', nf(r.X, 3) + ' 次/秒');
+    A.txt('ql-k-R', ts(r.R, 3));
+    A.txt('ql-k-bn', bn.name);
+    A.txt('ql-k-Nstar', nf(b.Nstar, 1));
+    r.stations.forEach(function (s, i) {
+      var tr = A.el('tr', i === b.bottleneck ? 'ql-pick' : '', tb);
+      A.el('td', '', tr, s.name);
+      A.el('td', '', tr, ts(s.D, 4));
+      var td = A.el('td', '', tr, pct(s.U));
+      if (s.U > 0.85) td.className = 'ql-miss';
+      A.el('td', '', tr, nf(s.Q, 3));
+      A.el('td', '', tr, ts(s.R, 4));
+      A.el('td', '', tr, ts(s.Rtot, 4));
+    });
+    drawMVA(r, N, Z);
+    A.save();
+  }
+  function drawMVA(r, N, Z) {
+    var b = r.bounds, NMAX = Math.max(N + 4, Math.ceil(b.Nstar * 2) + 2, 12);
+    NMAX = Math.min(NMAX, 400);
+    var full = QL.mva({ stations: stations, N: NMAX, Z: Z });
+    var hx = full.hist.map(function (h) { return [h.n, h.X]; });
+    var hr = full.hist.map(function (h) { return [h.n, h.R]; });
+    var F = A.figFrame('ql-fig-mvax', { l: 58, r: 18, t: 16, b: 36 });
+    F.setDomain(0, NMAX, 0, Math.max(b.Xheavy * 1.14, full.hist[full.hist.length - 1].X * 1.1));
+    F.axes({ xlabel: '并发用户数 N', ylabel: '吞吐量（次/秒）', xfmt: function (v) { return nf(v, 0); },
+      yfmt: function (v) { return nf(v, v < 1 ? 3 : 1); } });
+    F.path([[0, 0], [b.Nstar, b.Xheavy]], { stroke: A.STONE, width: 1.2, dash: '5 4' });
+    F.path([[0, b.Xheavy], [NMAX, b.Xheavy]], { stroke: A.STONE, width: 1.2, dash: '5 4' });
+    F.path(hx, { stroke: A.INK, width: 2 });
+    F.dot(N, r.X, { r: 5, fill: A.SALE });
+    F.P.text(F.sx(N), F.sy(r.X) - 10, 'N=' + N + ' · ' + nf(r.X, 3),
+      { size: 11, weight: 500, fill: A.INK, plate: true, offsets: [[0, 0], [0, 26], [-58, 0], [58, 0]] });
+    F.P.text(F.x1 - 4, F.sy(b.Xheavy) - 6, '瓶颈上限 ' + nf(b.Xheavy, 3),
+      { anchor: 'end', size: 10, fill: A.STONE, plate: true, offsets: [[0, 0], [0, 16]] });
+
+    var G = A.figFrame('ql-fig-mvar', { l: 58, r: 18, t: 16, b: 36 });
+    var rmaxv = full.hist[full.hist.length - 1].R;
+    G.setDomain(0, NMAX, 0, rmaxv * 1.14);
+    G.axes({ xlabel: '并发用户数 N', ylabel: '响应时间（秒）', xfmt: function (v) { return nf(v, 0); },
+      yfmt: function (v) { return nf(v, v < 1 ? 3 : 1); } });
+    G.path([[0, b.Dsum], [NMAX, b.Dsum]], { stroke: A.STONE, width: 1.2, dash: '5 4' });
+    G.path([[Math.max(0, Z / b.Dmax), 0], [NMAX, NMAX * b.Dmax - Z]], { stroke: A.STONE, width: 1.2, dash: '5 4' });
+    G.path(hr, { stroke: A.INK, width: 2 });
+    G.dot(N, r.R, { r: 5, fill: A.SALE });
+    G.P.text(G.sx(N), G.sy(r.R) - 10, 'N=' + N + ' · ' + ts(r.R, 3),
+      { size: 11, weight: 500, fill: A.INK, plate: true, offsets: [[0, 0], [0, 26], [-58, 0], [58, 0]] });
+  }
+
+  function init() {
+    seg = A.segment('ql-n-seg', 'nettab', function (v) {
+      sub = v;
+      $('ql-n-open').hidden = v !== 'open';
+      $('ql-n-closed').hidden = v !== 'closed';
+      if (v === 'open') calcOpen(); else calcClosed();
+    });
+    $('ql-n-add').addEventListener('click', function () {
+      if (nodes.length >= 6) return;
+      nodes.push({ name: '节点 ' + (nodes.length + 1), mu: 10, c: 1, gamma: 0 });
+      P.forEach(function (row) { row.push(0); });
+      P.push(new Array(nodes.length).fill(0));
+      buildNodes(); buildRoute(); calcOpen();
+    });
+    $('ql-n-demo').addEventListener('click', function () {
+      nodes = JSON.parse(JSON.stringify(DEMO_OPEN.nodes));
+      P = JSON.parse(JSON.stringify(DEMO_OPEN.P));
+      buildNodes(); buildRoute(); calcOpen();
+    });
+    $('ql-k-add').addEventListener('click', function () {
+      if (stations.length >= 6) return;
+      stations.push({ name: '站 ' + (stations.length + 1), S: 0.02, V: 1, c: 1 });
+      buildStations(); calcClosed();
+    });
+    $('ql-k-demo').addEventListener('click', function () {
+      stations = JSON.parse(JSON.stringify(DEMO_CLOSED));
+      buildStations(); calcClosed();
+    });
+    A.bind(['ql-k-N', 'ql-k-Z'], calcClosed);
+    A.register(function (st) {
+      st.net = { sub: sub, nodes: nodes, P: P, stations: stations,
+        N: $('ql-k-N').value, Z: $('ql-k-Z').value };
+    }, function (st) {
+      if (!st.net) return;
+      if (st.net.nodes && st.net.nodes.length) { nodes = st.net.nodes; P = st.net.P; }
+      if (st.net.stations && st.net.stations.length) stations = st.net.stations;
+      if (st.net.N) $('ql-k-N').value = st.net.N;
+      if (st.net.Z != null) $('ql-k-Z').value = st.net.Z;
+      sub = st.net.sub || 'open';
+      seg.set(sub);
+      $('ql-n-open').hidden = sub !== 'open';
+      $('ql-n-closed').hidden = sub !== 'closed';
+    });
+    A.onTab.net = function () {
+      buildNodes(); buildRoute(); buildStations();
+      if (sub === 'open') calcOpen(); else calcClosed();
+    };
+  }
+  A.initNet = init;
+})(QLA);
+
+/* Queue Lab · 页面层 5a：离散事件仿真 */
+(function (A) {
+  'use strict';
+  var $ = A.$, nf = A.nf, pct = A.pct, ts = A.ts;
+  var lastSim = null;
+
+  /* 选一个能对得上的解析模型：仿真参数落在哪个模型的假设里就用哪个。 */
+  function analytic(cfg) {
+    var expArr = Math.abs(cfg.ca2 - 1) < 1e-9, expSvc = Math.abs(cfg.cs2 - 1) < 1e-9 && cfg.svcDist === 'auto';
+    var mu = 1 / cfg.ES;
+    if (expArr && expSvc && cfg.patience > 0 && !cfg.K)
+      return { name: 'M/M/c+M（Erlang A，精确）', r: QL.erlangA({ lam: cfg.lam, mu: mu, c: cfg.c, theta: 1 / cfg.patience }) };
+    if (expArr && expSvc && !cfg.patience && cfg.K)
+      return { name: 'M/M/c/K（精确）', r: QL.mmck({ lam: cfg.lam, mu: mu, c: cfg.c, K: cfg.K }) };
+    if (expArr && expSvc && !cfg.patience && !cfg.K)
+      return { name: 'M/M/c（精确）', r: QL.mmc({ lam: cfg.lam, mu: mu, c: cfg.c }) };
+    if (expArr && cfg.c === 1 && !cfg.patience && !cfg.K)
+      return { name: 'M/G/1 · Pollaczek–Khinchine（精确）', r: QL.mg1({ lam: cfg.lam, ES: cfg.ES, cs2: cfg.cs2 }) };
+    if (!cfg.patience && !cfg.K)
+      return { name: 'G/G/c · Allen–Cunneen（近似）', r: QL.ggc({ lam: cfg.lam, ES: cfg.ES, c: cfg.c, ca2: cfg.ca2, cs2: cfg.cs2 }) };
+    return { name: null, r: null };
+  }
+
+  function readCfg() {
+    return {
+      lam: A.num('ql-s-lam', 9), c: Math.round(A.num('ql-s-c', 10)), ES: A.num('ql-s-es', 1),
+      cs2: A.num('ql-s-cs2', 1), ca2: A.num('ql-s-ca2', 1), svcDist: $('ql-s-svcdist').value,
+      patience: A.num('ql-s-pat', 0), K: Math.round(A.num('ql-s-K', 0)),
+      n: Math.round(A.num('ql-s-n', 200000)), seed: Math.round(A.num('ql-s-seed', 20260918)),
+      slT: A.num('ql-s-slT', 0.2)
+    };
+  }
+
+  function run() {
+    var cfg = readCfg(), st = $('ql-s-status');
+    if (!(cfg.lam > 0) || !(cfg.ES > 0) || !(cfg.c >= 1) || !(cfg.n >= 1000)) {
+      st.className = 'ql-hintbox ql-warn';
+      st.textContent = '参数不合法：到达率、服务时长、台数都要为正，客户数至少 1000。';
+      return;
+    }
+    var an = analytic(cfg);
+    var histMax = an.r && an.r.ok && an.r.Wq > 0 ? Math.max(an.r.Wq * 6, cfg.slT * 2.5)
+                                                 : Math.max(cfg.ES * 8, cfg.slT * 2.5);
+    var t0 = Date.now();
+    var s = QL.simulate({ lam: cfg.lam, c: cfg.c, ES: cfg.ES, cs2: cfg.cs2, ca2: cfg.ca2,
+      svcDist: cfg.svcDist, patience: cfg.patience, K: cfg.K, n: cfg.n, seed: cfg.seed,
+      slT: cfg.slT, histMax: histMax });
+    var ms = Date.now() - t0;
+    if (!s.ok) { st.className = 'ql-hintbox ql-warn'; st.textContent = s.why; return; }
+    lastSim = { s: s, cfg: cfg, an: an, histMax: histMax };
+    st.className = 'ql-hintbox';
+    st.textContent = '跑了 ' + nf(cfg.n, 0) + ' 个客户、仿真时长 ' + ts(s.span, 1) + '（真实耗时 ' + ms
+      + ' 毫秒，种子 ' + s.seed + '，预热丢弃前 ' + nf(s.warmup, 0) + ' 个）。'
+      + (an.name ? '对照的解析模型：' + an.name + '。' : '这组参数没有可用的解析解，只有仿真结果。');
+    table(s, an, cfg);
+    drawTrace(s); drawHist(s, an, cfg);
+    A.save();
+  }
+
+  function row(tb, label, sim, ci, th, unit) {
+    var tr = A.el('tr', '', tb);
+    A.el('td', '', tr, label);
+    A.el('td', '', tr, unit === 'pct' ? pct(sim) : (unit === 'sec' ? ts(sim, 3) : nf(sim, 4)));
+    A.el('td', '', tr, ci || '—');
+    A.el('td', '', tr, th == null ? '—' : (unit === 'pct' ? pct(th) : (unit === 'sec' ? ts(th, 3) : nf(th, 4))));
+    var d = A.el('td', '', tr);
+    if (th == null || !isFinite(th) || th === 0) { d.textContent = '—'; return; }
+    var rel = Math.abs(sim - th) / Math.abs(th);
+    d.textContent = pct(rel, 2);
+    d.className = rel < 0.03 ? 'ql-hit' : (rel < 0.1 ? '' : 'ql-miss');
+  }
+
+  function table(s, an, cfg) {
+    var tb = $('ql-s-tbody');
+    A.clear(tb);
+    var th = an.r && an.r.ok ? an.r : null;
+    row(tb, '平均等待 Wq', s.Wq, '[' + nf(s.ciWq[0], 4) + ', ' + nf(s.ciWq[1], 4) + '] 秒（' + s.batches + ' 个批）',
+      th ? th.Wq : null, 'sec');
+    row(tb, '平均队长 Lq', s.Lq, null, th ? th.Lq : null, 'num');
+    row(tb, '系统内人数 L', s.L, null, th ? th.L : null, 'num');
+    row(tb, '服务台利用率', s.util, null, th ? th.rho : null, 'pct');
+    row(tb, '需要等待的比例', s.Pw, null, th ? th.Pw : null, 'pct');
+    var slKey = (th && th.model === 'mmck') ? 'slAcc' : 'slAll';
+    row(tb, cfg.slT + ' 秒内应答', s[slKey], null, th && th.slAt ? th.slAt(cfg.slT) : null, 'pct');
+    if (cfg.patience > 0) row(tb, '放弃率', s.Pab, null, th ? th.Pab : null, 'pct');
+    if (cfg.K > 0) row(tb, '阻塞率', s.Pblock, null, th ? th.Pblock : null, 'pct');
+    var tr = A.el('tr', '', tb);
+    A.el('td', '', tr, 'Little 自检 L = λ·W');
+    A.el('td', '', tr, nf(s.L, 4));
+    A.el('td', '', tr, '—');
+    A.el('td', '', tr, nf(s.lamAcc * s.W, 4));
+    var d = A.el('td', '', tr, pct(Math.abs(s.L - s.lamAcc * s.W) / Math.max(s.L, 1e-12), 3));
+    d.className = 'ql-hit';
+  }
+
+  function drawTrace(s) {
+    if (!s.trace.length) { A.empty('ql-fig-trace', '轨迹为空'); return; }
+    var F = A.figFrame('ql-fig-trace', { l: 48, r: 18, t: 16, b: 36 });
+    var tmax = s.trace[s.trace.length - 1][0];
+    var nmax = 0, i;
+    for (i = 0; i < s.trace.length; i++) nmax = Math.max(nmax, s.trace[i][1]);
+    F.setDomain(0, Math.max(tmax, 1e-9), 0, nmax + 1);
+    F.axes({ xlabel: '仿真时间（秒）', ylabel: '系统内人数',
+      yfmt: function (v) { return nf(v, 0); }, xfmt: function (v) { return nf(v, v < 10 ? 1 : 0); } });
+    var pts = [], prev = null;
+    for (i = 0; i < s.trace.length; i++) {
+      if (prev !== null) pts.push([s.trace[i][0], prev]);
+      pts.push([s.trace[i][0], s.trace[i][1]]);
+      prev = s.trace[i][1];
+    }
+    F.path(pts, { stroke: A.INK, width: 1 });
+    F.hline(s.L, { stroke: A.SALE, dash: '5 4' });
+    F.P.text(F.x1 - 4, F.sy(s.L) - 5, '时间平均 L = ' + nf(s.L, 2),
+      { anchor: 'end', size: 10, fill: A.SALE, plate: true, offsets: [[0, 0], [0, 16], [0, -12]] });
+  }
+
+  function drawHist(s, an, cfg) {
+    var useServed = cfg.patience > 0;
+    var h = useServed ? s.histServed : s.hist;
+    var tot = 0, i;
+    for (i = 0; i < h.length; i++) tot += h[i];
+    if (!tot) { A.empty('ql-fig-hist', '没有可用的等待样本'); return; }
+    var frac = h.map(function (v) { return v / tot; });
+    var F = A.figFrame('ql-fig-hist', { l: 54, r: 18, t: 16, b: 36 });
+    var bw = s.histMax / 40;
+    var th = an.r && an.r.ok && an.r.slAt ? an.r : null;
+    var expect = null;
+    if (th) {
+      /* 第一格要从 0 起算，不是从 slAt(0) 起算 —— slAt(0) 正是「无需等待」那一块原子质量，
+       * 减掉它的话解析曲线在第一格会比实测柱矮一大截（0.065 vs 0.40，人工看图才发现）。 */
+      var norm = useServed ? (th.Pserved || 1) : 1;
+      expect = [];
+      for (i = 0; i < 40; i++) expect.push((th.slAt((i + 1) * bw) - (i === 0 ? 0 : th.slAt(i * bw))) / norm);
+      expect.push(Math.max(0, 1 - th.slAt(40 * bw) / norm));
+    }
+    var ymax = Math.max.apply(null, frac.concat(expect || [0])) * 1.14;
+    F.setDomain(0, s.histMax * 41 / 40, 0, Math.max(ymax, 1e-9));
+    F.axes({ xlabel: '等待时长（秒）', ylabel: '落在该区间的比例',
+      xfmt: function (v) { return nf(v, v < 1 ? 2 : 1); }, yfmt: function (v) { return nf(v, 2); } });
+    A.bars(F, frac, { fill: A.INK });
+    if (expect) {
+      F.path(expect.map(function (v, k) { return [(k + 0.5) * bw, v]; }), { stroke: A.SALE, width: 1.8 });
+      F.P.text(F.x1 - 6, F.y1 + 14, '红线 = 解析解的逐区间概率', { anchor: 'end', size: 10,
+        fill: A.SALE, plate: true, offsets: [[0, 0], [0, 16], [0, 32]] });
+    }
+    F.P.text(F.x1 - 6, F.y1 + (expect ? 32 : 14),
+      (useServed ? '只统计最终被应答的客户' : '第一根柱含「无需等待」那部分'),
+      { anchor: 'end', size: 10, fill: A.MUTE, plate: true, offsets: [[0, 0], [0, 16], [0, 32]] });
+  }
+
+  function init() {
+    $('ql-s-run').addEventListener('click', run);
+    $('ql-s-sync').addEventListener('click', function () {
+      var S = QLA.capState && QLA.capState();
+      if (!S || !S.res || !S.res.ok) return;
+      $('ql-s-lam').value = nf(S.lam, 6);
+      $('ql-s-es').value = nf(S.aht, 4);
+      $('ql-s-c').value = S.res.c;
+      $('ql-s-cs2').value = 1; $('ql-s-ca2').value = 1;
+      $('ql-s-svcdist').value = 'auto';
+      $('ql-s-pat').value = S.model === 'erlangA' ? A.num('ql-c-patience', 90) : 0;
+      $('ql-s-K').value = S.model === 'mmcc' ? S.res.c : 0;
+      $('ql-s-slT').value = S.goal.T;
+      run();
+    });
+    A.bind(['ql-s-lam', 'ql-s-c', 'ql-s-es', 'ql-s-cs2', 'ql-s-ca2', 'ql-s-svcdist', 'ql-s-pat',
+            'ql-s-K', 'ql-s-n', 'ql-s-seed', 'ql-s-slT'], function () { });
+    A.register(function (st) { st.sim = readCfg(); }, function (st) {
+      var c = st.sim; if (!c) return;
+      $('ql-s-lam').value = c.lam; $('ql-s-c').value = c.c; $('ql-s-es').value = c.ES;
+      $('ql-s-cs2').value = c.cs2; $('ql-s-ca2').value = c.ca2; $('ql-s-svcdist').value = c.svcDist;
+      $('ql-s-pat').value = c.patience; $('ql-s-K').value = c.K; $('ql-s-n').value = c.n;
+      $('ql-s-seed').value = c.seed; $('ql-s-slT').value = c.slT;
+    });
+    A.onTab.sim = function () { if (!lastSim) { A.empty('ql-fig-trace', '点「跑一遍仿真」'); A.empty('ql-fig-hist', '点「跑一遍仿真」'); } };
+  }
+  A.initSim = init;
+  A.simState = function () { return lastSim; };
+})(QLA);
+
+/* Queue Lab · 页面层 5b：日内排班 */
+(function (A) {
+  'use strict';
+  var $ = A.$, nf = A.nf, pct = A.pct, ts = A.ts;
+  var START_MIN = 8 * 60, calls = [], slotMin = 30, lastPlan = null;
+
+  function nSlots() { return slotMin === 30 ? 24 : 12; }
+  function label(i) {
+    var m = START_MIN + i * slotMin;
+    return String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0');
+  }
+  function presetTwin() {
+    var n = nSlots(), out = [], i;
+    for (i = 0; i < n; i++) {
+      var h = (START_MIN + i * slotMin) / 60;
+      var v = 40 * Math.exp(-Math.pow(h - 10.5, 2) / 2.2) + 52 * Math.exp(-Math.pow(h - 15.0, 2) / 3.0) + 6;
+      out.push(Math.round(v * (slotMin / 30)));
+    }
+    return out;
+  }
+  function presetFlat() {
+    var n = nSlots(), out = [], i;
+    for (i = 0; i < n; i++) out.push(Math.round(26 * (slotMin / 30)));
+    return out;
+  }
+  function buildGrid() {
+    var box = $('ql-w-grid');
+    A.clear(box);
+    var n = nSlots();
+    while (calls.length < n) calls.push(0);
+    calls.length = n;
+    for (var i = 0; i < n; i++) (function (i) {
+      var lab = A.el('label', 'ql-field', box);
+      A.el('span', '', lab, label(i));
+      var inp = A.el('input', '', lab);
+      inp.type = 'number'; inp.min = 0; inp.step = 1; inp.value = calls[i];
+      inp.className = 'ql-wslot';
+      inp.addEventListener('input', function () { calls[i] = Math.max(0, parseFloat(inp.value) || 0); compute(); });
+    })(i);
+  }
+
+  function compute() {
+    var aht = A.num('ql-w-aht', 210), T = A.num('ql-w-slT', 20), X = A.num('ql-w-slX', 80) / 100;
+    var sh = Math.min(0.95, Math.max(0, A.num('ql-w-shrink', 30) / 100));
+    var shiftH = A.num('ql-w-shiftlen', 4);
+    var plan = QL.staffPlan({
+      intervals: calls.map(function (v, i) { return { label: label(i), calls: v, aht: aht }; }),
+      slotMin: slotMin, shrinkage: sh, model: 'mmc', goal: { kind: 'sl', T: T, target: X }
+    });
+    var L = Math.max(1, Math.round(shiftH * 60 / slotMin));
+    var cov = QL.coverShifts(plan.rows.map(function (r) { return r.staff || 0; }), L);
+    lastPlan = { plan: plan, cov: cov, slotMin: slotMin, shiftH: shiftH };
+    var covHours = cov.slots * slotMin / 60;
+    $('ql-w-summary').className = 'ql-hintbox';
+    $('ql-w-summary').textContent = '全天 ' + nf(plan.totalCalls, 0) + ' 通来话；按 '
+      + pct(X, 0) + '/' + nf(T, 0) + ' 秒的目标，逐时段定员合计 ' + nf(plan.agentHours, 1)
+      + ' 席·小时，加 ' + pct(sh, 0) + ' 收缩率后要 ' + nf(plan.staffedHours, 1) + ' 人·小时。'
+      + '用 ' + nf(shiftH, 1) + ' 小时的等长班次去盖，最少需要 ' + cov.total + ' 个班次（合 '
+      + nf(covHours, 1) + ' 人·小时，过度配置 ' + pct(cov.overPct, 1)
+      + '）。这个班次数是最优解，不是启发式的结果 —— 同一条需求曲线交给整数规划也只会得到同一个数。';
+    rows(plan);
+    shifts(cov);
+    drawCover(plan, cov);
+    drawSL(plan, T);
+    A.save();
+  }
+
+  function rows(plan) {
+    var tb = $('ql-w-tbody');
+    A.clear(tb);
+    plan.rows.forEach(function (r) {
+      var tr = A.el('tr', '', tb);
+      A.el('td', '', tr, r.label);
+      A.el('td', '', tr, nf(r.calls, 0));
+      A.el('td', '', tr, nf(r.a, 2));
+      A.el('td', '', tr, isFinite(r.req) ? String(r.req) : '—');
+      A.el('td', '', tr, isFinite(r.staff) ? String(r.staff) : '—');
+      var td = A.el('td', '', tr, isFinite(r.sl) ? pct(r.sl) : '—');
+      if (isFinite(r.sl)) td.className = 'ql-hit';
+      A.el('td', '', tr, isFinite(r.asa) ? ts(r.asa, 1) : '—');
+      A.el('td', '', tr, isFinite(r.occ) ? pct(r.occ) : '—');
+    });
+  }
+  function shifts(cov) {
+    var tb = $('ql-w-shifts');
+    A.clear(tb);
+    if (!cov.list.length) { var tr0 = A.el('tr', '', tb); A.el('td', '', tr0, '全天无需上人'); return; }
+    cov.list.forEach(function (s, i) {
+      var tr = A.el('tr', '', tb);
+      A.el('td', '', tr, '第 ' + (i + 1) + ' 班');
+      A.el('td', '', tr, label(s.start));
+      A.el('td', '', tr, label(Math.min(s.end, nSlots())));
+      A.el('td', '', tr, String(s.n));
+    });
+  }
+
+  function step(F, arr, opt) {
+    var pts = [], i;
+    for (i = 0; i < arr.length; i++) { pts.push([i, arr[i]]); pts.push([i + 1, arr[i]]); }
+    F.path(pts, opt);
+  }
+  function drawCover(plan, cov) {
+    var req = plan.rows.map(function (r) { return r.staff || 0; });
+    var F = A.figFrame('ql-fig-cover', { l: 48, r: 18, t: 16, b: 40 });
+    var mx = Math.max(Math.max.apply(null, cov.cover), Math.max.apply(null, req), 1);
+    F.setDomain(0, req.length, 0, mx * 1.16);
+    F.axes({ xlabel: '时段', ylabel: '人数', yfmt: function (v) { return nf(v, 0); },
+      xfmt: function (v) { return v >= 0 && v < req.length ? label(Math.round(v)) : ''; } });
+    var i;
+    for (i = 0; i < req.length; i++) {
+      if (!(cov.cover[i] > 0)) continue;
+      var x0 = F.sx(i + 0.1), x1 = F.sx(i + 0.9);
+      AEPlot.el('rect', { x: x0, y: F.sy(cov.cover[i]), width: x1 - x0,
+        height: F.y0 - F.sy(cov.cover[i]), fill: A.INK, opacity: 0.1 }, F.svg);
+    }
+    step(F, req, { stroke: A.STONE, width: 2 });
+    step(F, cov.cover, { stroke: A.INK, width: 2 });
+    var peak = req.indexOf(Math.max.apply(null, req));
+    F.P.text(F.sx(peak + 0.5), F.sy(req[peak]) - 8, '峰值 ' + req[peak] + ' 人',
+      { size: 11, weight: 500, fill: A.INK, plate: true, offsets: [[0, 0], [0, 24], [-48, 0], [48, 0]] });
+  }
+  function drawSL(plan, T) {
+    var ok = plan.rows.filter(function (r) { return isFinite(r.sl) && r.calls > 0; });
+    if (!ok.length) { A.empty('ql-fig-wsl', '全天没有来话'); return; }
+    var F = A.figFrame('ql-fig-wsl', { l: 48, r: 18, t: 16, b: 40 });
+    F.setDomain(0, plan.rows.length, 0, 1.08);
+    F.axes({ xlabel: '时段', ylabel: '比例', yfmt: function (v) { return nf(v * 100, 0) + '%'; },
+      xfmt: function (v) { return v >= 0 && v < plan.rows.length ? label(Math.round(v)) : ''; } });
+    step(F, plan.rows.map(function (r) { return isFinite(r.sl) ? r.sl : 0; }), { stroke: A.INK, width: 2 });
+    step(F, plan.rows.map(function (r) { return isFinite(r.occ) ? r.occ : 0; }), { stroke: A.SALE, width: 1.6, dash: '5 4' });
+    var tgt = A.num('ql-w-slX', 80) / 100;
+    F.hline(tgt, { stroke: A.OK, dash: '4 4' });
+    F.P.text(F.x1 - 4, F.sy(tgt) - 5, '目标 ' + pct(tgt, 0), { anchor: 'end', size: 10, fill: A.OK,
+      plate: true, offsets: [[0, 0], [0, 16], [0, -12]] });
+  }
+
+  function init() {
+    calls = presetTwin();
+    $('ql-w-preset').addEventListener('click', function () { calls = presetTwin(); buildGrid(); compute(); });
+    $('ql-w-flat').addEventListener('click', function () { calls = presetFlat(); buildGrid(); compute(); });
+    $('ql-w-slot').addEventListener('change', function () {
+      slotMin = parseInt($('ql-w-slot').value, 10);
+      calls = presetTwin();
+      buildGrid(); compute();
+    });
+    A.bind(['ql-w-aht', 'ql-w-slT', 'ql-w-slX', 'ql-w-shrink', 'ql-w-shiftlen'], compute);
+    A.register(function (st) {
+      st.shift = { calls: calls, slotMin: slotMin, aht: $('ql-w-aht').value, T: $('ql-w-slT').value,
+        X: $('ql-w-slX').value, sh: $('ql-w-shrink').value, len: $('ql-w-shiftlen').value };
+    }, function (st) {
+      var c = st.shift; if (!c) return;
+      slotMin = c.slotMin === 60 ? 60 : 30;
+      $('ql-w-slot').value = String(slotMin);
+      if (c.calls && c.calls.length) calls = c.calls.slice(0, nSlots());
+      $('ql-w-aht').value = c.aht; $('ql-w-slT').value = c.T; $('ql-w-slX').value = c.X;
+      $('ql-w-shrink').value = c.sh; $('ql-w-shiftlen').value = c.len;
+    });
+    A.onTab.shift = function () { buildGrid(); compute(); };
+  }
+  A.initShift = init;
+  A.shiftState = function () { return lastPlan; };
+})(QLA);
+
+/* Queue Lab · 页面层 5c：口径与验证 + 启动 */
+(function (A) {
+  'use strict';
+  var $ = A.$;
+  var USE = {
+    mm1: '单窗口的一切：一台打印机、一个审批人、一条单线程队列',
+    mmc: '共享一条队的多窗口：呼叫中心、银行叫号、线程池',
+    mmck: '有容量上限的系统：连接池、排队区只放得下 N 个人',
+    mmcc: '不许排队的系统：电话中继线、会议室、停车位',
+    mminf: '人人立刻被服务：自助终端、并发连接数、在途订单',
+    mmcN: '客源有限：N 台机器 c 个维修工、N 个坐席 c 条内线',
+    erlangA: '客户会挂断的呼叫中心、会超时的请求',
+    mg1: '服务时长不是指数分布的单窗口 —— 现实里几乎都是',
+    md1: '服务时长固定：流水线节拍、定长报文',
+    mg1p: '有优先级的工单队列：P0 先修，P3 慢慢排',
+    ggc: '到达也不是泊松的多窗口（近似解，用于估量级）'
+  };
+  var PROSE = [
+    ['指标口径',
+     '<b>Wq</b> 是排队等待时长，<b>W</b> = Wq + 服务时长，<b>Lq / L</b> 是对应的时间平均人数，' +
+     '四者由 Little 定律 L = λ·W 绑定 —— 页面每个模型下方都现场核对这条恒等式。' +
+     '<b>ρ</b> 是单个服务台的忙碌比例（不是「系统忙的比例」）。<b>服务水平</b>指「等待 ≤ T 的来话占比」。' +
+     '带放弃的模型里，<b>平均等待</b>按<b>全体来话</b>平均（放弃者贡献的是他放弃前那段等待），' +
+     '这样 Lq = λ·Wq 才成立；想看「接通者等了多久」另有单独的量。'],
+    ['两个容易混的量',
+     '<b>话务量 a = λ·E[S]</b> 的单位是爱尔兰（Erlang），它是「平均同时有几通电话在进行」，' +
+     '与服务台数无关；<b>占用率 ρ = a/c</b> 才是每个坐席的忙碌比例。' +
+     '<b>收缩率 shrinkage</b> 是休息、会议、培训等不可用工时的占比：上岗人数 = ⌈需求席 / (1 − 收缩率)⌉。'],
+    ['哪些是精确解，哪些是近似',
+     'M/M/1、M/M/c、M/M/c/K、M/M/c/c、M/M/∞、M/M/c//N、M/M/c+M 都是<b>精确解</b>（生灭链）；' +
+     'M/G/1 与 M/D/1 的均值是<b>精确</b>的（Pollaczek–Khinchine）；优先级公式在 M/G/1 下<b>精确</b>。' +
+     '只有 <b>G/G/c 的 Allen–Cunneen 是近似</b>，页面上会显式标注。它到底差多少，这里给实测：' +
+     '拿 <code>SimPy</code> 各跑 40 万个客户对照，ca²=1 的两组（cs²=0 与 cs²=4，单窗口）差 <b>1.3%</b> 与 <b>0.2%</b>，' +
+     'ca²=0.25 / cs²=2 的单窗口差 <b>3.9%</b>，而 8 个窗口、ca²=cs²=0.5、ρ=0.875 那组差到 <b>9.7%</b> —— ' +
+     '窗口多、变异系数偏离 1 越远，它越不准。想要准数就去「离散事件仿真」页跑一遍。'],
+    ['班次数为什么是最优的',
+     '所有班次等长（长 L 个时段）且可以从任意时段开工时，「从左往右扫，遇到缺口就在能覆盖它且向右伸得最远的位置补班」' +
+     '给出的班次总数是<b>最优值</b>：任何可行解里覆盖时段 t 的班次，都能替换成这个起点的班次而不减少任何位置的覆盖（交换论证）。' +
+     '本页用 120 个随机需求曲线与 <code>scipy.optimize.milp</code> 的整数规划最优解逐例对拍，' +
+     '<b>120/120 完全一致</b>。'],
+    ['这些数字是怎么验的',
+     '引擎的每条公式都对着一条<b>走别的数学路径</b>的参照实现验过：Erlang B 对 <code>scipy.stats.poisson</code> 的 pmf/cdf 之比；' +
+     'M/M/c 族对<b>直接解生成元矩阵 πQ=0</b> 的精确 CTMC；带放弃队列的「T 秒内应答」对 <code>scipy.linalg.expm</code>；' +
+     'M/G/1 对<b>相型服务（爱尔朗 / 超指数）的精确 CTMC</b>；优先级对二维精确 CTMC；' +
+     'Jackson 与闭合网络对多维精确 CTMC；班次覆盖对 MILP；离散事件仿真对 <code>SimPy</code> 的独立实现。' +
+     '再加上一层<b>不依赖任何实现</b>的性质断言：Little 定律、优先级守恒律、流量平衡、利用率律、' +
+     '模型之间的退化关系（M/D/1 = M/G/1 的 cs²=0、G/G/c 在 ca²=cs²=1 时退化成 M/M/c、' +
+     '有限源在 N→∞ 时按一阶收敛到 M/M/c）、单调性，以及「分享码打印器」的 2000 组 round-trip fuzz。' +
+     '离线套件共 <b id="ql-nassert">1234</b> 条断言，交付前从<b>成品 HTML</b> 里抠出引擎复跑一遍，全绿。'],
+    ['边界与前提',
+     '所有解析解都假设<b>稳态</b>：到达率在这一段时间里是平的。日内排班页按时段分别求解，' +
+     '本质是分段平稳近似（业界叫 SIPP），当时段长度远大于平均处理时长时才靠谱；' +
+     '若 AHT 比时段还长，真正的做法是排队仿真而不是逐段 Erlang。' +
+     '排队纪律默认先到先服务；除优先级模型外，队列纪律不影响平均等待（只影响分布）。' +
+     '页面不上传任何数据，参数只存在浏览器本地。']
+  ];
+  function init() {
+    var tb = $('ql-model-tbody');
+    A.clear(tb);
+    QL.MODELS.forEach(function (m) {
+      var tr = A.el('tr', '', tb);
+      A.el('td', '', tr, m.name);
+      A.el('td', '', tr, m.id);
+      A.el('td', '', tr, USE[m.id] || m.desc);
+      A.el('td', '', tr, m.src);
+    });
+    var box = $('ql-notes-prose');
+    A.clear(box);
+    PROSE.forEach(function (p) {
+      A.el('h3', '', box, p[0]);
+      var d = A.el('p', '', box);
+      d.innerHTML = p[1];
+    });
+  }
+  A.initNotes = init;
+})(QLA);
+
+/* ── 启动 ── */
+(function (A) {
+  'use strict';
+  A.all('#ql-tabbar .ql-chip').forEach(function (b) {
+    b.addEventListener('click', function () { A.showTab(b.dataset.tab); });
+  });
+  A.initCap(); A.initModel(); A.initNet(); A.initSim(); A.initShift(); A.initNotes();
+  A.boot();
+  // 首屏之外的页签在切过去时才算；但容量页的 hero 需要开局就有数
+  if (A.tab !== 'cap' && A.onTab.cap) A.onTab.cap();
+})(QLA);
+</script>
+</body>
+</html>
