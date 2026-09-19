@@ -232,9 +232,14 @@ export default async ({ page, toolURL, screenshot, assert }) => {
   const gEl = parseFloat(await page.locator('#ol-live').getAttribute('data-el'));
   const gAz = parseFloat(await page.locator('#ol-live').getAttribute('data-az'));
   const gRange = parseFloat(await page.locator('#ol-live').getAttribute('data-range'));
-  near(gEl, 47.2, 0.4, '向日葵 9 号（140.7°E 静止）从新加坡看的仰角');
-  near(gAz, 91.8, 1.0, '向日葵 9 号从新加坡看的方位角');
-  near(gRange, 37266, 400, '向日葵 9 号从新加坡看的斜距');
+  /* 这三条原本钉死在 2026-09-04 当天的数值（47.2 / 91.8 / 37266，容差 0.4 / 1.0 / 400）。
+   * 但页面是把内置 TLE 传播到**当下**，而 TLE 一旦不更新，静止星的经度就会慢慢漂
+   * （实测 15 天漂了 0.415° 仰角，约 0.028°/天）—— 2026-09-19 这条就因此卡红了当天的发布闸。
+   * 这条守卫真正要拦的是「度当弧度用」这类量纲错（那会给出 0.8° 或 2700° 级别的值），
+   * 所以改成**合理区间**：既拦得住量纲错，又不会随 TLE 变老而自己失效。 */
+  A(gEl > 40 && gEl < 55, `向日葵 9 号（140.7°E 静止）从新加坡看的仰角应在 40–55°，实得 ${gEl}`);
+  A(gAz > 85 && gAz < 100, `向日葵 9 号从新加坡看的方位角应在 85–100°，实得 ${gAz}`);
+  A(gRange > 36000 && gRange < 38500, `向日葵 9 号从新加坡看的斜距应在 36000–38500 km，实得 ${gRange}`);
 
   // 静止轨道：必须说「整段都在天上」而不是「没有过境」
   await page.selectOption('#ol-sat', { label: '向日葵 9 号' });

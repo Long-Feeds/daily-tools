@@ -1,0 +1,2488 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>昼夜节律工作台 · Circadian Lab</title>
+<meta name="description" content="用真实的人体昼夜节律模型排倒时差光照计划、算夜班错位、画相位响应曲线 —— 纯前端，零后端。">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+[hidden]{display:none!important}
+:root{
+  --cl-primary:#0007cd; --cl-primary-active:#0005a3; --cl-glow:#1a26ff;
+  --cl-ink:#ffffff; --cl-body:#a8a8a8; --cl-muted:#888888; --cl-muted-soft:#666666;
+  --cl-hair:#222222; --cl-hair-soft:#1a1a1a; --cl-hair-strong:#333333;
+  --cl-canvas:#0f0f0f; --cl-deep:#000000; --cl-card:#181818; --cl-card-up:#222222; --cl-strong:#2a2a2a;
+  --cl-cyan:#00d4ff; --cl-violet:#7b3aed; --cl-err:#ff4d4d; --cl-ok:#33d17a;
+  --cl-sans:'Inter',ui-sans-serif,system-ui,-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;
+  --cl-mono:'JetBrains Mono','Fira Code',ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:var(--cl-canvas);color:var(--cl-body);font-family:var(--cl-sans);font-size:16px;line-height:1.5;
+  -webkit-font-smoothing:antialiased}
+a{color:var(--cl-ink);text-decoration:none}
+a:hover{text-decoration:underline}
+.cl-wrap{max-width:1200px;margin:0 auto;padding:0 24px}
+.cl-nav{height:64px;display:flex;align-items:center;justify-content:space-between;gap:16px;
+  border-bottom:1px solid var(--cl-hair);position:sticky;top:0;background:var(--cl-canvas);z-index:20}
+.cl-mark{display:flex;align-items:center;gap:10px;font-weight:600;color:var(--cl-ink);font-size:15px;letter-spacing:-0.2px}
+.cl-dot{width:10px;height:10px;border-radius:9999px;background:var(--cl-primary);box-shadow:0 0 14px 2px rgba(26,38,255,.75)}
+.cl-navlinks{display:flex;align-items:center;gap:18px;font-size:14px;font-weight:500}
+.cl-navlinks a{color:var(--cl-body)}
+.cl-navlinks a:hover{color:var(--cl-ink)}
+
+/* hero */
+.cl-hero{position:relative;padding:56px 0 40px;overflow:hidden}
+.cl-hero::before{content:"";position:absolute;left:50%;top:-140px;width:900px;height:520px;transform:translateX(-50%);
+  background:radial-gradient(closest-side,rgba(26,38,255,.30),rgba(26,38,255,.10) 55%,transparent 78%);pointer-events:none}
+.cl-hero h1{position:relative;margin:0 0 14px;font-size:56px;line-height:1.05;letter-spacing:-1.68px;font-weight:500;color:var(--cl-ink)}
+.cl-hero p{position:relative;margin:0;max-width:700px;font-size:16px;color:var(--cl-body)}
+.cl-badge{display:inline-flex;align-items:center;gap:6px;background:var(--cl-card-up);color:var(--cl-ink);
+  font-size:11px;font-weight:600;letter-spacing:0.88px;border-radius:9999px;padding:5px 12px;margin-bottom:18px;position:relative}
+.cl-panes{position:relative;margin-top:28px;background:var(--cl-deep);border:1px solid var(--cl-hair);border-radius:16px;
+  padding:16px;display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.cl-pane{background:var(--cl-card);border:1px solid var(--cl-hair);border-radius:12px;padding:16px;min-width:0}
+.cl-pane h3{margin:0 0 10px;font-family:var(--cl-mono);font-size:12px;font-weight:500;color:var(--cl-muted);letter-spacing:.4px}
+.cl-pane .cl-big{font-size:28px;line-height:1.15;letter-spacing:-0.8px;color:var(--cl-ink);font-weight:500;font-variant-numeric:tabular-nums}
+.cl-pane .cl-sub{font-family:var(--cl-mono);font-size:12.5px;color:var(--cl-body);margin-top:8px;white-space:pre-line;word-break:break-word}
+.cl-pane em{font-style:normal;color:var(--cl-cyan)}
+
+/* tabs */
+.cl-tabs{display:flex;gap:8px;flex-wrap:wrap;border-bottom:1px solid var(--cl-hair);padding:18px 0 0;position:sticky;top:64px;
+  background:var(--cl-canvas);z-index:10}
+.cl-tab{appearance:none;border:1px solid transparent;background:transparent;color:var(--cl-body);font-family:inherit;
+  font-size:14px;font-weight:500;padding:9px 16px;border-radius:8px 8px 0 0;cursor:pointer;margin-bottom:-1px}
+.cl-tab:hover{color:var(--cl-ink);background:var(--cl-card)}
+.cl-tab[aria-selected="true"]{color:var(--cl-ink);background:var(--cl-card);border-color:var(--cl-hair);border-bottom-color:var(--cl-card)}
+.cl-tab:focus-visible{outline:2px solid var(--cl-glow);outline-offset:2px}
+.cl-pane-body{padding:28px 0 64px}
+
+/* cards & grid */
+.cl-card{background:var(--cl-card);border:1px solid var(--cl-hair);border-radius:16px;padding:24px;margin-bottom:20px;min-width:0}
+.cl-card h2{margin:0 0 4px;font-size:24px;letter-spacing:-0.5px;font-weight:500;color:var(--cl-ink)}
+.cl-card h3{margin:0 0 12px;font-size:18px;font-weight:600;color:var(--cl-ink)}
+.cl-card .cl-lede{margin:0 0 18px;font-size:14px;color:var(--cl-muted)}
+.cl-grid{display:grid;gap:20px}
+.cl-g2{grid-template-columns:minmax(0,340px) minmax(0,1fr)}
+.cl-g11{grid-template-columns:repeat(2,minmax(0,1fr))}
+@media (max-width:900px){.cl-g2,.cl-g11{grid-template-columns:minmax(0,1fr)}}
+.cl-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.cl-field{display:flex;flex-direction:column;gap:6px;min-width:0}
+.cl-field.cl-wide{grid-column:1/-1}
+label{font-size:12.5px;color:var(--cl-muted)}
+input,select{font-family:inherit;font-size:14px;background:var(--cl-card-up);color:var(--cl-ink);border:1px solid var(--cl-hair-strong);
+  border-radius:8px;padding:10px 12px;height:42px;width:100%;min-width:0}
+/* flex 容器里的复选框会被压窄（实测 13px），必须钉死尺寸 + 禁止收缩 */
+input[type="checkbox"]{width:18px;height:18px;min-width:18px;flex:0 0 18px;accent-color:var(--cl-primary);padding:0}
+input:focus,select:focus{outline:2px solid var(--cl-glow);outline-offset:1px;border-color:var(--cl-glow)}
+.cl-check{flex-direction:row;align-items:center;gap:8px}
+.cl-check label{font-size:13px;color:var(--cl-body)}
+button{font-family:inherit}
+.cl-btn{appearance:none;border:none;background:var(--cl-primary);color:#fff;font-size:14px;font-weight:500;height:40px;
+  padding:0 18px;border-radius:8px;cursor:pointer}
+.cl-btn:hover{background:var(--cl-glow)}
+.cl-btn:active{background:var(--cl-primary-active)}
+.cl-btn2{background:var(--cl-card-up);color:var(--cl-ink);border:1px solid var(--cl-hair-strong)}
+.cl-btn2:hover{background:var(--cl-strong)}
+.cl-btn:focus-visible{outline:2px solid var(--cl-cyan);outline-offset:2px}
+.cl-row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:16px}
+
+/* readouts */
+.cl-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;background:var(--cl-hair);
+  border:1px solid var(--cl-hair);border-radius:12px;overflow:hidden}
+.cl-kpi{background:var(--cl-card);padding:14px 16px;min-width:0}
+.cl-kpi .k{font-size:12px;color:var(--cl-muted);margin-bottom:6px}
+.cl-kpi .v{font-family:var(--cl-mono);font-size:19px;color:var(--cl-ink);font-variant-numeric:tabular-nums;word-break:break-word}
+.cl-kpi .v.cl-good{color:var(--cl-ok)}
+.cl-kpi .v.cl-bad{color:var(--cl-err)}
+.cl-note{font-size:12.5px;color:var(--cl-muted-soft);margin-top:10px}
+figure{margin:0}
+figcaption{font-size:12.5px;color:var(--cl-muted);margin-top:8px}
+svg{display:block;width:100%;height:auto;background:var(--cl-deep);border:1px solid var(--cl-hair);border-radius:12px}
+.cl-tablewrap{overflow-x:auto;border:1px solid var(--cl-hair);border-radius:12px;min-width:0}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{padding:9px 12px;text-align:right;border-bottom:1px solid var(--cl-hair-soft);white-space:nowrap}
+th{color:var(--cl-muted);font-weight:500;font-size:12px;background:var(--cl-card-up);position:sticky;top:0}
+th:first-child,td:first-child{text-align:left}
+td{font-family:var(--cl-mono);color:var(--cl-body);font-variant-numeric:tabular-nums}
+td.cl-txt{font-family:var(--cl-sans)}
+tr:last-child td{border-bottom:none}
+tbody tr:hover td{background:#141414}
+.cl-tag{display:inline-block;font-size:11px;font-family:var(--cl-sans);padding:2px 8px;border-radius:9999px;
+  background:var(--cl-card-up);color:var(--cl-body)}
+.cl-tag.cl-t-bright{background:rgba(0,212,255,.14);color:var(--cl-cyan)}
+.cl-tag.cl-t-avoid{background:rgba(123,58,237,.18);color:#b58cff}
+.cl-tag.cl-t-sleep{background:rgba(0,7,205,.30);color:#9aa4ff}
+.cl-msg{font-size:13px;color:var(--cl-err);margin-top:10px;min-height:18px}
+.cl-legend{display:flex;gap:16px;flex-wrap:wrap;font-size:12.5px;color:var(--cl-muted);margin-top:10px}
+.cl-legend span{display:inline-flex;align-items:center;gap:6px}
+.cl-swatch{width:14px;height:10px;border-radius:3px;display:inline-block}
+.cl-mono{font-family:var(--cl-mono)}
+.cl-prose{font-size:14.5px;color:var(--cl-body);max-width:860px}
+.cl-prose h3{margin:26px 0 10px}
+.cl-prose ul{padding-left:20px;margin:8px 0}
+.cl-prose li{margin:5px 0}
+.cl-prose code{font-family:var(--cl-mono);font-size:13px;background:var(--cl-deep);padding:2px 6px;border-radius:4px;color:var(--cl-cyan)}
+.cl-eq{background:var(--cl-deep);border:1px solid var(--cl-hair);border-radius:12px;padding:16px 18px;overflow-x:auto;
+  font-family:var(--cl-mono);font-size:13px;color:var(--cl-body);line-height:1.8;white-space:pre}
+.cl-foot{border-top:1px solid var(--cl-hair);padding:40px 0 56px;font-size:13px;color:var(--cl-muted-soft)}
+@media (max-width:640px){
+  .cl-hero h1{font-size:34px;letter-spacing:-1px}
+  .cl-hero{padding:36px 0 28px}
+  .cl-panes{grid-template-columns:minmax(0,1fr)}
+  .cl-fields{grid-template-columns:minmax(0,1fr)}
+  .cl-card{padding:18px}
+  .cl-wrap{padding:0 16px}
+}
+</style>
+</head>
+<body>
+<header class="cl-nav">
+  <div class="cl-wrap" style="display:flex;align-items:center;justify-content:space-between;width:100%">
+    <span class="cl-mark"><span class="cl-dot"></span>Circadian Lab</span>
+    <nav class="cl-navlinks">
+      <a href="#pane-about" id="nav-about">说明与口径</a>
+      <a href="../../">← 返回工具集</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+<section class="cl-hero">
+  <div class="cl-wrap">
+    <span class="cl-badge">CIRCADIAN PACEMAKER · 3 MODELS</span>
+    <h1>把倒时差算出来，<br>而不是熬过去。</h1>
+    <p>用发表过的人体昼夜节律起搏器模型（Forger 1999 / Jewett 1999 / Hannay 2019）真跑一遍：什么时候该晒光、什么时候该戴墨镜、几天能倒过来。夜班错位、相位响应曲线、光照剂量也在同一套引擎上。</p>
+    <div class="cl-panes" id="hero-panes">
+      <div class="cl-pane"><h3>ROUTE</h3><div class="cl-big" id="hero-route">—</div><div class="cl-sub" id="hero-route-sub">—</div></div>
+      <div class="cl-pane"><h3>BODY CLOCK OFFSET</h3><div class="cl-big" id="hero-mis">—</div><div class="cl-sub" id="hero-mis-sub">—</div></div>
+      <div class="cl-pane"><h3>DAYS TO ADAPT</h3><div class="cl-big" id="hero-days">—</div><div class="cl-sub" id="hero-days-sub">—</div></div>
+      <div class="cl-pane"><h3>TODAY / 第一天怎么做</h3><div class="cl-big" id="hero-today">—</div><div class="cl-sub" id="hero-today-sub">—</div></div>
+    </div>
+  </div>
+</section>
+
+<div class="cl-wrap">
+  <div class="cl-tabs" id="cl-tabs" role="tablist">
+    <button class="cl-tab" role="tab" data-tab="jet" id="tab-jet" aria-selected="true" aria-controls="pane-jet">倒时差计划</button>
+    <button class="cl-tab" role="tab" data-tab="shift" id="tab-shift" aria-selected="false" aria-controls="pane-shift">夜班与倒班</button>
+    <button class="cl-tab" role="tab" data-tab="dose" id="tab-dose" aria-selected="false" aria-controls="pane-dose">光照剂量</button>
+    <button class="cl-tab" role="tab" data-tab="sim" id="tab-sim" aria-selected="false" aria-controls="pane-sim">模型仿真</button>
+    <button class="cl-tab" role="tab" data-tab="prc" id="tab-prc" aria-selected="false" aria-controls="pane-prc">相位响应曲线</button>
+    <button class="cl-tab" role="tab" data-tab="about" id="tab-about" aria-selected="false" aria-controls="pane-about">说明与口径</button>
+  </div>
+
+  <!-- ══ 倒时差 ══ -->
+  <section class="cl-pane-body" id="pane-jet" role="tabpanel" aria-labelledby="tab-jet">
+    <div class="cl-grid cl-g2">
+      <div class="cl-card">
+        <h3>行程与作息</h3>
+        <div class="cl-fields">
+          <div class="cl-field"><label for="jet-from">出发地</label><select id="jet-from"></select></div>
+          <div class="cl-field"><label for="jet-to">目的地</label><select id="jet-to"></select></div>
+          <div class="cl-field"><label for="jet-dep-date">起飞日期（当地）</label><input type="date" id="jet-dep-date"></div>
+          <div class="cl-field"><label for="jet-dep-time">起飞时刻</label><input type="time" id="jet-dep-time"></div>
+          <div class="cl-field"><label for="jet-arr-date">到达日期（当地）</label><input type="date" id="jet-arr-date"></div>
+          <div class="cl-field"><label for="jet-arr-time">到达时刻</label><input type="time" id="jet-arr-time"></div>
+          <div class="cl-field"><label for="jet-home-sleep">平时就寝</label><input type="time" id="jet-home-sleep"></div>
+          <div class="cl-field"><label for="jet-home-wake">平时起床</label><input type="time" id="jet-home-wake"></div>
+          <div class="cl-field"><label for="jet-dest-sleep">目的地目标就寝</label><input type="time" id="jet-dest-sleep"></div>
+          <div class="cl-field"><label for="jet-dest-wake">目的地目标起床</label><input type="time" id="jet-dest-wake"></div>
+          <div class="cl-field"><label for="jet-prep">提前调整天数</label><input type="number" id="jet-prep" min="0" max="4" step="1"></div>
+          <div class="cl-field"><label for="jet-days">到达后计划天数</label><input type="number" id="jet-days" min="2" max="10" step="1"></div>
+          <div class="cl-field"><label for="jet-bright-h">强光窗口时长 h</label><input type="number" id="jet-bright-h" min="0.5" max="6" step="0.5"></div>
+          <div class="cl-field"><label for="jet-avoid-h">避光窗口时长 h</label><input type="number" id="jet-avoid-h" min="0" max="6" step="0.5"></div>
+          <div class="cl-field"><label for="jet-bright-lux">强光强度 lux</label><input type="number" id="jet-bright-lux" min="500" max="20000" step="500"></div>
+          <div class="cl-field"><label for="jet-wake-lux">日常室内 lux</label><input type="number" id="jet-wake-lux" min="10" max="2000" step="10"></div>
+          <div class="cl-field"><label for="jet-model">模型</label><select id="jet-model"></select></div>
+          <div class="cl-field cl-check"><input type="checkbox" id="jet-daylight"><label for="jet-daylight">强光只排在有自然光的时段</label></div>
+        </div>
+        <div class="cl-row">
+          <button class="cl-btn" id="jet-run">算这趟</button>
+          <button class="cl-btn cl-btn2" id="jet-share">复制分享链接</button>
+          <button class="cl-btn cl-btn2" id="jet-csv">导出 CSV</button>
+        </div>
+        <div class="cl-msg" id="jet-msg"></div>
+        <p class="cl-note">对照组「不干预」= 同样的作息、同样的日常光照（含每天 1 小时户外），但不做任何求光/避光安排。两条都由同一套模型跑出来。</p>
+      </div>
+      <div style="min-width:0">
+        <div class="cl-card">
+          <h3>结论</h3>
+          <div class="cl-kpis" id="jet-kpi"></div>
+        </div>
+        <div class="cl-card">
+          <h3>生物钟相位差（越接近 0 越同步）</h3>
+          <figure><svg id="fig-jet-mis" viewBox="0 0 860 300" role="img" aria-label="相位差随时间变化，计划组与不干预组对比"></svg>
+          <figcaption>纵轴是展开后的相位差：0 = 与目的地作息同步；曲线走向 ±24 表示朝提前/延后方向整整倒了一圈。</figcaption></figure>
+        </div>
+      </div>
+    </div>
+    <div class="cl-card">
+      <h3>逐日光照与睡眠计划</h3>
+      <figure><svg id="fig-jet-gantt" viewBox="0 0 860 420" role="img" aria-label="逐日计划甘特图"></svg>
+      <figcaption>横轴 = 目的地当地时间 0–24 时（到达前的几天按出发地当地时间画）。</figcaption></figure>
+      <div class="cl-legend">
+        <span><i class="cl-swatch" style="background:#1a26ff"></i>睡眠</span>
+        <span><i class="cl-swatch" style="background:#00d4ff"></i>求光（强光）</span>
+        <span><i class="cl-swatch" style="background:#7b3aed"></i>避光（墨镜/暗光）</span>
+        <span><i class="cl-swatch" style="background:#3a3a3a"></i>白天（日出→日落）</span>
+        <span><i class="cl-swatch" style="background:#33d17a"></i>预测体温最低点 CBTmin</span>
+        <span><i class="cl-swatch" style="background:transparent;border:1px dashed #fff"></i>飞行段</span>
+      </div>
+    </div>
+    <div class="cl-card">
+      <h3>逐日清单</h3>
+      <div class="cl-tablewrap"><table id="jet-table">
+        <thead><tr><th>日期</th><th>阶段</th><th>睡眠</th><th>求光</th><th>避光</th><th>CBTmin</th><th>相位差 h</th><th>日出/日落</th></tr></thead>
+        <tbody></tbody></table></div>
+    </div>
+  </section>
+
+  <!-- ══ 倒班 ══ -->
+  <section class="cl-pane-body" id="pane-shift" role="tabpanel" aria-labelledby="tab-shift" hidden>
+    <div class="cl-grid cl-g2">
+      <div class="cl-card">
+        <h3>排班</h3>
+        <div class="cl-fields">
+          <div class="cl-field"><label for="shift-start">上班时刻</label><input type="time" id="shift-start"></div>
+          <div class="cl-field"><label for="shift-end">下班时刻</label><input type="time" id="shift-end"></div>
+          <div class="cl-field"><label for="shift-nights">连上夜班天数</label><input type="number" id="shift-nights" min="1" max="10" step="1"></div>
+          <div class="cl-field"><label for="shift-off">之后休息天数</label><input type="number" id="shift-off" min="0" max="5" step="1"></div>
+          <div class="cl-field"><label for="shift-sleep-start">白天补觉开始</label><input type="time" id="shift-sleep-start"></div>
+          <div class="cl-field"><label for="shift-sleep-h">补觉时长 h</label><input type="number" id="shift-sleep-h" min="3" max="10" step="0.5"></div>
+          <div class="cl-field"><label for="shift-work-lux">车间/办公 lux</label><input type="number" id="shift-work-lux" min="50" max="2000" step="50"></div>
+          <div class="cl-field"><label for="shift-bright-lux">干预强光 lux</label><input type="number" id="shift-bright-lux" min="500" max="15000" step="500"></div>
+          <div class="cl-field"><label for="shift-strategy">策略</label><select id="shift-strategy">
+            <option value="none">不干预（白天卧室还漏光）</option>
+            <option value="bright">班前 3 小时强光</option>
+            <option value="full">强光 + 晨归墨镜 + 全暗睡眠</option>
+          </select></div>
+          <div class="cl-field"><label for="shift-model">模型</label><select id="shift-model"></select></div>
+        </div>
+        <div class="cl-row"><button class="cl-btn" id="shift-run">算这轮班</button></div>
+        <p class="cl-note">WOCL（circadian low）= 体温最低点前后 2 小时，是夜班最容易出事故的窗口。落在 WOCL 里的工时越少越好。</p>
+      </div>
+      <div style="min-width:0">
+        <div class="cl-card"><h3>结论</h3><div class="cl-kpis" id="shift-kpi"></div></div>
+        <div class="cl-card"><h3>三种策略对比</h3>
+          <div class="cl-tablewrap"><table id="shift-compare">
+            <thead><tr><th>策略</th><th>末日 CBTmin</th><th>相位移动 h</th><th>WOCL 工时占比</th></tr></thead><tbody></tbody></table></div>
+        </div>
+      </div>
+    </div>
+    <div class="cl-card">
+      <h3>体温最低点跟着班表跑到哪去了</h3>
+      <figure><svg id="fig-shift" viewBox="0 0 860 360" role="img" aria-label="夜班期间 CBTmin 位置与班次窗口"></svg>
+      <figcaption>横轴 = 一天 24 小时；每行一天。灰块 = 上班，蓝块 = 补觉，绿点 = 预测 CBTmin。</figcaption></figure>
+      <div class="cl-tablewrap" style="margin-top:16px"><table id="shift-table">
+        <thead><tr><th>第几天</th><th>类型</th><th>CBTmin 时刻</th><th>相对常态相位差 h</th></tr></thead><tbody></tbody></table></div>
+    </div>
+  </section>
+
+  <!-- ══ 光照剂量 ══ -->
+  <section class="cl-pane-body" id="pane-dose" role="tabpanel" aria-labelledby="tab-dose" hidden>
+    <div class="cl-grid cl-g11">
+      <div class="cl-card">
+        <h3>光照 → 起搏器驱动的饱和曲线</h3>
+        <p class="cl-lede">同样是「多晒一点」，250 lux 加到 1000 lux 的收益，远大于 5000 加到 10000。</p>
+        <figure><svg id="fig-dose-alpha" viewBox="0 0 520 300" role="img" aria-label="光强与光转导驱动的关系"></svg>
+        <figcaption>横轴对数刻度；纵轴是模型里的光驱动 B̂（已取该光强下 n 的稳态）。</figcaption></figure>
+      </div>
+      <div class="cl-card">
+        <h3>等剂量不等效：同样的 lux·小时</h3>
+        <p class="cl-lede">四种安排的 lux×小时完全一样（都是 5000 lux·h），位移却从提前到延后都有 —— 时间点比总量重要。</p>
+        <figure><svg id="fig-dose-bar" viewBox="0 0 520 300" role="img" aria-label="等剂量不同安排的相位位移对比"></svg>
+        <figcaption>正值 = 相位提前（早睡早起方向），负值 = 相位延后。</figcaption></figure>
+      </div>
+    </div>
+    <div class="cl-card">
+      <h3>剂量表</h3>
+      <div class="cl-tablewrap"><table id="dose-table">
+        <thead><tr><th>安排</th><th>时段</th><th>强度 lux</th><th>lux·小时</th><th>第 1 天位移 h</th><th>7 天后稳态位移 h</th></tr></thead><tbody></tbody></table></div>
+    </div>
+    <div class="cl-card">
+      <h3>睡前刷手机，到底推后多少？</h3>
+      <div class="cl-grid cl-g2">
+        <div>
+          <div class="cl-fields">
+            <div class="cl-field"><label for="dose-screen-h">睡前屏幕时长 h</label><input type="number" id="dose-screen-h" min="0.5" max="6" step="0.5"></div>
+            <div class="cl-field"><label for="dose-screen-lux">眼前照度 lux</label><input type="number" id="dose-screen-lux" min="5" max="500" step="5"></div>
+            <div class="cl-field"><label for="dose-model">模型</label><select id="dose-model"></select></div>
+            <div class="cl-field"><label for="dose-days">连续天数</label><input type="number" id="dose-days" min="1" max="14" step="1"></div>
+          </div>
+          <div class="cl-row"><button class="cl-btn" id="dose-run">算一下</button></div>
+        </div>
+        <div class="cl-kpis" id="dose-screen-out"></div>
+      </div>
+      <p class="cl-note">照度指的是<strong>眼角膜处</strong>的照度，不是屏幕亮度：一臂距离的手机通常 20–100 lux，电脑显示器 40–150 lux，天花板灯下的房间 100–300 lux。</p>
+    </div>
+  </section>
+
+  <!-- ══ 模型仿真 ══ -->
+  <section class="cl-pane-body" id="pane-sim" role="tabpanel" aria-labelledby="tab-sim" hidden>
+    <div class="cl-grid cl-g2">
+      <div class="cl-card">
+        <h3>自定义光照作息</h3>
+        <div class="cl-fields">
+          <div class="cl-field"><label for="sim-model">模型</label><select id="sim-model"></select></div>
+          <div class="cl-field"><label for="sim-days">仿真天数</label><input type="number" id="sim-days" min="4" max="30" step="1"></div>
+          <div class="cl-field"><label for="sim-sleep">就寝</label><input type="time" id="sim-sleep"></div>
+          <div class="cl-field"><label for="sim-wake">起床</label><input type="time" id="sim-wake"></div>
+          <div class="cl-field"><label for="sim-lux">清醒时 lux</label><input type="number" id="sim-lux" min="1" max="20000" step="10"></div>
+          <div class="cl-field"><label for="sim-dt">步长 h</label><input type="number" id="sim-dt" min="0.01" max="0.2" step="0.01"></div>
+          <div class="cl-field cl-wide"><label for="sim-freerun">第几天起进入全黑自由运转（0 = 不进入）</label><input type="number" id="sim-freerun" min="0" max="20" step="1"></div>
+        </div>
+        <div class="cl-row"><button class="cl-btn" id="sim-run">跑模型</button></div>
+        <div class="cl-kpis" id="sim-kpi" style="margin-top:16px"></div>
+      </div>
+      <div style="min-width:0">
+        <div class="cl-card"><h3>状态量</h3>
+          <figure><svg id="fig-sim-state" viewBox="0 0 860 300" role="img" aria-label="状态量随时间变化"></svg>
+          <figcaption>浅色竖带 = 有光的时段；绿点 = CBTmin，紫点 = DLMO（模型口径：CBTmin 前 7 小时）。</figcaption></figure>
+        </div>
+        <div class="cl-card"><h3>极限环（相平面）</h3>
+          <figure><svg id="fig-sim-phase" viewBox="0 0 860 300" role="img" aria-label="相平面上的极限环"></svg>
+          <figcaption>前两天用淡色，后面用亮色 —— 从初值卷进极限环的过程看得见。</figcaption></figure>
+        </div>
+      </div>
+    </div>
+    <div class="cl-card"><h3>标记时刻</h3>
+      <div class="cl-tablewrap"><table id="sim-table">
+        <thead><tr><th>第 n 个</th><th>CBTmin（h）</th><th>钟点</th><th>DLMO 钟点</th><th>与前一个间隔 h</th><th>振幅</th></tr></thead><tbody></tbody></table></div>
+    </div>
+  </section>
+
+  <!-- ══ PRC ══ -->
+  <section class="cl-pane-body" id="pane-prc" role="tabpanel" aria-labelledby="tab-prc" hidden>
+    <div class="cl-grid cl-g2">
+      <div class="cl-card">
+        <h3>光脉冲</h3>
+        <div class="cl-fields">
+          <div class="cl-field"><label for="prc-model">模型</label><select id="prc-model"></select></div>
+          <div class="cl-field"><label for="prc-n">采样相位数</label><input type="number" id="prc-n" min="12" max="72" step="6"></div>
+          <div class="cl-field"><label for="prc-dur">脉冲时长 h</label><input type="number" id="prc-dur" min="0.25" max="12" step="0.25"></div>
+          <div class="cl-field"><label for="prc-lux">脉冲强度 lux</label><input type="number" id="prc-lux" min="10" max="20000" step="10"></div>
+          <div class="cl-field"><label for="prc-bg">基线清醒 lux</label><input type="number" id="prc-bg" min="1" max="2000" step="10"></div>
+          <div class="cl-field"><label for="prc-cycles">连续刺激天数</label><input type="number" id="prc-cycles" min="1" max="4" step="1"></div>
+        </div>
+        <div class="cl-row"><button class="cl-btn" id="prc-run">画 PRC</button>
+          <button class="cl-btn cl-btn2" id="prc-strong">三周期强刺激（6.7 h × 10000 lux × 3 天）</button></div>
+        <div class="cl-kpis" id="prc-kpi" style="margin-top:16px"></div>
+        <p class="cl-note">协议：先在基线明暗周期上跑到稳态 → 在相对 CBTmin 的各个相位上给脉冲（可连续给 N 天，每天同一相位）→ 释放进全黑自由运转 3 天 → 与不给脉冲的对照组比最后一个 CBTmin。相位提前记为正。</p>
+      </div>
+      <div style="min-width:0">
+        <div class="cl-card"><h3>相位响应曲线</h3>
+          <figure><svg id="fig-prc" viewBox="0 0 860 320" role="img" aria-label="相位响应曲线"></svg>
+          <figcaption>横轴 = 脉冲中点落在 CBTmin 之后几小时；纵轴正值 = 相位提前。</figcaption></figure>
+        </div>
+        <div class="cl-card"><h3>刺激刚结束时的振幅</h3>
+          <figure><svg id="fig-prc-amp" viewBox="0 0 860 260" role="img" aria-label="脉冲后振幅随脉冲相位变化"></svg>
+          <figcaption>强刺激打在临界相位上会把振荡振幅压低（Czeisler 1989 的三周期实验）。振幅必须在<strong>刺激刚结束时</strong>读 —— 再自由运转几天它就爬回极限环了。</figcaption></figure>
+        </div>
+      </div>
+    </div>
+    <div class="cl-card"><h3>关键相位</h3>
+      <div class="cl-tablewrap"><table id="prc-table">
+        <thead><tr><th>脉冲中点（CBTmin 后 h）</th><th>相位位移 h</th><th>方向</th><th>刺激后振幅</th><th>相对对照</th></tr></thead><tbody></tbody></table></div>
+    </div>
+  </section>
+
+  <!-- ══ 说明 ══ -->
+  <section class="cl-pane-body" id="pane-about" role="tabpanel" aria-labelledby="tab-about" hidden>
+    <div class="cl-card">
+      <h2>这页算的是什么</h2>
+      <div class="cl-prose">
+        <p>人体昼夜节律起搏器（视交叉上核）可以用一组常微分方程描述：光经视网膜转导成驱动量，驱动量推着一个自持振子走。这一族模型是过去三十年时差、轮班、光疗研究的通用工具，本页原样实现了其中三套已发表的版本，并用它们做四件实事：排倒时差的光照计划、看夜班把体温低谷推到哪、画相位响应曲线、比较光照剂量。</p>
+        <h3>三套模型</h3>
+        <div class="cl-eq" id="about-eq"></div>
+        <h3>参数</h3>
+        <div class="cl-tablewrap"><table id="about-params"><thead><tr><th>参数</th><th>Forger99</th><th>Jewett99</th><th>Hannay19</th><th>含义</th></tr></thead><tbody></tbody></table></div>
+        <h3>数值口径</h3>
+        <ul>
+          <li>积分器：定步长四阶 Runge–Kutta，一步之内光照取常数（与 Arcascope <code>circadian</code> 包一致，便于逐点对拍）。默认步长 0.05 h（3 分钟）。</li>
+          <li>CBTmin：Forger99 取 <code>x</code> 的极小值；Jewett99 取 <code>x</code> 极小值加 <code>φ_ref</code> = 0.8 h；Hannay19 取 <code>Ψ ≡ π</code>。页面显示的时刻在网格上做了抛物线内插。</li>
+          <li>DLMO（暗光褪黑素起始）：按包里的口径取 CBTmin − 7 h，属于群体平均，不是个体测量。</li>
+          <li>「相位差」= 把当前相位角反查成参考作息里的钟点，再与当地钟点相减，折到 ±12 h。曲线上画的是展开值。</li>
+          <li>日出日落：NOAA 太阳位置算法，天顶角 90.833°（含大气折射与日面半径）。时区与夏令时来自浏览器的 IANA 数据库。</li>
+        </ul>
+        <h3>能做什么（每一项都在集成测试里被真的跑过一遍）</h3>
+        <div class="cl-tablewrap"><table id="cap-list"><thead><tr><th>能力</th><th>说明</th></tr></thead><tbody></tbody></table></div>
+        <h3>对拍与验证</h3>
+        <div class="cl-tablewrap"><table id="about-valid"><thead><tr><th>对象</th><th>参照</th><th>规模</th><th>最大偏差</th></tr></thead><tbody></tbody></table></div>
+        <h3>边界与免责</h3>
+        <ul>
+          <li><strong>这不是医疗建议。</strong>模型给的是群体平均行为，个体的固有周期 τ、光敏感度、时型差异都很大；有睡眠障碍、服药或倒班健康问题请找医生。</li>
+          <li>模型只有光这一个输入。运动、进食、社交、咖啡因、褪黑素都会影响相位，这里一概没建模 —— 所以计划里不出现褪黑素剂量。</li>
+          <li>计划假设你真的照做：该睡的时候在暗处睡着、该求光的时候眼睛真的接收到那个照度（户外阴天约 5000–20000 lux，室内灯下往往只有 100–300 lux）。</li>
+          <li>飞行中的舱内照度按 50 lux 估；靠窗打开遮光板可以到几千 lux，差别很大。</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+</div>
+</main>
+
+<footer class="cl-foot"><div class="cl-wrap">
+  昼夜节律工作台 · Circadian Lab —— 纯前端、零后端，所有计算都在你的浏览器里完成，输入只存本机 localStorage。
+  <a href="../../">返回工具集</a>
+</div></footer>
+
+<script id="cl-engine">/* Circadian Lab — 引擎核心：三套人体昼夜节律模型 + 定步长 RK4 + 相位标记。
+ *
+ * 参数与右端项逐行照 Arcascope 的开源 Python 包 `circadian`（models.py）实现，
+ * 以便逐点对拍（同样的 RK4、同样的「一步之内光照恒定、取 input[idx]」约定）。
+ *   Forger99  —— Forger, Jewett & Kronauer (1999) A simpler model of the human circadian pacemaker
+ *   Jewett99  —— Jewett, Forger & Kronauer (1999) Revised limit cycle oscillator model
+ *   Hannay19  —— Hannay, Booth & Forger (2019) Macroscopic models for human circadian rhythms（单群体）
+ */
+var CL = (function () {
+  'use strict';
+  var TWO_PI = Math.PI * 2;
+
+  function mod(a, m) { return ((a % m) + m) % m; }
+  /* 把角度折到 (-π, π] */
+  function wrapPi(a) { return mod(a + Math.PI, TWO_PI) - Math.PI; }
+  /* 把小时差折到 (-12, 12] */
+  function wrapH(h) { return mod(h + 12, 24) - 12; }
+
+  // ── 模型库 ───────────────────────────────────────────────────────────────
+  var MODELS = {
+    forger99: {
+      key: 'forger99', name: 'Forger 1999', short: 'Forger99',
+      states: ['x', 'xc', 'n'],
+      note: '三变量简化模型（van der Pol 型振子 + 光转导 Process L）',
+      params: { taux: 24.2, mu: 0.23, G: 33.75, alpha_0: 0.05, beta: 0.0075, p: 0.50,
+                I0: 9500.0, k: 0.55, phi_ref: 0.0, cbt_to_dlmo: 7.0 },
+      ic: [-0.0843259, -1.09607546, 0.45584306],
+      derv: function (t, s, light, P, out) {
+        var x = s[0], xc = s[1], n = s[2];
+        var alpha = P.alpha_0 * Math.pow(light / P.I0, P.p);
+        var Bhat = P.G * (1 - n) * alpha * (1 - 0.4 * x) * (1 - 0.4 * xc);
+        var muTerm = P.mu * (xc - 4.0 / 3.0 * xc * xc * xc);
+        var tauxTerm = Math.pow(24.0 / (0.99669 * P.taux), 2) + P.k * Bhat;
+        out[0] = Math.PI / 12 * (xc + Bhat);
+        out[1] = Math.PI / 12 * (muTerm - x * tauxTerm);
+        out[2] = 60.0 * (alpha * (1 - n) - P.beta * n);
+      }
+    },
+    jewett99: {
+      key: 'jewett99', name: 'Jewett 1999', short: 'Jewett99',
+      states: ['x', 'xc', 'n'],
+      note: '修订版极限环模型（七次项 + 光对振幅的作用 q·B̂·xc）',
+      params: { taux: 24.2, mu: 0.13, G: 19.875, beta: 0.013, k: 0.55, q: 1.0 / 3,
+                I0: 9500, p: 0.6, alpha_0: 0.16, phi_ref: 0.8, cbt_to_dlmo: 7.0 },
+      ic: [-0.10097101, -1.21985662, 0.50529415],
+      derv: function (t, s, light, P, out) {
+        var x = s[0], xc = s[1], n = s[2];
+        var alpha = P.alpha_0 * Math.pow(light / P.I0, P.p);
+        var Bhat = P.G * alpha * (1 - n) * (1 - 0.4 * x) * (1 - 0.4 * xc);
+        var x3 = x * x * x, x7 = x3 * x3 * x;
+        var muTerm = P.mu * (1.0 / 3.0 * x + 4.0 / 3.0 * x3 - 256.0 / 105.0 * x7);
+        var tauxTerm = Math.pow(24.0 / (0.99729 * P.taux), 2) + P.k * Bhat;
+        out[0] = Math.PI / 12 * (xc + muTerm + Bhat);
+        out[1] = Math.PI / 12 * (P.q * Bhat * xc - x * tauxTerm);
+        out[2] = 60.0 * (alpha * (1 - n) - P.beta * n);
+      }
+    },
+    hannay19: {
+      key: 'hannay19', name: 'Hannay 2019', short: 'Hannay19',
+      states: ['R', 'Psi', 'n'],
+      note: '宏观（Kuramoto 平均场）单群体模型，状态量是幅值 R 与相位 Ψ',
+      params: { tau: 23.84, K: 0.06358, gamma: 0.024, Beta1: -0.09318, A1: 0.3855, A2: 0.1977,
+                BetaL1: -0.0026, BetaL2: -0.957756, sigma: 0.0400692, G: 33.75, alpha_0: 0.05,
+                delta: 0.0075, p: 1.5, I0: 9325.0, cbt_to_dlmo: 7.0 },
+      ic: [0.82041911, 1.71383697, 0.52318122],
+      derv: function (t, s, light, P, out) {
+        var R = s[0], Psi = s[1], n = s[2];
+        var lp = Math.pow(light, P.p);
+        var alpha = P.alpha_0 * lp / (lp + P.I0);
+        var Bhat = P.G * (1 - n) * alpha;
+        var R4 = Math.pow(R, 4), R8 = R4 * R4;
+        var ampA1 = P.A1 * 0.5 * Bhat * (1 - R4) * Math.cos(Psi + P.BetaL1);
+        var ampA2 = P.A2 * 0.5 * Bhat * R * (1 - R8) * Math.cos(2 * Psi + P.BetaL2);
+        var phA1 = P.A1 * Bhat * 0.5 * (R * R * R + 1.0 / R) * Math.sin(Psi + P.BetaL1);
+        var phA2 = P.A2 * Bhat * 0.5 * (1 + R8) * Math.sin(2 * Psi + P.BetaL2);
+        out[0] = -P.gamma * R + P.K * Math.cos(P.Beta1) / 2 * R * (1 - R4) + ampA1 + ampA2;
+        out[1] = TWO_PI / P.tau + P.K / 2 * Math.sin(P.Beta1) * (1 + R4) + (P.sigma * Bhat - phA1 - phA2);
+        out[2] = 60.0 * (alpha * (1 - n) - P.delta * n);
+      }
+    }
+  };
+  function model(key) {
+    var m = MODELS[key];
+    if (!m) throw new Error('未知模型：' + key);
+    return m;
+  }
+  function paramsOf(key, over) {
+    var P = {}, base = model(key).params, k;
+    for (k in base) P[k] = base[k];
+    if (over) for (k in over) if (over[k] != null && isFinite(over[k])) P[k] = +over[k];
+    return P;
+  }
+
+  // ── 定步长 RK4（与 oracle 的 step_rk4 逐行一致：一步内光照恒定，取 light[idx]）──
+  function integrate(key, time, light, y0, params) {
+    var M = model(key), P = params || M.params, ns = M.ic.length, n = time.length;
+    if (light.length !== n) throw new Error('light 与 time 长度不一致');
+    var states = new Float64Array(n * ns);
+    var s = new Float64Array(ns), tmp = new Float64Array(ns);
+    var k1 = new Float64Array(ns), k2 = new Float64Array(ns), k3 = new Float64Array(ns), k4 = new Float64Array(ns);
+    var i, j, idx, dt, L, t;
+    var init = y0 || M.ic;
+    for (j = 0; j < ns; j++) { s[j] = init[j]; states[j] = init[j]; }
+    for (idx = 1; idx < n; idx++) {
+      t = time[idx]; dt = t - time[idx - 1]; L = light[idx];
+      M.derv(t, s, L, P, k1);
+      for (j = 0; j < ns; j++) tmp[j] = s[j] + k1[j] * dt / 2;
+      M.derv(t, tmp, L, P, k2);
+      for (j = 0; j < ns; j++) tmp[j] = s[j] + k2[j] * dt / 2;
+      M.derv(t, tmp, L, P, k3);
+      for (j = 0; j < ns; j++) tmp[j] = s[j] + k3[j] * dt;
+      M.derv(t, tmp, L, P, k4);
+      for (j = 0; j < ns; j++) s[j] += dt / 6 * (k1[j] + 2 * k2[j] + 2 * k3[j] + k4[j]);
+      for (j = 0; j < ns; j++) states[idx * ns + j] = s[j];
+    }
+    return { model: key, time: time, states: states, ns: ns, n: n, light: light };
+  }
+
+  /* 用光照函数 lightFn(t) 采样出网格再积分。约定与 oracle 相同：
+   * 第 idx 步用的是 light(time[idx])，即区间右端点的值。 */
+  function simulate(o) {
+    var dt = o.dt || 0.1, t0 = o.t0 || 0, tEnd = o.tEnd;
+    var n = Math.round((tEnd - t0) / dt) + 1;
+    if (!(n > 1) || !isFinite(n)) throw new Error('仿真区间非法');
+    var time = new Float64Array(n), light = new Float64Array(n), i;
+    for (i = 0; i < n; i++) { time[i] = t0 + i * dt; light[i] = Math.max(0, o.lightFn(time[i])); }
+    return integrate(o.model, time, light, o.y0, o.params);
+  }
+
+  function stateAt(tr, i) {
+    var out = [], j;
+    for (j = 0; j < tr.ns; j++) out.push(tr.states[i * tr.ns + j]);
+    return out;
+  }
+  function column(tr, j) {
+    var out = new Float64Array(tr.n), i;
+    for (i = 0; i < tr.n; i++) out[i] = tr.states[i * tr.ns + j];
+    return out;
+  }
+  function finalState(tr) { return stateAt(tr, tr.n - 1); }
+
+  /* 把 24 小时周期的光照作息跑到稳态（周期映射的不动点）。
+   * 返回稳态下 t0 时刻的状态。max 天数用完仍未收敛也返回，并给出残差。 */
+  function equilibrate(key, lightFn, o) {
+    var opt = o || {}, dt = opt.dt || 0.1, t0 = opt.t0 || 0;
+    var per = opt.period || 24;   // 光照作息的真实周期（T 周期实验里不是 24）
+    var y = (opt.y0 || model(key).ic).slice(), maxDays = opt.maxDays || 60, tol = opt.tol || 1e-10;
+    var day = 0, res = Infinity, tr, y2, j;
+    for (day = 0; day < maxDays; day++) {
+      tr = simulate({ model: key, t0: t0 + day * per, tEnd: t0 + (day + 1) * per, dt: dt, y0: y, lightFn: lightFn, params: opt.params });
+      y2 = finalState(tr);
+      res = 0;
+      for (j = 0; j < y2.length; j++) res = Math.max(res, Math.abs(y2[j] - y[j]));
+      y = y2;
+      if (res < tol) { day++; break; }
+    }
+    return { state: y, days: day, residual: res };
+  }
+
+  // ── 相位标记 ────────────────────────────────────────────────────────────
+  /* scipy.signal.find_peaks 的等价实现（局部极大 + 平台取中点 + 按高度优先的最小间距过滤）。 */
+  function findPeaks(v, minDist) {
+    var n = v.length, peaks = [], i = 1, iAhead;
+    while (i < n - 1) {
+      if (v[i - 1] < v[i]) {
+        iAhead = i + 1;
+        while (iAhead < n - 1 && v[iAhead] === v[i]) iAhead++;
+        if (v[iAhead] < v[i]) { peaks.push(Math.floor((i + iAhead - 1) / 2)); i = iAhead; }
+        else i = iAhead;
+      } else i++;
+    }
+    if (!minDist || minDist <= 1) return peaks;
+    var order = peaks.slice().sort(function (a, b) { return v[b] - v[a]; });
+    var keep = {}, out = [], k, p, ok, q;
+    for (k = 0; k < order.length; k++) {
+      p = order[k]; ok = true;
+      for (q in keep) if (Math.abs(p - +q) < minDist) { ok = false; break; }
+      if (ok) keep[p] = 1;
+    }
+    for (k = 0; k < peaks.length; k++) if (keep[peaks[k]]) out.push(peaks[k]);
+    return out;
+  }
+
+  /* 各模型用来定位 CBTmin 的「被取反的指标」：极大值处即 CBTmin。 */
+  function cbtSignal(tr) {
+    var i, out = new Float64Array(tr.n);
+    if (tr.model === 'hannay19') { for (i = 0; i < tr.n; i++) out[i] = -Math.cos(tr.states[i * tr.ns + 1]); }
+    else { for (i = 0; i < tr.n; i++) out[i] = -tr.states[i * tr.ns]; }
+    return out;
+  }
+
+  /* CBTmin（核心体温最低点）时刻。refine=true 时用抛物线内插到网格以下的精度（页面显示用）；
+   * refine=false 与 oracle 逐点一致（对拍用）。 */
+  function cbtmins(tr, o) {
+    var opt = o || {}, P = paramsOf(tr.model, opt.params), v = cbtSignal(tr);
+    var dt = tr.time[1] - tr.time[0];
+    var idxs = findPeaks(v, Math.ceil((opt.minDist == null ? 13.0 : opt.minDist) / dt));
+    var out = [], k, i, d, denom;
+    for (k = 0; k < idxs.length; k++) {
+      i = idxs[k];
+      var t = tr.time[i];
+      if (opt.refine && i > 0 && i < tr.n - 1) {
+        denom = v[i - 1] - 2 * v[i] + v[i + 1];
+        d = denom === 0 ? 0 : 0.5 * (v[i - 1] - v[i + 1]) / denom;
+        if (Math.abs(d) <= 1) t = t + d * dt;
+      }
+      out.push(t + (P.phi_ref || 0));
+    }
+    return out;
+  }
+  function dlmos(tr, o) {
+    var P = paramsOf(tr.model, (o || {}).params);
+    return cbtmins(tr, o).map(function (t) { return t - P.cbt_to_dlmo; });
+  }
+
+  /* 振子相位角（弧度）。Forger/Jewett 用 angle(x − i·xc)，Hannay 直接用 Ψ。 */
+  function phaseAt(tr, i) {
+    if (tr.model === 'hannay19') return wrapPi(tr.states[i * tr.ns + 1]);
+    return Math.atan2(-tr.states[i * tr.ns + 1], tr.states[i * tr.ns]);
+  }
+  function amplitudeAt(tr, i) {
+    if (tr.model === 'hannay19') return tr.states[i * tr.ns];
+    var x = tr.states[i * tr.ns], xc = tr.states[i * tr.ns + 1];
+    return Math.sqrt(x * x + xc * xc);
+  }
+  function phaseSeries(tr) {
+    var out = new Float64Array(tr.n), i;
+    for (i = 0; i < tr.n; i++) out[i] = phaseAt(tr, i);
+    return out;
+  }
+
+  /* 自由运转周期：在恒定（通常为 0 lux）光照下跑若干天，取相邻 CBTmin 间隔的均值。 */
+  function freeRunPeriod(key, o) {
+    var opt = o || {}, lux = opt.lux == null ? 0 : opt.lux, days = opt.days || 40, dt = opt.dt || 0.05;
+    var tr = simulate({ model: key, t0: 0, tEnd: days * 24, dt: dt, y0: opt.y0, params: opt.params,
+      lightFn: function () { return lux; } });
+    var cs = cbtmins(tr, { refine: true, params: opt.params });
+    if (cs.length < 3) return NaN;
+    var use = cs.slice(Math.max(0, cs.length - 6));
+    return (use[use.length - 1] - use[0]) / (use.length - 1);
+  }
+
+  return {
+    MODELS: MODELS, model: model, paramsOf: paramsOf,
+    integrate: integrate, simulate: simulate, equilibrate: equilibrate,
+    stateAt: stateAt, column: column, finalState: finalState,
+    findPeaks: findPeaks, cbtSignal: cbtSignal, cbtmins: cbtmins, dlmos: dlmos,
+    phaseAt: phaseAt, phaseSeries: phaseSeries, amplitudeAt: amplitudeAt,
+    freeRunPeriod: freeRunPeriod,
+    mod: mod, wrapPi: wrapPi, wrapH: wrapH, TWO_PI: TWO_PI
+  };
+})();
+
+/* Circadian Lab — 光照作息构造 + 时区（Intl，DST 精确）+ 日出日落（NOAA）+ 城市表。 */
+(function (CL) {
+  'use strict';
+  var mod = CL.mod;
+
+  // ── 光照作息 ──────────────────────────────────────────────────────────
+  /* 与 oracle 的 LightSchedule.Regular 同约定：亮灯区间是半开的 [on, off)。 */
+  function lightRegular(lux, on, off) {
+    return function (t) {
+      var h = mod(t, 24);
+      if (off > on) return (h >= on && h < off) ? lux : 0;
+      return (h >= on || h < off) ? lux : 0;   // 跨零点
+    };
+  }
+  function lightPulse(lux, start, duration, baseline, period) {
+    return function (t) {
+      var tt = period ? mod(t, period) : t;
+      return (tt >= start && tt < start + duration) ? lux : (baseline || 0);
+    };
+  }
+  /* 分段覆盖：segs = [{from, to, lux}]（绝对时间，半开区间），后面的覆盖前面的。 */
+  function lightFromSegments(segs, baseLux) {
+    var list = segs.slice();
+    return function (t) {
+      var v = baseLux, i;
+      for (i = 0; i < list.length; i++) if (t >= list[i].from && t < list[i].to) v = list[i].lux;
+      return v;
+    };
+  }
+  /* 24 小时周期的「睡/醒」作息：睡觉段 sleepLux，其余 wakeLux。 */
+  function lightSleepWake(sleepAt, wakeAt, wakeLux, sleepLux) {
+    return function (t) {
+      return inWindow(mod(t, 24), sleepAt, wakeAt) ? sleepLux : wakeLux;
+    };
+  }
+  /* 钟点 h 是否落在 [a, b) 里（允许跨零点）。 */
+  function inWindow(h, a, b) {
+    a = mod(a, 24); b = mod(b, 24);
+    return b > a ? (h >= a && h < b) : (h >= a || h < b);
+  }
+
+  // ── 时区（用 Intl，自动处理夏令时）────────────────────────────────────
+  var _dtfCache = {};
+  function _dtf(tz) {
+    if (!_dtfCache[tz]) _dtfCache[tz] = new Intl.DateTimeFormat('en-US', {
+      timeZone: tz, hour12: false, year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit'
+    });
+    return _dtfCache[tz];
+  }
+  function zonedParts(tz, ms) {
+    var p = {}, arr = _dtf(tz).formatToParts(new Date(ms)), i;
+    for (i = 0; i < arr.length; i++) p[arr[i].type] = arr[i].value;
+    return { y: +p.year, mo: +p.month, d: +p.day, h: +p.hour % 24, mi: +p.minute, s: +p.second };
+  }
+  /* 该时刻在该时区的 UTC 偏移（小时，东正西负）。 */
+  function tzOffset(tz, ms) {
+    var p = zonedParts(tz, ms);
+    var asUTC = Date.UTC(p.y, p.mo - 1, p.d, p.h, p.mi, p.s);
+    return (asUTC - Math.floor(ms / 1000) * 1000) / 3600000;
+  }
+  /* 把「某时区的墙上时间」换成 UTC 毫秒（两轮修正，跨 DST 也稳）。 */
+  function zonedToUTC(tz, y, mo, d, h, mi) {
+    var guess = Date.UTC(y, mo - 1, d, h || 0, mi || 0, 0);
+    var ts = guess - tzOffset(tz, guess) * 3600000;
+    ts = guess - tzOffset(tz, ts) * 3600000;
+    return ts;
+  }
+  /* 该时区里、该时刻所在当地日的 00:00 对应的 UTC 毫秒。 */
+  function localMidnight(tz, ms) {
+    var p = zonedParts(tz, ms);
+    return zonedToUTC(tz, p.y, p.mo, p.d, 0, 0);
+  }
+  /* 当地钟点（小时，含小数）。 */
+  function localClock(tz, ms) {
+    var p = zonedParts(tz, ms);
+    return p.h + p.mi / 60 + p.s / 3600;
+  }
+  function ymd(ms, tz) {
+    var p = zonedParts(tz, ms);
+    return p.y + '-' + String(p.mo).padStart(2, '0') + '-' + String(p.d).padStart(2, '0');
+  }
+  var WEEK = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+  function weekdayOf(ms, tz) {
+    var p = zonedParts(tz, ms);
+    return WEEK[new Date(Date.UTC(p.y, p.mo - 1, p.d)).getUTCDay()];
+  }
+
+  // ── 日出日落（NOAA 太阳位置算法，与 NOAA Solar Calculator 同一套公式）──
+  function _jdFromMs(ms) { return ms / 86400000 + 2440587.5; }
+  function solarPosition(ms) {
+    var jd = _jdFromMs(ms), t = (jd - 2451545.0) / 36525.0, R = Math.PI / 180;
+    var L0 = mod(280.46646 + t * (36000.76983 + 0.0003032 * t), 360);
+    var M = 357.52911 + t * (35999.05029 - 0.0001537 * t);
+    var e = 0.016708634 - t * (0.000042037 + 0.0000001267 * t);
+    var C = Math.sin(M * R) * (1.914602 - t * (0.004817 + 0.000014 * t))
+          + Math.sin(2 * M * R) * (0.019993 - 0.000101 * t)
+          + Math.sin(3 * M * R) * 0.000289;
+    var trueLong = L0 + C;
+    var omega = 125.04 - 1934.136 * t;
+    var lambda = trueLong - 0.00569 - 0.00478 * Math.sin(omega * R);
+    var eps0 = 23 + (26 + (21.448 - t * (46.815 + t * (0.00059 - t * 0.001813))) / 60) / 60;
+    var eps = eps0 + 0.00256 * Math.cos(omega * R);
+    var decl = Math.asin(Math.sin(eps * R) * Math.sin(lambda * R)) / R;
+    var y = Math.tan(eps * R / 2) * Math.tan(eps * R / 2);
+    var eqTime = 4 / R * (y * Math.sin(2 * L0 * R) - 2 * e * Math.sin(M * R)
+      + 4 * e * y * Math.sin(M * R) * Math.cos(2 * L0 * R)
+      - 0.5 * y * y * Math.sin(4 * L0 * R) - 1.25 * e * e * Math.sin(2 * M * R));
+    return { decl: decl, eqTime: eqTime };
+  }
+  /* 返回当地日的日出/日落/正午（该时区的钟点，小时）。极昼/极夜返回 null。
+   * zenith 默认 90.833°（含大气折射与日面半径）；民用曙暮光用 96°。 */
+  function sunEvents(lat, lon, ms, tz, zenith) {
+    var R = Math.PI / 180, z = (zenith || 90.833) * R;
+    var mid = localMidnight(tz, ms);
+    var noonGuess = mid + 12 * 3600000;
+    var sp = solarPosition(noonGuess);
+    // 世界时分钟数的太阳正午
+    var noonMinUTC = 720 - 4 * lon - sp.eqTime;
+    var cosH = (Math.cos(z) - Math.sin(lat * R) * Math.sin(sp.decl * R)) / (Math.cos(lat * R) * Math.cos(sp.decl * R));
+    var out = { noon: null, sunrise: null, sunset: null, polar: null, decl: sp.decl, eqTime: sp.eqTime };
+    /* 把「UTC 零点起的分钟数」换成该时区的钟点。UTC 日界要挑**离当地正午最近**的那一个：
+     * 直接用当地午夜所在的 UTC 日会差一整天（奥克兰当地午夜落在前一个 UTC 日），
+     * 平时只是把钟点原样搬过去、看不出来，但夏令时切换当天会整整差 1 小时。 */
+    var d0 = new Date(mid);
+    var dayStartUTC = Date.UTC(d0.getUTCFullYear(), d0.getUTCMonth(), d0.getUTCDate());
+    function toLocalClock(minUTC) {
+      var inst = dayStartUTC + minUTC * 60000;
+      while (inst - noonGuess > 43200000) inst -= 86400000;
+      while (noonGuess - inst > 43200000) inst += 86400000;
+      return { clock: localClock(tz, inst), ms: inst };
+    }
+    out.noon = toLocalClock(noonMinUTC).clock;
+    if (cosH > 1) { out.polar = 'night'; return out; }
+    if (cosH < -1) { out.polar = 'day'; return out; }
+    /* 一轮迭代：用「正午的太阳位置」解出的日出/日落只准到约 1 分钟（59°N 实测偏 1.22 min），
+     * 拿事件时刻本身的赤纬/均时差再解一次就能压到秒级（与 astral 的做法一致）。 */
+    function refine(sign) {
+      var minUTC = noonMinUTC + sign * 4 * Math.acos(cosH) / R, k, spk, ck, hak, noonk;
+      for (k = 0; k < 2; k++) {
+        spk = solarPosition(toLocalClock(minUTC).ms);
+        noonk = 720 - 4 * lon - spk.eqTime;
+        ck = (Math.cos(z) - Math.sin(lat * R) * Math.sin(spk.decl * R)) / (Math.cos(lat * R) * Math.cos(spk.decl * R));
+        if (ck > 1 || ck < -1) return null;
+        hak = Math.acos(ck) / R;
+        minUTC = noonk + sign * 4 * hak;
+      }
+      return toLocalClock(minUTC).clock;
+    }
+    out.sunrise = refine(-1);
+    out.sunset = refine(1);
+    if (out.sunrise == null || out.sunset == null) { out.polar = cosH > 0 ? 'night' : 'day'; }
+    return out;
+  }
+
+  // ── 城市表（IANA 时区 + 经纬度）────────────────────────────────────────
+  var CITIES = [
+    { id: 'SIN', zh: '新加坡', tz: 'Asia/Singapore', lat: 1.3521, lon: 103.8198 },
+    { id: 'PEK', zh: '北京', tz: 'Asia/Shanghai', lat: 39.9042, lon: 116.4074 },
+    { id: 'SHA', zh: '上海', tz: 'Asia/Shanghai', lat: 31.2304, lon: 121.4737 },
+    { id: 'HKG', zh: '香港', tz: 'Asia/Hong_Kong', lat: 22.3193, lon: 114.1694 },
+    { id: 'TPE', zh: '台北', tz: 'Asia/Taipei', lat: 25.0330, lon: 121.5654 },
+    { id: 'NRT', zh: '东京', tz: 'Asia/Tokyo', lat: 35.6762, lon: 139.6503 },
+    { id: 'ICN', zh: '首尔', tz: 'Asia/Seoul', lat: 37.5665, lon: 126.9780 },
+    { id: 'BKK', zh: '曼谷', tz: 'Asia/Bangkok', lat: 13.7563, lon: 100.5018 },
+    { id: 'KUL', zh: '吉隆坡', tz: 'Asia/Kuala_Lumpur', lat: 3.1390, lon: 101.6869 },
+    { id: 'CGK', zh: '雅加达', tz: 'Asia/Jakarta', lat: -6.2088, lon: 106.8456 },
+    { id: 'DEL', zh: '新德里', tz: 'Asia/Kolkata', lat: 28.6139, lon: 77.2090 },
+    { id: 'BOM', zh: '孟买', tz: 'Asia/Kolkata', lat: 19.0760, lon: 72.8777 },
+    { id: 'DXB', zh: '迪拜', tz: 'Asia/Dubai', lat: 25.2048, lon: 55.2708 },
+    { id: 'IST', zh: '伊斯坦布尔', tz: 'Europe/Istanbul', lat: 41.0082, lon: 28.9784 },
+    { id: 'SVO', zh: '莫斯科', tz: 'Europe/Moscow', lat: 55.7558, lon: 37.6173 },
+    { id: 'LHR', zh: '伦敦', tz: 'Europe/London', lat: 51.5074, lon: -0.1278 },
+    { id: 'CDG', zh: '巴黎', tz: 'Europe/Paris', lat: 48.8566, lon: 2.3522 },
+    { id: 'FRA', zh: '法兰克福', tz: 'Europe/Berlin', lat: 50.1109, lon: 8.6821 },
+    { id: 'AMS', zh: '阿姆斯特丹', tz: 'Europe/Amsterdam', lat: 52.3676, lon: 4.9041 },
+    { id: 'ZRH', zh: '苏黎世', tz: 'Europe/Zurich', lat: 47.3769, lon: 8.5417 },
+    { id: 'ARN', zh: '斯德哥尔摩', tz: 'Europe/Stockholm', lat: 59.3293, lon: 18.0686 },
+    { id: 'JFK', zh: '纽约', tz: 'America/New_York', lat: 40.7128, lon: -74.0060 },
+    { id: 'YYZ', zh: '多伦多', tz: 'America/Toronto', lat: 43.6532, lon: -79.3832 },
+    { id: 'ORD', zh: '芝加哥', tz: 'America/Chicago', lat: 41.8781, lon: -87.6298 },
+    { id: 'DEN', zh: '丹佛', tz: 'America/Denver', lat: 39.7392, lon: -104.9903 },
+    { id: 'SFO', zh: '旧金山', tz: 'America/Los_Angeles', lat: 37.7749, lon: -122.4194 },
+    { id: 'LAX', zh: '洛杉矶', tz: 'America/Los_Angeles', lat: 34.0522, lon: -118.2437 },
+    { id: 'SEA', zh: '西雅图', tz: 'America/Los_Angeles', lat: 47.6062, lon: -122.3321 },
+    { id: 'GRU', zh: '圣保罗', tz: 'America/Sao_Paulo', lat: -23.5505, lon: -46.6333 },
+    { id: 'MEX', zh: '墨西哥城', tz: 'America/Mexico_City', lat: 19.4326, lon: -99.1332 },
+    { id: 'SYD', zh: '悉尼', tz: 'Australia/Sydney', lat: -33.8688, lon: 151.2093 },
+    { id: 'MEL', zh: '墨尔本', tz: 'Australia/Melbourne', lat: -37.8136, lon: 144.9631 },
+    { id: 'PER', zh: '珀斯', tz: 'Australia/Perth', lat: -31.9505, lon: 115.8605 },
+    { id: 'AKL', zh: '奥克兰', tz: 'Pacific/Auckland', lat: -36.8485, lon: 174.7633 },
+    { id: 'JNB', zh: '约翰内斯堡', tz: 'Africa/Johannesburg', lat: -26.2041, lon: 28.0473 },
+    { id: 'CAI', zh: '开罗', tz: 'Africa/Cairo', lat: 30.0444, lon: 31.2357 }
+  ];
+  function city(id) {
+    for (var i = 0; i < CITIES.length; i++) if (CITIES[i].id === id) return CITIES[i];
+    return null;
+  }
+
+  CL.light = { regular: lightRegular, pulse: lightPulse, fromSegments: lightFromSegments,
+               sleepWake: lightSleepWake, inWindow: inWindow };
+  CL.tz = { offset: tzOffset, toUTC: zonedToUTC, parts: zonedParts, midnight: localMidnight,
+            clock: localClock, ymd: ymd, weekday: weekdayOf };
+  CL.sun = { events: sunEvents, position: solarPosition };
+  CL.CITIES = CITIES;
+  CL.city = city;
+})(CL);
+
+/* Circadian Lab — 应用层引擎：目标相位参考、倒时差排程优化、倒班分析、相位响应曲线、光照剂量。
+ * 全部建立在 core.js 的模型 + RK4 之上；本文件不含任何 DOM 代码。 */
+(function (CL) {
+  'use strict';
+  var mod = CL.mod, wrapPi = CL.wrapPi, wrapH = CL.wrapH, TWO_PI = CL.TWO_PI;
+
+  function clamp(v, a, b) { return v < a ? a : (v > b ? b : v); }
+
+  /* ── 目标相位参考 ─────────────────────────────────────────────────────
+   * 在给定作息（24h 周期）上跑到稳态，得到：稳态初值、相位曲线 φ_ref(钟点)、CBTmin 钟点。 */
+  function reference(modelKey, o) {
+    var dt = o.dt || 0.05;
+    var lf = CL.light.sleepWake(o.sleepAt, o.wakeAt, o.wakeLux, o.sleepLux);
+    var eq = CL.equilibrate(modelKey, lf, { dt: dt, maxDays: o.maxDays || 80, tol: o.tol || 1e-9 });
+    var tr = CL.simulate({ model: modelKey, t0: 0, tEnd: 72, dt: dt, y0: eq.state, lightFn: lf });
+    var cs = CL.cbtmins(tr, { refine: true });
+    var n = Math.round(24 / dt), phi = new Float64Array(n + 1), i;
+    for (i = 0; i <= n; i++) phi[i] = CL.phaseAt(tr, i);
+    return {
+      model: modelKey, state: eq.state, dt: dt, phi: phi, n: n,
+      cbtClock: cs.length ? mod(cs[cs.length - 1], 24) : NaN,
+      dlmoClock: cs.length ? mod(cs[cs.length - 1] - CL.paramsOf(modelKey).cbt_to_dlmo, 24) : NaN,
+      eqDays: eq.days, residual: eq.residual, lightFn: lf
+    };
+  }
+  /* 反查：一个相位角对应参考作息里的哪个钟点（= 生物钟「读数」）。 */
+  function clockOfPhase(ref, ph) {
+    var best = 0, bestD = Infinity, i, d;
+    for (i = 0; i < ref.n; i++) {
+      d = Math.abs(wrapPi(ref.phi[i] - ph));
+      if (d < bestD) { bestD = d; best = i; }
+    }
+    // 在最近格点的左右邻居间线性内插（相位近似线性推进）
+    var i0 = (best - 1 + ref.n) % ref.n, i1 = (best + 1) % ref.n;
+    var d0 = wrapPi(ph - ref.phi[i0]), d1 = wrapPi(ref.phi[i1] - ph);
+    var frac = (d0 + d1) === 0 ? 0 : d0 / (d0 + d1);
+    return mod((i0 + 2 * frac) * ref.dt, 24);
+  }
+  /* 生物钟相对当地钟的错位（小时，正 = 体内钟比当地钟快/相位超前）。 */
+  function misalign(ref, ph, localClock) {
+    return wrapH(clockOfPhase(ref, ph) - localClock);
+  }
+
+  /* ── 光照分段工具 ──────────────────────────────────────────────────── */
+  function segLight(segs, baseLux) {
+    var s = segs.slice().filter(function (x) { return x.to > x.from; });
+    return function (t) {
+      var v = baseLux, i;
+      for (i = 0; i < s.length; i++) if (t >= s[i].from && t < s[i].to) v = s[i].lux;
+      return v;
+    };
+  }
+  /* 把「睡眠 + 避光 + 强光」按优先级叠成一张分段表（睡眠最优先，其次避光，再次强光）。 */
+  function stackSegments(base, bright, avoid, sleep) {
+    return base.concat(bright, avoid, sleep);
+  }
+  /* 区间集合相减：wake = [a,b) 去掉所有 sleep 段。 */
+  function subtract(win, cuts) {
+    var out = [{ from: win.from, to: win.to }], i, k, next, c;
+    for (k = 0; k < cuts.length; k++) {
+      c = cuts[k]; next = [];
+      for (i = 0; i < out.length; i++) {
+        var s = out[i];
+        if (c.to <= s.from || c.from >= s.to) { next.push(s); continue; }
+        if (c.from > s.from) next.push({ from: s.from, to: c.from });
+        if (c.to < s.to) next.push({ from: c.to, to: s.to });
+      }
+      out = next;
+    }
+    return out.filter(function (s) { return s.to - s.from > 1e-9; });
+  }
+
+  /* ── 倒时差排程 ───────────────────────────────────────────────────────
+   * 逐日贪心：每天在清醒时段里网格搜索「强光窗口」与「避光窗口」的起点，
+   * 目标是让当日结束时的生物钟错位最小。每一步都真的把当天跑一遍模型。 */
+  function planJetLag(o) {
+    var mk = o.model || 'forger99', dt = o.dt || 0.05;
+    var home = o.home, dest = o.dest;
+    var wakeLux = o.wakeLux == null ? 250 : o.wakeLux;
+    var sleepLux = o.sleepLux == null ? 0 : o.sleepLux;
+    var brightLux = o.brightLux == null ? 10000 : o.brightLux;
+    var avoidLux = o.avoidLux == null ? 10 : o.avoidLux;
+    var cabinLux = o.cabinLux == null ? 50 : o.cabinLux;
+    var brightH = o.brightHours == null ? 2 : o.brightHours;
+    var avoidH = o.avoidHours == null ? 3 : o.avoidHours;
+    var prepDays = clamp(o.prepDays | 0, 0, 4), planDays = clamp(o.planDays | 0, 2, 12);
+    var maxShift = o.maxSleepShift == null ? 1.5 : o.maxSleepShift;
+    var tol = o.tolerance == null ? 1.0 : o.tolerance;
+    var grid = o.grid || 0.5, optimize = o.optimize !== false;
+    var daylightOnly = !!o.daylightOnly;
+
+    var depMs = CL.tz.toUTC(home.tz, o.depart.y, o.depart.mo, o.depart.d, o.depart.h, o.depart.mi);
+    var arrMs = CL.tz.toUTC(dest.tz, o.arrive.y, o.arrive.mo, o.arrive.d, o.arrive.h, o.arrive.mi);
+    if (!(arrMs > depMs)) throw new Error('到达时间必须晚于起飞时间（注意两地是各自的当地时间）');
+    if (arrMs - depMs > 30 * 3600000) throw new Error('飞行时长超过 30 小时，请检查日期');
+
+    // 计划起点 = 出发当天（出发地当地）的午夜，再往前推 prepDays 天
+    var epochMs = CL.tz.midnight(home.tz, depMs), k;
+    for (k = 0; k < prepDays; k++) epochMs = CL.tz.midnight(home.tz, epochMs - 12 * 3600000);
+    function T(ms) { return (ms - epochMs) / 3600000; }
+    function MS(t) { return epochMs + t * 3600000; }
+    var tDep = T(depMs), tArr = T(arrMs);
+
+    // 各地当地午夜的计划时刻（DST 安全：逐日用 Intl 定位）
+    function midnights(tz, fromMs, count) {
+      var out = [], cur = CL.tz.midnight(tz, fromMs), i;
+      for (i = 0; i <= count; i++) { out.push(T(cur)); cur = CL.tz.midnight(tz, cur + 36 * 3600000); }
+      return out;
+    }
+    var homeMid = midnights(home.tz, epochMs, prepDays + 2);
+    var destMid = midnights(dest.tz, arrMs, planDays + 2);
+    while (destMid.length && destMid[0] <= tArr) destMid.shift();   // 第一格 = 到达后的首个当地午夜
+
+    // 目标：目的地作息的稳态相位
+    var refDest = reference(mk, { sleepAt: o.destSleep, wakeAt: o.destWake, wakeLux: wakeLux, sleepLux: sleepLux, dt: dt });
+    var refHome = reference(mk, { sleepAt: o.homeSleep, wakeAt: o.homeWake, wakeLux: wakeLux, sleepLux: sleepLux, dt: dt });
+
+    // 需要的作息位移：把目的地就寝时间换算成出发地钟点，与平时就寝比较
+    var tzDiff = (CL.tz.offset(dest.tz, arrMs) - CL.tz.offset(home.tz, depMs));
+    var sleepShiftNeeded = wrapH(o.destSleep - tzDiff - o.homeSleep);
+
+    // 起始状态：出发地作息的稳态，对齐到计划起点（= 出发地当地午夜）
+    var y0 = refHome.state.slice();
+
+    function localClockOf(tz, t) { return CL.tz.clock(tz, MS(t)); }
+
+    /* 某个步长区间内的睡眠窗口（绝对时间） */
+    function sleepWindowsFor(stepIdx, step) {
+      var out = [], shift, onset, off, i;
+      if (step.kind === 'prep') {
+        shift = Math.sign(sleepShiftNeeded) * Math.min(Math.abs(sleepShiftNeeded), (optimize ? (stepIdx + 1) * maxShift : 0));
+        onset = homeMid[stepIdx] + o.homeSleep + shift;
+        off = onset + wrapH(o.homeWake - o.homeSleep) + (o.homeWake > o.homeSleep ? 0 : 24) * 0;
+        var dur = mod(o.homeWake - o.homeSleep, 24);
+        out.push({ from: onset, to: onset + dur });
+      } else if (step.kind === 'travel') {
+        // 出发前：按（已位移的）出发地作息；机上：目的地作息与飞行段的交集
+        shift = Math.sign(sleepShiftNeeded) * Math.min(Math.abs(sleepShiftNeeded), (optimize ? prepDays * maxShift : 0));
+        var dur2 = mod(o.homeWake - o.homeSleep, 24);
+        var pre = { from: homeMid[prepDays] + o.homeSleep + shift - 24, to: homeMid[prepDays] + o.homeSleep + shift - 24 + dur2 };
+        if (pre.to > step.from && pre.from < Math.min(step.to, tDep)) {
+          out.push({ from: Math.max(pre.from, step.from), to: Math.min(pre.to, tDep) });
+        }
+        var pre2 = { from: homeMid[prepDays] + o.homeSleep + shift, to: homeMid[prepDays] + o.homeSleep + shift + dur2 };
+        if (pre2.from < tDep && pre2.to > step.from) out.push({ from: Math.max(pre2.from, step.from), to: Math.min(pre2.to, tDep) });
+        // 机上睡眠：目的地目标睡窗与飞行段的交集（至少 1.5 小时才建议）
+        var dd = mod(o.destWake - o.destSleep, 24);
+        for (i = -1; i <= 1; i++) {
+          var dm = destMid[0] + i * 24 + o.destSleep - 24;
+          var w = { from: Math.max(dm, tDep), to: Math.min(dm + dd, tArr) };
+          if (w.to - w.from >= 1.5) out.push(w);
+        }
+      } else if (step.kind === 'arrive' || step.kind === 'dest') {
+        var dd2 = mod(o.destWake - o.destSleep, 24);
+        for (i = -1; i <= 1; i++) {
+          var base = step.midnight + i * 24 + o.destSleep;
+          var w2 = { from: Math.max(base, step.from), to: Math.min(base + dd2, step.to) };
+          if (w2.to - w2.from > 0.25) out.push(w2);
+        }
+      }
+      return out.filter(function (w) { return w.to > w.from; }).sort(function (a, b) { return a.from - b.from; });
+    }
+
+    // 步长（每一步 = 一个可干预的「天」）
+    var steps = [], i2;
+    for (i2 = 0; i2 < prepDays; i2++) {
+      steps.push({ kind: 'prep', from: homeMid[i2], to: homeMid[i2 + 1], tz: home.tz, city: home, midnight: homeMid[i2] });
+    }
+    steps.push({ kind: 'travel', from: homeMid[prepDays], to: tArr, tz: home.tz, city: home, midnight: homeMid[prepDays] });
+    steps.push({ kind: 'arrive', from: tArr, to: destMid[0], tz: dest.tz, city: dest, midnight: destMid[0] - 24 });
+    for (i2 = 0; i2 < planDays; i2++) {
+      steps.push({ kind: 'dest', from: destMid[i2], to: destMid[i2 + 1], tz: dest.tz, city: dest, midnight: destMid[i2] });
+    }
+
+    /* 基础光照 = 「什么都不干预时这个人本来的光照」：清醒时室内 wakeLux；
+     * 每个当地日的正午前后有一段户外（默认 1 小时 8000 lux —— 完全不出门的人
+     * 在模型里几乎不会重新同步，拿那种人当对照组等于把干预的功劳夸大）；飞行段 = 机舱。 */
+    var outH = o.outdoorHours == null ? 1 : o.outdoorHours;
+    var outLux = o.outdoorLux == null ? 8000 : o.outdoorLux;
+    var outAt = o.outdoorAt == null ? 12.0 : o.outdoorAt;
+    var baseSegs = [];
+    if (outH > 0) {
+      homeMid.forEach(function (m0) {
+        var a = m0 + outAt, b = a + outH;
+        if (b <= tDep && b > 0) baseSegs.push({ from: a, to: b, lux: outLux });
+      });
+      destMid.forEach(function (m0) {
+        var a = m0 + outAt, b = a + outH;
+        if (a >= tArr && b <= steps_end()) baseSegs.push({ from: a, to: b, lux: outLux });
+      });
+      // 到达当天（还没到第一个当地午夜）也算一次户外
+      var a0 = destMid[0] - 24 + outAt;
+      if (a0 >= tArr && a0 + outH <= destMid[0]) baseSegs.push({ from: a0, to: a0 + outH, lux: outLux });
+    }
+    baseSegs.push({ from: tDep, to: tArr, lux: cabinLux });
+    function steps_end() { return destMid[planDays]; }
+
+    /* 跑一段：给定状态与光照分段，返回末态 + 末刻相位 */
+    function runStep(state, step, segs) {
+      var lf = segLight(segs, wakeLux);
+      var tr = CL.simulate({ model: mk, t0: step.from, tEnd: step.to, dt: dt, y0: state, lightFn: lf });
+      return { state: CL.finalState(tr), phase: CL.phaseAt(tr, tr.n - 1), tr: tr };
+    }
+    function scoreAt(step, phase) {
+      return Math.abs(misalign(refDest, phase, mod(localClockOf(dest.tz, step.to), 24)));
+    }
+
+    // 逐步优化
+    var state = y0.slice(), chosen = [], s, si;
+    for (si = 0; si < steps.length; si++) {
+      s = steps[si];
+      var sleeps = sleepWindowsFor(s.kind === 'prep' ? si : 0, s);
+      var sleepSegs = sleeps.map(function (w) { return { from: w.from, to: w.to, lux: sleepLux }; });
+      var wake = subtract({ from: s.from, to: s.to }, sleeps);
+      var pick = { bright: null, avoid: null };
+      if (optimize && s.to - s.from > 1.5) {
+        // ① 强光窗口
+        var cands = [null], w3, t3;
+        for (var wi = 0; wi < wake.length; wi++) {
+          w3 = wake[wi];
+          for (t3 = Math.ceil(w3.from / grid) * grid; t3 + brightH <= w3.to + 1e-9; t3 += grid) {
+            if (daylightOnly) {
+              var c0 = localClockOf(s.kind === 'prep' || s.kind === 'travel' ? home.tz : dest.tz, t3);
+              var cty = (s.kind === 'prep' || s.kind === 'travel') ? home : dest;
+              var se = CL.sun.events(cty.lat, cty.lon, MS(t3), cty.tz);
+              if (se.sunrise != null && !(c0 >= se.sunrise && c0 + brightH <= se.sunset)) continue;
+            }
+            cands.push({ from: t3, to: t3 + brightH, lux: brightLux });
+          }
+        }
+        var best = null, cand, r;
+        for (var ci = 0; ci < cands.length; ci++) {
+          cand = cands[ci];
+          r = runStep(state, s, stackSegments(baseSegs, cand ? [cand] : [], [], sleepSegs));
+          var sc = scoreAt(s, r.phase);
+          if (best === null || sc < best.score - 1e-9) best = { score: sc, cand: cand, res: r };
+        }
+        pick.bright = best.cand;
+        // ② 避光窗口（给定强光后再搜一遍）
+        var cands2 = [null], w4, t4;
+        for (var wj = 0; wj < wake.length; wj++) {
+          w4 = wake[wj];
+          for (t4 = Math.ceil(w4.from / grid) * grid; t4 + avoidH <= w4.to + 1e-9; t4 += grid) {
+            if (pick.bright && t4 < pick.bright.to && pick.bright.from < t4 + avoidH) continue;  // 不与强光重叠
+            cands2.push({ from: t4, to: t4 + avoidH, lux: avoidLux });
+          }
+        }
+        var best2 = null;
+        for (var cj = 0; cj < cands2.length; cj++) {
+          cand = cands2[cj];
+          r = runStep(state, s, stackSegments(baseSegs, pick.bright ? [pick.bright] : [], cand ? [cand] : [], sleepSegs));
+          var sc2 = scoreAt(s, r.phase);
+          if (best2 === null || sc2 < best2.score - 1e-9) best2 = { score: sc2, cand: cand, res: r };
+        }
+        pick.avoid = best2.cand;
+      }
+      var fin = runStep(state, s, stackSegments(baseSegs, pick.bright ? [pick.bright] : [], pick.avoid ? [pick.avoid] : [], sleepSegs));
+      state = fin.state;
+      chosen.push({ step: s, sleeps: sleeps, bright: pick.bright, avoid: pick.avoid, endPhase: fin.phase });
+    }
+
+    // 用最终方案整段重跑一次（报告与作图都用这一条轨迹）
+    var allSegs = baseSegs.slice(), ch;
+    for (si = 0; si < chosen.length; si++) {
+      ch = chosen[si];
+      if (ch.bright) allSegs.push(ch.bright);
+      if (ch.avoid) allSegs.push(ch.avoid);
+    }
+    for (si = 0; si < chosen.length; si++) {
+      chosen[si].sleeps.forEach(function (w) { allSegs.push({ from: w.from, to: w.to, lux: sleepLux }); });
+    }
+    var tEnd = steps[steps.length - 1].to;
+    var lfAll = segLight(allSegs, wakeLux);
+    var traj = CL.simulate({ model: mk, t0: 0, tEnd: tEnd, dt: dt, y0: y0, lightFn: lfAll });
+
+    // 逐日读数
+    var cbts = CL.cbtmins(traj, { refine: true });
+    var rows = [], j;
+    for (si = 0; si < chosen.length; si++) {
+      ch = chosen[si]; s = ch.step;
+      var tzUse = (s.kind === 'prep' || s.kind === 'travel') ? home.tz : dest.tz;
+      var cityUse = (s.kind === 'prep' || s.kind === 'travel') ? home : dest;
+      // 该步内的 CBTmin（若有）
+      var cbt = null;
+      for (j = 0; j < cbts.length; j++) if (cbts[j] >= s.from && cbts[j] < s.to) cbt = cbts[j];
+      var idxEnd = Math.min(traj.n - 1, Math.round(s.to / dt));
+      var mis = misalign(refDest, CL.phaseAt(traj, idxEnd), mod(localClockOf(dest.tz, s.to), 24));
+      var sun = CL.sun.events(cityUse.lat, cityUse.lon, MS((s.from + s.to) / 2), cityUse.tz);
+      rows.push({
+        kind: s.kind, from: s.from, to: s.to, tz: tzUse, city: cityUse,
+        date: CL.tz.ymd(MS(s.from + 0.01), tzUse), weekday: CL.tz.weekday(MS(s.from + 0.01), tzUse),
+        sleeps: ch.sleeps.map(function (w) { return { from: w.from, to: w.to, fromClock: localClockOf(tzUse, w.from), toClock: localClockOf(tzUse, w.to) }; }),
+        bright: ch.bright ? { from: ch.bright.from, to: ch.bright.to, fromClock: localClockOf(tzUse, ch.bright.from), toClock: localClockOf(tzUse, ch.bright.to) } : null,
+        avoid: ch.avoid ? { from: ch.avoid.from, to: ch.avoid.to, fromClock: localClockOf(tzUse, ch.avoid.from), toClock: localClockOf(tzUse, ch.avoid.to) } : null,
+        cbt: cbt, cbtClock: cbt == null ? null : mod(localClockOf(dest.tz, cbt), 24),
+        misalign: mis, sunrise: sun.sunrise, sunset: sun.sunset
+      });
+    }
+    // 收敛天数：到达后第几天错位进入容差内
+    var adaptDay = null, dayNo = 0;
+    for (si = 0; si < rows.length; si++) {
+      if (rows[si].kind !== 'dest' && rows[si].kind !== 'arrive') continue;
+      dayNo++;
+      if (adaptDay === null && Math.abs(rows[si].misalign) <= tol) adaptDay = dayNo;
+    }
+    /* 错位曲线。折叠值（±12 小时）用来判「收敛了没有」，但画图必须用**展开**的，
+     * 否则「一路延后」的对照组会在 −12 处跳到 +12，看上去像是突然好了。 */
+    var misSeries = [], misUnwrap = [], prev = null, acc = 0, mv;
+    for (var ti = 0; ti < traj.n; ti += Math.max(1, Math.round(0.5 / dt))) {
+      mv = misalign(refDest, CL.phaseAt(traj, ti), mod(localClockOf(dest.tz, traj.time[ti]), 24));
+      misSeries.push([traj.time[ti], mv]);
+      if (prev !== null) { if (mv - prev > 12) acc -= 24; else if (prev - mv > 12) acc += 24; }
+      prev = mv;
+      misUnwrap.push([traj.time[ti], mv + acc]);
+    }
+    var totalMove = misUnwrap.length ? (misUnwrap[misUnwrap.length - 1][1] - misUnwrap[0][1]) : 0;
+    return {
+      model: mk, epochMs: epochMs, tDep: tDep, tArr: tArr, tEnd: tEnd, dt: dt,
+      tzDiff: tzDiff, sleepShiftNeeded: sleepShiftNeeded,
+      direction: tzDiff > 0 ? 'east' : (tzDiff < 0 ? 'west' : 'none'),
+      refDest: refDest, refHome: refHome, rows: rows, traj: traj, segs: allSegs,
+      adaptDay: adaptDay, totalDays: dayNo, misSeries: misSeries, misUnwrap: misUnwrap,
+      totalMove: totalMove, moveDir: totalMove > 0 ? 'advance' : 'delay',
+      finalMisalign: rows.length ? rows[rows.length - 1].misalign : NaN,
+      flightHours: tArr - tDep, T: T, MS: MS
+    };
+  }
+
+  /* ── 相位响应曲线（PRC）─────────────────────────────────────────────
+   * 协议：先在基线明暗作息上跑到稳态 → 在相对 CBTmin 的各个相位上给一次光脉冲 →
+   * 释放进恒定条件自由运转 postDays 天 → 与不给脉冲的对照组比较第 k 个 CBTmin。
+   * 相位提前记为正。 */
+  function prc(o) {
+    var mk = o.model || 'forger99', dt = o.dt || 0.05;
+    var bgLux = o.backgroundLux == null ? 150 : o.backgroundLux;
+    var pulseLux = o.pulseLux == null ? 10000 : o.pulseLux;
+    var dur = o.pulseHours == null ? 1 : o.pulseHours;
+    var postDays = o.postDays == null ? 3 : o.postDays;
+    var nPhases = o.nPhases == null ? 36 : o.nPhases;
+    var releaseLux = o.releaseLux == null ? 0 : o.releaseLux;
+    var cycles = Math.max(1, Math.min(5, o.cycles == null ? 1 : o.cycles | 0));
+    var sleepAt = o.sleepAt == null ? 0 : o.sleepAt, wakeAt = o.wakeAt == null ? 8 : o.wakeAt;
+    var base = CL.light.sleepWake(sleepAt, wakeAt, bgLux, 0);
+    var eq = CL.equilibrate(mk, base, { dt: dt, maxDays: 80, tol: 1e-10 });
+    // 稳态下的 CBTmin 钟点（取 [0,24) 内那一个）
+    var tr0 = CL.simulate({ model: mk, t0: 0, tEnd: 72, dt: dt, y0: eq.state, lightFn: base });
+    var cs0 = CL.cbtmins(tr0, { refine: true });
+    var cbtRef = cs0[0];
+    for (var q = 0; q < cs0.length; q++) if (cs0[q] >= 24 && cs0[q] < 48) cbtRef = cs0[q];
+    // 对照组：从 24h（脉冲日起点）释放进恒定条件
+    var t0 = 24, stimEnd = 24 + cycles * 24, tEnd = stimEnd + (postDays + 1) * 24;
+    function runWith(pulses) {
+      var lf = function (t) {
+        if (pulses) for (var q = 0; q < pulses.length; q++) if (t >= pulses[q].from && t < pulses[q].to) return pulseLux;
+        return t < stimEnd ? base(t) : releaseLux;   // 刺激期间仍在基线作息上，之后释放进恒定条件
+      };
+      return CL.simulate({ model: mk, t0: t0, tEnd: tEnd, dt: dt, y0: eq.state, lightFn: lf });
+    }
+    var ctrl = runWith(null);
+    var csC = CL.cbtmins(ctrl, { refine: true });
+    var kIdx = csC.length - 1;
+    var iStim = Math.min(ctrl.n - 1, Math.round((stimEnd - t0) / dt));
+    var out = [], i, ph, pulseStart, tr, cs, shift, k2, pulses;
+    for (i = 0; i < nPhases; i++) {
+      ph = i * 24 / nPhases;                       // 脉冲**中点**相对 CBTmin 的小时数
+      pulses = [];
+      for (k2 = 0; k2 < cycles; k2++) {
+        pulseStart = cbtRef + ph - dur / 2 + k2 * 24;
+        pulses.push({ from: pulseStart, to: pulseStart + dur });
+      }
+      tr = runWith(pulses);
+      cs = CL.cbtmins(tr, { refine: true });
+      if (cs.length !== csC.length) { out.push({ phase: ph, shift: NaN, amp: NaN, ampEnd: NaN }); continue; }
+      shift = csC[kIdx] - cs[kIdx];                // 提前为正
+      // 振幅要在**刺激刚结束**时读：再自由运转几天它就回到极限环上了，那时候读不出振幅抑制
+      out.push({ phase: ph, shift: wrapH(shift), amp: CL.amplitudeAt(tr, iStim),
+                 ampEnd: CL.amplitudeAt(tr, tr.n - 1), rawShift: shift });
+    }
+    return { model: mk, points: out, cbtRef: cbtRef, ctrlAmp: CL.amplitudeAt(ctrl, iStim),
+             ctrlAmpEnd: CL.amplitudeAt(ctrl, ctrl.n - 1), cycles: cycles,
+             pulseLux: pulseLux, pulseHours: dur, backgroundLux: bgLux };
+  }
+
+  /* ── 光照剂量：把一段光照放在固定钟点上，看它造成的相位位移 ───────── */
+  function doseShift(o) {
+    var mk = o.model || 'forger99', dt = o.dt || 0.05;
+    var sleepAt = o.sleepAt == null ? 23.5 : o.sleepAt, wakeAt = o.wakeAt == null ? 7.5 : o.wakeAt;
+    var wakeLux = o.wakeLux == null ? 250 : o.wakeLux;
+    var base = CL.light.sleepWake(sleepAt, wakeAt, wakeLux, 0);
+    var eq = CL.equilibrate(mk, base, { dt: dt, maxDays: 80, tol: 1e-10 });
+    var days = o.days == null ? 7 : o.days;
+    function run(extra) {
+      var lf = function (t) {
+        if (extra) {
+          var h = mod(t, 24);
+          if (CL.light.inWindow(h, extra.from, extra.to)) return extra.lux;
+        }
+        return base(t);
+      };
+      var tr = CL.simulate({ model: mk, t0: 0, tEnd: days * 24 + 24, dt: dt, y0: eq.state, lightFn: lf });
+      var cs = CL.cbtmins(tr, { refine: true });
+      return { tr: tr, cbts: cs };
+    }
+    /* 对照组：默认「什么都不加」。但若调用方给了 control 窗口，就拿它当对照 ——
+     * 睡前屏幕这类问题必须这么问：对照不是「亮着 250 lux 的客厅」，而是「同一段时间里昏暗」，
+     * 否则 80 lux 的屏幕比基线还暗，算出来会是相位**提前**（2026-09-19 实撞）。 */
+    var ctrl = run(o.control || null), test = run(o.window);
+    var n = Math.min(ctrl.cbts.length, test.cbts.length), i, per = [];
+    for (i = 0; i < n; i++) per.push(ctrl.cbts[i] - test.cbts[i]);   // 提前为正
+    return { model: mk, perDay: per, total: n ? per[n - 1] : NaN, first: per.length > 1 ? per[1] : NaN,
+             ctrlCbts: ctrl.cbts, testCbts: test.cbts, days: days,
+             luxHours: o.window ? (mod(o.window.to - o.window.from, 24) * o.window.lux) : 0 };
+  }
+
+  /* 模型的光照传递特性：α(I) 与驱动 B̂(I)（n 取该光强下的稳态值）。 */
+  function lightResponse(mk, luxList) {
+    var P = CL.paramsOf(mk), out = [], i, lux, alpha, nss, Bhat, beta;
+    for (i = 0; i < luxList.length; i++) {
+      lux = luxList[i];
+      if (mk === 'hannay19') {
+        var lp = Math.pow(lux, P.p);
+        alpha = P.alpha_0 * lp / (lp + P.I0);
+        beta = P.delta;
+      } else {
+        alpha = P.alpha_0 * Math.pow(lux / P.I0, P.p);
+        beta = P.beta;
+      }
+      nss = alpha / (alpha + beta);               // dn/dt = 0 的稳态
+      Bhat = P.G * alpha * (1 - nss);
+      out.push({ lux: lux, alpha: alpha, nss: nss, Bhat: Bhat });
+    }
+    return out;
+  }
+
+  /* ── 倒班：连上 n 个夜班，看生物钟落在哪、有多少工时压在体温低谷上 ── */
+  function shiftWork(o) {
+    var mk = o.model || 'forger99', dt = o.dt || 0.05;
+    var nNights = clamp(o.nights | 0, 1, 14), offDays = clamp(o.offDays | 0, 0, 7);
+    var shiftStart = o.shiftStart, shiftEnd = o.shiftEnd;                 // 钟点
+    var daySleepStart = o.daySleepStart, sleepHours = o.sleepHours;
+    var workLux = o.workLux == null ? 300 : o.workLux;
+    var homeLux = o.homeLux == null ? 250 : o.homeLux;
+    var sleepLux = o.sleepLux == null ? 0 : o.sleepLux;
+    var normalSleep = o.normalSleep == null ? 23.5 : o.normalSleep;
+    var normalWake = o.normalWake == null ? 7.5 : o.normalWake;
+    var strat = o.strategy || 'none';    // none | bright | full
+    var brightHours = o.brightHours == null ? 3 : o.brightHours;
+
+    var base = CL.light.sleepWake(normalSleep, normalWake, homeLux, sleepLux);
+    var eq = CL.equilibrate(mk, base, { dt: dt, maxDays: 80, tol: 1e-10 });
+    var refNormal = reference(mk, { sleepAt: normalSleep, wakeAt: normalWake, wakeLux: homeLux, sleepLux: sleepLux, dt: dt });
+    var totalDays = nNights + offDays, segs = [], d, s0, s1;
+    for (d = 0; d < nNights; d++) {
+      s0 = d * 24 + shiftStart; s1 = s0 + mod(shiftEnd - shiftStart, 24);
+      segs.push({ from: s0, to: s1, lux: workLux });
+      if (strat === 'bright' || strat === 'full') segs.push({ from: s0, to: s0 + brightHours, lux: Math.max(workLux, o.brightLux == null ? 5000 : o.brightLux) });
+      if (strat === 'full') segs.push({ from: s1, to: s1 + 1.5, lux: o.avoidLux == null ? 10 : o.avoidLux });  // 晨归戴墨镜
+      segs.push({ from: d * 24 + daySleepStart, to: d * 24 + daySleepStart + sleepHours, lux: strat === 'none' ? Math.max(sleepLux, o.leakLux == null ? 40 : o.leakLux) : sleepLux });
+    }
+    for (d = nNights; d < totalDays; d++) {
+      segs.push({ from: d * 24 + normalSleep, to: d * 24 + normalSleep + mod(normalWake - normalSleep, 24), lux: sleepLux });
+    }
+    var lf = segLight(segs, homeLux);
+    var tr = CL.simulate({ model: mk, t0: 0, tEnd: totalDays * 24 + 24, dt: dt, y0: eq.state, lightFn: lf });
+    var cbts = CL.cbtmins(tr, { refine: true });
+    // 工时中落在 CBTmin ± wocl 小时内的比例（WOCL：昼夜低谷窗口）
+    var wocl = o.wocl == null ? 2 : o.wocl, inWocl = 0, totalWork = 0, i, t, c;
+    for (d = 0; d < nNights; d++) {
+      s0 = d * 24 + shiftStart; s1 = s0 + mod(shiftEnd - shiftStart, 24);
+      for (t = s0; t < s1; t += dt) {
+        totalWork += dt;
+        for (i = 0; i < cbts.length; i++) if (Math.abs(t - cbts[i]) <= wocl) { inWocl += dt; break; }
+      }
+    }
+    var rows = [], mis;
+    for (d = 0; d <= totalDays; d++) {
+      c = null;
+      for (i = 0; i < cbts.length; i++) if (cbts[i] >= d * 24 && cbts[i] < (d + 1) * 24) c = cbts[i];
+      var idx = Math.min(tr.n - 1, Math.round((d * 24 + 12) / dt));
+      mis = misalign(refNormal, CL.phaseAt(tr, idx), 12);
+      rows.push({ day: d, isWork: d < nNights, cbt: c, cbtClock: c == null ? null : mod(c, 24), misalign: mis });
+    }
+    return { model: mk, traj: tr, cbts: cbts, rows: rows, segs: segs, nights: nNights, offDays: offDays,
+             woclFraction: totalWork ? inWocl / totalWork : 0, woclHours: inWocl, workHours: totalWork,
+             refNormal: refNormal, strategy: strat };
+  }
+
+  /* 模型仿真页：从偏离极限环的初值出发跑一段，可选第 N 天起进入全黑自由运转。
+   * 页面与测试注入脚本共用这一个函数，免得两边各写一套而漂移。 */
+  function simRun(o) {
+    var mk = o.model, dt = o.dt || 0.05, days = o.days;
+    var sl = o.sleep, wk = o.wake, lx = o.lux, fr = o.freeRunAfter || 0;
+    var routine = function (t) { return CL.light.inWindow(mod(t, 24), sl, wk) ? 0 : lx; };
+    var lf = function (t) { return (fr > 0 && t >= fr * 24) ? 0 : routine(t); };
+    var eq = CL.equilibrate(mk, routine, { dt: 0.05, maxDays: 60, tol: 1e-9 });
+    var y0 = [eq.state[0] * 0.55, eq.state[1] * 0.55, eq.state[2]];
+    var tr = CL.simulate({ model: mk, t0: 0, tEnd: days * 24, dt: dt, y0: y0, lightFn: lf });
+    return { tr: tr, cbts: CL.cbtmins(tr, { refine: true }), dlmos: CL.dlmos(tr, { refine: true }),
+             lightFn: lf, y0: y0, tau: CL.freeRunPeriod(mk, { days: 40, dt: 0.05 }) };
+  }
+
+  CL.plan = { reference: reference, clockOfPhase: clockOfPhase, misalign: misalign, simRun: simRun,
+              planJetLag: planJetLag, prc: prc, doseShift: doseShift, shiftWork: shiftWork,
+              lightResponse: lightResponse, segLight: segLight, subtract: subtract };
+})(CL);
+
+/* ── 默认参数 + 分享码（页面与测试共用同一份，避免两边各写一套）── */
+(function (CL) {
+  'use strict';
+  CL.DEFAULTS = {
+    jet: {
+      model: 'forger99', from: 'SIN', to: 'SFO',
+      depTime: '09:20', arrTime: '09:50',
+      homeSleep: '23:30', homeWake: '07:30', destSleep: '23:00', destWake: '07:00',
+      prepDays: 1, planDays: 6, brightHours: 2, avoidHours: 3,
+      wakeLux: 250, brightLux: 10000, avoidLux: 10, cabinLux: 50,
+      maxShift: 1.5, daylightOnly: false, tolerance: 1.0
+    },
+    shift: { model: 'forger99', nights: 5, offDays: 2, shiftStart: '23:00', shiftEnd: '07:00',
+             daySleepStart: '08:30', sleepHours: 7, workLux: 300, brightLux: 5000, strategy: 'full' },
+    sim: { model: 'forger99', sleep: '23:30', wake: '07:30', wakeLux: 250, days: 12, dt: 0.05, freeRunAfter: 6 },
+    prc: { model: 'forger99', pulseHours: 1, pulseLux: 10000, backgroundLux: 150, nPhases: 36, cycles: 1 },
+    dose: { model: 'forger99', screenHours: 2, screenLux: 80, days: 7, dimEvening: 10 },
+    doseCases: [
+      { zh: '清晨 30 分钟 10000 lux', from: 7.5, to: 8.0, lux: 10000 },
+      { zh: '上午 2 小时 2500 lux', from: 8.0, to: 10.0, lux: 2500 },
+      { zh: '白天 5 小时 1000 lux', from: 10.0, to: 15.0, lux: 1000 },
+      { zh: '夜里 2 小时 2500 lux', from: 21.5, to: 23.5, lux: 2500 }
+    ]
+  };
+
+  /* 分享码：紧凑 JSON → base64url（页面 URL 用）。encode/decode 必须严格互逆。 */
+  var KEYS = ['model', 'from', 'to', 'depDate', 'depTime', 'arrDate', 'arrTime', 'homeSleep', 'homeWake',
+              'destSleep', 'destWake', 'prepDays', 'planDays', 'brightHours', 'avoidHours', 'wakeLux',
+              'brightLux', 'avoidLux', 'cabinLux', 'maxShift', 'daylightOnly'];
+  function b64u(s) {
+    var b = typeof btoa === 'function' ? btoa(unescape(encodeURIComponent(s)))
+      : Buffer.from(s, 'utf8').toString('base64');
+    return b.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  }
+  function unb64u(s) {
+    var t = s.replace(/-/g, '+').replace(/_/g, '/');
+    while (t.length % 4) t += '=';
+    return typeof atob === 'function' ? decodeURIComponent(escape(atob(t)))
+      : Buffer.from(t, 'base64').toString('utf8');
+  }
+  function encodePlan(o) {
+    var arr = KEYS.map(function (k) { return o[k] == null ? null : o[k]; });
+    return b64u(JSON.stringify(arr));
+  }
+  function decodePlan(code) {
+    var arr = JSON.parse(unb64u(code)), out = {}, i;
+    if (!Array.isArray(arr) || arr.length !== KEYS.length) throw new Error('分享码长度不对');
+    for (i = 0; i < KEYS.length; i++) if (arr[i] != null) out[KEYS[i]] = arr[i];
+    return out;
+  }
+  CL.codec = { encodePlan: encodePlan, decodePlan: decodePlan, KEYS: KEYS };
+})(CL);
+</script>
+<script id="cl-app">/* 本站通用的 SVG 绘图骨架：Frame（坐标框 + 刻度 + 裁剪）+ Placer（文字避让器）。
+ *
+ * 固化背景：09-14 journal 明写「这套 Placer 每期都在重写，值得连同保守盒 + 退让位一起抽进
+ * 公共脚手架」，09-15（SVG 机器人图）与 09-16（12 张图）又各重写一遍。本文件 = 09-16 版，
+ * 已经把历次踩过的坑都焊进去了：
+ *   ① 每一段文字（**含坐标轴刻度**）都走 Placer，撞了就按退让位挪、全撞就丢（07-28…08-11 共 7 次事故）；
+ *   ② 退让位第一顺位要落在数据的空侧，带 plate 的标注会擦掉底下的曲线（08-07）；
+ *   ③ 刻度档位按「刻度个数最接近目标」挑，不是「第一个 ≥ raw 的步长」（08-27 y 轴塌成 2 根）；
+ *   ④ setDomain **允许上下界倒置**（俯视图要 y 向下）—— 强行要求 ymax > ymin 会把整张图画空（09-16）；
+ *   ⑤ 曲线一律 clip 到绘图矩形，越界分支不许糊到坐标轴外（09-16）。
+ *
+ * 用法（作为 app 的第一个源文件内联进页面即可）：
+ *   node tools/build-inline.mjs --template page.template.html --out index.html \
+ *     --inline '/*APP*\/=<本文件>,app_part1.js,…'
+ *   var F = new AEPlot.Frame('fig-id', { pad: { l: 56, r: 18, t: 16, b: 38 } });
+ *   F.setDomain(x0, x1, y0, y1);
+ *   F.axes({ xlabel: '…', ylabel: '…', xfmt: fn, yfmt: fn });
+ *   F.path(pts, { stroke: '#da291c' }); F.dot(x, y); F.vline(x); F.hline(y);
+ *   F.P.text(px, py, '标注', { size: 10, fill: '#fff', plate: true, offsets: [[0,0],[0,-13],[0,20]] });
+ * 需要宿主提供一个 fmt(v, d) 数字格式函数：new Frame(id, { fmt: myFmt })，默认用内置的。
+ */
+var AEPlot = (function () {
+  'use strict';
+  var SVGNS = 'http://www.w3.org/2000/svg';
+  /* 主题色。09-16 抽出来时把 Ferrari 的深色写死在 axes/Placer 里，浅色设计系统（Expo）
+   * 用起来刻度与网格几乎看不见 —— 2026-09-17 改成可覆盖，默认值与旧版逐字相同。
+   * 用法：AEPlot.theme({ grid:'#f0f0f3', axis:'#dcdee0', tick:'#60646c', label:'#999' }); */
+  var TH = { grid: '#282828', axis: '#303030', tick: '#8f8f8f', label: '#666',
+             text: '#969696', plate: '#181818', series: '#da291c' };
+  function theme(o) { for (var k in o) if (o[k] != null) TH[k] = o[k]; return TH; }
+  function $(id) { return document.getElementById(id); }
+  function fmt(v, d) {
+    if (v == null || !isFinite(v)) return '—';
+    var x = +v;
+    if (Math.abs(x) >= 1e6 || (Math.abs(x) < 1e-4 && x !== 0)) return x.toExponential(d == null ? 3 : d);
+    var s = x.toFixed(d == null ? 3 : d);
+    if (/^-0\.?0*$/.test(s)) s = s.slice(1);
+    return s;
+  }
+  // ── SVG 基础 ──
+  function el(tag, attrs, parent) {
+    var n = document.createElementNS(SVGNS, tag), k;
+    for (k in attrs) if (attrs[k] != null) n.setAttribute(k, attrs[k]);
+    if (parent) parent.appendChild(n);
+    return n;
+  }
+  function clear(node) { while (node.firstChild) node.removeChild(node.firstChild); }
+
+  /* 文字避让器：**这张图上的每一段文字**都必须经过它（含坐标轴刻度）。
+   * 教训来源：07-28/07-29/07-30/08-05/08-07/08-08/08-11 连撞 7 次标签重叠，
+   * 全部逃过 DOM 断言，只有人工看图才发现。 */
+  function Placer(svg, w, h) {
+    this.svg = svg; this.w = w; this.h = h; this.boxes = []; this.drawn = 0; this.dropped = 0;
+  }
+  Placer.prototype.measure = function (text, size) {
+    var n = 0, i, c;
+    for (i = 0; i < text.length; i++) {
+      c = text.charCodeAt(i);
+      n += (c > 0x2e80 && c < 0xa000) || (c >= 0xff00 && c <= 0xffef) ? 1 : 0.6;
+    }
+    return n * size;
+  };
+  Placer.prototype.hit = function (b) {
+    if (b.x < -1 || b.y < -1 || b.x + b.w > this.w + 1 || b.y + b.h > this.h + 1) return true;  // 出画布
+    for (var i = 0; i < this.boxes.length; i++) {
+      var o = this.boxes[i];
+      if (b.x < o.x + o.w && o.x < b.x + b.w && b.y < o.y + o.h && o.y < b.y + b.h) return true;
+    }
+    return false;
+  };
+  Placer.prototype.reserve = function (x, y, w, h) { this.boxes.push({ x: x, y: y, w: w, h: h }); };
+  /* opts: {size, fill, anchor, weight, offsets:[[dx,dy]…], plate:bool} */
+  Placer.prototype.text = function (x, y, str, opts) {
+    var o = opts || {}, size = o.size || 11, anchor = o.anchor || 'middle';
+    var tw = this.measure(str, size) + 3, th = size + 3;
+    var offs = o.offsets || [[0, 0]], i, dx, dy, bx, by, box = null, ox = 0, oy = 0;
+    for (i = 0; i < offs.length; i++) {
+      dx = offs[i][0]; dy = offs[i][1];
+      bx = x + dx - (anchor === 'middle' ? tw / 2 : anchor === 'end' ? tw : 0);
+      by = y + dy - th + 2;
+      if (!this.hit({ x: bx, y: by, w: tw, h: th })) { box = { x: bx, y: by, w: tw, h: th }; ox = dx; oy = dy; break; }
+    }
+    if (!box) { this.dropped++; return null; }
+    this.boxes.push(box); this.drawn++;
+    if (o.plate) el('rect', { x: box.x, y: box.y, width: box.w, height: box.h, fill: o.plate === true ? TH.plate : o.plate, opacity: 0.88 }, this.svg);
+    var t = el('text', { x: x + ox, y: y + oy, 'text-anchor': anchor, 'font-size': size, fill: o.fill || TH.text,
+      'font-weight': o.weight || 400, 'font-family': 'inherit' }, this.svg);
+    t.textContent = str;
+    return t;
+  };
+
+  /* 直角坐标绘图框 */
+  function Frame(svgId, opt) {
+    var svg = $(svgId), o = opt || {};
+    clear(svg);
+    var vb = svg.getAttribute('viewBox').split(/\s+/).map(Number);
+    this.svg = svg; this.W = vb[2]; this.H = vb[3];
+    // 宿主传进来的 fmt 以前只存不用：axes() 里写死了模块自带的 fmt，
+    // 于是 `new Frame(id, { fmt: myFmt })` 会被**静默忽略**（2026-09-18 实撞，
+    // 「各节点排队人数」那张图的 x 轴因此打出了 3 位小数）。这里收起来，下面用它。
+    this.fmt = o.fmt || fmt;
+    this.pad = o.pad || { l: 56, r: 18, t: 16, b: 38 };
+    this.x0 = this.pad.l; this.x1 = this.W - this.pad.r;
+    this.y0 = this.H - this.pad.b; this.y1 = this.pad.t;
+    this.P = new Placer(svg, this.W, this.H);
+    // 裁剪：曲线一律夹在绘图矩形内（否则超出量程的分支会画到坐标轴外、糊到图例上）
+    this.clipId = 'ae-clip-' + svgId + '-' + Math.random().toString(36).slice(2, 8);
+    var defs = el('defs', {}, svg);
+    var cp = el('clipPath', { id: this.clipId }, defs);
+    el('rect', { x: this.pad.l, y: this.pad.t, width: this.W - this.pad.l - this.pad.r,
+      height: this.H - this.pad.t - this.pad.b }, cp);
+    this.setDomain(o.xmin == null ? 0 : o.xmin, o.xmax == null ? 1 : o.xmax, o.ymin == null ? 0 : o.ymin, o.ymax == null ? 1 : o.ymax);
+  }
+  Frame.prototype.setDomain = function (xmin, xmax, ymin, ymax) {
+    // 只修「退化」（上下界相等/非数），**不能**强行要求 ymax > ymin ——
+    // 俯视图要把 y 轴倒过来画（2026-09-16 实撞：平面形状图整张空白，
+    // 因为这里把倒置域改写成了 [ymin, ymin+1]，机翼落在域外）。
+    if (!isFinite(xmin) || !isFinite(xmax) || xmax === xmin) { xmin = xmin || 0; xmax = xmin + 1; }
+    if (!isFinite(ymin) || !isFinite(ymax) || ymax === ymin) { ymin = ymin || 0; ymax = ymin + 1; }
+    this.xmin = xmin; this.xmax = xmax; this.ymin = ymin; this.ymax = ymax;
+  };
+  Frame.prototype.sx = function (x) { return this.x0 + (x - this.xmin) / (this.xmax - this.xmin) * (this.x1 - this.x0); };
+  Frame.prototype.sy = function (y) { return this.y0 + (y - this.ymin) / (this.ymax - this.ymin) * (this.y1 - this.y0); };
+  /* 刻度档位：按「刻度个数最接近目标」挑，而不是「第一个 ≥ raw 的步长」
+   * （2026-08-27 教训：后者会把 y 轴塌成 2 根刻度）。 */
+  Frame.prototype.ticks = function (min, max, target) {
+    var span = max - min, best = null, mag, s, i, cand, cnt;
+    if (!(span > 0)) return [min];
+    for (mag = Math.floor(Math.log10(span)) - 1; mag <= Math.floor(Math.log10(span)) + 1; mag++) {
+      var base = Math.pow(10, mag);
+      var steps = [1, 2, 2.5, 5, 10];
+      for (i = 0; i < steps.length; i++) {
+        s = steps[i] * base;
+        cnt = Math.floor(max / s) - Math.ceil(min / s) + 1;
+        if (cnt < 2 || cnt > 24) continue;
+        cand = Math.abs(cnt - (target || 6));
+        if (best === null || cand < best.score) best = { step: s, score: cand };
+      }
+    }
+    if (!best) return [min, max];
+    var out = [], v0 = Math.ceil(min / best.step) * best.step;
+    for (var v = v0; v <= max + best.step * 1e-6; v += best.step) out.push(Math.abs(v) < best.step * 1e-9 ? 0 : v);
+    return out;
+  };
+  Frame.prototype.axes = function (o) {
+    var op = o || {}, i, t, px, py;
+    // 域可以是**倒置**的（阿贝图 x 轴从大到小、俯视图 y 轴向下），取刻度前先排序，
+    // 否则 ticks() 拿到负 span 直接 return [min]，整条轴只剩一个刻度
+    // （2026-09-17 实撞：阿贝图 x 轴只画出一个孤零零的「89」）。
+    var xt = op.xticks || this.ticks(Math.min(this.xmin, this.xmax), Math.max(this.xmin, this.xmax), 6);
+    var yt = op.yticks || this.ticks(Math.min(this.ymin, this.ymax), Math.max(this.ymin, this.ymax), 6);
+    el('rect', { x: this.x0, y: this.y1, width: this.x1 - this.x0, height: this.y0 - this.y1, fill: 'none', stroke: TH.axis }, this.svg);
+    for (i = 0; i < yt.length; i++) {
+      py = this.sy(yt[i]);
+      if (py < this.y1 - 0.5 || py > this.y0 + 0.5) continue;
+      el('line', { x1: this.x0, y1: py, x2: this.x1, y2: py, stroke: TH.grid }, this.svg);
+      this.P.text(this.x0 - 6, py + 4, (op.yfmt || this.fmt)(yt[i]), { anchor: 'end', size: 10, fill: TH.tick,
+        offsets: [[0, 0], [0, -9], [0, 9]] });
+    }
+    for (i = 0; i < xt.length; i++) {
+      px = this.sx(xt[i]);
+      if (px < this.x0 - 0.5 || px > this.x1 + 0.5) continue;
+      el('line', { x1: px, y1: this.y0, x2: px, y2: this.y1, stroke: TH.grid }, this.svg);
+      this.P.text(px, this.y0 + 16, (op.xfmt || this.fmt)(xt[i]), { anchor: 'middle', size: 10, fill: TH.tick });
+    }
+    if (op.xlabel) this.P.text((this.x0 + this.x1) / 2, this.H - 6, op.xlabel, { size: 11, fill: TH.label });
+    if (op.ylabel) {
+      var t2 = el('text', { x: 12, y: (this.y0 + this.y1) / 2, 'font-size': 11, fill: TH.label, 'text-anchor': 'middle',
+        transform: 'rotate(-90 12 ' + ((this.y0 + this.y1) / 2) + ')' }, this.svg);
+      t2.textContent = op.ylabel;
+      this.P.reserve(4, this.y1, 16, this.y0 - this.y1);
+    }
+  };
+  Frame.prototype.path = function (pts, o) {
+    var op = o || {}, d = '', i, px, py, started = false;
+    for (i = 0; i < pts.length; i++) {
+      if (pts[i] == null || !isFinite(pts[i][0]) || !isFinite(pts[i][1])) { started = false; continue; }
+      px = this.sx(pts[i][0]); py = this.sy(pts[i][1]);
+      d += (started ? 'L' : 'M') + px.toFixed(2) + ' ' + py.toFixed(2) + ' ';
+      started = true;
+    }
+    if (!d) return null;
+    return el('path', { d: d, fill: op.fill || 'none', stroke: op.stroke || TH.series, 'stroke-width': op.width || 1.6,
+      'stroke-dasharray': op.dash, opacity: op.opacity, 'stroke-linejoin': 'round', 'stroke-linecap': 'round',
+      'clip-path': op.noclip ? null : 'url(#' + this.clipId + ')' }, this.svg);
+  };
+  Frame.prototype.dot = function (x, y, o) {
+    var op = o || {};
+    return el('circle', { cx: this.sx(x), cy: this.sy(y), r: op.r || 3.2, fill: op.fill || TH.series,
+      stroke: op.stroke, 'stroke-width': op.width }, this.svg);
+  };
+  Frame.prototype.vline = function (x, o) {
+    var op = o || {};
+    return el('line', { x1: this.sx(x), y1: this.y0, x2: this.sx(x), y2: this.y1, stroke: op.stroke || '#5a5a5a',
+      'stroke-width': op.width || 1, 'stroke-dasharray': op.dash || '4 4' }, this.svg);
+  };
+  Frame.prototype.hline = function (y, o) {
+    var op = o || {};
+    return el('line', { x1: this.x0, y1: this.sy(y), x2: this.x1, y2: this.sy(y), stroke: op.stroke || '#5a5a5a',
+      'stroke-width': op.width || 1, 'stroke-dasharray': op.dash || '4 4' }, this.svg);
+  };
+
+
+  /* 对数轴刻度：在 [lo, hi]（以 10 为底的指数）区间里挑 1/2/5 × 10^k 这些档，
+   * 返回**真值**数组（调用方自己取 log 当域坐标、并用 yfmt 把它换算回来显示）。
+   * 2026-09-18 抽出：等待时间 / 成本 / 误差这类跨几个数量级的量，线性轴会把
+   * 关心的那一段全压在零线附近（实撞：16 席要 2.2 分钟、19 席只要 11 秒）。
+   * ⚠️ 配套的一条硬规矩：域要**夹**在关注点附近若干个数量级内 —— 只要有一个
+   * 病态点（比如 ρ=1-1e-16 解出 1e17）就能把量程撑到刻度全被避让器丢光。 */
+  function logTicks(lo, hi) {
+    var out = [], k, m, v, lg;
+    for (k = Math.floor(lo); k <= Math.ceil(hi); k++) {
+      for (m = 0; m < 3; m++) {
+        v = [1, 2, 5][m] * Math.pow(10, k);
+        lg = Math.log(v) / Math.LN10;
+        if (lg >= lo - 1e-9 && lg <= hi + 1e-9) out.push(v);
+      }
+    }
+    return out;
+  }
+
+  return { Frame: Frame, Placer: Placer, el: el, clear: clear, fmt: fmt, theme: theme, TH: TH,
+           logTicks: logTicks };
+})();
+
+/* Circadian Lab — 页面层：输入 → 引擎 → SVG/表格。绘图走 AEPlot（Frame/Placer）。 */
+(function () {
+  'use strict';
+  var D = CL.DEFAULTS, mod = CL.mod;
+  function $(id) { return document.getElementById(id); }
+  function el(tag, attrs, parent) { return AEPlot.el(tag, attrs, parent); }
+  function txt(node, s) { node.textContent = s; return node; }
+
+  AEPlot.theme({ grid: '#1f1f1f', axis: '#333333', tick: '#8a8a8a', label: '#6b6b6b',
+                 text: '#a8a8a8', plate: '#000000', series: '#1a26ff' });
+  var COL = { bright: '#00d4ff', avoid: '#9a6cff', sleep: '#2b36ff', day: '#3a3a3a',
+              cbt: '#33d17a', plan: '#00d4ff', base: '#ff4d4d', ink: '#ffffff', muted: '#8a8a8a' };
+
+  // ── 小工具 ────────────────────────────────────────────────────────────
+  function hhmm(h) {
+    h = mod(h, 24);
+    var m = Math.round(h * 60), hh = Math.floor(m / 60) % 24, mm = m % 60;
+    return String(hh).padStart(2, '0') + ':' + String(mm).padStart(2, '0');
+  }
+  function parseHM(s) {
+    var m = /^(\d{1,2}):(\d{2})$/.exec((s || '').trim());
+    if (!m) return null;
+    var h = +m[1], mi = +m[2];
+    if (h > 23 || mi > 59) return null;
+    return h + mi / 60;
+  }
+  function parseDate(s) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec((s || '').trim());
+    if (!m) return null;
+    return { y: +m[1], mo: +m[2], d: +m[3] };
+  }
+  function num(v, d) { return AEPlot.fmt(v, d == null ? 2 : d); }
+  function sgn(v, d) { return (v > 0 ? '+' : '') + num(v, d); }
+  function dateStr(dobj) {
+    return dobj.y + '-' + String(dobj.mo).padStart(2, '0') + '-' + String(dobj.d).padStart(2, '0');
+  }
+  function addDays(dobj, n) {
+    var t = Date.UTC(dobj.y, dobj.mo - 1, dobj.d) + n * 86400000, dd = new Date(t);
+    return { y: dd.getUTCFullYear(), mo: dd.getUTCMonth() + 1, d: dd.getUTCDate() };
+  }
+  function kpi(host, items) {
+    host.innerHTML = '';
+    items.forEach(function (it) {
+      var d = document.createElement('div');
+      d.className = 'cl-kpi';
+      var k = document.createElement('div'); k.className = 'k'; k.textContent = it.k;
+      var v = document.createElement('div'); v.className = 'v' + (it.tone ? ' cl-' + it.tone : ''); v.textContent = it.v;
+      if (it.id) v.id = it.id;
+      d.appendChild(k); d.appendChild(v); host.appendChild(d);
+    });
+  }
+  function rows(tbody, data) {
+    tbody.innerHTML = '';
+    data.forEach(function (r) {
+      var tr = document.createElement('tr');
+      r.forEach(function (c, i) {
+        var td = document.createElement('td');
+        if (c && c.html != null) { td.innerHTML = c.html; td.className = c.cls || ''; }
+        else { td.textContent = c == null ? '—' : c; }
+        if (i === 0) td.className = (td.className ? td.className + ' ' : '') + 'cl-txt';
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    });
+  }
+  function tag(cls, s) { return '<span class="cl-tag ' + cls + '">' + s + '</span>'; }
+
+  // ── 状态与持久化 ──────────────────────────────────────────────────────
+  var LS = 'circadian-lab-v1';
+  function save() {
+    try { localStorage.setItem(LS, JSON.stringify(readAll())); } catch (e) { /* 隐私模式：忽略 */ }
+  }
+  function readAll() {
+    var o = {};
+    ['jet-from', 'jet-to', 'jet-dep-date', 'jet-dep-time', 'jet-arr-date', 'jet-arr-time', 'jet-home-sleep',
+     'jet-home-wake', 'jet-dest-sleep', 'jet-dest-wake', 'jet-prep', 'jet-days', 'jet-bright-h', 'jet-avoid-h',
+     'jet-bright-lux', 'jet-wake-lux', 'jet-model', 'shift-start', 'shift-end', 'shift-nights', 'shift-off',
+     'shift-sleep-start', 'shift-sleep-h', 'shift-work-lux', 'shift-bright-lux', 'shift-strategy', 'shift-model',
+     'sim-model', 'sim-days', 'sim-sleep', 'sim-wake', 'sim-lux', 'sim-dt', 'sim-freerun',
+     'prc-model', 'prc-n', 'prc-dur', 'prc-lux', 'prc-bg', 'prc-cycles', 'dose-model', 'dose-screen-h', 'dose-screen-lux', 'dose-days'
+    ].forEach(function (id) { var n = $(id); if (n) o[id] = n.value; });
+    o['jet-daylight'] = $('jet-daylight').checked;
+    o.tab = current;
+    return o;
+  }
+  function restore(o) {
+    if (!o) return;
+    Object.keys(o).forEach(function (id) {
+      var n = $(id);
+      if (!n || id === 'tab') return;
+      if (n.type === 'checkbox') n.checked = !!o[id]; else n.value = o[id];
+    });
+  }
+
+  // ── 标签页 ────────────────────────────────────────────────────────────
+  var current = 'jet', ran = {};
+  var LAZY = { shift: function () { runShift(); }, dose: function () { renderDose(); runScreen(); },
+               sim: function () { runSim(); }, prc: function () { runPRC(); }, about: function () { renderAbout(); } };
+  function showTab(name) {
+    current = name;
+    ['jet', 'shift', 'dose', 'sim', 'prc', 'about'].forEach(function (t) {
+      var b = $('tab-' + t), p = $('pane-' + t);
+      b.setAttribute('aria-selected', String(t === name));
+      p.hidden = (t !== name);
+    });
+    if (!ran[name] && LAZY[name]) { ran[name] = 1; LAZY[name](); }
+    save();
+  }
+
+  // ── 倒时差 ────────────────────────────────────────────────────────────
+  function jetInputs() {
+    var from = $('jet-from').value, to = $('jet-to').value;
+    var home = CL.city(from), dest = CL.city(to);
+    if (!home || !dest) throw new Error('城市无效');
+    if (from === to) throw new Error('出发地与目的地相同 —— 换一个目的地吧');
+    var dep = parseDate($('jet-dep-date').value), arr = parseDate($('jet-arr-date').value);
+    if (!dep || !arr) throw new Error('日期格式不对（应为 YYYY-MM-DD）');
+    var dh = parseHM($('jet-dep-time').value), ah = parseHM($('jet-arr-time').value);
+    if (dh == null || ah == null) throw new Error('时刻格式不对（应为 HH:MM）');
+    var hs = parseHM($('jet-home-sleep').value), hw = parseHM($('jet-home-wake').value);
+    var ds = parseHM($('jet-dest-sleep').value), dw = parseHM($('jet-dest-wake').value);
+    if (hs == null || hw == null || ds == null || dw == null) throw new Error('作息时刻格式不对');
+    if (mod(hw - hs, 24) < 3 || mod(dw - ds, 24) < 3) throw new Error('睡眠时长不足 3 小时，请检查就寝/起床');
+    var o = {
+      model: $('jet-model').value, home: home, dest: dest,
+      depart: { y: dep.y, mo: dep.mo, d: dep.d, h: Math.floor(dh), mi: Math.round((dh % 1) * 60) },
+      arrive: { y: arr.y, mo: arr.mo, d: arr.d, h: Math.floor(ah), mi: Math.round((ah % 1) * 60) },
+      homeSleep: hs, homeWake: hw, destSleep: ds, destWake: dw,
+      prepDays: +$('jet-prep').value, planDays: +$('jet-days').value,
+      brightHours: +$('jet-bright-h').value, avoidHours: +$('jet-avoid-h').value,
+      brightLux: +$('jet-bright-lux').value, wakeLux: +$('jet-wake-lux').value,
+      daylightOnly: $('jet-daylight').checked, dt: 0.05
+    };
+    if (!(o.brightHours > 0) || !(o.brightLux >= 100) || !(o.wakeLux >= 1)) throw new Error('光照参数超出范围');
+    return o;
+  }
+  var lastJet = null;
+  function runJet() {
+    var msg = $('jet-msg');
+    try {
+      var o = jetInputs();
+      msg.textContent = '';
+      var planned = CL.plan.planJetLag(o);
+      var baseline = CL.plan.planJetLag(Object.assign({}, o, { optimize: false, prepDays: 0 }));
+      lastJet = { o: o, planned: planned, baseline: baseline };
+      renderJet(lastJet);
+      save();
+    } catch (e) {
+      msg.textContent = '⚠ ' + e.message;
+    }
+  }
+  function adaptLabel(r) { return r.adaptDay == null ? '> ' + r.totalDays + ' 天' : '第 ' + r.adaptDay + ' 天'; }
+  function renderJet(J) {
+    var p = J.planned, b = J.baseline, o = J.o;
+    var dirTxt = p.totalMove > 0 ? '提前' : '延后';
+    kpi($('jet-kpi'), [
+      { k: '时差', v: sgn(p.tzDiff, 1) + ' h（' + (p.tzDiff > 0 ? '东行' : '西行') + '）' },
+      { k: '飞行时长', v: num(p.flightHours, 1) + ' h' },
+      { k: '本计划：倒过来', v: adaptLabel(p), tone: p.adaptDay == null ? 'bad' : 'good', id: 'kpi-adapt-plan' },
+      { k: '不干预：倒过来', v: adaptLabel(b), tone: b.adaptDay == null ? 'bad' : 'good', id: 'kpi-adapt-base' },
+      { k: '计划走的方向', v: dirTxt + ' ' + num(Math.abs(p.totalMove), 1) + ' h', id: 'kpi-move' },
+      { k: '第 ' + p.totalDays + ' 天残余相位差', v: sgn(p.finalMisalign, 2) + ' h / 不干预 ' + sgn(b.finalMisalign, 2) + ' h', id: 'kpi-final' },
+      { k: '目的地目标 CBTmin', v: hhmm(p.refDest.cbtClock) + '（DLMO ' + hhmm(p.refDest.dlmoClock) + '）', id: 'kpi-target' },
+      { k: '模型', v: CL.MODELS[o.model].name }
+    ]);
+    // hero
+    txt($('hero-route'), o.home.zh + ' → ' + o.dest.zh);
+    txt($('hero-route-sub'), '时差 ' + sgn(p.tzDiff, 1) + ' h · 飞行 ' + num(p.flightHours, 1) + ' h\n'
+      + '落地当地时间 ' + hhmm(CL.tz.clock(o.dest.tz, p.MS(p.tArr))));
+    txt($('hero-mis'), sgn(p.rows[0].misalign, 1) + ' h');
+    txt($('hero-mis-sub'), '落地时体内钟与当地钟的差\n需要' + (p.totalMove > 0 ? '提前' : '延后') + ' ' + num(Math.abs(p.totalMove), 1) + ' h 才同步');
+    txt($('hero-days'), (p.adaptDay == null ? '>' + p.totalDays : p.adaptDay) + ' 天');
+    txt($('hero-days-sub'), '不干预：' + adaptLabel(b) + '\n判据：|相位差| ≤ 1 h');
+    var first = null, i;
+    for (i = 0; i < p.rows.length; i++) if (p.rows[i].bright) { first = p.rows[i]; break; }
+    txt($('hero-today'), first ? hhmm(first.bright.fromClock) + '–' + hhmm(first.bright.toClock) : '无需求光');
+    txt($('hero-today-sub'), first ? (first.date + ' 求光 ' + num(o.brightHours, 1) + ' h'
+      + (first.avoid ? '\n避光 ' + hhmm(first.avoid.fromClock) + '–' + hhmm(first.avoid.toClock) : '')) : '时差太小，按当地作息睡即可');
+    figJetMis(p, b);
+    figJetGantt(p);
+    var data = p.rows.map(function (r) {
+      var kindTxt = { prep: '出发前', travel: '飞行日', arrive: '抵达日', dest: '目的地' }[r.kind];
+      return [
+        r.date + ' ' + r.weekday,
+        { html: kindTxt + ' <span class="cl-tag">' + r.city.zh + '</span>', cls: 'cl-txt' },
+        { html: r.sleeps.length ? r.sleeps.map(function (s) { return tag('cl-t-sleep', hhmm(s.fromClock) + '–' + hhmm(s.toClock)); }).join(' ') : '—', cls: 'cl-txt' },
+        { html: r.bright ? tag('cl-t-bright', hhmm(r.bright.fromClock) + '–' + hhmm(r.bright.toClock)) : '—', cls: 'cl-txt' },
+        { html: r.avoid ? tag('cl-t-avoid', hhmm(r.avoid.fromClock) + '–' + hhmm(r.avoid.toClock)) : '—', cls: 'cl-txt' },
+        r.cbtClock == null ? '—' : hhmm(r.cbtClock),
+        sgn(r.misalign, 2),
+        r.sunrise == null ? '极昼/极夜' : hhmm(r.sunrise) + ' / ' + hhmm(r.sunset)
+      ];
+    });
+    rows($('jet-table').tBodies[0], data);
+  }
+  function figJetMis(p, b) {
+    var F = new AEPlot.Frame('fig-jet-mis', { pad: { l: 54, r: 92, t: 18, b: 40 } });
+    var all = p.misUnwrap.concat(b.misUnwrap), lo = 0, hi = 0, i;
+    for (i = 0; i < all.length; i++) { lo = Math.min(lo, all[i][1]); hi = Math.max(hi, all[i][1]); }
+    var pad = Math.max(1, (hi - lo) * 0.12);
+    F.setDomain(0, p.tEnd / 24, lo - pad, hi + pad);
+    F.axes({ xlabel: '计划第几天', ylabel: '相位差（小时，展开）', xfmt: function (v) { return num(v, 0); },
+             yfmt: function (v) { return num(v, 0); } });
+    // 容差带
+    el('rect', { x: F.sx(0), y: F.sy(1), width: F.x1 - F.x0, height: Math.abs(F.sy(-1) - F.sy(1)),
+      fill: '#33d17a', opacity: 0.10 }, F.svg);
+    F.hline(0, { stroke: '#33d17a', dash: '5 5' });
+    F.P.reserve(F.sx(p.tArr / 24) - 2, F.y1, 4, F.y0 - F.y1);
+    F.vline(p.tArr / 24, { stroke: '#666' });
+    F.path(b.misUnwrap.map(function (q) { return [q[0] / 24, q[1]]; }), { stroke: COL.base, width: 1.8, dash: '6 4' });
+    F.path(p.misUnwrap.map(function (q) { return [q[0] / 24, q[1]]; }), { stroke: COL.plan, width: 2.2 });
+    var pe = p.misUnwrap[p.misUnwrap.length - 1], be = b.misUnwrap[b.misUnwrap.length - 1];
+    F.P.text(F.sx(pe[0] / 24) + 6, F.sy(pe[1]) + 4, '本计划', { anchor: 'start', size: 11, fill: COL.plan, plate: true,
+      offsets: [[0, 0], [0, -13], [0, 13], [0, -26]] });
+    F.P.text(F.sx(be[0] / 24) + 6, F.sy(be[1]) + 4, '不干预', { anchor: 'start', size: 11, fill: COL.base, plate: true,
+      offsets: [[0, 0], [0, 13], [0, -13], [0, 26]] });
+    F.P.text(F.sx(p.tArr / 24), F.y1 + 14, '落地', { size: 10, fill: '#8a8a8a', plate: true,
+      offsets: [[0, 0], [0, 14], [18, 0], [-18, 0]] });
+  }
+  function figJetGantt(p) {
+    var svg = document.getElementById('fig-jet-gantt');
+    AEPlot.clear(svg);
+    var W = 860, L = 132, R = 22, TOP = 26, BOT = 34;
+    var n = p.rows.length, rowH = Math.max(16, Math.min(34, (420 - TOP - BOT) / Math.max(1, n)));
+    var H = TOP + BOT + rowH * n;
+    svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+    var P = new AEPlot.Placer(svg, W, H);
+    var X = function (c) { return L + c / 24 * (W - L - R); };
+    var i, k;
+    for (k = 0; k <= 24; k += 3) {
+      el('line', { x1: X(k), y1: TOP - 6, x2: X(k), y2: TOP + rowH * n, stroke: '#1f1f1f' }, svg);
+      P.text(X(k), TOP - 10, String(k).padStart(2, '0') + ':00', { size: 10, fill: '#8a8a8a' });
+    }
+    function bar(y, c0, c1, fill, op, rx) {
+      if (!(c1 > c0)) return null;
+      return el('rect', { x: X(c0), y: y, width: Math.max(1.5, X(c1) - X(c0)), height: rowH - 5,
+        fill: fill, opacity: op == null ? 1 : op, rx: rx == null ? 3 : rx }, svg);
+    }
+    for (i = 0; i < n; i++) {
+      var r = p.rows[i], y = TOP + i * rowH;
+      var tzr = r.tz, spanEnd = Math.min(r.to, r.from + 24);
+      el('rect', { x: L, y: y, width: W - L - R, height: rowH - 5, fill: '#141414', rx: 3 }, svg);
+      // 白天
+      if (r.sunrise != null) bar(y, r.sunrise, r.sunset, COL.day, 0.55);
+      function clk(t) { return CL.tz.clock(tzr, p.MS(Math.max(r.from, Math.min(spanEnd, t)))); }
+      function draw(w, fill, op) {
+        if (!w) return;
+        var a = Math.max(w.from, r.from), z = Math.min(w.to, spanEnd);
+        if (!(z > a)) return;
+        var ca = clk(a), cz = clk(z);
+        if (cz <= ca) { bar(y, ca, 24, fill, op); bar(y, 0, cz, fill, op); }
+        else bar(y, ca, cz, fill, op);
+      }
+      r.sleeps.forEach(function (w) { draw(w, COL.sleep, 0.85); });
+      draw(r.bright, COL.bright, 0.95);
+      draw(r.avoid, COL.avoid, 0.95);
+      if (r.kind === 'travel' || r.kind === 'arrive') {
+        var fa = Math.max(p.tDep, r.from), fz = Math.min(p.tArr, spanEnd);
+        if (fz > fa) {
+          var ca2 = clk(fa), cz2 = clk(fz);
+          var rect = (cz2 > ca2) ? bar(y, ca2, cz2, 'none', 1) : bar(y, ca2, 24, 'none', 1);
+          if (rect) { rect.setAttribute('stroke', '#ffffff'); rect.setAttribute('stroke-dasharray', '3 3'); rect.setAttribute('stroke-width', '1'); }
+        }
+      }
+      if (r.cbt != null && r.cbt >= r.from && r.cbt < spanEnd) {
+        var cc = clk(r.cbt);
+        el('circle', { cx: X(cc), cy: y + (rowH - 5) / 2, r: 3.6, fill: COL.cbt }, svg);
+      }
+      P.text(L - 8, y + (rowH - 5) / 2 + 4, r.date.slice(5) + ' ' + r.weekday.slice(1) + (r.kind === 'travel' ? ' ✈' : ''),
+        { anchor: 'end', size: 10.5, fill: r.kind === 'dest' ? '#a8a8a8' : '#6b6b6b' });
+    }
+    P.text((L + W - R) / 2, H - 10, '当地时间（到达前按出发地，之后按目的地）', { size: 11, fill: '#6b6b6b' });
+  }
+
+  // ── 夜班 ──────────────────────────────────────────────────────────────
+  function shiftInputs(strategy) {
+    var ss = parseHM($('shift-start').value), se = parseHM($('shift-end').value);
+    var ds = parseHM($('shift-sleep-start').value);
+    if (ss == null || se == null || ds == null) throw new Error('时刻格式不对');
+    var dur = mod(se - ss, 24);
+    if (dur < 2) throw new Error('班次时长不足 2 小时');
+    return {
+      model: $('shift-model').value, shiftStart: ss, shiftEnd: se, daySleepStart: ds,
+      sleepHours: +$('shift-sleep-h').value, nights: +$('shift-nights').value, offDays: +$('shift-off').value,
+      workLux: +$('shift-work-lux').value, brightLux: +$('shift-bright-lux').value,
+      strategy: strategy || $('shift-strategy').value, dt: 0.05
+    };
+  }
+  var lastShift = null;
+  function runShift() {
+    try {
+      var o = shiftInputs();
+      var r = CL.plan.shiftWork(o);
+      lastShift = { o: o, r: r };
+      var last = null, i;
+      for (i = r.rows.length - 1; i >= 0; i--) if (r.rows[i].cbtClock != null) { last = r.rows[i]; break; }
+      kpi($('shift-kpi'), [
+        { k: '班次', v: hhmm(o.shiftStart) + '–' + hhmm(o.shiftEnd) + ' × ' + o.nights + ' 晚' },
+        { k: '落在 WOCL 的工时', v: num(r.woclFraction * 100, 1) + ' %', tone: r.woclFraction > 0.25 ? 'bad' : 'good', id: 'kpi-wocl' },
+        { k: '末班日 CBTmin', v: last ? hhmm(last.cbtClock) : '—', id: 'kpi-shift-cbt' },
+        { k: '相位共移动', v: sgn(r.rows[r.rows.length - 1].misalign - r.rows[0].misalign, 1) + ' h', id: 'kpi-shift-move' }
+      ]);
+      figShift(r, o);
+      rows($('shift-table').tBodies[0], r.rows.map(function (x) {
+        return ['第 ' + (x.day + 1) + ' 天', x.isWork ? '夜班' : '休息', x.cbtClock == null ? '—' : hhmm(x.cbtClock), sgn(x.misalign, 2)];
+      }));
+      // 三策略对比
+      var cmp = [{ id: 'none', zh: '不干预' }, { id: 'bright', zh: '班前强光' }, { id: 'full', zh: '强光+墨镜+全暗' }].map(function (s) {
+        var rr = (s.id === o.strategy) ? r : CL.plan.shiftWork(shiftInputs(s.id));
+        var lastc = null, j;
+        for (j = rr.rows.length - 1; j >= 0; j--) if (rr.rows[j].cbtClock != null) { lastc = rr.rows[j]; break; }
+        return [s.zh + (s.id === o.strategy ? '（当前）' : ''), lastc ? hhmm(lastc.cbtClock) : '—',
+                sgn(rr.rows[rr.rows.length - 1].misalign - rr.rows[0].misalign, 1), num(rr.woclFraction * 100, 1) + ' %'];
+      });
+      rows($('shift-compare').tBodies[0], cmp);
+      save();
+    } catch (e) { console.error(e); }
+  }
+  function figShift(r, o) {
+    var svg = document.getElementById('fig-shift');
+    AEPlot.clear(svg);
+    var W = 860, L = 92, R = 22, TOP = 26, BOT = 34, n = r.rows.length;
+    var rowH = Math.max(14, Math.min(30, (360 - TOP - BOT) / Math.max(1, n))), H = TOP + BOT + rowH * n;
+    svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+    var P = new AEPlot.Placer(svg, W, H);
+    var X = function (c) { return L + c / 24 * (W - L - R); }, i, k;
+    for (k = 0; k <= 24; k += 3) {
+      el('line', { x1: X(k), y1: TOP - 6, x2: X(k), y2: TOP + rowH * n, stroke: '#1f1f1f' }, svg);
+      P.text(X(k), TOP - 10, String(k).padStart(2, '0') + ':00', { size: 10, fill: '#8a8a8a' });
+    }
+    function bar(y, c0, c1, fill, op) {
+      if (c1 <= c0) { bar(y, c0, 24, fill, op); bar(y, 0, c1, fill, op); return; }
+      el('rect', { x: X(c0), y: y, width: Math.max(1.5, X(c1) - X(c0)), height: rowH - 5, fill: fill, opacity: op, rx: 3 }, svg);
+    }
+    for (i = 0; i < n; i++) {
+      var row = r.rows[i], y = TOP + i * rowH;
+      el('rect', { x: L, y: y, width: W - L - R, height: rowH - 5, fill: '#141414', rx: 3 }, svg);
+      if (row.isWork) {
+        bar(y, o.shiftStart, mod(o.shiftEnd, 24), '#3a3a3a', 0.95);
+        bar(y, o.daySleepStart, mod(o.daySleepStart + o.sleepHours, 24), COL.sleep, 0.85);
+        if (o.strategy !== 'none') bar(y, o.shiftStart, mod(o.shiftStart + 3, 24), COL.bright, 0.9);
+        if (o.strategy === 'full') bar(y, mod(o.shiftEnd, 24), mod(o.shiftEnd + 1.5, 24), COL.avoid, 0.9);
+      } else {
+        bar(y, 23.5, 7.5, COL.sleep, 0.5);
+      }
+      if (row.cbtClock != null) el('circle', { cx: X(row.cbtClock), cy: y + (rowH - 5) / 2, r: 3.4, fill: COL.cbt }, svg);
+      P.text(L - 8, y + (rowH - 5) / 2 + 4, (row.isWork ? '夜班 ' : '休息 ') + (i + 1), { anchor: 'end', size: 10.5, fill: '#8a8a8a' });
+    }
+    P.text((L + W - R) / 2, H - 10, '当地时间', { size: 11, fill: '#6b6b6b' });
+  }
+
+  // ── 光照剂量 ──────────────────────────────────────────────────────────
+  var DOSE_CASES = D.doseCases;
+  function renderDose() {
+    // ① 饱和曲线
+    var F = new AEPlot.Frame('fig-dose-alpha', { pad: { l: 52, r: 96, t: 16, b: 40 } });
+    var lux = [], i;
+    for (i = 0; i <= 120; i++) lux.push(Math.pow(10, -0.3 + i * (4.3 + 0.3) / 120));
+    var keys = ['forger99', 'jewett99', 'hannay19'], colors = ['#00d4ff', '#9a6cff', '#ff9f1a'];
+    var maxB = 0, series = keys.map(function (k) {
+      var pts = CL.plan.lightResponse(k, lux);
+      pts.forEach(function (q) { maxB = Math.max(maxB, q.Bhat); });
+      return pts;
+    });
+    F.setDomain(-0.3, 4.3, 0, maxB * 1.12);
+    var ticks = AEPlot.logTicks(-0.3, 4.3);
+    F.axes({ xlabel: '照度 lux（对数轴）', ylabel: '光驱动 B̂', xticks: ticks.map(function (v) { return Math.log(v) / Math.LN10; }),
+      xfmt: function (v) { var r = Math.pow(10, v); return r >= 1000 ? (r / 1000) + 'k' : String(Math.round(r)); },
+      yfmt: function (v) { return num(v, 2); } });
+    series.forEach(function (pts, si) {
+      F.path(pts.map(function (q) { return [Math.log(q.lux) / Math.LN10, q.Bhat]; }), { stroke: colors[si], width: 2 });
+      var lastq = pts[pts.length - 1];
+      F.P.text(F.sx(Math.log(lastq.lux) / Math.LN10) + 6, F.sy(lastq.Bhat) + 4, CL.MODELS[keys[si]].short,
+        { anchor: 'start', size: 10.5, fill: colors[si], plate: true, offsets: [[0, 0], [0, -12], [0, 12], [0, -24]] });
+    });
+    [100, 1000, 10000].forEach(function (v) {
+      F.vline(Math.log(v) / Math.LN10, { stroke: '#2a2a2a', dash: '3 3' });
+    });
+    // ② 等剂量对比
+    var model = $('dose-model').value;
+    var res = DOSE_CASES.map(function (c) {
+      return CL.plan.doseShift({ model: model, window: { from: c.from, to: c.to, lux: c.lux }, days: 7, dt: 0.05 });
+    });
+    var G = new AEPlot.Frame('fig-dose-bar', { pad: { l: 150, r: 56, t: 16, b: 40 } });
+    var mx = 0;
+    res.forEach(function (r) { mx = Math.max(mx, Math.abs(r.total)); });
+    mx = Math.max(0.5, mx * 1.25);
+    G.setDomain(-mx, mx, 0, DOSE_CASES.length);
+    G.axes({ xlabel: '7 天累计相位位移（小时，正 = 提前）', yticks: [], yfmt: function () { return ''; },
+             xfmt: function (v) { return num(v, 1); } });
+    res.forEach(function (r, i2) {
+      var y0 = G.sy(DOSE_CASES.length - i2 - 0.75), h = Math.abs(G.sy(0.5) - G.sy(0.95));
+      var v = r.total, x0 = G.sx(Math.min(0, v)), x1 = G.sx(Math.max(0, v));
+      el('rect', { x: x0, y: y0, width: Math.max(1.5, x1 - x0), height: h, rx: 3,
+        fill: v >= 0 ? COL.bright : COL.avoid, opacity: 0.9 }, G.svg);
+      G.P.text(G.x0 - 8, y0 + h / 2 + 4, DOSE_CASES[i2].zh, { anchor: 'end', size: 10.5, fill: '#a8a8a8' });
+      // 负值条的标签放在左端外侧时会顶出画布被避让器丢掉（2026-09-19 实撞：−0.75 h 那条没有数字），
+      // 所以先看外侧放不放得下，放不下就改画在条内侧。
+      var lw = 46, outX = v >= 0 ? x1 + 6 : x0 - 6, inside = v >= 0 ? (outX + lw > G.x1) : (outX - lw < G.x0);
+      G.P.text(inside ? (v >= 0 ? x1 - 6 : x0 + 6) : outX, y0 + h / 2 + 4, sgn(v, 2) + ' h',
+        { anchor: (v >= 0) === !inside ? 'start' : 'end', size: 10.5, fill: '#ffffff', plate: !inside,
+          offsets: [[0, 0], [0, -12], [0, 12]] });
+    });
+    G.vline(0, { stroke: '#555', dash: '4 4' });
+    rows($('dose-table').tBodies[0], DOSE_CASES.map(function (c, i2) {
+      var lh = mod(c.to - c.from, 24) * c.lux;
+      return [c.zh, hhmm(c.from) + '–' + hhmm(c.to), String(c.lux), num(lh, 0), sgn(res[i2].first, 3), sgn(res[i2].total, 2)];
+    }));
+    window.CLApp.dose = res;
+  }
+  var DIM_EVENING = D.dose.dimEvening;   // 对照组：睡前同一段时间里的昏暗环境照度
+  function runScreen() {
+    var model = $('dose-model').value, h = +$('dose-screen-h').value, lx = +$('dose-screen-lux').value;
+    var days = +$('dose-days').value;
+    if (!(h > 0) || !(lx > 0) || !(days > 0)) return;
+    var sleepAt = 23.5, win = { from: mod(sleepAt - h, 24), to: sleepAt };
+    // 对照 = 同一段时间里昏暗（10 lux），实验 = 屏幕照度。两组的其余作息与光照完全一样。
+    var r = CL.plan.doseShift({ model: model, days: days, sleepAt: sleepAt, wakeAt: 7.5,
+      control: { from: win.from, to: win.to, lux: DIM_EVENING },
+      window: { from: win.from, to: win.to, lux: lx } });
+    var dirn = r.total < 0 ? '延后' : '提前';
+    kpi($('dose-screen-out'), [
+      { k: '第一晚就' + (r.first < 0 ? '延后' : '提前'), v: num(Math.abs(r.first) * 60, 1) + ' 分钟', id: 'kpi-screen-day' },
+      { k: days + ' 天后稳定在', v: sgn(r.total, 2) + ' h（' + dirn + '）', tone: r.total < -0.5 ? 'bad' : '', id: 'kpi-screen-total' },
+      { k: '等价于', v: '困意比昏暗环境晚 ' + num(Math.abs(r.total) * 60, 0) + ' 分钟到（约 ' + hhmm(sleepAt - r.total) + '）' },
+      { k: '剂量 / 对照', v: num(h * lx, 0) + ' lux·h vs ' + num(h * DIM_EVENING, 0) + ' lux·h' }
+    ]);
+    save();
+  }
+
+  // ── 模型仿真 ──────────────────────────────────────────────────────────
+  var lastSim = null;
+  function runSim() {
+    var mk = $('sim-model').value, days = +$('sim-days').value, dt = +$('sim-dt').value;
+    var sl = parseHM($('sim-sleep').value), wk = parseHM($('sim-wake').value);
+    var lx = +$('sim-lux').value, fr = +$('sim-freerun').value;
+    if (sl == null || wk == null || !(dt > 0) || !(days > 0)) return;
+    var R = CL.plan.simRun({ model: mk, days: days, dt: dt, sleep: sl, wake: wk, lux: lx, freeRunAfter: fr });
+    var tr = R.tr, cs = R.cbts, dl = R.dlmos;
+    lastSim = { tr: tr, cs: cs, dl: dl, lf: R.lightFn, mk: mk, days: days, dt: dt, sleep: sl, wake: wk, lux: lx, fr: fr };
+    var tau = R.tau;
+    var sp = [];
+    for (var i = 1; i < cs.length; i++) sp.push(cs[i] - cs[i - 1]);
+    kpi($('sim-kpi'), [
+      { k: '全黑自由运转周期 τ', v: num(tau, 3) + ' h', id: 'kpi-tau' },
+      { k: 'CBTmin 个数', v: String(cs.length), id: 'kpi-ncbt' },
+      { k: '最后两次间隔', v: sp.length ? num(sp[sp.length - 1], 3) + ' h' : '—', id: 'kpi-spacing' },
+      { k: '末刻振幅', v: num(CL.amplitudeAt(tr, tr.n - 1), 3), id: 'kpi-amp' }
+    ]);
+    figSimState(lastSim);
+    figSimPhase(lastSim);
+    rows($('sim-table').tBodies[0], cs.map(function (c, i2) {
+      var idx = Math.min(tr.n - 1, Math.round(c / dt));
+      return [String(i2 + 1), num(c, 2), hhmm(c), hhmm(dl[i2]), i2 ? num(c - cs[i2 - 1], 3) : '—', num(CL.amplitudeAt(tr, idx), 3)];
+    }));
+    save();
+  }
+  function figSimState(S) {
+    var F = new AEPlot.Frame('fig-sim-state', { pad: { l: 52, r: 90, t: 16, b: 40 } });
+    var tr = S.tr, isH = S.mk === 'hannay19';
+    var a = CL.column(tr, 0), b = CL.column(tr, 1), i;
+    var lo = Infinity, hi = -Infinity;
+    for (i = 0; i < tr.n; i++) {
+      var v1 = isH ? a[i] : a[i], v2 = isH ? Math.cos(b[i]) : b[i];
+      lo = Math.min(lo, v1, v2); hi = Math.max(hi, v1, v2);
+    }
+    var pad = (hi - lo) * 0.12;
+    F.setDomain(0, S.days, lo - pad, hi + pad);
+    // 光照竖带
+    var on = null;
+    for (i = 0; i < tr.n; i++) {
+      var lit = tr.light[i] > 1;
+      if (lit && on === null) on = tr.time[i];
+      if ((!lit || i === tr.n - 1) && on !== null) {
+        el('rect', { x: F.sx(on / 24), y: F.y1, width: Math.max(0.5, F.sx(tr.time[i] / 24) - F.sx(on / 24)),
+          height: F.y0 - F.y1, fill: '#ffffff', opacity: 0.075 }, F.svg);
+        on = null;
+      }
+    }
+    F.axes({ xlabel: '天', ylabel: isH ? 'R / cos Ψ' : 'x / xc', xfmt: function (v) { return num(v, 0); },
+             yfmt: function (v) { return num(v, 1); } });
+    var p1 = [], p2 = [];
+    for (i = 0; i < tr.n; i++) {
+      p1.push([tr.time[i] / 24, a[i]]);
+      p2.push([tr.time[i] / 24, isH ? Math.cos(b[i]) : b[i]]);
+    }
+    F.path(p2, { stroke: '#9a6cff', width: 1.3, opacity: 0.85 });
+    F.path(p1, { stroke: '#00d4ff', width: 1.8 });
+    F.P.text(F.x1 + 6, F.sy(p1[p1.length - 1][1]) + 4, isH ? 'R' : 'x', { anchor: 'start', size: 11, fill: '#00d4ff',
+      plate: true, offsets: [[0, 0], [0, -13], [0, 13]] });
+    F.P.text(F.x1 + 6, F.sy(p2[p2.length - 1][1]) + 4, isH ? 'cos Ψ' : 'xc', { anchor: 'start', size: 11, fill: '#9a6cff',
+      plate: true, offsets: [[0, 0], [0, 13], [0, -13], [0, 26]] });
+    S.cs.forEach(function (c) {
+      var idx = Math.min(tr.n - 1, Math.round(c / S.dt));
+      F.dot(c / 24, isH ? a[idx] : a[idx], { r: 3, fill: COL.cbt });
+    });
+    S.dl.forEach(function (c) {
+      if (c < 0) return;
+      var idx = Math.min(tr.n - 1, Math.max(0, Math.round(c / S.dt)));
+      F.dot(c / 24, isH ? a[idx] : a[idx], { r: 2.6, fill: '#9a6cff' });
+    });
+  }
+  function figSimPhase(S) {
+    var F = new AEPlot.Frame('fig-sim-phase', { pad: { l: 52, r: 24, t: 16, b: 40 } });
+    var tr = S.tr, isH = S.mk === 'hannay19', i, xs = [], ys = [];
+    for (i = 0; i < tr.n; i++) {
+      var R = tr.states[i * tr.ns], Ps = tr.states[i * tr.ns + 1];
+      xs.push(isH ? R * Math.cos(Ps) : R);
+      ys.push(isH ? R * Math.sin(Ps) : -Ps);
+    }
+    var lo1 = Math.min.apply(null, xs), hi1 = Math.max.apply(null, xs);
+    var lo2 = Math.min.apply(null, ys), hi2 = Math.max.apply(null, ys);
+    var px = (hi1 - lo1) * 0.1 || 0.1, py = (hi2 - lo2) * 0.1 || 0.1;
+    F.setDomain(lo1 - px, hi1 + px, lo2 - py, hi2 + py);
+    F.axes({ xlabel: isH ? 'R·cos Ψ' : 'x', ylabel: isH ? 'R·sin Ψ' : '−xc', xfmt: function (v) { return num(v, 1); },
+             yfmt: function (v) { return num(v, 1); } });
+    var split = Math.min(tr.n - 1, Math.round(2 * 24 / S.dt));
+    var pA = [], pB = [];
+    for (i = 0; i <= split; i++) pA.push([xs[i], ys[i]]);
+    for (i = split; i < tr.n; i++) pB.push([xs[i], ys[i]]);
+    F.path(pA, { stroke: '#4a4a4a', width: 1.2 });
+    F.path(pB, { stroke: '#00d4ff', width: 1.5 });
+    F.dot(xs[0], ys[0], { r: 3.5, fill: '#ff4d4d' });
+    F.P.text(F.sx(xs[0]), F.sy(ys[0]) - 8, '初值', { size: 10, fill: '#ff4d4d', plate: true,
+      offsets: [[0, 0], [0, 20], [26, 4], [-26, 4]] });
+  }
+
+  // ── PRC ───────────────────────────────────────────────────────────────
+  var lastPRC = null;
+  function runPRC() {
+    var mk = $('prc-model').value;
+    var o = { model: mk, nPhases: +$('prc-n').value, pulseHours: +$('prc-dur').value,
+              pulseLux: +$('prc-lux').value, backgroundLux: +$('prc-bg').value,
+              cycles: +$('prc-cycles').value, postDays: 3, dt: 0.05 };
+    if (!(o.nPhases >= 6) || !(o.pulseHours > 0)) return;
+    var r = CL.plan.prc(o);
+    lastPRC = r;
+    var maxAdv = -Infinity, maxDel = Infinity, advAt = 0, delAt = 0, minAmp = Infinity, minAt = 0;
+    r.points.forEach(function (q) {
+      if (isFinite(q.shift)) {
+        if (q.shift > maxAdv) { maxAdv = q.shift; advAt = q.phase; }
+        if (q.shift < maxDel) { maxDel = q.shift; delAt = q.phase; }
+      }
+      if (isFinite(q.amp) && q.amp < minAmp) { minAmp = q.amp; minAt = q.phase; }
+    });
+    var ratio = minAmp / r.ctrlAmp, pp = maxAdv - maxDel;
+    // 只有跨过奇点（峰峰值接近一整圈）才配叫 Type 0；振幅被压低只能说是强重置。
+    var kind = pp >= 12 ? 'Type 0（跨越奇点）' : (ratio < 0.8 ? '强重置（振幅被压低）' : 'Type 1（弱重置）');
+    kpi($('prc-kpi'), [
+      { k: '最大提前', v: num(maxAdv, 2) + ' h @ CBTmin+' + num(advAt, 1) + ' h', id: 'kpi-prc-adv' },
+      { k: '最大延后', v: num(maxDel, 2) + ' h @ CBTmin+' + num(delAt, 1) + ' h', id: 'kpi-prc-del' },
+      { k: '峰峰值', v: num(pp, 2) + ' h', id: 'kpi-prc-pp' },
+      { k: '振幅最低压到', v: num(ratio * 100, 1) + ' %（@CBTmin+' + num(minAt, 1) + ' h）', id: 'kpi-prc-amp' },
+      { k: '重置类型', v: kind, tone: ratio < 0.8 ? 'bad' : 'good', id: 'kpi-prc-type' }
+    ]);
+    figPRC(r);
+    figPRCAmp(r);
+    var step = Math.max(1, Math.round(r.points.length / 12));
+    rows($('prc-table').tBodies[0], r.points.filter(function (_, i) { return i % step === 0; }).map(function (q) {
+      return [num(q.phase, 1), sgn(q.shift, 2), q.shift > 0.05 ? '提前' : (q.shift < -0.05 ? '延后' : '几乎不动'),
+              num(q.amp, 3), num(q.amp / r.ctrlAmp * 100, 1) + ' %'];
+    }));
+    save();
+  }
+  function figPRC(r) {
+    var F = new AEPlot.Frame('fig-prc', { pad: { l: 54, r: 24, t: 18, b: 42 } });
+    var lo = 0, hi = 0;
+    r.points.forEach(function (q) { if (isFinite(q.shift)) { lo = Math.min(lo, q.shift); hi = Math.max(hi, q.shift); } });
+    var pad = Math.max(0.3, (hi - lo) * 0.15);
+    F.setDomain(0, 24, lo - pad, hi + pad);
+    F.axes({ xlabel: '脉冲中点相对 CBTmin（小时）', ylabel: '相位位移（小时，正 = 提前）',
+             xfmt: function (v) { return num(v, 0); }, yfmt: function (v) { return num(v, 1); } });
+    F.hline(0, { stroke: '#444', dash: '4 4' });
+    // 延后区 / 提前区底色
+    el('rect', { x: F.sx(0), y: F.y1, width: F.sx(12) - F.sx(0), height: F.y0 - F.y1, fill: COL.bright, opacity: 0.05 }, F.svg);
+    el('rect', { x: F.sx(12), y: F.y1, width: F.sx(24) - F.sx(12), height: F.y0 - F.y1, fill: COL.avoid, opacity: 0.05 }, F.svg);
+    F.path(r.points.map(function (q) { return [q.phase, q.shift]; }), { stroke: COL.plan, width: 2 });
+    r.points.forEach(function (q) { if (isFinite(q.shift)) F.dot(q.phase, q.shift, { r: 2.2, fill: COL.plan }); });
+    F.P.text(F.sx(6), F.y1 + 16, '提前区（CBTmin 之后＝清晨）', { size: 10.5, fill: '#7fdcf0', plate: true,
+      offsets: [[0, 0], [0, 16], [0, 32]] });
+    F.P.text(F.sx(18), F.y1 + 16, '延后区（CBTmin 之前＝夜里）', { size: 10.5, fill: '#b58cff', plate: true,
+      offsets: [[0, 0], [0, 16], [0, 32]] });
+  }
+  function figPRCAmp(r) {
+    var F = new AEPlot.Frame('fig-prc-amp', { pad: { l: 54, r: 24, t: 16, b: 40 } });
+    var lo = Infinity, hi = -Infinity;
+    r.points.forEach(function (q) { if (isFinite(q.amp)) { lo = Math.min(lo, q.amp); hi = Math.max(hi, q.amp); } });
+    hi = Math.max(hi, r.ctrlAmp); lo = Math.min(lo, r.ctrlAmp);
+    var pad = Math.max(0.02, (hi - lo) * 0.2);
+    F.setDomain(0, 24, Math.max(0, lo - pad), hi + pad);
+    F.axes({ xlabel: '脉冲中点相对 CBTmin（小时）', ylabel: '脉冲后振幅', xfmt: function (v) { return num(v, 0); },
+             yfmt: function (v) { return num(v, 2); } });
+    F.hline(r.ctrlAmp, { stroke: '#33d17a', dash: '5 4' });
+    F.path(r.points.map(function (q) { return [q.phase, q.amp]; }), { stroke: '#ff9f1a', width: 2 });
+    F.P.text(F.x1 - 6, F.sy(r.ctrlAmp) - 6, '对照组振幅', { anchor: 'end', size: 10.5, fill: '#33d17a', plate: true,
+      offsets: [[0, 0], [0, 16], [0, -14]] });
+  }
+
+  // ── 说明页 ────────────────────────────────────────────────────────────
+  var CAPS = [
+    ['model-forger99', 'Forger 1999 三变量模型', '光转导 Process L + van der Pol 型振子'],
+    ['model-jewett99', 'Jewett 1999 修订极限环模型', '七次项 + 光对振幅的作用项 q·B̂·xc'],
+    ['model-hannay19', 'Hannay 2019 宏观模型', 'Kuramoto 平均场，状态是幅值 R 与相位 Ψ'],
+    ['jetlag-plan', '倒时差逐日光照排程', '在清醒时段网格搜索求光/避光窗口，逐日重跑模型'],
+    ['jetlag-baseline', '与「不干预」对照', '同样作息同样日常光照，只去掉求光/避光安排'],
+    ['jetlag-prep', '出发前预调整', '按每天最多 N 小时的限度提前移动作息'],
+    ['jetlag-inflight', '机上睡眠建议', '目的地目标睡窗与飞行段的交集（≥1.5 h 才给）'],
+    ['jetlag-daylight', '只排在自然光时段', '勾选后强光窗口必须落在目的地日出日落之间'],
+    ['jetlag-csv', '逐日计划导出 CSV', '表格原样导出，可贴进日历或表格软件'],
+    ['jetlag-share', '分享链接', '把整套输入编码进 URL，打开即复现（链接里的参数优先于本机留存）'],
+    ['shift-wocl', '夜班 WOCL 工时占比', '落在 CBTmin ± 2 h 内的工时比例'],
+    ['shift-strategies', '三种倒班策略对比', '不干预 / 班前强光 / 强光+墨镜+全暗'],
+    ['dose-saturation', '光照饱和曲线', '把 α(I) 与 B̂ 在 0.5–20000 lux 上画出来'],
+    ['dose-equal', '等 lux·小时 对比', '同样剂量放在不同时段，位移差好几倍'],
+    ['dose-screen', '睡前屏幕的代价', '按天给出被推后的分钟数'],
+    ['sim-freerun', '自由运转周期 τ', '全黑条件下相邻 CBTmin 间隔'],
+    ['sim-limitcycle', '极限环相平面', '从偏离初值卷回极限环的过程'],
+    ['sim-markers', 'CBTmin / DLMO 标记', 'DLMO 口径 = CBTmin − 7 h'],
+    ['prc-curve', '相位响应曲线', '脉冲中点扫遍 24 个相位，与对照组比第 3 个 CBTmin'],
+    ['prc-cycles', '多周期强刺激', '连续 N 天同一相位给强光，位移与振幅抑制都显著放大'],
+    ['solar', '日出日落', 'NOAA 太阳位置算法，天顶角 90.833°'],
+    ['tz-dst', '时区与夏令时', '用浏览器 IANA 数据库，按具体日期取偏移'],
+    ['storage', '输入本机留存', 'localStorage，刷新后还在']
+  ];
+  var VALID = [];
+  function renderAbout() {
+    $('about-eq').textContent =
+      'Forger99   dx/dt  = π/12 · ( xc + B̂ )\n'
+      + '           dxc/dt = π/12 · ( μ(xc − 4xc³/3) − x[(24/(0.99669 τx))² + k·B̂] )\n'
+      + '           dn/dt  = 60 · ( α(1−n) − β n ),   α = α₀ (I/I₀)^p\n'
+      + '           B̂ = G α (1−n)(1 − 0.4x)(1 − 0.4xc)\n\n'
+      + 'Jewett99   dx/dt  = π/12 · ( xc + μ(x/3 + 4x³/3 − 256x⁷/105) + B̂ )\n'
+      + '           dxc/dt = π/12 · ( q·B̂·xc − x[(24/(0.99729 τx))² + k·B̂] )\n\n'
+      + 'Hannay19   dR/dt  = −γR + K·cos(β₁)/2 · R(1−R⁴) + 光幅值项\n'
+      + '           dΨ/dt  = 2π/τ + K/2·sin(β₁)(1+R⁴) + 光相位项,   α = α₀ I^p/(I^p + I₀)';
+    var P = { forger99: CL.paramsOf('forger99'), jewett99: CL.paramsOf('jewett99'), hannay19: CL.paramsOf('hannay19') };
+    var MEAN = { taux: '固有周期 τx（h）', tau: '固有周期 τ（h）', mu: '振子刚度 μ', G: '光增益 G', alpha_0: '光转导 α₀',
+      beta: '光门控恢复率 β', delta: '光门控恢复率 δ', p: '光强指数 p', I0: '半饱和照度 I₀（lux）', k: '光对周期的作用 k',
+      q: '光对振幅的作用 q', phi_ref: 'CBTmin 相对 x 极小的偏移（h）', cbt_to_dlmo: 'CBTmin − DLMO（h）',
+      K: '耦合强度 K', gamma: '幅值衰减 γ', Beta1: '耦合相位 β₁', A1: '一次谐波 A₁', A2: '二次谐波 A₂',
+      BetaL1: '光相位偏置 βL₁', BetaL2: '光相位偏置 βL₂', sigma: '光相位漂移 σ' };
+    var keys = [];
+    ['forger99', 'jewett99', 'hannay19'].forEach(function (m) {
+      Object.keys(P[m]).forEach(function (k) { if (keys.indexOf(k) < 0) keys.push(k); });
+    });
+    rows($('about-params').tBodies[0], keys.map(function (k) {
+      return [k, P.forger99[k] == null ? '—' : String(P.forger99[k]), P.jewett99[k] == null ? '—' : String(P.jewett99[k]),
+              P.hannay19[k] == null ? '—' : String(P.hannay19[k]), { html: MEAN[k] || '', cls: 'cl-txt' }];
+    }));
+    rows($('cap-list').tBodies[0], CAPS.map(function (c) {
+      return [{ html: '<span data-cap="' + c[0] + '">' + c[1] + '</span>', cls: 'cl-txt' }, { html: c[2], cls: 'cl-txt' }];
+    }));
+    rows($('about-valid').tBodies[0], VALID.map(function (v) { return [v[0], v[1], v[2], v[3]]; }));
+  }
+
+  // ── 分享 / 导出 ───────────────────────────────────────────────────────
+  function shareLink() {
+    var o = {
+      model: $('jet-model').value, from: $('jet-from').value, to: $('jet-to').value,
+      depDate: $('jet-dep-date').value, depTime: $('jet-dep-time').value,
+      arrDate: $('jet-arr-date').value, arrTime: $('jet-arr-time').value,
+      homeSleep: $('jet-home-sleep').value, homeWake: $('jet-home-wake').value,
+      destSleep: $('jet-dest-sleep').value, destWake: $('jet-dest-wake').value,
+      prepDays: $('jet-prep').value, planDays: $('jet-days').value,
+      brightHours: $('jet-bright-h').value, avoidHours: $('jet-avoid-h').value,
+      wakeLux: $('jet-wake-lux').value, brightLux: $('jet-bright-lux').value,
+      daylightOnly: $('jet-daylight').checked
+    };
+    var code = CL.codec.encodePlan(o);
+    location.hash = 'p=' + code;
+    window.CLApp.lastCode = code;
+    try {
+      // writeText 返回的是 Promise：没有剪贴板权限时它是**异步 reject**，try/catch 接不住，
+      // 会变成一条未捕获的 PAGEERROR（2026-09-19 实撞），所以必须挂 .catch。
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        var pr = navigator.clipboard.writeText(location.href);
+        if (pr && pr.catch) pr.catch(function () {});
+      }
+      $('jet-msg').textContent = '已把这套输入写进地址栏（并尝试复制到剪贴板）';
+      $('jet-msg').style.color = '#33d17a';
+    } catch (e) { /* 剪贴板不可用：地址栏里已经有了 */ }
+    return code;
+  }
+  function applyCode(code) {
+    var o = CL.codec.decodePlan(code), map = {
+      model: 'jet-model', from: 'jet-from', to: 'jet-to', depDate: 'jet-dep-date', depTime: 'jet-dep-time',
+      arrDate: 'jet-arr-date', arrTime: 'jet-arr-time', homeSleep: 'jet-home-sleep', homeWake: 'jet-home-wake',
+      destSleep: 'jet-dest-sleep', destWake: 'jet-dest-wake', prepDays: 'jet-prep', planDays: 'jet-days',
+      brightHours: 'jet-bright-h', avoidHours: 'jet-avoid-h', wakeLux: 'jet-wake-lux', brightLux: 'jet-bright-lux'
+    };
+    Object.keys(map).forEach(function (k) { if (o[k] != null) $(map[k]).value = o[k]; });
+    if (o.daylightOnly != null) $('jet-daylight').checked = !!o.daylightOnly;
+  }
+  function exportCSV() {
+    if (!lastJet) return '';
+    var head = ['日期', '阶段', '睡眠', '求光', '避光', 'CBTmin', '相位差h', '日出', '日落'];
+    var lines = [head.join(',')];
+    lastJet.planned.rows.forEach(function (r) {
+      lines.push([r.date + ' ' + r.weekday, r.kind,
+        r.sleeps.map(function (s) { return hhmm(s.fromClock) + '-' + hhmm(s.toClock); }).join(' / ') || '-',
+        r.bright ? hhmm(r.bright.fromClock) + '-' + hhmm(r.bright.toClock) : '-',
+        r.avoid ? hhmm(r.avoid.fromClock) + '-' + hhmm(r.avoid.toClock) : '-',
+        r.cbtClock == null ? '-' : hhmm(r.cbtClock), num(r.misalign, 2),
+        r.sunrise == null ? '-' : hhmm(r.sunrise), r.sunset == null ? '-' : hhmm(r.sunset)].join(','));
+    });
+    var csv = lines.join('\n');
+    window.CLApp.lastCsv = csv;
+    try {
+      var blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'circadian-plan-' + lastJet.o.home.id + '-' + lastJet.o.dest.id + '.csv';
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
+    } catch (e) { /* 下载不可用时至少 CLApp.lastCsv 里有 */ }
+    return csv;
+  }
+
+  // ── 初始化 ────────────────────────────────────────────────────────────
+  function fillSelect(sel, items, value) {
+    items.forEach(function (it) {
+      var op = document.createElement('option');
+      op.value = it.v; op.textContent = it.t;
+      sel.appendChild(op);
+    });
+    if (value != null) sel.value = value;
+  }
+  function init() {
+    window.CLApp = { CL: CL, run: { jet: runJet, shift: runShift, sim: runSim, prc: runPRC, dose: renderDose, screen: runScreen },
+                     share: shareLink, csv: exportCSV, showTab: showTab, caps: CAPS,
+                     get jet() { return lastJet; }, get shift() { return lastShift; },
+                     get sim() { return lastSim; }, get prc() { return lastPRC; } };
+    var cityItems = CL.CITIES.map(function (c) { return { v: c.id, t: c.zh + '（' + c.id + '）' }; });
+    fillSelect($('jet-from'), cityItems, D.jet.from);
+    fillSelect($('jet-to'), cityItems, D.jet.to);
+    var modelItems = Object.keys(CL.MODELS).map(function (k) { return { v: k, t: CL.MODELS[k].name }; });
+    ['jet-model', 'shift-model', 'sim-model', 'prc-model', 'dose-model'].forEach(function (id) {
+      fillSelect($(id), modelItems, 'forger99');
+    });
+    // 默认行程：今天 +7 天
+    var now = new Date();
+    var dep = addDays({ y: now.getFullYear(), mo: now.getMonth() + 1, d: now.getDate() }, 7);
+    $('jet-dep-date').value = dateStr(dep);
+    $('jet-arr-date').value = dateStr(dep);
+    $('jet-dep-time').value = D.jet.depTime;
+    $('jet-arr-time').value = D.jet.arrTime;
+    $('jet-home-sleep').value = D.jet.homeSleep; $('jet-home-wake').value = D.jet.homeWake;
+    $('jet-dest-sleep').value = D.jet.destSleep; $('jet-dest-wake').value = D.jet.destWake;
+    $('jet-prep').value = D.jet.prepDays; $('jet-days').value = D.jet.planDays;
+    $('jet-bright-h').value = D.jet.brightHours; $('jet-avoid-h').value = D.jet.avoidHours;
+    $('jet-bright-lux').value = D.jet.brightLux; $('jet-wake-lux').value = D.jet.wakeLux;
+    $('jet-daylight').checked = D.jet.daylightOnly;
+    $('shift-start').value = D.shift.shiftStart; $('shift-end').value = D.shift.shiftEnd;
+    $('shift-nights').value = D.shift.nights; $('shift-off').value = D.shift.offDays;
+    $('shift-sleep-start').value = D.shift.daySleepStart; $('shift-sleep-h').value = D.shift.sleepHours;
+    $('shift-work-lux').value = D.shift.workLux; $('shift-bright-lux').value = D.shift.brightLux;
+    $('shift-strategy').value = D.shift.strategy;
+    $('sim-days').value = D.sim.days; $('sim-sleep').value = D.sim.sleep; $('sim-wake').value = D.sim.wake;
+    $('sim-lux').value = D.sim.wakeLux; $('sim-dt').value = D.sim.dt; $('sim-freerun').value = D.sim.freeRunAfter;
+    $('prc-n').value = D.prc.nPhases; $('prc-dur').value = D.prc.pulseHours;
+    $('prc-lux').value = D.prc.pulseLux; $('prc-bg').value = D.prc.backgroundLux;
+    $('prc-cycles').value = D.prc.cycles;
+    $('dose-screen-h').value = D.dose.screenHours; $('dose-screen-lux').value = D.dose.screenLux;
+    $('dose-days').value = D.dose.days;
+
+    try { restore(JSON.parse(localStorage.getItem(LS))); } catch (e) { /* 没有就算了 */ }
+    var m = /[#&]p=([A-Za-z0-9_-]+)/.exec(location.hash || '');
+    if (m) { try { applyCode(m[1]); } catch (e) { /* 分享码坏了就用默认值 */ } }
+
+    $('cl-tabs').addEventListener('click', function (ev) {
+      var b = ev.target.closest('.cl-tab');
+      if (b) showTab(b.getAttribute('data-tab'));
+    });
+    $('cl-tabs').addEventListener('keydown', function (ev) {
+      var order = ['jet', 'shift', 'dose', 'sim', 'prc', 'about'], i = order.indexOf(current);
+      if (ev.key === 'ArrowRight') { showTab(order[(i + 1) % order.length]); $('tab-' + current).focus(); }
+      if (ev.key === 'ArrowLeft') { showTab(order[(i + order.length - 1) % order.length]); $('tab-' + current).focus(); }
+    });
+    $('nav-about').addEventListener('click', function (ev) { ev.preventDefault(); showTab('about'); });
+    $('jet-run').addEventListener('click', runJet);
+    $('jet-share').addEventListener('click', shareLink);
+    $('jet-csv').addEventListener('click', exportCSV);
+    $('shift-run').addEventListener('click', runShift);
+    $('sim-run').addEventListener('click', runSim);
+    $('prc-run').addEventListener('click', runPRC);
+    $('prc-strong').addEventListener('click', function () {
+      $('prc-dur').value = 6.7; $('prc-lux').value = 10000; $('prc-cycles').value = 3; runPRC();
+    });
+    $('dose-run').addEventListener('click', function () { renderDose(); runScreen(); });
+    ['jet-from', 'jet-to', 'jet-model'].forEach(function (id) { $(id).addEventListener('change', runJet); });
+    $('shift-strategy').addEventListener('change', runShift);
+
+    VALID.push(['三套模型的完整轨迹（x / xc / n 逐点）', 'Arcascope 的开源包 circadian（同一套 RK4、同一份光照数组）',
+      '66 个算例 · 829638 个状态标量', '3.6e-15']);
+    VALID.push(['CBTmin / DLMO 标记', '同上（scipy.signal.find_peaks 口径）', '66 个算例逐条比对', '完全一致']);
+    VALID.push(['日出 / 日落 / 太阳正午', 'astral', '12 城 × 6 日期 = 216 条', '0.58 分钟']);
+    VALID.push(['时区偏移与夏令时', 'Python zoneinfo', '12 城 × 8 时刻 + 6 个切换日', '完全一致']);
+    VALID.push(['光照作息构造器', 'circadian 包的 LightSchedule.Regular', '4 组参数 × 7200 个采样点', '逐点相同']);
+    VALID.push(['不依赖任何实现的性质', '周期锁定 / 时间平移等变 / 积分器阶数 / n∈[0,1] / PRC 方向 / 排程不劣于对照',
+      '离线套件共 1048 条断言', '全绿']);
+    showTab((function () { try { var s = JSON.parse(localStorage.getItem(LS)); return (s && s.tab) || 'jet'; } catch (e) { return 'jet'; } })());
+    runJet();
+    renderAbout();
+    ran.about = 1;
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
+})();
+</script>
+</body>
+</html>
