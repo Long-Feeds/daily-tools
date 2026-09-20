@@ -1,0 +1,2208 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>房间声学工作台 · Room Lab</title>
+<meta name="description" content="量房间、算混响、看模态、模拟脉冲响应、定音箱摆位、设计吸声构造 —— 浏览器里一条链算完，零上传。">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* [hidden] 守卫必须最先写、且带 !important：本页作者规则与 UA 的 [hidden]{display:none}
+   同特异性，靠后即胜出，会让 el.hidden = true 彻底失效（2026-07-20 全站实撞）。 */
+[hidden]{display:none!important}
+
+:root{
+  --rl-canvas:#ffffff; --rl-soft:#fafafa; --rl-dark:#171717;
+  --rl-hair:#e5e5e5; --rl-hair-strong:#d4d4d4;
+  --rl-ink:#000000; --rl-ink-deep:#090909; --rl-charcoal:#525252; --rl-body:#737373; --rl-mute:#a3a3a3;
+  --rl-on-dark:#ffffff; --rl-on-dark-mute:rgba(255,255,255,.7);
+  --rl-red:#ff5f56; --rl-yellow:#ffbd2e; --rl-green:#27c93f;
+  --rl-focus:rgba(59,130,246,.5);
+  --rl-r-sm:6px; --rl-r-md:8px; --rl-r-lg:12px; --rl-r-full:9999px;
+  --rl-s1:4px; --rl-s2:8px; --rl-s3:12px; --rl-s4:16px; --rl-s5:24px; --rl-s6:32px; --rl-sec:88px;
+  --rl-sans:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
+  --rl-display:Nunito,"SF Pro Rounded",ui-rounded,system-ui,-apple-system,sans-serif;
+  --rl-mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--rl-canvas);color:var(--rl-ink);font-family:var(--rl-sans);
+  font-size:16px;line-height:1.5;-webkit-font-smoothing:antialiased}
+a{color:var(--rl-ink)}
+:focus-visible{outline:2px solid var(--rl-focus);outline-offset:2px}
+
+.rl-wrap{max-width:1120px;margin:0 auto;padding:0 16px}
+.rl-prose{max-width:760px}
+
+/* ── 顶栏 ───────────────────────────────────────────── */
+.rl-top{border-bottom:1px solid var(--rl-hair)}
+.rl-top .rl-wrap{height:56px;display:flex;align-items:center;gap:var(--rl-s4)}
+.rl-back{font-size:14px;font-weight:500;text-decoration:none;color:var(--rl-ink);
+  border:1px solid var(--rl-hair-strong);border-radius:var(--rl-r-full);padding:7px 16px;line-height:1;
+  white-space:nowrap}
+.rl-back:hover{background:var(--rl-soft)}
+.rl-brand{font-family:var(--rl-display);font-weight:600;font-size:16px;margin-left:auto}
+.rl-brand span{color:var(--rl-body);font-weight:500}
+
+/* ── hero ──────────────────────────────────────────── */
+.rl-hero{padding:56px 0 40px;text-align:center}
+.rl-hero h1{font-family:var(--rl-display);font-size:36px;font-weight:500;line-height:1.11;margin:0 0 var(--rl-s4)}
+.rl-hero p{color:var(--rl-body);font-size:16px;margin:0 auto;max-width:640px}
+/* Ollama 的招牌：hero 下面那颗装 curl 的灰色胶囊 */
+.rl-snippet{display:inline-flex;align-items:center;gap:var(--rl-s3);background:var(--rl-soft);
+  border-radius:var(--rl-r-full);padding:12px 20px;min-height:48px;font-family:var(--rl-mono);font-size:15px;
+  margin-top:var(--rl-s5);max-width:100%;flex-wrap:wrap;justify-content:center}
+.rl-snippet b{font-weight:500}
+.rl-snippet i{font-style:normal;color:var(--rl-mute)}
+
+/* ── 页签 ──────────────────────────────────────────── */
+.rl-tabs{display:flex;gap:var(--rl-s2);flex-wrap:wrap;justify-content:center;padding:0 0 var(--rl-s6)}
+.rl-tab{font-family:var(--rl-sans);font-size:14px;font-weight:500;line-height:1;cursor:pointer;
+  background:var(--rl-canvas);color:var(--rl-charcoal);border:1px solid var(--rl-hair-strong);
+  border-radius:var(--rl-r-full);padding:10px 20px;min-height:36px}
+.rl-tab:hover{background:var(--rl-soft)}
+.rl-tab[aria-selected="true"]{background:var(--rl-ink);color:var(--rl-on-dark);border-color:var(--rl-ink)}
+
+/* ── 布局 ──────────────────────────────────────────── */
+.rl-cols{display:grid;grid-template-columns:320px minmax(0,1fr);gap:var(--rl-s5);align-items:start}
+/* 网格子项默认 min-width:auto，内部的宽表会把整列顶开 ⇒ 窄屏整页横向溢出（2026-08-27 教训）*/
+.rl-cols>*{min-width:0}
+@media (max-width:900px){.rl-cols{grid-template-columns:minmax(0,1fr)}}
+.rl-card{background:var(--rl-canvas);border:1px solid var(--rl-hair);border-radius:var(--rl-r-lg);
+  padding:var(--rl-s5);min-width:0}
+.rl-card+.rl-card{margin-top:var(--rl-s4)}
+.rl-card h2{font-family:var(--rl-display);font-size:20px;font-weight:600;margin:0 0 var(--rl-s4)}
+.rl-card h3{font-family:var(--rl-display);font-size:18px;font-weight:500;margin:var(--rl-s5) 0 var(--rl-s3)}
+.rl-card h3:first-child{margin-top:0}
+.rl-note{color:var(--rl-body);font-size:14px;margin:var(--rl-s2) 0 0}
+.rl-warnbox{background:var(--rl-dark);color:var(--rl-on-dark-mute);border-radius:var(--rl-r-lg);
+  padding:var(--rl-s4);margin-top:var(--rl-s3)}
+.rl-grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:var(--rl-s4)}
+
+/* ── 表单控件：一律胶囊 ─────────────────────────────── */
+.rl-field{display:flex;flex-direction:column;gap:6px;margin-bottom:var(--rl-s3);min-width:0}
+.rl-field>span{font-size:12px;color:var(--rl-body);padding-left:var(--rl-s3)}
+.rl-field input,.rl-field select{font-family:var(--rl-sans);font-size:14px;color:var(--rl-ink);
+  background:var(--rl-canvas);border:1px solid var(--rl-hair-strong);border-radius:var(--rl-r-full);
+  padding:9px 16px;height:40px;width:100%;min-width:0;appearance:none}
+.rl-field select{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8'><path d='M1 1l5 5 5-5' fill='none' stroke='%23737373' stroke-width='1.5'/></svg>");
+  background-repeat:no-repeat;background-position:right 16px center;padding-right:38px}
+/* 固定 3 列会把 320px 侧栏里的数字输入框压到 ~85px（控件最小尺寸守卫的下界是 100px）。
+   改成 auto-fit：放得下就 3 列，放不下自动退成 2 列，任何宽度下都 ≥100px。 */
+.rl-row3{display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:var(--rl-s2)}
+.rl-row2{display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:var(--rl-s2)}
+.rl-check{display:flex;align-items:center;gap:var(--rl-s2);font-size:14px;color:var(--rl-charcoal);
+  margin-bottom:var(--rl-s2)}
+.rl-check input{width:18px;height:18px;min-width:18px;flex:none;accent-color:var(--rl-ink)}
+.rl-btn{font-family:var(--rl-sans);font-size:14px;font-weight:500;line-height:1;cursor:pointer;
+  background:var(--rl-ink);color:var(--rl-on-dark);border:1px solid var(--rl-ink);
+  border-radius:var(--rl-r-full);padding:11px 20px;min-height:36px;min-width:76px}
+.rl-btn:hover{background:var(--rl-ink-deep)}
+.rl-btn2{background:var(--rl-canvas);color:var(--rl-ink);border-color:var(--rl-hair-strong)}
+.rl-btn2:hover{background:var(--rl-soft)}
+.rl-btnrow{display:flex;gap:var(--rl-s2);flex-wrap:wrap;margin-top:var(--rl-s3)}
+
+/* ── 终端卡（Ollama 的产品预览位）──────────────────── */
+.rl-term{border:1px solid var(--rl-hair);border-radius:var(--rl-r-lg);padding:var(--rl-s4);
+  font-family:var(--rl-mono);font-size:14px;line-height:1.5;margin-bottom:var(--rl-s4);overflow-x:auto}
+.rl-lights{display:flex;gap:6px;margin-bottom:var(--rl-s3)}
+.rl-lights i{width:12px;height:12px;border-radius:var(--rl-r-full);display:block}
+.rl-termline{white-space:pre;color:var(--rl-charcoal)}
+.rl-termline b{color:var(--rl-ink);font-weight:500}
+.rl-termline em{font-style:normal;color:var(--rl-mute)}
+
+/* ── 唯一的反色面：结论条 ──────────────────────────── */
+.rl-dark{background:var(--rl-dark);color:var(--rl-on-dark);border-radius:var(--rl-r-lg);
+  padding:var(--rl-s5) var(--rl-s6);margin-bottom:var(--rl-s4)}
+.rl-dark h3{font-family:var(--rl-display);font-size:20px;font-weight:500;margin:0 0 var(--rl-s2);color:var(--rl-on-dark)}
+.rl-dark p{margin:0;color:var(--rl-on-dark-mute);font-size:14px}
+.rl-dark ul{margin:var(--rl-s3) 0 0;padding-left:20px;color:var(--rl-on-dark-mute);font-size:14px}
+
+/* ── KPI ───────────────────────────────────────────── */
+/* 用 gap + 容器底色拼分隔线时，格子数不是列数整数倍，最后一行会露出一整块灰
+   （2026-09-18 同族事故）。改成容器白底 + 每格 outline：outline 不占布局、
+   相邻两格的 1px 描边正好在 1px 的 gap 里重合成一条线，空位置则保持纯白。 */
+.rl-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(132px,1fr));gap:1px;
+  background:var(--rl-canvas);border:1px solid var(--rl-hair);border-radius:var(--rl-r-lg);overflow:hidden;
+  margin-bottom:var(--rl-s4)}
+.rl-kpi{background:var(--rl-canvas);padding:var(--rl-s4);outline:1px solid var(--rl-hair)}
+.rl-kpi dt{font-size:12px;color:var(--rl-body);margin:0 0 var(--rl-s1)}
+.rl-kpi dd{margin:0;font-family:var(--rl-mono);font-size:19px;font-weight:500;
+  font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rl-kpi dd small{font-family:var(--rl-sans);font-size:12px;font-weight:400;color:var(--rl-body)}
+
+/* ── 表格 ──────────────────────────────────────────── */
+.rl-tablewrap{overflow-x:auto;margin-top:var(--rl-s3)}
+table.rl-t{border-collapse:collapse;width:100%;font-size:13px;min-width:0}
+table.rl-t th,table.rl-t td{padding:8px 10px;text-align:right;border-bottom:1px solid var(--rl-hair);
+  white-space:nowrap}
+table.rl-t th:first-child,table.rl-t td:first-child{text-align:left}
+table.rl-t th{font-weight:500;font-size:12px;color:var(--rl-body);letter-spacing:.04em}
+table.rl-t td{font-family:var(--rl-mono);font-variant-numeric:tabular-nums;color:var(--rl-charcoal)}
+table.rl-t td.rl-txt{font-family:var(--rl-sans)}
+table.rl-t tbody tr:last-child td{border-bottom:none}
+.rl-pill{display:inline-block;border-radius:var(--rl-r-full);padding:2px 10px;font-size:12px;
+  font-family:var(--rl-sans);border:1px solid var(--rl-hair-strong);color:var(--rl-charcoal)}
+.rl-pill-ok{border-color:var(--rl-ink);color:var(--rl-ink)}
+.rl-pill-warn{background:var(--rl-dark);border-color:var(--rl-dark);color:var(--rl-on-dark)}
+
+/* ── 图 ────────────────────────────────────────────── */
+.rl-fig{margin:0 0 var(--rl-s4)}
+.rl-fig svg{display:block;width:100%;height:auto;background:var(--rl-canvas);
+  border:1px solid var(--rl-hair);border-radius:var(--rl-r-lg)}
+.rl-figcap{font-size:12px;color:var(--rl-body);margin-top:6px;padding-left:2px}
+.rl-legend{display:flex;gap:var(--rl-s4);flex-wrap:wrap;font-size:12px;color:var(--rl-charcoal);
+  margin-top:6px;padding-left:2px}
+.rl-legend span{display:inline-flex;align-items:center;gap:6px}
+.rl-legend b{width:14px;height:3px;border-radius:2px;display:block}
+
+/* ── 说明页 ────────────────────────────────────────── */
+.rl-doc h3{font-family:var(--rl-display);font-size:18px;font-weight:500;margin:var(--rl-s5) 0 var(--rl-s2)}
+.rl-doc p,.rl-doc li{color:var(--rl-body);font-size:15px}
+.rl-doc code{font-family:var(--rl-mono);font-size:13px;background:var(--rl-soft);
+  border-radius:var(--rl-r-sm);padding:2px 6px;color:var(--rl-ink)}
+.rl-doc ul{padding-left:20px}
+.rl-faq{border-top:1px solid var(--rl-hair);padding:var(--rl-s4) 0}
+.rl-faq b{display:block;font-size:18px;font-weight:500;font-family:var(--rl-display);
+  color:var(--rl-ink);margin-bottom:var(--rl-s1)}
+
+footer.rl-foot{border-top:1px solid var(--rl-hair);margin-top:var(--rl-sec);padding:var(--rl-s6) 0;
+  text-align:center;color:var(--rl-mute);font-size:12px}
+footer.rl-foot a{color:var(--rl-body)}
+main{padding-bottom:var(--rl-s6)}
+</style>
+</head>
+<body>
+
+<div class="rl-top"><div class="rl-wrap">
+  <a class="rl-back" href="../../">← 返回工具集</a>
+  <div class="rl-brand">Room Lab <span>· 房间声学工作台</span></div>
+</div></div>
+
+<header class="rl-hero"><div class="rl-wrap">
+  <h1>房间声学，先算清楚再动手</h1>
+  <p>量三个尺寸、点几种材料，就能把混响、驻波、首次反射点、音箱摆位和吸声构造一条链算完。引擎逐点对拍 pyroomacoustics 与 ISO 9613-1，全部在你自己的浏览器里跑，零上传。</p>
+  <div class="rl-snippet" id="rl-snippet"><b id="rl-snip-dims">—</b><i>·</i><b id="rl-snip-rt">—</b><i>·</i><b id="rl-snip-mode">—</b></div>
+</div></header>
+
+<nav class="rl-wrap"><div class="rl-tabs" role="tablist" id="rl-tablist">
+  <button class="rl-tab" role="tab" id="rl-tab-room"  aria-controls="rl-pane-room"  aria-selected="true">房间与混响</button>
+  <button class="rl-tab" role="tab" id="rl-tab-modes" aria-controls="rl-pane-modes" aria-selected="false">驻波与模态</button>
+  <button class="rl-tab" role="tab" id="rl-tab-rir"   aria-controls="rl-pane-rir"   aria-selected="false">脉冲响应</button>
+  <button class="rl-tab" role="tab" id="rl-tab-place" aria-controls="rl-pane-place" aria-selected="false">摆位与反射点</button>
+  <button class="rl-tab" role="tab" id="rl-tab-abs"   aria-controls="rl-pane-abs"   aria-selected="false">吸声构造</button>
+  <button class="rl-tab" role="tab" id="rl-tab-doc"   aria-controls="rl-pane-doc"   aria-selected="false">说明与对拍</button>
+</div></nav>
+
+<main class="rl-wrap">
+
+<!-- ══════ 房间与混响 ══════ -->
+<section id="rl-pane-room" role="tabpanel" aria-labelledby="rl-tab-room">
+ <div class="rl-cols">
+  <div>
+   <div class="rl-card">
+    <h2>房间</h2>
+    <div class="rl-row3">
+      <label class="rl-field"><span>宽 W (m)</span><input type="number" id="rl-in-W" step="0.05" min="1" max="60" value="4.20"></label>
+      <label class="rl-field"><span>进深 D (m)</span><input type="number" id="rl-in-D" step="0.05" min="1" max="60" value="5.80"></label>
+      <label class="rl-field"><span>层高 H (m)</span><input type="number" id="rl-in-H" step="0.05" min="1.8" max="20" value="2.70"></label>
+    </div>
+    <label class="rl-field"><span>用途（决定目标混响曲线）</span><select id="rl-in-usage"></select></label>
+    <h3>空气</h3>
+    <div class="rl-row3">
+      <label class="rl-field"><span>温度 (°C)</span><input type="number" id="rl-in-temp" step="1" min="-20" max="50" value="22"></label>
+      <label class="rl-field"><span>相对湿度 (%)</span><input type="number" id="rl-in-rh" step="1" min="1" max="99" value="55"></label>
+      <label class="rl-field"><span>气压 (kPa)</span><input type="number" id="rl-in-pres" step="0.5" min="60" max="110" value="101.3"></label>
+    </div>
+   </div>
+   <div class="rl-card">
+    <h2>六个面的材料</h2>
+    <label class="rl-field"><span>地面</span><select id="rl-mat-zLo"></select></label>
+    <label class="rl-field"><span>天花</span><select id="rl-mat-zHi"></select></label>
+    <label class="rl-field"><span>前墙（音箱背后）</span><select id="rl-mat-yLo"></select></label>
+    <label class="rl-field"><span>后墙（听音位背后）</span><select id="rl-mat-yHi"></select></label>
+    <label class="rl-field"><span>左墙</span><select id="rl-mat-xLo"></select></label>
+    <label class="rl-field"><span>右墙</span><select id="rl-mat-xHi"></select></label>
+   </div>
+   <div class="rl-card">
+    <h2>人与家具</h2>
+    <p class="rl-note">按「每件 m² Sabine」直接加进吸声量，不占墙面面积。</p>
+    <div id="rl-extras"></div>
+    <div class="rl-btnrow">
+      <button class="rl-btn rl-btn2" id="rl-btn-reset" type="button">恢复示例</button>
+      <button class="rl-btn rl-btn2" id="rl-btn-share" type="button">复制分享链接</button>
+    </div>
+    <p class="rl-note" id="rl-share-msg" hidden>链接已复制到剪贴板。</p>
+   </div>
+  </div>
+  <div>
+   <div class="rl-dark">
+     <h3 id="rl-verdict-title">—</h3>
+     <p id="rl-verdict-text">—</p>
+     <ul id="rl-verdict-list"></ul>
+   </div>
+   <div class="rl-card">
+    <div class="rl-term">
+      <div class="rl-lights"><i style="background:#ff5f56"></i><i style="background:#ffbd2e"></i><i style="background:#27c93f"></i></div>
+      <div class="rl-termline" id="rl-term-1">—</div>
+      <div class="rl-termline" id="rl-term-2">—</div>
+      <div class="rl-termline" id="rl-term-3">—</div>
+      <div class="rl-termline" id="rl-term-4">—</div>
+    </div>
+    <dl class="rl-kpis" id="rl-kpis-room"></dl>
+    <figure class="rl-fig">
+      <svg id="rl-fig-rt" viewBox="0 0 720 320" role="img" aria-label="逐倍频程混响时间与目标区间"></svg>
+      <div class="rl-legend">
+        <span><b style="background:#000"></b>Eyring</span>
+        <span><b style="background:#737373"></b>Sabine</span>
+        <span><b style="background:#a3a3a3"></b>Millington</span>
+        <span><b style="background:#d4d4d4"></b>目标区间</span>
+      </div>
+      <figcaption class="rl-figcap">横轴为倍频程中心频率（对数刻度）。灰带是所选用途的目标区间。</figcaption>
+    </figure>
+    <h3>逐倍频程明细</h3>
+    <div class="rl-tablewrap"><table class="rl-t" id="rl-tbl-rt"></table></div>
+    <p class="rl-note">A = 面材吸声量（Σ Sα）；家具 = 人与家具的 m² Sabine；空气 = 4mV 项，按 ISO 9613-1 算。63 与 8000 Hz 的材料系数为外推值。</p>
+   </div>
+  </div>
+ </div>
+</section>
+
+<!-- ══════ 驻波与模态 ══════ -->
+<section id="rl-pane-modes" role="tabpanel" aria-labelledby="rl-tab-modes" hidden>
+ <div class="rl-cols">
+  <div>
+   <div class="rl-card">
+    <h2>参数</h2>
+    <label class="rl-field"><span>模态计算上限 (Hz)</span><input type="number" id="rl-in-fmax" step="10" min="60" max="600" value="300"></label>
+    <p class="rl-note">房间尺寸在「房间与混响」页改，这里实时跟随。</p>
+    <h3>换一组比例试试</h3>
+    <p class="rl-note">保持层高不变，按已发表的推荐比例改宽与进深。</p>
+    <div id="rl-ratios"></div>
+   </div>
+   <div class="rl-card">
+    <h2>Bolt 区</h2>
+    <figure class="rl-fig">
+      <svg id="rl-fig-bolt" viewBox="0 0 320 300" role="img" aria-label="Bolt 推荐比例区与当前房间"></svg>
+      <figcaption class="rl-figcap">横轴 W/H、纵轴 D/H。落在灰区内表示低频模态分布较均匀。</figcaption>
+    </figure>
+   </div>
+  </div>
+  <div>
+   <div class="rl-card">
+    <div class="rl-term">
+      <div class="rl-lights"><i style="background:#ff5f56"></i><i style="background:#ffbd2e"></i><i style="background:#27c93f"></i></div>
+      <div class="rl-termline" id="rl-term-m1">—</div>
+      <div class="rl-termline" id="rl-term-m2">—</div>
+      <div class="rl-termline" id="rl-term-m3">—</div>
+    </div>
+    <dl class="rl-kpis" id="rl-kpis-modes"></dl>
+    <figure class="rl-fig">
+      <svg id="rl-fig-modes" viewBox="0 0 720 260" role="img" aria-label="模态频率分布"></svg>
+      <div class="rl-legend">
+        <span><b style="background:#000"></b>轴向</span>
+        <span><b style="background:#737373"></b>切向</span>
+        <span><b style="background:#d4d4d4"></b>斜向</span>
+      </div>
+      <figcaption class="rl-figcap">每根竖线是一个简正模态。轴向模态能量最强，它们之间的大间隔就是「嗡」的来源。</figcaption>
+    </figure>
+    <figure class="rl-fig">
+      <svg id="rl-fig-bonello" viewBox="0 0 720 240" role="img" aria-label="每 1/3 倍频程的模态个数"></svg>
+      <figcaption class="rl-figcap">Bonello 判据：逐 1/3 倍频程的模态个数应当单调不减。下降的那几带标成深色。</figcaption>
+    </figure>
+    <h3>轴向模态与间距</h3>
+    <div class="rl-tablewrap"><table class="rl-t" id="rl-tbl-axial"></table></div>
+    <h3>最低的 20 个模态</h3>
+    <div class="rl-tablewrap"><table class="rl-t" id="rl-tbl-modes"></table></div>
+   </div>
+  </div>
+ </div>
+</section>
+
+<!-- ══════ 脉冲响应 ══════ -->
+<section id="rl-pane-rir" role="tabpanel" aria-labelledby="rl-tab-rir" hidden>
+ <div class="rl-cols">
+  <div>
+   <div class="rl-card">
+    <h2>声源与听音位</h2>
+    <h3>声源 (m)</h3>
+    <div class="rl-row3">
+      <label class="rl-field"><span>x</span><input type="number" id="rl-in-sx" step="0.05" min="0" value="1.30"></label>
+      <label class="rl-field"><span>y</span><input type="number" id="rl-in-sy" step="0.05" min="0" value="0.70"></label>
+      <label class="rl-field"><span>z</span><input type="number" id="rl-in-sz" step="0.05" min="0" value="1.20"></label>
+    </div>
+    <h3>听音位 (m)</h3>
+    <div class="rl-row3">
+      <label class="rl-field"><span>x</span><input type="number" id="rl-in-mx" step="0.05" min="0" value="2.10"></label>
+      <label class="rl-field"><span>y</span><input type="number" id="rl-in-my" step="0.05" min="0" value="2.90"></label>
+      <label class="rl-field"><span>z</span><input type="number" id="rl-in-mz" step="0.05" min="0" value="1.15"></label>
+    </div>
+    <h3>模拟</h3>
+    <label class="rl-field"><span>倍频程</span><select id="rl-in-band"></select></label>
+    <label class="rl-field"><span>镜像阶数上限</span><input type="number" id="rl-in-order" step="1" min="1" max="16" value="10"></label>
+    <label class="rl-field"><span>采样率 (Hz)</span><select id="rl-in-fs">
+      <option value="8000">8000</option><option value="16000" selected>16000</option><option value="32000">32000</option></select></label>
+    <label class="rl-check"><input type="checkbox" id="rl-in-airabs" checked><span>计入空气吸收</span></label>
+    <p class="rl-note" id="rl-rir-cost">—</p>
+    <p class="rl-note" id="rl-rir-warn">—</p>
+   </div>
+  </div>
+  <div>
+   <div class="rl-card">
+    <div class="rl-term">
+      <div class="rl-lights"><i style="background:#ff5f56"></i><i style="background:#ffbd2e"></i><i style="background:#27c93f"></i></div>
+      <div class="rl-termline" id="rl-term-r1">—</div>
+      <div class="rl-termline" id="rl-term-r2">—</div>
+      <div class="rl-termline" id="rl-term-r3">—</div>
+    </div>
+    <dl class="rl-kpis" id="rl-kpis-rir"></dl>
+    <figure class="rl-fig">
+      <svg id="rl-fig-rir" viewBox="0 0 720 240" role="img" aria-label="脉冲响应波形"></svg>
+      <figcaption class="rl-figcap">前 140 ms 的脉冲响应。第一根是直达声，随后是各阶镜像声源的反射。</figcaption>
+    </figure>
+    <figure class="rl-fig">
+      <svg id="rl-fig-edc" viewBox="0 0 720 280" role="img" aria-label="Schroeder 反向积分衰变曲线"></svg>
+      <div class="rl-legend">
+        <span><b style="background:#000"></b>衰变曲线</span>
+        <span><b style="background:#737373"></b>T30 拟合</span>
+        <span><b style="background:#a3a3a3"></b>T20 拟合</span>
+      </div>
+      <figcaption class="rl-figcap">Schroeder 反向积分。T30 取 −5 → −35 dB 的斜率外推到 60 dB。</figcaption>
+    </figure>
+    <h3>最早到达的 12 条声线</h3>
+    <div class="rl-tablewrap"><table class="rl-t" id="rl-tbl-arr"></table></div>
+    <p class="rl-note">「相对直达」是该反射相对直达声的声压级差；早于 20 ms、且只比直达低 10 dB 以内的强反射，是最该先处理的对象。</p>
+   </div>
+  </div>
+ </div>
+</section>
+
+<!-- ══════ 摆位与反射点 ══════ -->
+<section id="rl-pane-place" role="tabpanel" aria-labelledby="rl-tab-place" hidden>
+ <div class="rl-cols">
+  <div>
+   <div class="rl-card">
+    <h2>摆位扫描</h2>
+    <p class="rl-note">固定听音位，把音箱沿进深方向从前墙推开，看低频陷落跟着怎么走。</p>
+    <label class="rl-field"><span>扫描上限：离前墙 (m)</span><input type="number" id="rl-in-scanmax" step="0.1" min="0.4" max="4" value="2.00"></label>
+    <label class="rl-field"><span>评价频段上限 (Hz)</span><input type="number" id="rl-in-sbirmax" step="20" min="120" max="800" value="400"></label>
+    <div class="rl-btnrow">
+      <button class="rl-btn" id="rl-btn-applybest" type="button">套用推荐距离</button>
+    </div>
+   </div>
+  </div>
+  <div>
+   <div class="rl-card">
+    <div class="rl-term">
+      <div class="rl-lights"><i style="background:#ff5f56"></i><i style="background:#ffbd2e"></i><i style="background:#27c93f"></i></div>
+      <div class="rl-termline" id="rl-term-p1">—</div>
+      <div class="rl-termline" id="rl-term-p2">—</div>
+      <div class="rl-termline" id="rl-term-p3">—</div>
+    </div>
+    <dl class="rl-kpis" id="rl-kpis-place"></dl>
+    <figure class="rl-fig">
+      <svg id="rl-fig-plan" viewBox="0 0 720 360" role="img" aria-label="房间俯视图与首次反射点"></svg>
+      <figcaption class="rl-figcap">俯视图。■ 音箱，● 听音位，✕ 侧墙 / 前后墙的首次反射点（地面与天花的反射点见下表）。</figcaption>
+    </figure>
+    <h3>该贴吸声板的位置</h3>
+    <div class="rl-tablewrap"><table class="rl-t" id="rl-tbl-frp"></table></div>
+    <p class="rl-note">用镜像法求出的首次反射点：站在听音位，让助手拿镜子沿墙移动，能在镜子里看见音箱的那一点就是它。</p>
+    <figure class="rl-fig">
+      <svg id="rl-fig-sbir" viewBox="0 0 720 280" role="img" aria-label="边界干涉与模态响应"></svg>
+      <div class="rl-legend">
+        <span><b style="background:#000"></b>边界干涉 SBIR</span>
+        <span><b style="background:#737373"></b>模态求和</span>
+      </div>
+      <figcaption class="rl-figcap">两条曲线是两种机理：SBIR 是镜像声源的干涉（与吸声无关的几何效应），模态求和是房间共振。</figcaption>
+    </figure>
+    <figure class="rl-fig">
+      <svg id="rl-fig-scan" viewBox="0 0 720 260" role="img" aria-label="音箱离前墙距离扫描"></svg>
+      <figcaption class="rl-figcap">纵轴是该距离下评价频段内的响应起伏（越小越平）。竖线是推荐距离。</figcaption>
+    </figure>
+   </div>
+  </div>
+ </div>
+</section>
+
+<!-- ══════ 吸声构造 ══════ -->
+<section id="rl-pane-abs" role="tabpanel" aria-labelledby="rl-tab-abs" hidden>
+ <div class="rl-cols">
+  <div>
+   <div class="rl-card">
+    <h2>构造</h2>
+    <label class="rl-field"><span>多孔材料</span><select id="rl-in-fiber"></select></label>
+    <label class="rl-field"><span>流阻率 σ (Pa·s/m²)</span><input type="number" id="rl-in-sigma" step="500" min="1000" max="80000" value="18000"></label>
+    <div class="rl-row2">
+      <label class="rl-field"><span>厚度 (mm)</span><input type="number" id="rl-in-thick" step="5" min="10" max="400" value="50"></label>
+      <label class="rl-field"><span>空腔 (mm)</span><input type="number" id="rl-in-gap" step="5" min="0" max="500" value="50"></label>
+    </div>
+    <label class="rl-field"><span>对比材料（来自材料表）</span><select id="rl-in-cmp"></select></label>
+    <p class="rl-note">流阻率会跟着上面的预设变；手改数字后预设只作参考。</p>
+   </div>
+  </div>
+  <div>
+   <div class="rl-card">
+    <div class="rl-term">
+      <div class="rl-lights"><i style="background:#ff5f56"></i><i style="background:#ffbd2e"></i><i style="background:#27c93f"></i></div>
+      <div class="rl-termline" id="rl-term-a1">—</div>
+      <div class="rl-termline" id="rl-term-a2">—</div>
+      <div class="rl-termline" id="rl-term-a3">—</div>
+    </div>
+    <dl class="rl-kpis" id="rl-kpis-abs"></dl>
+    <figure class="rl-fig">
+      <svg id="rl-fig-abs" viewBox="0 0 720 300" role="img" aria-label="吸声系数曲线"></svg>
+      <div class="rl-legend">
+        <span><b style="background:#000"></b>无规入射</span>
+        <span><b style="background:#737373"></b>法向入射</span>
+        <span><b style="background:#d4d4d4"></b>对比材料（表值）</span>
+      </div>
+      <figcaption class="rl-figcap">Miki 模型 + 阻抗传递。无规入射按 Paris 公式对角度积分（截断到 78°）。</figcaption>
+    </figure>
+    <figure class="rl-fig">
+      <svg id="rl-fig-after" viewBox="0 0 720 280" role="img" aria-label="处理前后的混响时间"></svg>
+      <div class="rl-legend">
+        <span><b style="background:#a3a3a3"></b>处理前</span>
+        <span><b style="background:#000"></b>处理后</span>
+        <span><b style="background:#d4d4d4"></b>目标区间</span>
+      </div>
+      <figcaption class="rl-figcap">把解出的面积回代进混响引擎重算 —— 不是按目标反推画上去的。</figcaption>
+    </figure>
+    <h3>要降到目标，得铺多少</h3>
+    <dl class="rl-kpis" id="rl-kpis-solve"></dl>
+    <div class="rl-tablewrap"><table class="rl-t" id="rl-tbl-solve"></table></div>
+    <p class="rl-note" id="rl-solve-note">—</p>
+    <h3>逐倍频程吸声系数</h3>
+    <div class="rl-tablewrap"><table class="rl-t" id="rl-tbl-abs"></table></div>
+   </div>
+  </div>
+ </div>
+</section>
+
+<!-- ══════ 说明 ══════ -->
+<section id="rl-pane-doc" role="tabpanel" aria-labelledby="rl-tab-doc" hidden>
+ <div class="rl-card rl-doc">
+  <div class="rl-prose">
+   <h2>这个工具算了什么，没算什么</h2>
+   <p>房间声学的工程计算基本就是这么几件事：把吸声量加起来估混响、把箱体的简正解列出来看驻波、用镜像声源法把早期反射逐条摆出来、再用阻抗传递算吸声构造。这一页把它们串成一条链，改任何一个输入，后面全跟着变。</p>
+
+   <h3>引擎口径</h3>
+   <ul id="rl-doc-caps"></ul>
+
+   <h3>对拍了什么</h3>
+   <p id="rl-doc-verify">—</p>
+   <ul>
+     <li><b>pyroomacoustics 0.10.1</b> —— 镜像声源的坐标、阶数、衰减逐条对拍；脉冲响应逐样本对拍；T30/T20 把同一条脉冲响应喂给它的 <code>measure_rt60</code> 交叉核对。</li>
+     <li><b>acoustics 0.2.6 的 <code>iso_9613_1_1993</code></b> —— 大气吸收系数与声速。</li>
+     <li><b>scipy <code>eigsh</code></b> —— 把房间离散成三维 Neumann 拉普拉斯矩阵直接解特征值，与解析模态公式毫无共享代码；细网格误差约为粗网格的四分之一，正是二阶收敛该有的样子。</li>
+     <li><b>scipy <code>solve_ivp</code>（DOP853）</b> —— 把分层介质的一维波动方程从刚性壁往外数值积分，与传递矩阵代数是两条独立路径。</li>
+     <li><b>不依赖任何实现的物理性质</b> —— Sabine ≥ Eyring ≥ Millington（后者由 Jensen 不等式保证）、镜像声源与模态响应的互易性、全吸声墙时 SBIR 恒为 0 dB、λ/4 共振位置、Weyl 模态计数渐近律、C50 与 D50 的恒等式、处理方案回代。</li>
+   </ul>
+   <p>一个花絮：第一轮对拍时吸声构造 480 例里红了 480 例，查下来是<strong>我写的那个数值积分 oracle 错了</strong> —— 它从刚性壁往外积分却没给积分变量换向，解出来的表面阻抗实部是负的（等于说墙面在往外发声）。页面这一侧的被动性断言 <code>Re(Zs) &gt; 0</code> 反而一直是对的。</p>
+
+   <h3>已知的简化</h3>
+   <ul>
+     <li>只支持长方体房间。有斜顶、凹凸、隔断的房间，模态与镜像声源都不再适用。</li>
+     <li>镜像声源法假设墙面<strong>镜面反射</strong>、不做扩散；真实房间的后期混响比这里更密、更平滑。阶数上限也会把尾巴截断，所以脉冲响应页的 T30 通常比「房间与混响」页的统计公式短。</li>
+     <li>吸声构造按<strong>局部反应之外的扩展反应</strong>算（层内按斜入射波数传播），但不含边缘绕射 —— 真实混响室测出来的 α 常常大于 1，本页不会。</li>
+     <li>材料表是典型值，63 Hz 与 8000 Hz 是外推。做正经项目请用厂家的 ISO 354 实测报告。</li>
+     <li>模态求和用刚性壁的简正函数、阻尼按 T60 折算，低频定性对、定量只作参考。</li>
+   </ul>
+
+   <h3>常见问题</h3>
+   <div class="rl-faq"><b>为什么两页算出的混响时间对不上？</b>
+     <p>「房间与混响」页是统计声学公式（假设声场扩散、能量均匀），「脉冲响应」页是逐条镜像声源叠出来的确定性模拟并且阶数有限。两者本来就不该完全相等，差异大小本身就是「这个房间够不够扩散」的一个信号。</p></div>
+   <div class="rl-faq"><b>Sabine、Eyring、Millington 该看哪个？</b>
+     <p>平均吸声系数小于 0.2 时三者差不多，随便哪个都行。吸声一多，Sabine 会系统性偏长；此时看 Eyring。各面吸声差别很大（比如只有天花做了吸声）时，Millington 更接近实际，但它对接近 1 的 α 很敏感。</p></div>
+   <div class="rl-faq"><b>数据会上传吗？</b>
+     <p>不会。整页是一个静态 HTML，所有计算都在你的浏览器里完成，参数只存在 <code>localStorage</code> 和你自己复制的分享链接里。</p></div>
+  </div>
+ </div>
+</section>
+
+</main>
+
+<footer class="rl-foot"><div class="rl-wrap">
+  每日工具集 · <a href="../../">返回全部工具</a> · 纯前端 · 零上传
+</div></footer>
+
+<script id="rl-engine">/* 材料吸声系数表（倍频程 125…4000 Hz 的典型值）。
+ * 说明：各国吸声系数表给出的都是 125–4000 六个倍频程，63 Hz 与 8000 Hz 没有通行值 ——
+ * 本表按「63 取 125 的值、8000 取 4000 的值」外推，页面与表格里逐处标注「外推」，
+ * 别把外推值当实测值用。真实工程请以厂家的混响室实测报告（ISO 354）为准。 */
+var RoomData = (function () {
+  'use strict';
+  function M(id, name, group, a) { return { id: id, name: name, group: group, a6: a }; }
+  var MATERIALS = [
+    M('concrete',   '清水混凝土 / 砖墙（未处理）', '硬表面', [0.01, 0.01, 0.02, 0.02, 0.02, 0.03]),
+    M('plaster',    '抹灰墙面（实心墙上）',        '硬表面', [0.013, 0.015, 0.02, 0.03, 0.04, 0.05]),
+    M('tile',       '瓷砖 / 大理石',              '硬表面', [0.01, 0.01, 0.01, 0.01, 0.02, 0.02]),
+    M('glass_thick','厚玻璃 / 落地窗',            '硬表面', [0.18, 0.06, 0.04, 0.03, 0.02, 0.02]),
+    M('glass_win',  '普通窗玻璃（薄）',            '硬表面', [0.35, 0.25, 0.18, 0.12, 0.07, 0.04]),
+    M('water',      '水面（泳池）',                '硬表面', [0.008, 0.008, 0.013, 0.015, 0.02, 0.025]),
+    M('gypsum',     '石膏板 12mm + 龙骨空腔',      '轻质墙体', [0.29, 0.10, 0.05, 0.04, 0.07, 0.09]),
+    M('gyp_ceil',   '石膏吊顶（带空腔）',          '轻质墙体', [0.20, 0.15, 0.10, 0.08, 0.04, 0.02]),
+    M('wood_panel', '木饰面板（实贴）',            '轻质墙体', [0.10, 0.11, 0.10, 0.08, 0.08, 0.11]),
+    M('wood_joist', '木地板（架空搁栅）',          '地面', [0.15, 0.11, 0.10, 0.07, 0.06, 0.07]),
+    M('wood_slab',  '木 / 复合地板（贴实）',       '地面', [0.04, 0.04, 0.07, 0.06, 0.06, 0.07]),
+    M('carpet_thin','薄地毯（直接贴实）',          '地面', [0.02, 0.06, 0.14, 0.37, 0.60, 0.65]),
+    M('carpet_pad', '厚地毯 + 衬垫',              '地面', [0.08, 0.24, 0.57, 0.69, 0.71, 0.73]),
+    M('curtain_lt', '轻薄窗帘（贴墙）',            '织物', [0.05, 0.06, 0.39, 0.63, 0.70, 0.73]),
+    M('curtain_hv', '厚绒幕（褶皱约 50%）',        '织物', [0.14, 0.35, 0.55, 0.72, 0.70, 0.65]),
+    M('tile_ceil',  '矿棉吸声吊顶板',              '吸声处理', [0.10, 0.30, 0.60, 0.80, 0.85, 0.80]),
+    M('gw50',       '50mm 玻璃棉（贴墙）',         '吸声处理', [0.17, 0.45, 0.80, 0.89, 0.97, 1.00]),
+    M('gw100',      '100mm 玻璃棉（贴墙）',        '吸声处理', [0.44, 0.84, 0.99, 0.99, 0.99, 0.99]),
+    M('poly25',     '25mm 聚酯纤维吸声板',         '吸声处理', [0.10, 0.25, 0.55, 0.80, 0.85, 0.85]),
+    M('woodwool',   '25mm 木丝吸声板',             '吸声处理', [0.10, 0.20, 0.45, 0.60, 0.70, 0.75]),
+    M('perf_gyp',   '穿孔石膏板 + 矿棉',           '吸声处理', [0.30, 0.60, 0.75, 0.85, 0.75, 0.60]),
+    M('foam50',     '50mm 吸声泡棉',               '吸声处理', [0.15, 0.35, 0.70, 0.90, 0.95, 0.95])
+  ];
+  /* 人员与家具：按「每件 m² Sabine」计，不占墙面面积。 */
+  var EXTRAS = [
+    { id: 'person', name: '成年人（坐，软椅）', unit: '人', a6: [0.18, 0.25, 0.33, 0.38, 0.42, 0.42] },
+    { id: 'sofa',   name: '布艺沙发（每座）',   unit: '座', a6: [0.20, 0.35, 0.45, 0.50, 0.52, 0.50] },
+    { id: 'shelf',  name: '满书架（每 m² 立面）', unit: 'm²', a6: [0.15, 0.25, 0.32, 0.35, 0.38, 0.40] },
+    { id: 'bed',    name: '双人床（含被褥）',   unit: '张', a6: [0.60, 1.10, 1.60, 1.90, 2.00, 2.00] }
+  ];
+  /* 六个倍频程 → 八个（63 与 8000 为外推）。 */
+  function expand(a6) { return [a6[0]].concat(a6, [a6[5]]); }
+  function byId(id) {
+    for (var i = 0; i < MATERIALS.length; i++) if (MATERIALS[i].id === id) return MATERIALS[i];
+    return MATERIALS[0];
+  }
+  function extraById(id) {
+    for (var i = 0; i < EXTRAS.length; i++) if (EXTRAS[i].id === id) return EXTRAS[i];
+    return EXTRAS[0];
+  }
+  /* 多孔材料的典型流阻率（Pa·s/m²），用于吸声构造页的预设。 */
+  var FIBERS = [
+    { id: 'gw_light', name: '玻璃棉 16 kg/m³', sigma: 8000 },
+    { id: 'gw_med',   name: '玻璃棉 32 kg/m³', sigma: 18000 },
+    { id: 'rw_med',   name: '岩棉 48 kg/m³',   sigma: 28000 },
+    { id: 'rw_dense', name: '岩棉 80 kg/m³',   sigma: 45000 },
+    { id: 'poly',     name: '聚酯纤维棉',      sigma: 12000 },
+    { id: 'foam',     name: '开孔聚氨酯泡棉',  sigma: 5000 }
+  ];
+  return { MATERIALS: MATERIALS, EXTRAS: EXTRAS, FIBERS: FIBERS, expand: expand, byId: byId, extraById: extraById };
+})();
+if (typeof module !== 'undefined' && module.exports) module.exports = RoomData;
+
+/* Room Lab — 房间声学引擎（纯计算，无 DOM）。
+ * 口径与对拍来源都写在页面「说明」页，改这里请同步那里。 */
+var RoomLab = (function () {
+  'use strict';
+
+  var BANDS = [63, 125, 250, 500, 1000, 2000, 4000, 8000];
+  /* 材料表按 125…4000 六个倍频程给出（这是各国吸声系数表的通行范围）；
+   * 63 Hz 取 125 Hz 的值、8000 Hz 取 4000 Hz 的值，属**外推**，页面上逐处标注。 */
+  var TABLE_BANDS = [125, 250, 500, 1000, 2000, 4000];
+
+  // ── 复数（[re, im] 数组）──
+  function cadd(a, b) { return [a[0] + b[0], a[1] + b[1]]; }
+  function csub(a, b) { return [a[0] - b[0], a[1] - b[1]]; }
+  function cmul(a, b) { return [a[0] * b[0] - a[1] * b[1], a[0] * b[1] + a[1] * b[0]]; }
+  function cdiv(a, b) {
+    var d = b[0] * b[0] + b[1] * b[1];
+    return [(a[0] * b[0] + a[1] * b[1]) / d, (a[1] * b[0] - a[0] * b[1]) / d];
+  }
+  function cabs2(a) { return a[0] * a[0] + a[1] * a[1]; }
+  function cabs(a) { return Math.sqrt(cabs2(a)); }
+  function cscale(a, s) { return [a[0] * s, a[1] * s]; }
+  function ccos(a) { return [Math.cos(a[0]) * Math.cosh(a[1]), -Math.sin(a[0]) * Math.sinh(a[1])]; }
+  function csin(a) { return [Math.sin(a[0]) * Math.cosh(a[1]), Math.cos(a[0]) * Math.sinh(a[1])]; }
+  function ctan(a) { return cdiv(csin(a), ccos(a)); }
+  function csqrt(a) {
+    var m = Math.sqrt(cabs(a)), th = Math.atan2(a[1], a[0]) / 2;
+    return [m * Math.cos(th), m * Math.sin(th)];
+  }
+
+  // ── 空气物性 ──────────────────────────────────────────────
+  /* 声速：ISO 9613-1 的 c = 343.2·sqrt(T/293.15)（对拍 acoustics.standards.iso_9613_1_1993.soundspeed）。*/
+  function soundSpeed(tempC) { return 343.2 * Math.sqrt((tempC + 273.15) / 293.15); }
+  /* 空气密度：理想气体 ρ = p/(R_specific·T)，R_specific = 287.058 J/(kg·K)。*/
+  function airDensity(tempC, pressureKPa) { return (pressureKPa * 1000) / (287.058 * (tempC + 273.15)); }
+
+  /* ISO 9613-1:1993 大气吸收系数 α（dB/m）。逐行对拍 acoustics 包同名实现。 */
+  function airAttenuation(freq, tempC, rhPercent, pressureKPa) {
+    var T = tempC + 273.15, T0 = 293.15, p0 = 101.325, pa = pressureKPa;
+    var psat = p0 * Math.pow(10, -6.8346 * Math.pow(273.16 / T, 1.261) + 4.6151);
+    var h = rhPercent * psat / pa;
+    var frO = (pa / p0) * (24 + 4.04e4 * h * (0.02 + h) / (0.391 + h));
+    var frN = (pa / p0) * Math.pow(T / T0, -0.5) *
+      (9 + 280 * h * Math.exp(-4.170 * (Math.pow(T / T0, -1 / 3) - 1)));
+    return 8.686 * freq * freq * (
+      1.84e-11 * (p0 / pa) * Math.pow(T / T0, 0.5) +
+      Math.pow(T / T0, -2.5) * (
+        0.01275 * Math.exp(-2239.1 / T) / (frO + freq * freq / frO) +
+        0.1068 * Math.exp(-3352.0 / T) / (frN + freq * freq / frN)));
+  }
+  /* 混响公式里的 m（1/m，能量衰减常数）= α_dB/m ÷ (10·log10 e)。 */
+  function airM(freq, tempC, rhPercent, pressureKPa) {
+    return airAttenuation(freq, tempC, rhPercent, pressureKPa) / (10 / Math.LN10);
+  }
+
+  // ── 混响时间 ──────────────────────────────────────────────
+  /* surfaces: [{area, alpha:[8]}]；extras: [{count, sabine:[8]}]（m² Sabine 直接相加，如人员/家具）。
+   * 返回逐带的 A / ᾱ / 三种 RT60。Sabine 常数用 55.3/c（c 随温度变），不是写死的 0.161。 */
+  function reverberation(opts) {
+    var V = opts.volume, surfaces = opts.surfaces, extras = opts.extras || [];
+    var c = opts.c, tempC = opts.tempC, rh = opts.rh, pres = opts.pressure;
+    var Stot = 0, i, b;
+    for (i = 0; i < surfaces.length; i++) Stot += surfaces[i].area;
+    var K = 55.3 / c;                       // T = K·V / (A + 4mV)
+    var out = { bands: BANDS.slice(), Stot: Stot, V: V, K: K, rows: [] };
+    for (b = 0; b < BANDS.length; b++) {
+      var A = 0, Amill = 0, Aeyr = 0, extraA = 0;
+      for (i = 0; i < surfaces.length; i++) {
+        var a = Math.min(Math.max(surfaces[i].alpha[b], 0), 0.9999);
+        A += surfaces[i].area * a;
+        Amill += -surfaces[i].area * Math.log(1 - a);   // Millington–Sette：逐面取 -ln(1-α)
+      }
+      for (i = 0; i < extras.length; i++) extraA += extras[i].count * extras[i].sabine[b];
+      var abar = Stot > 0 ? A / Stot : 0;
+      Aeyr = -Stot * Math.log(1 - Math.min(abar, 0.9999));
+      var m = airM(BANDS[b], tempC, rh, pres);
+      var air = 4 * m * V;
+      var rt = function (absorption) {
+        var den = absorption + extraA + air;
+        return den > 1e-12 ? K * V / den : Infinity;
+      };
+      out.rows.push({
+        band: BANDS[b], A: A, extraA: extraA, abar: abar, m: m, airA: air,
+        sabine: rt(A), eyring: rt(Aeyr), millington: rt(Amill),
+        Atot: A + extraA + air
+      });
+    }
+    return out;
+  }
+
+  /* 房间常数 R = Sᾱ/(1-ᾱ)（用 Sabine ᾱ）与临界距离 rc = sqrt(Q·R/(16π))。 */
+  function roomConstant(Stot, abar) {
+    var a = Math.min(Math.max(abar, 1e-9), 0.9999);
+    return Stot * a / (1 - a);
+  }
+  function criticalDistance(R, Q) { return Math.sqrt((Q || 1) * R / (16 * Math.PI)); }
+  /* 直达 + 混响声压级相对点声源 1 m 处的差（dB），用于「听音位离音箱多远还算直达声主导」。 */
+  function splVsDistance(r, R, Q) {
+    return 10 * Math.log10((Q || 1) / (4 * Math.PI * r * r) + 4 / R);
+  }
+  /* Schroeder 频率 f_s = 2000·sqrt(T60/V)（模态区与统计区的分界）。 */
+  function schroederFreq(T60, V) { return 2000 * Math.sqrt(T60 / V); }
+
+  // ── 房间简正模态 ─────────────────────────────────────────
+  function modes(L, W, H, c, fmax) {
+    var out = [], pmax = Math.ceil(2 * fmax * L / c), qmax = Math.ceil(2 * fmax * W / c),
+        rmax = Math.ceil(2 * fmax * H / c), p, q, r;
+    for (p = 0; p <= pmax; p++) for (q = 0; q <= qmax; q++) for (r = 0; r <= rmax; r++) {
+      if (p === 0 && q === 0 && r === 0) continue;
+      var f = (c / 2) * Math.sqrt((p / L) * (p / L) + (q / W) * (q / W) + (r / H) * (r / H));
+      if (f > fmax) continue;
+      var nz = (p > 0 ? 1 : 0) + (q > 0 ? 1 : 0) + (r > 0 ? 1 : 0);
+      out.push({ p: p, q: q, r: r, f: f, type: nz === 1 ? 'axial' : nz === 2 ? 'tangential' : 'oblique' });
+    }
+    out.sort(function (a, b) { return a.f - b.f; });
+    return out;
+  }
+  /* Bonello 判据：逐 1/3 倍频程数模态个数，要求**单调不减**，且不允许出现
+   * 「本带只有 ≤1 个模态、却已经出现重合模态」。返回逐带统计与判定。 */
+  function bonello(modeList, fLo, fHi) {
+    var bands = [], f = 16, centers = [];
+    while (f < fHi * 1.01) { if (f >= fLo * 0.99) centers.push(f); f *= Math.pow(2, 1 / 3); }
+    var i, k, prev = -1, mono = true, viol = [];
+    for (k = 0; k < centers.length; k++) {
+      var fc = centers[k], lo = fc / Math.pow(2, 1 / 6), hi = fc * Math.pow(2, 1 / 6), n = 0, fr = [];
+      for (i = 0; i < modeList.length; i++) if (modeList[i].f >= lo && modeList[i].f < hi) { n++; fr.push(modeList[i].f); }
+      var dup = 0;
+      for (i = 1; i < fr.length; i++) if (Math.abs(fr[i] - fr[i - 1]) < 0.5) dup++;
+      if (prev >= 0 && n < prev) { mono = false; viol.push({ fc: fc, n: n, prev: prev, kind: 'decrease' }); }
+      if (n <= 1 && dup > 0) viol.push({ fc: fc, n: n, prev: prev, kind: 'coincident' });
+      bands.push({ fc: fc, n: n, dup: dup });
+      prev = n;
+    }
+    return { bands: bands, monotonic: mono, violations: viol, pass: viol.length === 0 };
+  }
+  /* 轴向模态间距：相邻轴向模态的频率间隔，>20–25 Hz 容易听出「嗡」。 */
+  function axialSpacing(modeList) {
+    var ax = modeList.filter(function (m) { return m.type === 'axial'; }).map(function (m) { return m.f; });
+    ax.sort(function (a, b) { return a - b; });
+    var gaps = [], i;
+    for (i = 1; i < ax.length; i++) gaps.push({ f0: ax[i - 1], f1: ax[i], gap: ax[i] - ax[i - 1] });
+    return gaps;
+  }
+  /* 已发表的「好比例」：Louden / Sepmeyer / Volkmann / IEC 268-13 黄金比。 */
+  var RATIO_PRESETS = [
+    { name: 'Louden 最优', w: 1.4, l: 1.9 },
+    { name: 'Sepmeyer A', w: 1.14, l: 1.39 },
+    { name: 'Sepmeyer B', w: 1.28, l: 1.54 },
+    { name: 'Sepmeyer C', w: 1.60, l: 2.33 },
+    { name: 'Volkmann 2:3:5', w: 1.5, l: 2.5 },
+    { name: '黄金比 1:1.618:2.618', w: 1.618, l: 2.618 }
+  ];
+  /* Bolt 区：以 H 归一的 (W/H, L/H) 落在 Bolt 推荐区内则低频模态分布较均匀。
+   * 用 Bolt 1946 原图的近似多边形判定（页面上把点和区一起画出来）。 */
+  var BOLT_POLY = [[1.00, 1.45], [1.30, 1.10], [1.90, 1.22], [2.35, 1.55], [2.10, 2.10], [1.45, 1.90], [1.10, 1.62]];
+  function pointInPoly(x, y, poly) {
+    var inside = false, i, j;
+    for (i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      var xi = poly[i][0], yi = poly[i][1], xj = poly[j][0], yj = poly[j][1];
+      if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) inside = !inside;
+    }
+    return inside;
+  }
+
+  // ── 镜像声源法（shoebox ISM）────────────────────────────
+  /* 轴向第 i 个镜像的坐标与两面墙各自的反射次数。
+   * i 偶数：i·L + s；i 奇数：(i+1)·L − s。与 pyroomacoustics 的 shoebox 枚举一致。 */
+  function axisImage(i, s, L) {
+    var pos = (i % 2 === 0) ? i * L + s : (i + 1) * L - s;
+    var n = Math.abs(i), hi, lo;
+    if (i > 0) { hi = Math.ceil(n / 2); lo = Math.floor(n / 2); }   // 先撞 "高端" 墙（x = L）
+    else { lo = Math.ceil(n / 2); hi = Math.floor(n / 2); }          // 先撞 "低端" 墙（x = 0）
+    return { pos: pos, nLo: lo, nHi: hi };
+  }
+  /* dims=[L,W,H]；src/mic=[x,y,z]；R = 逐墙反射系数 {xLo,xHi,yLo,yHi,zLo,zHi}，
+   * 每个是长度 8 的数组（逐倍频程）或标量。maxOrder 限制 |i|+|j|+|k|。 */
+  function imageSources(dims, src, mic, maxOrder, R) {
+    var i, j, k, out = [];
+    for (i = -maxOrder; i <= maxOrder; i++) {
+      var ai = axisImage(i, src[0], dims[0]), ri = maxOrder - Math.abs(i);
+      for (j = -ri; j <= ri; j++) {
+        var aj = axisImage(j, src[1], dims[1]), rj = ri - Math.abs(j);
+        for (k = -rj; k <= rj; k++) {
+          var ak = axisImage(k, src[2], dims[2]);
+          var dx = ai.pos - mic[0], dy = aj.pos - mic[1], dz = ak.pos - mic[2];
+          var d = Math.sqrt(dx * dx + dy * dy + dz * dz);
+          out.push({
+            pos: [ai.pos, aj.pos, ak.pos], idx: [i, j, k],
+            order: Math.abs(i) + Math.abs(j) + Math.abs(k), dist: d,
+            n: { xLo: ai.nLo, xHi: ai.nHi, yLo: aj.nLo, yHi: aj.nHi, zLo: ak.nLo, zHi: ak.nHi }
+          });
+        }
+      }
+    }
+    out.sort(function (a, b) { return a.dist - b.dist; });
+    if (R) for (i = 0; i < out.length; i++) out[i].damping = imageDamping(out[i].n, R);
+    return out;
+  }
+  function imageDamping(n, R) {
+    if (typeof R.xLo === 'number') {
+      return Math.pow(R.xLo, n.xLo) * Math.pow(R.xHi, n.xHi) * Math.pow(R.yLo, n.yLo) *
+             Math.pow(R.yHi, n.yHi) * Math.pow(R.zLo, n.zLo) * Math.pow(R.zHi, n.zHi);
+    }
+    var out = [], b;
+    for (b = 0; b < BANDS.length; b++) {
+      out.push(Math.pow(R.xLo[b], n.xLo) * Math.pow(R.xHi[b], n.xHi) * Math.pow(R.yLo[b], n.yLo) *
+               Math.pow(R.yHi[b], n.yHi) * Math.pow(R.zLo[b], n.zLo) * Math.pow(R.zHi[b], n.zHi));
+    }
+    return out;
+  }
+
+  /* 由镜像声源合成脉冲响应。分数延迟用 **Hann 窗 sinc**（N=81，与 pyroomacoustics 同一契约）：
+   *   h[i] = hann(N)[i] · sinc(i − (N−1)/2 − frac)，整体再后移 fdl2 = 40 个样本。
+   * airM：逐镜像按传播距离乘 exp(−m·d/2)（振幅域，故取 m/2）。 */
+  var FDL = 81, FDL2 = 40;
+  function fracDelayKernel(frac, buf) {
+    var i, x;
+    for (i = 0; i < FDL; i++) {
+      x = i - FDL2 - frac;
+      buf[i] = (0.5 - 0.5 * Math.cos(2 * Math.PI * i / (FDL - 1))) *
+               (Math.abs(x) < 1e-12 ? 1 : Math.sin(Math.PI * x) / (Math.PI * x));
+    }
+    return buf;
+  }
+  function buildRIR(images, c, fs, opts) {
+    var o = opts || {}, band = o.band == null ? null : o.band, mAir = o.mAir || 0;
+    var i, tmax = 0, n = images.length;
+    for (i = 0; i < n; i++) tmax = Math.max(tmax, images[i].dist / c);
+    var N = Math.ceil((tmax + FDL2 / fs) * fs + FDL2 + 1) + 1;
+    var rir = new Float64Array(N), kern = new Float64Array(FDL), k, j;
+    for (i = 0; i < n; i++) {
+      var im = images[i], t = im.dist / c + FDL2 / fs;
+      var damp = (typeof im.damping === 'number') ? im.damping : im.damping[band == null ? 4 : band];
+      var amp = damp / im.dist * (mAir > 0 ? Math.exp(-mAir * im.dist / 2) : 1);
+      var sf = t * fs, ip = Math.floor(sf);
+      fracDelayKernel(sf - ip, kern);
+      for (k = 0; k < FDL; k++) { j = ip - FDL2 + k; if (j >= 0 && j < N) rir[j] += amp * kern[k]; }
+    }
+    return { rir: rir, fs: fs, t0: FDL2 / fs };
+  }
+
+  /* 镜像声源法的**有效时间**：阶数截到 N 之后，比「最早的 N+1 阶镜像」更晚到达的时刻起，
+   * 脉冲响应就开始缺声线了。所以 t_valid = min{ dist(阶数 = N+1) } / c − 直达时刻 是一个
+   * 精确的上界，超过它的一切读数（尤其 T20/T30/C80）都不可信。
+   * 房间越活、阶数越低，这个界越靠前 —— 默认房间 T60≈1.7 s、10 阶只覆盖到 ~26 ms。 */
+  function ismValidity(dims, src, mic, maxOrder, c) {
+    var shell = imageSources(dims, src, mic, maxOrder + 1, null), i, tmin = Infinity, direct = Infinity;
+    for (i = 0; i < shell.length; i++) {
+      if (shell[i].order === 0) direct = Math.min(direct, shell[i].dist / c);
+      if (shell[i].order === maxOrder + 1) tmin = Math.min(tmin, shell[i].dist / c);
+    }
+    return { tValid: tmin - direct, tAbs: tmin, direct: direct };
+  }
+  /* 要让脉冲响应完整覆盖「衰减 dbWanted 分贝」所需的阶数（按平均自由程 4V/S 估）。 */
+  function orderNeeded(volume, surface, c, T60, dbWanted) {
+    var mfp = 4 * volume / surface, t = T60 * dbWanted / 60;
+    return Math.ceil(t * c / mfp);
+  }
+
+  /* Schroeder 反向积分 + ISO 3382-1 参数。t=0 取直达声到达时刻。 */
+  function decayAnalysis(rir, fs, t0) {
+    var n = rir.length, i;
+    var i0 = 0, peak = 0;
+    for (i = 0; i < n; i++) if (Math.abs(rir[i]) > peak) { peak = Math.abs(rir[i]); }
+    // 直达声 = 第一次超过峰值 1% 的样本（早于它的都是分数延迟滤波器的前瓣）
+    for (i = 0; i < n; i++) if (Math.abs(rir[i]) >= 0.01 * peak) { i0 = i; break; }
+    if (t0 != null) i0 = Math.max(i0, 0);
+    var e = new Float64Array(n - i0);
+    for (i = 0; i < e.length; i++) e[i] = rir[i0 + i] * rir[i0 + i];
+    var edc = new Float64Array(e.length), acc = 0;
+    for (i = e.length - 1; i >= 0; i--) { acc += e[i]; edc[i] = acc; }
+    var total = edc[0];
+    var db = new Float64Array(e.length);
+    for (i = 0; i < e.length; i++) db[i] = 10 * Math.log10(Math.max(edc[i] / total, 1e-300));
+    function fitT(d1, d2) {
+      var a = -1, b = -1;
+      for (i = 0; i < db.length; i++) { if (a < 0 && db[i] <= -d1) a = i; if (db[i] <= -d2) { b = i; break; } }
+      if (a < 0 || b < 0 || b <= a + 2) return { T: NaN, i0: a, i1: b, slope: NaN, r2: NaN };
+      var sx = 0, sy = 0, sxx = 0, sxy = 0, m = b - a + 1, x, y;
+      for (i = a; i <= b; i++) { x = i / fs; y = db[i]; sx += x; sy += y; sxx += x * x; sxy += x * y; }
+      var slope = (m * sxy - sx * sy) / (m * sxx - sx * sx), inter = (sy - slope * sx) / m;
+      var ssr = 0, sst = 0, ybar = sy / m;
+      for (i = a; i <= b; i++) { x = i / fs; y = db[i]; ssr += Math.pow(y - (slope * x + inter), 2); sst += Math.pow(y - ybar, 2); }
+      return { T: -60 / slope, i0: a, i1: b, slope: slope, r2: sst > 0 ? 1 - ssr / sst : 1 };
+    }
+    function clarity(ms) {
+      var split = Math.round(ms / 1000 * fs), early = 0, late = 0;
+      for (i = 0; i < e.length; i++) { if (i <= split) early += e[i]; else late += e[i]; }
+      return { C: 10 * Math.log10(early / Math.max(late, 1e-300)), D: early / Math.max(early + late, 1e-300) };
+    }
+    var ts = 0, etot = 0;
+    for (i = 0; i < e.length; i++) { ts += (i / fs) * e[i]; etot += e[i]; }
+    var c50 = clarity(50), c80 = clarity(80);
+    /* 每个窗口只拟合一次：以前 T30 与 t30Fit 各调一次 fitT(5, 35)，同一个区间算两遍。
+     * 除了白跑，还让「改坏验证」失效 —— 只改其中一处，另一处照旧，守卫看不出来
+     * （2026-09-20 实撞：把 T30 的窗口从 35 改成 30，端点断言照样全绿）。 */
+    var edtF = fitT(0, 10), t20F = fitT(5, 25), t30F = fitT(5, 35);
+    return {
+      i0: i0, edcDb: db, energy: e, fs: fs,
+      EDT: edtF.T, T20: t20F.T, T30: t30F.T,
+      edtFit: edtF, t20Fit: t20F, t30Fit: t30F,
+      C50: c50.C, D50: c50.D, C80: c80.C, D80: c80.D, Ts: ts / Math.max(etot, 1e-300)
+    };
+  }
+
+  // ── 扬声器-边界干涉（SBIR）+ 模态传递函数 ────────────────
+  /* 一阶镜像叠加的自由场干涉：|Σ Rᵢ e^{−jk dᵢ}/dᵢ| ÷ (1/d₀)，dB。 */
+  function sbir(dims, src, mic, R, freqs, c, maxOrder) {
+    var imgs = imageSources(dims, src, mic, maxOrder == null ? 1 : maxOrder, R);
+    var d0 = Math.sqrt(Math.pow(src[0] - mic[0], 2) + Math.pow(src[1] - mic[1], 2) + Math.pow(src[2] - mic[2], 2));
+    var out = [], i, k;
+    for (k = 0; k < freqs.length; k++) {
+      var w = 2 * Math.PI * freqs[k] / c, re = 0, im = 0;
+      for (i = 0; i < imgs.length; i++) {
+        var damp = (typeof imgs[i].damping === 'number') ? imgs[i].damping : imgs[i].damping[bandIndexFor(freqs[k])];
+        var a = damp / imgs[i].dist, ph = -w * imgs[i].dist;
+        re += a * Math.cos(ph); im += a * Math.sin(ph);
+      }
+      out.push({ f: freqs[k], db: 20 * Math.log10(Math.sqrt(re * re + im * im) * d0) });
+    }
+    return out;
+  }
+  function bandIndexFor(f) {
+    var b = 0, i;
+    for (i = 0; i < BANDS.length; i++) if (f >= BANDS[i] / Math.SQRT2) b = i;
+    return b;
+  }
+  /* 首次反射点（镜像法）：把听音位对每面墙做镜像，连线与墙面的交点 = 该贴吸声板的位置。 */
+  function firstReflectionPoints(dims, src, mic) {
+    var walls = [
+      { key: 'xLo', name: '左墙', axis: 0, at: 0 }, { key: 'xHi', name: '右墙', axis: 0, at: dims[0] },
+      { key: 'yLo', name: '前墙', axis: 1, at: 0 }, { key: 'yHi', name: '后墙', axis: 1, at: dims[1] },
+      { key: 'zLo', name: '地面', axis: 2, at: 0 }, { key: 'zHi', name: '天花', axis: 2, at: dims[2] }
+    ], out = [], i;
+    for (i = 0; i < walls.length; i++) {
+      var w = walls[i], im = src.slice();
+      im[w.axis] = 2 * w.at - src[w.axis];
+      var d = im[w.axis] - mic[w.axis];
+      if (Math.abs(d) < 1e-9) continue;
+      var t = (w.at - mic[w.axis]) / d, pt = [0, 0, 0], k;
+      for (k = 0; k < 3; k++) pt[k] = mic[k] + t * (im[k] - mic[k]);
+      var inside = pt[0] >= -1e-9 && pt[0] <= dims[0] + 1e-9 && pt[1] >= -1e-9 && pt[1] <= dims[1] + 1e-9 &&
+                   pt[2] >= -1e-9 && pt[2] <= dims[2] + 1e-9;
+      var pathLen = Math.sqrt(Math.pow(im[0] - mic[0], 2) + Math.pow(im[1] - mic[1], 2) + Math.pow(im[2] - mic[2], 2));
+      var direct = Math.sqrt(Math.pow(src[0] - mic[0], 2) + Math.pow(src[1] - mic[1], 2) + Math.pow(src[2] - mic[2], 2));
+      out.push({ wall: w.name, key: w.key, point: pt, valid: inside, pathLen: pathLen, direct: direct,
+                 delayMs: null, levelDb: 20 * Math.log10(direct / pathLen) });
+    }
+    return out;
+  }
+  /* 刚性壁箱体的模态求和传递函数（阻尼由各带 T60 折算成模态阻尼 δ = 6.91/T60）。
+   * p(r) ∝ Σ_n ψ_n(r_s)ψ_n(r_m) / (k² − k_n² − 2jδ_n k_n/c)，ψ_n = cos(pπx/L)… */
+  function modalResponse(dims, src, mic, modeList, freqs, c, T60) {
+    var delta = 6.9077623 / T60;                      // 1/s，6.9077623 = 3·ln10
+    var psi = [], i, m;
+    for (i = 0; i < modeList.length; i++) {
+      m = modeList[i];
+      var eps = (m.p > 0 ? 2 : 1) * (m.q > 0 ? 2 : 1) * (m.r > 0 ? 2 : 1);
+      psi.push(eps *
+        Math.cos(m.p * Math.PI * src[0] / dims[0]) * Math.cos(m.q * Math.PI * src[1] / dims[1]) *
+        Math.cos(m.r * Math.PI * src[2] / dims[2]) *
+        Math.cos(m.p * Math.PI * mic[0] / dims[0]) * Math.cos(m.q * Math.PI * mic[1] / dims[1]) *
+        Math.cos(m.r * Math.PI * mic[2] / dims[2]));
+    }
+    var out = [], k;
+    for (k = 0; k < freqs.length; k++) {
+      var w = 2 * Math.PI * freqs[k], re = 1 / (dims[0] * dims[1] * dims[2]), im = 0;   // n=0 的均压模态
+      var kk = (w / c) * (w / c);
+      for (i = 0; i < modeList.length; i++) {
+        var wn = 2 * Math.PI * modeList[i].f, kn = wn / c;
+        var dr = kk - kn * kn, di = -2 * delta * kn / c;
+        var den = dr * dr + di * di;
+        re += psi[i] * dr / den; im += psi[i] * -di / den;
+      }
+      out.push({ f: freqs[k], mag: Math.sqrt(re * re + im * im) });
+    }
+    var ref = 0;
+    for (k = 0; k < out.length; k++) ref += out[k].mag;
+    ref /= out.length;
+    for (k = 0; k < out.length; k++) out[k].db = 20 * Math.log10(out[k].mag / ref);
+    return out;
+  }
+
+  // ── 多孔吸声体（Miki 模型 + 阻抗传递）────────────────────
+  /* Miki (1990)：Zc = ρ0c0[1 + 5.50 X^−0.632 − j·8.43 X^−0.632]，
+   *              k  = (ω/c0)[1 + 7.81 X^−0.618 − j·11.41 X^−0.618]，X = 10³f/σ。
+   * 时间约定 e^{+jωt}。 */
+  function mikiProps(f, sigma, rho0, c0) {
+    var X = 1000 * f / sigma, w = 2 * Math.PI * f;
+    var a = Math.pow(X, -0.632), b = Math.pow(X, -0.618);
+    return { Zc: [rho0 * c0 * (1 + 5.50 * a), -rho0 * c0 * 8.43 * a],
+             k: [(w / c0) * (1 + 7.81 * b), -(w / c0) * 11.41 * b] };
+  }
+  /* 分层构造的表面阻抗（扩展反应：层内按斜入射波数传播）。
+   * layers: [{kind:'porous', d, sigma} | {kind:'air', d}]，最后一层之后是刚性壁。
+   * theta = 入射角（rad）。 */
+  function surfaceImpedance(f, layers, theta, rho0, c0) {
+    var k0 = 2 * Math.PI * f / c0, kx = k0 * Math.sin(theta);
+    var Z = null, i;                                   // 从刚性壁往外递推
+    for (i = layers.length - 1; i >= 0; i--) {
+      var L = layers[i], Zc, kc;
+      if (L.kind === 'air') { Zc = [rho0 * c0, 0]; kc = [k0, 0]; }
+      else { var p = mikiProps(f, L.sigma, rho0, c0); Zc = p.Zc; kc = p.k; }
+      var kz = csqrt(csub(cmul(kc, kc), [kx * kx, 0]));
+      if (kz[1] > 0) kz = cscale(kz, -1);              // 取衰减解（e^{+jωt} 约定下 Im k ≤ 0）
+      var Zt = cdiv(cmul(Zc, kc), kz);                 // 斜入射的特性阻抗
+      var tankd = ctan(cscale(kz, L.d));
+      if (Z === null) {
+        Z = cdiv(Zt, cmul([0, 1], tankd));             // 刚性背衬：Z = Zt/(j tan(kz d))
+      } else {
+        var num = cadd(Z, cmul(cmul([0, 1], Zt), tankd));
+        var den = cadd(Zt, cmul(cmul([0, 1], Z), tankd));
+        Z = cdiv(cmul(Zt, num), den);
+      }
+    }
+    return Z;
+  }
+  function absorptionAt(f, layers, theta, rho0, c0) {
+    var Z = surfaceImpedance(f, layers, theta, rho0, c0);
+    var zc = [rho0 * c0 / Math.cos(theta), 0];
+    var Rr = cdiv(csub(Z, zc), cadd(Z, zc));
+    return Math.max(0, Math.min(1, 1 - cabs2(Rr)));
+  }
+  /* 无规入射（Paris 公式）：α_st = ∫₀^{θmax} α(θ) sin2θ dθ / ∫₀^{θmax} sin2θ dθ。
+   * 默认 θmax = 78°（工程上常用的截断，纯 90° 积分会系统性高估）。 */
+  function randomIncidenceAbsorption(f, layers, rho0, c0, thetaMaxDeg, nSteps) {
+    var tmax = (thetaMaxDeg == null ? 78 : thetaMaxDeg) * Math.PI / 180;
+    var n = nSteps || 90, num = 0, den = 0, i;
+    for (i = 0; i < n; i++) {                           // 中点法
+      var th = tmax * (i + 0.5) / n, wgt = Math.sin(2 * th) * (tmax / n);
+      num += absorptionAt(f, layers, th, rho0, c0) * wgt; den += wgt;
+    }
+    return num / den;
+  }
+  function absorberCurve(layers, freqs, rho0, c0, mode) {
+    var out = [], i;
+    for (i = 0; i < freqs.length; i++) {
+      out.push({ f: freqs[i], alpha: mode === 'normal' ? absorptionAt(freqs[i], layers, 0, rho0, c0)
+                                                       : randomIncidenceAbsorption(freqs[i], layers, rho0, c0) });
+    }
+    return out;
+  }
+  /* NRC = (α250+α500+α1k+α2k)/4，四舍五入到 0.05（ASTM C423）。 */
+  function nrc(alpha250, alpha500, alpha1k, alpha2k) {
+    return Math.round(((alpha250 + alpha500 + alpha1k + alpha2k) / 4) / 0.05) * 0.05;
+  }
+
+  // ── 处理方案求解 ─────────────────────────────────────────
+  /* 给定当前房间与目标 RT60 曲线，求每带需要**额外**增加多少 m² 的所选构造。
+   * 逐带解析求解（A_need = K·V/T_target − 4mV − A_current），再折算成面积；
+   * 取各带需求的最大值作为「一套方案」的面积，并回代 reverberation() 验证。 */
+  var ANCHOR_BANDS = [3, 4];          // 500 与 1000 Hz
+  function solveTreatment(rev, target, alphaPanel, panelAlphaExisting) {
+    var need = [], b;
+    for (b = 0; b < BANDS.length; b++) {
+      var row = rev.rows[b];
+      var Aneed = rev.K * rev.V / target[b] - row.airA;
+      var deficit = Aneed - (row.A + row.extraA);
+      var dAlpha = alphaPanel[b] - (panelAlphaExisting ? panelAlphaExisting[b] : 0);
+      need.push({ band: BANDS[b], deficit: deficit, area: dAlpha > 1e-6 ? deficit / dAlpha : Infinity, dAlpha: dAlpha });
+    }
+    /* 面积**锚在中频**（500/1000 Hz），不取各带需求的最大值。
+     * 取最大值等于让 63 Hz 那一带说了算 —— 多孔吸声体在 63 Hz 的 α 只有 0.07 上下，
+     * 解出来会是 80% 内表面全铺，再把中高频压到 0.13 s（2026-09-20 首轮实撞，
+     * 页面当时真的给出了这个建议）。工程上一种构造本来就不可能同时满足所有频带：
+     * 中频按目标铺满，低频缺口另外用更厚的构造 / 低频陷阱补，故这里把缺口单列出来。 */
+    var area = 0;
+    for (var i = 0; i < ANCHOR_BANDS.length; i++) {
+      var a = need[ANCHOR_BANDS[i]].area;
+      if (isFinite(a)) area = Math.max(area, a);
+    }
+    area = Math.max(area, 0);
+    // 用这个面积回代之后，各带还差多少 m² Sabine（正数 = 还不够）
+    var residual = [];
+    for (b = 0; b < BANDS.length; b++) residual.push(need[b].deficit - area * need[b].dAlpha);
+    return { perBand: need, area: area, residual: residual, anchorBands: ANCHOR_BANDS.slice() };
+  }
+  /* 用途目标曲线：mid 目标 + 低频允许抬升（依 ISO 3382-2 / EBU Tech 3276 的容差形状）。 */
+  var USAGES = [
+    { key: 'control', name: '录音控制室 / 监听室', Tmid: 0.30, tolLo: 0.30, tolHi: 0.30, lift: 1.20 },
+    { key: 'home', name: '家庭影院', Tmid: 0.40, tolLo: 0.30, tolHi: 0.30, lift: 1.20 },
+    { key: 'meeting', name: '会议室 / 播客间', Tmid: 0.50, tolLo: 0.30, tolHi: 0.30, lift: 1.15 },
+    { key: 'class', name: '教室', Tmid: 0.60, tolLo: 0.25, tolHi: 0.25, lift: 1.10 },
+    { key: 'living', name: '起居室', Tmid: 0.55, tolLo: 0.35, tolHi: 0.35, lift: 1.15 }
+  ];
+  function targetCurve(usage) {
+    var u = usage, out = [], b;
+    for (b = 0; b < BANDS.length; b++) {
+      var f = BANDS[b], mul = 1;
+      if (f <= 125) mul = u.lift;                         // 低频允许比中频长
+      else if (f === 250) mul = 1 + (u.lift - 1) * 0.5;
+      else if (f >= 4000) mul = 0.9;                      // 高频允许略短
+      out.push(u.Tmid * mul);
+    }
+    return out;
+  }
+
+  return {
+    BANDS: BANDS, TABLE_BANDS: TABLE_BANDS, USAGES: USAGES, RATIO_PRESETS: RATIO_PRESETS, BOLT_POLY: BOLT_POLY,
+    soundSpeed: soundSpeed, airDensity: airDensity, airAttenuation: airAttenuation, airM: airM,
+    reverberation: reverberation, roomConstant: roomConstant, criticalDistance: criticalDistance,
+    splVsDistance: splVsDistance, schroederFreq: schroederFreq,
+    modes: modes, bonello: bonello, axialSpacing: axialSpacing, pointInPoly: pointInPoly,
+    axisImage: axisImage, imageSources: imageSources, imageDamping: imageDamping,
+    fracDelayKernel: fracDelayKernel, buildRIR: buildRIR, decayAnalysis: decayAnalysis,
+    ismValidity: ismValidity, orderNeeded: orderNeeded,
+    sbir: sbir, bandIndexFor: bandIndexFor, firstReflectionPoints: firstReflectionPoints,
+    modalResponse: modalResponse,
+    mikiProps: mikiProps, surfaceImpedance: surfaceImpedance, absorptionAt: absorptionAt,
+    randomIncidenceAbsorption: randomIncidenceAbsorption, absorberCurve: absorberCurve, nrc: nrc,
+    solveTreatment: solveTreatment, targetCurve: targetCurve, ANCHOR_BANDS: ANCHOR_BANDS,
+    FDL: FDL, FDL2: FDL2
+  };
+})();
+if (typeof module !== 'undefined' && module.exports) module.exports = RoomLab;
+</script>
+<script id="rl-app">/* 本站通用的 SVG 绘图骨架：Frame（坐标框 + 刻度 + 裁剪）+ Placer（文字避让器）。
+ *
+ * 固化背景：09-14 journal 明写「这套 Placer 每期都在重写，值得连同保守盒 + 退让位一起抽进
+ * 公共脚手架」，09-15（SVG 机器人图）与 09-16（12 张图）又各重写一遍。本文件 = 09-16 版，
+ * 已经把历次踩过的坑都焊进去了：
+ *   ① 每一段文字（**含坐标轴刻度**）都走 Placer，撞了就按退让位挪、全撞就丢（07-28…08-11 共 7 次事故）；
+ *   ② 退让位第一顺位要落在数据的空侧，带 plate 的标注会擦掉底下的曲线（08-07）；
+ *   ③ 刻度档位按「刻度个数最接近目标」挑，不是「第一个 ≥ raw 的步长」（08-27 y 轴塌成 2 根）；
+ *   ④ setDomain **允许上下界倒置**（俯视图要 y 向下）—— 强行要求 ymax > ymin 会把整张图画空（09-16）；
+ *   ⑤ 曲线一律 clip 到绘图矩形，越界分支不许糊到坐标轴外（09-16）。
+ *
+ * 用法（作为 app 的第一个源文件内联进页面即可）：
+ *   node tools/build-inline.mjs --template page.template.html --out index.html \
+ *     --inline '/*APP*\/=<本文件>,app_part1.js,…'
+ *   var F = new AEPlot.Frame('fig-id', { pad: { l: 56, r: 18, t: 16, b: 38 } });
+ *   F.setDomain(x0, x1, y0, y1);
+ *   F.axes({ xlabel: '…', ylabel: '…', xfmt: fn, yfmt: fn });
+ *   F.path(pts, { stroke: '#da291c' }); F.dot(x, y); F.vline(x); F.hline(y);
+ *   F.P.text(px, py, '标注', { size: 10, fill: '#fff', plate: true, offsets: [[0,0],[0,-13],[0,20]] });
+ * 需要宿主提供一个 fmt(v, d) 数字格式函数：new Frame(id, { fmt: myFmt })，默认用内置的。
+ */
+var AEPlot = (function () {
+  'use strict';
+  var SVGNS = 'http://www.w3.org/2000/svg';
+  /* 主题色。09-16 抽出来时把 Ferrari 的深色写死在 axes/Placer 里，浅色设计系统（Expo）
+   * 用起来刻度与网格几乎看不见 —— 2026-09-17 改成可覆盖，默认值与旧版逐字相同。
+   * 用法：AEPlot.theme({ grid:'#f0f0f3', axis:'#dcdee0', tick:'#60646c', label:'#999' }); */
+  var TH = { grid: '#282828', axis: '#303030', tick: '#8f8f8f', label: '#666',
+             text: '#969696', plate: '#181818', series: '#da291c' };
+  function theme(o) { for (var k in o) if (o[k] != null) TH[k] = o[k]; return TH; }
+  function $(id) { return document.getElementById(id); }
+  function fmt(v, d) {
+    if (v == null || !isFinite(v)) return '—';
+    var x = +v;
+    if (Math.abs(x) >= 1e6 || (Math.abs(x) < 1e-4 && x !== 0)) return x.toExponential(d == null ? 3 : d);
+    var s = x.toFixed(d == null ? 3 : d);
+    if (/^-0\.?0*$/.test(s)) s = s.slice(1);
+    return s;
+  }
+  // ── SVG 基础 ──
+  function el(tag, attrs, parent) {
+    var n = document.createElementNS(SVGNS, tag), k;
+    for (k in attrs) if (attrs[k] != null) n.setAttribute(k, attrs[k]);
+    if (parent) parent.appendChild(n);
+    return n;
+  }
+  function clear(node) { while (node.firstChild) node.removeChild(node.firstChild); }
+
+  /* 文字避让器：**这张图上的每一段文字**都必须经过它（含坐标轴刻度）。
+   * 教训来源：07-28/07-29/07-30/08-05/08-07/08-08/08-11 连撞 7 次标签重叠，
+   * 全部逃过 DOM 断言，只有人工看图才发现。 */
+  function Placer(svg, w, h) {
+    this.svg = svg; this.w = w; this.h = h; this.boxes = []; this.drawn = 0; this.dropped = 0;
+  }
+  Placer.prototype.measure = function (text, size) {
+    var n = 0, i, c;
+    for (i = 0; i < text.length; i++) {
+      c = text.charCodeAt(i);
+      n += (c > 0x2e80 && c < 0xa000) || (c >= 0xff00 && c <= 0xffef) ? 1 : 0.6;
+    }
+    return n * size;
+  };
+  Placer.prototype.hit = function (b) {
+    if (b.x < -1 || b.y < -1 || b.x + b.w > this.w + 1 || b.y + b.h > this.h + 1) return true;  // 出画布
+    for (var i = 0; i < this.boxes.length; i++) {
+      var o = this.boxes[i];
+      if (b.x < o.x + o.w && o.x < b.x + b.w && b.y < o.y + o.h && o.y < b.y + b.h) return true;
+    }
+    return false;
+  };
+  Placer.prototype.reserve = function (x, y, w, h) { this.boxes.push({ x: x, y: y, w: w, h: h }); };
+  /* opts: {size, fill, anchor, weight, offsets:[[dx,dy]…], plate:bool} */
+  Placer.prototype.text = function (x, y, str, opts) {
+    var o = opts || {}, size = o.size || 11, anchor = o.anchor || 'middle';
+    var tw = this.measure(str, size) + 3, th = size + 3;
+    var offs = o.offsets || [[0, 0]], i, dx, dy, bx, by, box = null, ox = 0, oy = 0;
+    for (i = 0; i < offs.length; i++) {
+      dx = offs[i][0]; dy = offs[i][1];
+      bx = x + dx - (anchor === 'middle' ? tw / 2 : anchor === 'end' ? tw : 0);
+      by = y + dy - th + 2;
+      if (!this.hit({ x: bx, y: by, w: tw, h: th })) { box = { x: bx, y: by, w: tw, h: th }; ox = dx; oy = dy; break; }
+    }
+    if (!box) { this.dropped++; return null; }
+    this.boxes.push(box); this.drawn++;
+    if (o.plate) el('rect', { x: box.x, y: box.y, width: box.w, height: box.h, fill: o.plate === true ? TH.plate : o.plate, opacity: 0.88 }, this.svg);
+    var t = el('text', { x: x + ox, y: y + oy, 'text-anchor': anchor, 'font-size': size, fill: o.fill || TH.text,
+      'font-weight': o.weight || 400, 'font-family': 'inherit' }, this.svg);
+    t.textContent = str;
+    return t;
+  };
+
+  /* 直角坐标绘图框 */
+  function Frame(svgId, opt) {
+    var svg = $(svgId), o = opt || {};
+    clear(svg);
+    var vb = svg.getAttribute('viewBox').split(/\s+/).map(Number);
+    this.svg = svg; this.W = vb[2]; this.H = vb[3];
+    // 宿主传进来的 fmt 以前只存不用：axes() 里写死了模块自带的 fmt，
+    // 于是 `new Frame(id, { fmt: myFmt })` 会被**静默忽略**（2026-09-18 实撞，
+    // 「各节点排队人数」那张图的 x 轴因此打出了 3 位小数）。这里收起来，下面用它。
+    this.fmt = o.fmt || fmt;
+    this.pad = o.pad || { l: 56, r: 18, t: 16, b: 38 };
+    this.x0 = this.pad.l; this.x1 = this.W - this.pad.r;
+    this.y0 = this.H - this.pad.b; this.y1 = this.pad.t;
+    this.P = new Placer(svg, this.W, this.H);
+    // 裁剪：曲线一律夹在绘图矩形内（否则超出量程的分支会画到坐标轴外、糊到图例上）
+    this.clipId = 'ae-clip-' + svgId + '-' + Math.random().toString(36).slice(2, 8);
+    var defs = el('defs', {}, svg);
+    var cp = el('clipPath', { id: this.clipId }, defs);
+    el('rect', { x: this.pad.l, y: this.pad.t, width: this.W - this.pad.l - this.pad.r,
+      height: this.H - this.pad.t - this.pad.b }, cp);
+    this.setDomain(o.xmin == null ? 0 : o.xmin, o.xmax == null ? 1 : o.xmax, o.ymin == null ? 0 : o.ymin, o.ymax == null ? 1 : o.ymax);
+  }
+  Frame.prototype.setDomain = function (xmin, xmax, ymin, ymax) {
+    // 只修「退化」（上下界相等/非数），**不能**强行要求 ymax > ymin ——
+    // 俯视图要把 y 轴倒过来画（2026-09-16 实撞：平面形状图整张空白，
+    // 因为这里把倒置域改写成了 [ymin, ymin+1]，机翼落在域外）。
+    if (!isFinite(xmin) || !isFinite(xmax) || xmax === xmin) { xmin = xmin || 0; xmax = xmin + 1; }
+    if (!isFinite(ymin) || !isFinite(ymax) || ymax === ymin) { ymin = ymin || 0; ymax = ymin + 1; }
+    this.xmin = xmin; this.xmax = xmax; this.ymin = ymin; this.ymax = ymax;
+  };
+  Frame.prototype.sx = function (x) { return this.x0 + (x - this.xmin) / (this.xmax - this.xmin) * (this.x1 - this.x0); };
+  Frame.prototype.sy = function (y) { return this.y0 + (y - this.ymin) / (this.ymax - this.ymin) * (this.y1 - this.y0); };
+  /* 刻度档位：按「刻度个数最接近目标」挑，而不是「第一个 ≥ raw 的步长」
+   * （2026-08-27 教训：后者会把 y 轴塌成 2 根刻度）。 */
+  Frame.prototype.ticks = function (min, max, target) {
+    var span = max - min, best = null, mag, s, i, cand, cnt;
+    if (!(span > 0)) return [min];
+    for (mag = Math.floor(Math.log10(span)) - 1; mag <= Math.floor(Math.log10(span)) + 1; mag++) {
+      var base = Math.pow(10, mag);
+      var steps = [1, 2, 2.5, 5, 10];
+      for (i = 0; i < steps.length; i++) {
+        s = steps[i] * base;
+        cnt = Math.floor(max / s) - Math.ceil(min / s) + 1;
+        if (cnt < 2 || cnt > 24) continue;
+        cand = Math.abs(cnt - (target || 6));
+        if (best === null || cand < best.score) best = { step: s, score: cand };
+      }
+    }
+    if (!best) return [min, max];
+    var out = [], v0 = Math.ceil(min / best.step) * best.step;
+    for (var v = v0; v <= max + best.step * 1e-6; v += best.step) out.push(Math.abs(v) < best.step * 1e-9 ? 0 : v);
+    return out;
+  };
+  Frame.prototype.axes = function (o) {
+    var op = o || {}, i, t, px, py;
+    // 域可以是**倒置**的（阿贝图 x 轴从大到小、俯视图 y 轴向下），取刻度前先排序，
+    // 否则 ticks() 拿到负 span 直接 return [min]，整条轴只剩一个刻度
+    // （2026-09-17 实撞：阿贝图 x 轴只画出一个孤零零的「89」）。
+    var xt = op.xticks || this.ticks(Math.min(this.xmin, this.xmax), Math.max(this.xmin, this.xmax), 6);
+    var yt = op.yticks || this.ticks(Math.min(this.ymin, this.ymax), Math.max(this.ymin, this.ymax), 6);
+    el('rect', { x: this.x0, y: this.y1, width: this.x1 - this.x0, height: this.y0 - this.y1, fill: 'none', stroke: TH.axis }, this.svg);
+    for (i = 0; i < yt.length; i++) {
+      py = this.sy(yt[i]);
+      if (py < this.y1 - 0.5 || py > this.y0 + 0.5) continue;
+      el('line', { x1: this.x0, y1: py, x2: this.x1, y2: py, stroke: TH.grid }, this.svg);
+      this.P.text(this.x0 - 6, py + 4, (op.yfmt || this.fmt)(yt[i]), { anchor: 'end', size: 10, fill: TH.tick,
+        offsets: [[0, 0], [0, -9], [0, 9]] });
+    }
+    for (i = 0; i < xt.length; i++) {
+      px = this.sx(xt[i]);
+      if (px < this.x0 - 0.5 || px > this.x1 + 0.5) continue;
+      el('line', { x1: px, y1: this.y0, x2: px, y2: this.y1, stroke: TH.grid }, this.svg);
+      this.P.text(px, this.y0 + 16, (op.xfmt || this.fmt)(xt[i]), { anchor: 'middle', size: 10, fill: TH.tick });
+    }
+    if (op.xlabel) this.P.text((this.x0 + this.x1) / 2, this.H - 6, op.xlabel, { size: 11, fill: TH.label });
+    if (op.ylabel) {
+      var t2 = el('text', { x: 12, y: (this.y0 + this.y1) / 2, 'font-size': 11, fill: TH.label, 'text-anchor': 'middle',
+        transform: 'rotate(-90 12 ' + ((this.y0 + this.y1) / 2) + ')' }, this.svg);
+      t2.textContent = op.ylabel;
+      this.P.reserve(4, this.y1, 16, this.y0 - this.y1);
+    }
+  };
+  Frame.prototype.path = function (pts, o) {
+    var op = o || {}, d = '', i, px, py, started = false;
+    for (i = 0; i < pts.length; i++) {
+      if (pts[i] == null || !isFinite(pts[i][0]) || !isFinite(pts[i][1])) { started = false; continue; }
+      px = this.sx(pts[i][0]); py = this.sy(pts[i][1]);
+      d += (started ? 'L' : 'M') + px.toFixed(2) + ' ' + py.toFixed(2) + ' ';
+      started = true;
+    }
+    if (!d) return null;
+    return el('path', { d: d, fill: op.fill || 'none', stroke: op.stroke || TH.series, 'stroke-width': op.width || 1.6,
+      'stroke-dasharray': op.dash, opacity: op.opacity, 'stroke-linejoin': 'round', 'stroke-linecap': 'round',
+      'clip-path': op.noclip ? null : 'url(#' + this.clipId + ')' }, this.svg);
+  };
+  Frame.prototype.dot = function (x, y, o) {
+    var op = o || {};
+    return el('circle', { cx: this.sx(x), cy: this.sy(y), r: op.r || 3.2, fill: op.fill || TH.series,
+      stroke: op.stroke, 'stroke-width': op.width }, this.svg);
+  };
+  Frame.prototype.vline = function (x, o) {
+    var op = o || {};
+    return el('line', { x1: this.sx(x), y1: this.y0, x2: this.sx(x), y2: this.y1, stroke: op.stroke || '#5a5a5a',
+      'stroke-width': op.width || 1, 'stroke-dasharray': op.dash || '4 4' }, this.svg);
+  };
+  Frame.prototype.hline = function (y, o) {
+    var op = o || {};
+    return el('line', { x1: this.x0, y1: this.sy(y), x2: this.x1, y2: this.sy(y), stroke: op.stroke || '#5a5a5a',
+      'stroke-width': op.width || 1, 'stroke-dasharray': op.dash || '4 4' }, this.svg);
+  };
+
+
+  /* 对数轴刻度：在 [lo, hi]（以 10 为底的指数）区间里挑 1/2/5 × 10^k 这些档，
+   * 返回**真值**数组（调用方自己取 log 当域坐标、并用 yfmt 把它换算回来显示）。
+   * 2026-09-18 抽出：等待时间 / 成本 / 误差这类跨几个数量级的量，线性轴会把
+   * 关心的那一段全压在零线附近（实撞：16 席要 2.2 分钟、19 席只要 11 秒）。
+   * ⚠️ 配套的一条硬规矩：域要**夹**在关注点附近若干个数量级内 —— 只要有一个
+   * 病态点（比如 ρ=1-1e-16 解出 1e17）就能把量程撑到刻度全被避让器丢光。 */
+  function logTicks(lo, hi) {
+    var out = [], k, m, v, lg;
+    for (k = Math.floor(lo); k <= Math.ceil(hi); k++) {
+      for (m = 0; m < 3; m++) {
+        v = [1, 2, 5][m] * Math.pow(10, k);
+        lg = Math.log(v) / Math.LN10;
+        if (lg >= lo - 1e-9 && lg <= hi + 1e-9) out.push(v);
+      }
+    }
+    return out;
+  }
+
+  return { Frame: Frame, Placer: Placer, el: el, clear: clear, fmt: fmt, theme: theme, TH: TH,
+           logTicks: logTicks };
+})();
+
+/* Room Lab — 界面层。绘图一律走 AEPlot（Frame + Placer 文字避让器）。 */
+(function () {
+  'use strict';
+  var R = RoomLab, D = RoomData;
+  var $ = function (id) { return document.getElementById(id); };
+  var BANDS = R.BANDS;
+
+  /* 浅色设计系统：AEPlot 的默认主题是深色的，白底上网格与刻度几乎看不见（2026-09-17 实撞）。*/
+  AEPlot.theme({ grid: '#f1f1f1', axis: '#e5e5e5', tick: '#737373', label: '#a3a3a3',
+                 text: '#525252', plate: '#ffffff', series: '#000000' });
+  var INK = '#000000', MID = '#737373', SOFT = '#a3a3a3', FAINT = '#d4d4d4';
+
+  function fmt(v, d) {
+    if (v == null || !isFinite(v)) return '—';
+    return (+v).toFixed(d == null ? 2 : d);
+  }
+  function el(tag, attrs, parent) { return AEPlot.el(tag, attrs, parent); }
+  function txt(node, s) { node.textContent = s; return node; }
+  function tbl(node, head, rows) {
+    node.innerHTML = '';
+    var th = el0('thead'), tr = el0('tr'), i;
+    for (i = 0; i < head.length; i++) { var h = el0('th'); h.textContent = head[i]; tr.appendChild(h); }
+    th.appendChild(tr); node.appendChild(th);
+    var tb = el0('tbody');
+    for (i = 0; i < rows.length; i++) {
+      var r = el0('tr'), j;
+      for (j = 0; j < rows[i].length; j++) {
+        var c = el0('td'), v = rows[i][j];
+        if (v && v.html !== undefined) { c.innerHTML = v.html; c.className = 'rl-txt'; }
+        else if (v && v.text !== undefined) { c.textContent = v.text; c.className = 'rl-txt'; }
+        else c.textContent = v;
+        r.appendChild(c);
+      }
+      tb.appendChild(r);
+    }
+    node.appendChild(tb);
+  }
+  function el0(t) { return document.createElement(t); }
+  function kpis(node, items) {
+    node.innerHTML = '';
+    for (var i = 0; i < items.length; i++) {
+      var d = el0('div'); d.className = 'rl-kpi';
+      var dt = el0('dt'); dt.innerHTML = items[i][0];   // 标签里有 <sub>，textContent 会把标签原样显示出来
+      var dd = el0('dd'); dd.innerHTML = items[i][1] + (items[i][2] ? ' <small>' + items[i][2] + '</small>' : '');
+      d.appendChild(dt); d.appendChild(dd); node.appendChild(d);
+    }
+  }
+
+  // ── 状态 ────────────────────────────────────────────────
+  var DEFAULT = {
+    W: 4.20, Dp: 5.80, H: 2.70, tempC: 22, rh: 55, pres: 101.3, usage: 'meeting',
+    mat: { zLo: 'wood_slab', zHi: 'gypsum', yLo: 'plaster', yHi: 'plaster', xLo: 'plaster', xHi: 'glass_thick' },
+    extras: { person: 2, sofa: 2, shelf: 0, bed: 0 },
+    fmax: 300, src: [1.30, 0.70, 1.20], mic: [2.10, 2.90, 1.15],
+    band: 4, order: 10, fs: 16000, airabs: true,
+    scanmax: 2.00, sbirmax: 400,
+    fiber: 'gw_med', sigma: 18000, thick: 50, gap: 50, cmp: 'gw50'
+  };
+  var S = JSON.parse(JSON.stringify(DEFAULT));
+  var KEY = 'rl-state-v1';
+
+  function encodeState(st) {
+    var c = [st.W, st.Dp, st.H, st.tempC, st.rh, st.pres, st.usage,
+      st.mat.zLo, st.mat.zHi, st.mat.yLo, st.mat.yHi, st.mat.xLo, st.mat.xHi,
+      st.extras.person, st.extras.sofa, st.extras.shelf, st.extras.bed, st.fmax,
+      st.src[0], st.src[1], st.src[2], st.mic[0], st.mic[1], st.mic[2],
+      st.band, st.order, st.fs, st.airabs ? 1 : 0, st.scanmax, st.sbirmax,
+      st.fiber, st.sigma, st.thick, st.gap, st.cmp];
+    return btoa(unescape(encodeURIComponent(JSON.stringify(c)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  }
+  function decodeState(code) {
+    try {
+      var b = code.replace(/-/g, '+').replace(/_/g, '/');
+      while (b.length % 4) b += '=';
+      var c = JSON.parse(decodeURIComponent(escape(atob(b))));
+      if (!Array.isArray(c) || c.length < 35) return null;
+      return {
+        W: +c[0], Dp: +c[1], H: +c[2], tempC: +c[3], rh: +c[4], pres: +c[5], usage: c[6],
+        mat: { zLo: c[7], zHi: c[8], yLo: c[9], yHi: c[10], xLo: c[11], xHi: c[12] },
+        extras: { person: +c[13], sofa: +c[14], shelf: +c[15], bed: +c[16] }, fmax: +c[17],
+        src: [+c[18], +c[19], +c[20]], mic: [+c[21], +c[22], +c[23]],
+        band: +c[24], order: +c[25], fs: +c[26], airabs: !!c[27], scanmax: +c[28], sbirmax: +c[29],
+        fiber: c[30], sigma: +c[31], thick: +c[32], gap: +c[33], cmp: c[34]
+      };
+    } catch (e) { return null; }
+  }
+  function save() {
+    try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { /* 隐私模式下静默 */ }
+  }
+  function load() {
+    var h = location.hash.replace(/^#s=/, '');
+    if (h && location.hash.indexOf('#s=') === 0) { var d = decodeState(h); if (d) { S = d; return; } }
+    try {
+      var raw = localStorage.getItem(KEY);
+      if (raw) { var o = JSON.parse(raw); for (var k in DEFAULT) if (o[k] !== undefined) S[k] = o[k]; }
+    } catch (e) { /* 同上 */ }
+  }
+
+  // ── 几何与材料 ─────────────────────────────────────────
+  function dims() { return [S.W, S.Dp, S.H]; }
+  function volume() { return S.W * S.Dp * S.H; }
+  function surfAreas() {
+    return { zLo: S.W * S.Dp, zHi: S.W * S.Dp, yLo: S.W * S.H, yHi: S.W * S.H, xLo: S.Dp * S.H, xHi: S.Dp * S.H };
+  }
+  function totalSurface() { var a = surfAreas(), s = 0, k; for (k in a) s += a[k]; return s; }
+  var WALLKEYS = ['xLo', 'xHi', 'yLo', 'yHi', 'zLo', 'zHi'];
+  var WALLNAME = { xLo: '左墙', xHi: '右墙', yLo: '前墙', yHi: '后墙', zLo: '地面', zHi: '天花' };
+  function alphaOf(key) { return D.expand(D.byId(S.mat[key]).a6); }
+  function surfaces() {
+    var a = surfAreas();
+    return WALLKEYS.map(function (k) { return { key: k, area: a[k], alpha: alphaOf(k) }; });
+  }
+  function extrasList() {
+    var out = [];
+    for (var i = 0; i < D.EXTRAS.length; i++) {
+      var e = D.EXTRAS[i], n = S.extras[e.id] || 0;
+      if (n > 0) out.push({ count: n, sabine: D.expand(e.a6), id: e.id });
+    }
+    return out;
+  }
+  function revOpts(extra) {
+    return { volume: volume(), surfaces: surfaces(), extras: extrasList().concat(extra || []),
+      c: R.soundSpeed(S.tempC), tempC: S.tempC, rh: S.rh, pressure: S.pres };
+  }
+  function usageObj() {
+    for (var i = 0; i < R.USAGES.length; i++) if (R.USAGES[i].key === S.usage) return R.USAGES[i];
+    return R.USAGES[2];
+  }
+  function reflCoef() {
+    var o = {};
+    WALLKEYS.forEach(function (k) { o[k] = alphaOf(k).map(function (a) { return Math.sqrt(Math.max(0, 1 - a)); }); });
+    return o;
+  }
+  function clampPoints() {
+    var d = dims(), i;
+    for (i = 0; i < 3; i++) {
+      S.src[i] = Math.min(Math.max(S.src[i], 0.05), d[i] - 0.05);
+      S.mic[i] = Math.min(Math.max(S.mic[i], 0.05), d[i] - 0.05);
+    }
+  }
+
+  // ── 对数频率轴的公共设置 ───────────────────────────────
+  function bandFrame(id, pad) {
+    var F = new AEPlot.Frame(id, { pad: pad || { l: 54, r: 16, t: 14, b: 40 }, fmt: fmt });
+    return F;
+  }
+  function lg(f) { return Math.log(f) / Math.LN10; }
+  function bandTicks() { return BANDS.map(lg); }
+  function bandLabel(v) {
+    var f = Math.pow(10, v);
+    return f >= 1000 ? (f / 1000).toFixed(f % 1000 === 0 ? 0 : 1) + 'k' : String(Math.round(f));
+  }
+
+  // ══════════ 1. 房间与混响 ══════════
+  function renderRoom() {
+    var rev = R.reverberation(revOpts()), u = usageObj(), target = R.targetCurve(u);
+    var Stot = totalSurface(), V = volume(), c = R.soundSpeed(S.tempC);
+    var Tmid = (rev.rows[3].eyring + rev.rows[4].eyring) / 2;
+    var BR = (rev.rows[1].eyring + rev.rows[2].eyring) / (rev.rows[3].eyring + rev.rows[4].eyring);
+    var TR = (rev.rows[5].eyring + rev.rows[6].eyring) / (rev.rows[3].eyring + rev.rows[4].eyring);
+    var abarMid = rev.rows[4].abar;
+    var Rc = R.roomConstant(Stot, abarMid), rc = R.criticalDistance(Rc, 2);
+    var fs = R.schroederFreq(Tmid, V);
+
+    kpis($('rl-kpis-room'), [
+      ['容积 V', fmt(V, 1), 'm³'], ['内表面积 S', fmt(Stot, 1), 'm²'],
+      ['T<sub>mid</sub>（Eyring）', fmt(Tmid, 2), 's'], ['目标 T<sub>mid</sub>', fmt(u.Tmid, 2), 's'],
+      ['低频比 BR', fmt(BR, 2), ''], ['高频比 TR', fmt(TR, 2), ''],
+      ['Schroeder 频率', fmt(fs, 0), 'Hz'], ['临界距离', fmt(rc, 2), 'm']
+    ]);
+    txt($('rl-term-1'), '房间   ' + fmt(S.W, 2) + ' × ' + fmt(S.Dp, 2) + ' × ' + fmt(S.H, 2) + ' m   V=' + fmt(V, 1) + ' m³   S=' + fmt(Stot, 1) + ' m²');
+    txt($('rl-term-2'), '空气   ' + fmt(S.tempC, 0) + ' °C   ' + fmt(S.rh, 0) + ' % RH   ' + fmt(S.pres, 1) + ' kPa   c=' + fmt(c, 1) + ' m/s');
+    txt($('rl-term-3'), '混响   500 Hz ' + fmt(rev.rows[3].eyring, 2) + ' s   1 kHz ' + fmt(rev.rows[4].eyring, 2) + ' s   125 Hz ' + fmt(rev.rows[1].eyring, 2) + ' s');
+    txt($('rl-term-4'), '判据   Schroeder ' + fmt(fs, 0) + ' Hz 以下是模态区   临界距离 ' + fmt(rc, 2) + ' m（Q=2）');
+
+    var dev = Tmid / u.Tmid, over = [];
+    for (var b = 0; b < BANDS.length; b++) {
+      var t = rev.rows[b].eyring;
+      if (t > target[b] * (1 + u.tolHi)) over.push(BANDS[b]);
+    }
+    var title, text;
+    if (dev > 1.35) { title = '混响明显偏长'; text = '中频 ' + fmt(Tmid, 2) + ' s，是「' + u.name + '」目标 ' + fmt(u.Tmid, 2) + ' s 的 ' + fmt(dev, 2) + ' 倍。语言清晰度和监听准确度都会受影响。'; }
+    else if (dev > 1.15) { title = '混响略长'; text = '中频 ' + fmt(Tmid, 2) + ' s，比「' + u.name + '」目标 ' + fmt(u.Tmid, 2) + ' s 长 ' + fmt((dev - 1) * 100, 0) + ' %。'; }
+    else if (dev < 0.7) { title = '混响偏短'; text = '中频 ' + fmt(Tmid, 2) + ' s，明显短于「' + u.name + '」目标 ' + fmt(u.Tmid, 2) + ' s，声音会发闷发干。'; }
+    else { title = '中频混响达标'; text = '中频 ' + fmt(Tmid, 2) + ' s，落在「' + u.name + '」目标 ' + fmt(u.Tmid, 2) + ' s 的容差内。'; }
+    txt($('rl-verdict-title'), title); txt($('rl-verdict-text'), text);
+    var ul = $('rl-verdict-list'); ul.innerHTML = '';
+    function li(s) { var n = el0('li'); n.textContent = s; ul.appendChild(n); }
+    if (over.length === BANDS.length) li('八个倍频程全部超出目标上限 —— 这间房现在是「全频偏活」，先铺中高频吸声，再单独处理低频。');
+    else if (over.length) li('超出目标上限的频带：' + over.join(' / ') + ' Hz —— 先从这几带下手。');
+    if (BR > 1.3) li('低频比 BR = ' + fmt(BR, 2) + '，低频拖尾明显，需要的是厚吸声或低频陷阱，贴薄吸声棉没用。');
+    else if (BR < 0.85) li('低频比 BR = ' + fmt(BR, 2) + '，低频比中频还短，声音会偏薄。');
+    li('Schroeder 频率 ' + fmt(fs, 0) + ' Hz：低于它的频段由驻波主导，统计公式只能参考，看「驻波与模态」页。');
+    li('临界距离 ' + fmt(rc, 2) + ' m：听音位离音箱超过这个距离，听到的混响声就多于直达声。');
+
+    // 图：RT60 vs 倍频程
+    var F = bandFrame('rl-fig-rt', { l: 54, r: 16, t: 14, b: 44 });
+    var allT = [];
+    for (b = 0; b < BANDS.length; b++) allT.push(rev.rows[b].sabine, rev.rows[b].eyring, rev.rows[b].millington, target[b] * 1.4);
+    var ymax = Math.max.apply(null, allT.filter(isFinite)) * 1.1;
+    F.setDomain(lg(50), lg(10000), 0, Math.max(ymax, 0.4));
+    // 目标区间先画（垫在曲线下面）
+    var lo = [], hi = [];
+    for (b = 0; b < BANDS.length; b++) { lo.push([lg(BANDS[b]), target[b] * (1 - u.tolLo)]); hi.push([lg(BANDS[b]), target[b] * (1 + u.tolHi)]); }
+    var poly = lo.concat(hi.slice().reverse());
+    el('path', { d: poly.map(function (p, i) { return (i ? 'L' : 'M') + F.sx(p[0]).toFixed(1) + ' ' + F.sy(p[1]).toFixed(1); }).join(' ') + ' Z',
+      fill: '#ececec', stroke: 'none' }, F.svg);
+    F.axes({ xticks: bandTicks(), xfmt: bandLabel, yfmt: function (v) { return fmt(v, 2); },
+      xlabel: '倍频程中心频率 (Hz)', ylabel: '混响时间 T60 (s)' });
+    F.path(BANDS.map(function (f, i) { return [lg(f), rev.rows[i].millington]; }), { stroke: SOFT, width: 1.4 });
+    F.path(BANDS.map(function (f, i) { return [lg(f), rev.rows[i].sabine]; }), { stroke: MID, width: 1.4, dash: '5 4' });
+    F.path(BANDS.map(function (f, i) { return [lg(f), rev.rows[i].eyring]; }), { stroke: INK, width: 2 });
+    F.path(BANDS.map(function (f, i) { return [lg(f), target[i]]; }), { stroke: FAINT, width: 1.4, dash: '2 3' });
+    for (b = 0; b < BANDS.length; b++) F.dot(lg(BANDS[b]), rev.rows[b].eyring, { r: 3, fill: INK });
+    F.P.text(F.sx(lg(BANDS[4])), F.sy(rev.rows[4].eyring) - 10, fmt(rev.rows[4].eyring, 2) + ' s',
+      { size: 10, fill: INK, plate: true, offsets: [[0, -4], [0, 18], [-30, -4], [30, -4]] });
+
+    // 表
+    var rows = [];
+    for (b = 0; b < BANDS.length; b++) {
+      var r0 = rev.rows[b], t = r0.eyring, tg = target[b];
+      var st = t > tg * (1 + u.tolHi) ? { html: '<span class="rl-pill rl-pill-warn">偏长</span>' }
+        : t < tg * (1 - u.tolLo) ? { html: '<span class="rl-pill">偏短</span>' }
+        : { html: '<span class="rl-pill rl-pill-ok">达标</span>' };
+      rows.push([BANDS[b] + (b === 0 || b === 7 ? ' *' : ''), fmt(r0.A, 1), fmt(r0.extraA, 1), fmt(r0.airA, 2),
+        fmt(r0.abar, 3), fmt(r0.sabine, 2), fmt(r0.eyring, 2), fmt(r0.millington, 2), fmt(tg, 2), st]);
+    }
+    tbl($('rl-tbl-rt'), ['频带 Hz', 'A m²', '家具 m²', '空气 m²', 'ᾱ', 'Sabine s', 'Eyring s', 'Millington s', '目标 s', '判定'], rows);
+    $('rl-snip-dims').textContent = fmt(S.W, 2) + '×' + fmt(S.Dp, 2) + '×' + fmt(S.H, 2) + ' m';
+    $('rl-snip-rt').textContent = 'T60 ' + fmt(Tmid, 2) + ' s';
+    return { rev: rev, target: target, u: u, Tmid: Tmid, fs: fs };
+  }
+
+  // ══════════ 2. 驻波与模态 ══════════
+  function renderModes(ctx) {
+    var c = R.soundSpeed(S.tempC), d = dims();
+    var ml = R.modes(d[0], d[1], d[2], c, S.fmax);
+    var bon = R.bonello(ml, 20, Math.min(S.fmax, 300));
+    var gaps = R.axialSpacing(ml.filter(function (m) { return m.f <= Math.min(S.fmax, 300); }));
+    var maxGap = gaps.length ? gaps.reduce(function (a, g) { return Math.max(a, g.gap); }, 0) : 0;
+    var worst = gaps.length ? gaps.reduce(function (a, g) { return g.gap > a.gap ? g : a; }, gaps[0]) : null;
+    var inBolt = R.pointInPoly(d[0] / d[2], d[1] / d[2], R.BOLT_POLY);
+    var nAx = ml.filter(function (m) { return m.type === 'axial'; }).length;
+
+    kpis($('rl-kpis-modes'), [
+      ['≤' + S.fmax + ' Hz 模态数', String(ml.length), ''],
+      ['其中轴向', String(nAx), ''],
+      ['最低模态', fmt(ml.length ? ml[0].f : 0, 1), 'Hz'],
+      ['Schroeder 频率', fmt(ctx.fs, 0), 'Hz'],
+      ['轴向最大间距', fmt(maxGap, 1), 'Hz'],
+      ['Bonello 判据', bon.pass ? '通过' : '不通过', ''],
+      ['Bolt 区', inBolt ? '在区内' : '在区外', ''],
+      // 「1 : 1.38 : 0.64」这种三段比例在 132px 的小格里必然被挤出去（守卫实撞），
+      // 拆成两个短读数，正好也跟 Bolt 图的两根轴对上
+      ['W / H', fmt(d[0] / d[2], 2), ''], ['D / H', fmt(d[1] / d[2], 2), '']
+    ]);
+    txt($('rl-term-m1'), '模态   ' + ml.length + ' 个 ≤ ' + S.fmax + ' Hz   轴向 ' + nAx + '   最低 ' + fmt(ml.length ? ml[0].f : 0, 1) + ' Hz');
+    txt($('rl-term-m2'), '间距   轴向最大 ' + fmt(maxGap, 1) + ' Hz' + (worst ? '（' + fmt(worst.f0, 1) + ' → ' + fmt(worst.f1, 1) + ' Hz）' : ''));
+    txt($('rl-term-m3'), '判据   Bonello ' + (bon.pass ? '通过' : '不通过（' + bon.violations.length + ' 带）') + '   Bolt 区 ' + (inBolt ? '在区内' : '在区外'));
+    $('rl-snip-mode').textContent = ml.length ? ('最低模态 ' + fmt(ml[0].f, 1) + ' Hz') : '无模态';
+
+    // 图：模态堆叠
+    var F = bandFrame('rl-fig-modes', { l: 44, r: 16, t: 14, b: 42 });
+    F.setDomain(0, S.fmax, 0, 1);
+    F.axes({ yticks: [], xlabel: '频率 (Hz)', xfmt: function (v) { return fmt(v, 0); } });
+    var hgt = { axial: 0.92, tangential: 0.6, oblique: 0.32 }, col = { axial: INK, tangential: MID, oblique: FAINT };
+    for (var i = 0; i < ml.length; i++) {
+      var m = ml[i];
+      el('line', { x1: F.sx(m.f), y1: F.sy(0), x2: F.sx(m.f), y2: F.sy(hgt[m.type]),
+        stroke: col[m.type], 'stroke-width': m.type === 'axial' ? 1.8 : 1,
+        'clip-path': 'url(#' + F.clipId + ')' }, F.svg);
+    }
+    // 只给「间隔最大的那一段」加标注，别给每根线都写字
+    if (worst && worst.gap > 5) {
+      var xm = (worst.f0 + worst.f1) / 2;
+      F.P.text(F.sx(xm), F.sy(0.99), '最大轴向间距 ' + fmt(worst.gap, 1) + ' Hz',
+        { size: 10, fill: INK, plate: true, offsets: [[0, 0], [0, 14], [-70, 0], [70, 0]] });
+    }
+    if (ctx.fs <= S.fmax) {
+      el('line', { x1: F.sx(ctx.fs), y1: F.y0, x2: F.sx(ctx.fs), y2: F.y1, stroke: SOFT, 'stroke-dasharray': '4 4' }, F.svg);
+      F.P.text(F.sx(ctx.fs), F.y1 + 14, 'Schroeder ' + fmt(ctx.fs, 0) + ' Hz',
+        { size: 10, fill: MID, plate: true, offsets: [[0, 0], [0, 14], [-60, 0], [60, 0]] });
+    }
+
+    // 图：Bonello 柱
+    var F2 = bandFrame('rl-fig-bonello', { l: 44, r: 16, t: 14, b: 44 });
+    var nmax = bon.bands.reduce(function (a, b) { return Math.max(a, b.n); }, 1);
+    F2.setDomain(-0.5, bon.bands.length - 0.5, 0, nmax * 1.2);
+    F2.axes({ xticks: bon.bands.map(function (b, i) { return i; }),
+      xfmt: function (v) { var b = bon.bands[Math.round(v)]; return b ? (b.fc >= 100 ? String(Math.round(b.fc)) : fmt(b.fc, 0)) : ''; },
+      yfmt: function (v) { return fmt(v, 0); }, xlabel: '1/3 倍频程中心频率 (Hz)', ylabel: '模态个数' });
+    var bw = (F2.x1 - F2.x0) / bon.bands.length * 0.66;
+    var prevN = -1;
+    for (i = 0; i < bon.bands.length; i++) {
+      var bb = bon.bands[i], bad = prevN >= 0 && bb.n < prevN;
+      el('rect', { x: F2.sx(i) - bw / 2, y: F2.sy(bb.n), width: bw, height: Math.max(0, F2.sy(0) - F2.sy(bb.n)),
+        fill: bad ? INK : FAINT, 'clip-path': 'url(#' + F2.clipId + ')' }, F2.svg);
+      prevN = bb.n;
+    }
+
+    // 图：Bolt 区
+    var F3 = new AEPlot.Frame('rl-fig-bolt', { pad: { l: 44, r: 14, t: 14, b: 42 }, fmt: fmt });
+    F3.setDomain(0.9, 2.6, 0.9, 2.6);
+    F3.axes({ xlabel: 'W / H', ylabel: 'D / H', xfmt: function (v) { return fmt(v, 1); }, yfmt: function (v) { return fmt(v, 1); } });
+    el('path', { d: R.BOLT_POLY.map(function (p, i) { return (i ? 'L' : 'M') + F3.sx(p[0]).toFixed(1) + ' ' + F3.sy(p[1]).toFixed(1); }).join(' ') + ' Z',
+      fill: '#ececec', stroke: FAINT, 'clip-path': 'url(#' + F3.clipId + ')' }, F3.svg);
+    var bx = d[0] / d[2], by = d[1] / d[2];
+    if (bx >= 0.9 && bx <= 2.6 && by >= 0.9 && by <= 2.6) {
+      F3.dot(bx, by, { r: 4.5, fill: INK });
+      F3.P.text(F3.sx(bx), F3.sy(by) - 9, '本房间', { size: 10, fill: INK, plate: true,
+        offsets: [[0, 0], [0, 20], [-34, 4], [34, 4]] });
+    } else {
+      F3.P.text((F3.x0 + F3.x1) / 2, F3.y1 + 16, '本房间比例 ' + fmt(bx, 2) + ' / ' + fmt(by, 2) + ' 超出图幅',
+        { size: 10, fill: MID, plate: true });
+    }
+
+    // 表
+    tbl($('rl-tbl-axial'), ['方向', '模态 (p,q,r)', '频率 Hz', '与上一个的间距 Hz'],
+      gaps.slice(0, 10).map(function (g) {
+        var m = ml.filter(function (x) { return Math.abs(x.f - g.f1) < 1e-9; })[0];
+        var dir = m ? (m.p > 0 ? '宽 W' : m.q > 0 ? '进深 D' : '层高 H') : '—';
+        return [{ text: dir }, m ? m.p + ',' + m.q + ',' + m.r : '—', fmt(g.f1, 1),
+          { html: g.gap > 25 ? '<span class="rl-pill rl-pill-warn">' + fmt(g.gap, 1) + '</span>' : fmt(g.gap, 1) }];
+      }));
+    tbl($('rl-tbl-modes'), ['#', 'p,q,r', '频率 Hz', '类型', '半波长 m'],
+      ml.slice(0, 20).map(function (m, i) {
+        return [String(i + 1), m.p + ',' + m.q + ',' + m.r, fmt(m.f, 1),
+          { text: { axial: '轴向', tangential: '切向', oblique: '斜向' }[m.type] }, fmt(c / m.f / 2, 2)];
+      }));
+    return { modes: ml };
+  }
+
+  // ══════════ 3. 脉冲响应 ══════════
+  var lastRev = null;
+  function renderRIR() {
+    clampPoints();
+    var d = dims(), c = R.soundSpeed(S.tempC);
+    var imgs = R.imageSources(d, S.src, S.mic, S.order, reflCoef());
+    var mAir = S.airabs ? R.airM(BANDS[S.band], S.tempC, S.rh, S.pres) : 0;
+    var built = R.buildRIR(imgs, c, S.fs, { band: S.band, mAir: mAir });
+    var dec = R.decayAnalysis(built.rir, S.fs, built.t0);
+    /* 截断有效性：阶数截到 N 之后，比最早的 N+1 阶镜像更晚的一切读数都缺声线。 */
+    var val = R.ismValidity(d, S.src, S.mic, S.order, c);
+    var iVal = Math.round(val.tValid * S.fs);
+    var dbAtVal = iVal > 0 && iVal < dec.edcDb.length ? dec.edcDb[iVal] : dec.edcDb[dec.edcDb.length - 1];
+    var trust = function (needDb) { return -dbAtVal >= needDb; };
+    var mark = function (v, unit, needDb, dp) {
+      return trust(needDb) ? fmt(v, dp) : '<span style="color:#a3a3a3">' + fmt(v, dp) + '</span>';
+    };
+    txt($('rl-rir-cost'), '本次模拟 ' + imgs.length + ' 个镜像声源，脉冲响应 ' + built.rir.length +
+      ' 个样本（' + fmt(built.rir.length / S.fs * 1000, 0) + ' ms）。');
+
+    kpis($('rl-kpis-rir'), [
+      ['有效到', fmt(val.tValid * 1000, 1), 'ms'], ['该时刻已衰减', fmt(-dbAtVal, 1), 'dB'],
+      ['EDT', mark(dec.EDT, 's', 10, 3), 's'], ['T20', mark(dec.T20, 's', 25, 3), 's'],
+      ['T30', mark(dec.T30, 's', 35, 3), 's'],
+      ['C50', mark(dec.C50, 'dB', 20, 1), 'dB'], ['C80', mark(dec.C80, 'dB', 25, 1), 'dB'],
+      ['镜像声源', String(imgs.length), '个']
+    ]);
+    txt($('rl-term-r1'), '模拟   ' + BANDS[S.band] + ' Hz 频带   ' + imgs.length + ' 个镜像（≤' + S.order + ' 阶）   fs=' + S.fs + ' Hz' + (S.airabs ? '   含空气吸收' : ''));
+    txt($('rl-term-r2'), '衰变   EDT ' + fmt(dec.EDT, 3) + ' s   T20 ' + fmt(dec.T20, 3) + ' s   T30 ' + fmt(dec.T30, 3) + ' s   D50 ' + fmt(dec.D50 * 100, 1) + ' %   Ts ' + fmt(dec.Ts * 1000, 1) + ' ms');
+    txt($('rl-term-r3'), '有效   完整到 ' + fmt(val.tValid * 1000, 1) + ' ms（此时衰减 ' + fmt(-dbAtVal, 1) + ' dB）' +
+      '   T30 需要 35 dB   ' + (trust(35) ? 'T30 可信' : 'T30 被截断，读数偏短'));
+
+    /* 截断提示：这不是装饰，是本页最容易误导人的一处。 */
+    var warn = $('rl-rir-warn');
+    if (trust(35)) {
+      warn.className = 'rl-note';
+      warn.textContent = '当前阶数足够：脉冲响应在 ' + fmt(val.tValid * 1000, 1) + ' ms 处已衰减 ' +
+        fmt(-dbAtVal, 1) + ' dB，EDT / T20 / T30 都落在完整区间内。';
+    } else {
+      var need = R.orderNeeded(volume(), totalSurface(), c, Math.max(lastRev ? lastRev.rows[S.band].eyring : 1, 0.05), 35);
+      warn.className = 'rl-note rl-warnbox';
+      warn.textContent = '读数被截断：' + S.order + ' 阶镜像只把脉冲响应算到 ' + fmt(val.tValid * 1000, 1) +
+        ' ms，那时才衰减 ' + fmt(-dbAtVal, 1) + ' dB，而 T30 需要 35 dB。灰掉的那几个数偏短，别当真。' +
+        '这个频带按统计公式的 T60 ≈ ' + fmt(lastRev ? lastRev.rows[S.band].eyring : 0, 2) + ' s，' +
+        '要覆盖到 −35 dB 大约需要 ' + need + ' 阶（镜像个数按阶数三次方增长，' + (need > 24 ? '已超出本页上限，请改看「房间与混响」页的统计结果' : '可以试试') + '）。' +
+        '早期反射表与 ' + fmt(val.tValid * 1000, 1) + ' ms 以内的波形不受影响，照常可用。';
+    }
+
+    // 图：RIR 波形
+    var F = bandFrame('rl-fig-rir', { l: 54, r: 16, t: 14, b: 42 });
+    var msMax = 140, nShow = Math.min(built.rir.length, Math.ceil(msMax / 1000 * S.fs) + dec.i0);
+    var peak = 0, i;
+    for (i = 0; i < nShow; i++) peak = Math.max(peak, Math.abs(built.rir[i]));
+    F.setDomain(0, msMax, -peak * 1.12, peak * 1.12);
+    F.axes({ xlabel: '时间 (ms，0 = 直达声)', ylabel: '振幅', xfmt: function (v) { return fmt(v, 0); },
+      yfmt: function (v) { return peak > 0 ? fmt(v / peak, 1) : '0'; } });
+    var pts = [];
+    for (i = dec.i0; i < nShow; i++) pts.push([(i - dec.i0) / S.fs * 1000, built.rir[i]]);
+    el('line', { x1: F.x0, y1: F.sy(0), x2: F.x1, y2: F.sy(0), stroke: '#ececec' }, F.svg);
+    F.path(pts, { stroke: INK, width: 0.9 });
+
+    // 图：Schroeder 衰变
+    var F2 = bandFrame('rl-fig-edc', { l: 54, r: 16, t: 14, b: 42 });
+    var tEnd = Math.min(dec.edcDb.length / S.fs, Math.max(dec.T30 * 1.2, 0.05));
+    var edcLo = 0;
+    for (i = 0; i < dec.edcDb.length && i / S.fs <= tEnd; i++) edcLo = Math.min(edcLo, dec.edcDb[i]);
+    F2.setDomain(0, tEnd * 1000, Math.max(-65, Math.min(-40, edcLo - 3)), 2);
+    F2.axes({ xlabel: '时间 (ms)', ylabel: '衰减 (dB)', xfmt: function (v) { return fmt(v, 0); }, yfmt: function (v) { return fmt(v, 0); } });
+    /* 底纹先画：它是背景，画在曲线之后会把整条曲线盖掉（首轮实撞，人工看图才发现）。*/
+    if (val.tValid * 1000 < tEnd * 1000) {
+      el('rect', { x: F2.sx(val.tValid * 1000), y: F2.y1, width: Math.max(0, F2.x1 - F2.sx(val.tValid * 1000)),
+        height: F2.y0 - F2.y1, fill: '#f4f4f4' }, F2.svg);
+      el('line', { x1: F2.sx(val.tValid * 1000), y1: F2.y0, x2: F2.sx(val.tValid * 1000), y2: F2.y1,
+        stroke: MID, 'stroke-dasharray': '5 4' }, F2.svg);
+      F2.P.text(F2.sx(val.tValid * 1000) + 5, F2.y1 + 14, '↓ 镜像阶数不够，以下不可信',
+        { size: 10, anchor: 'start', fill: MID, plate: true, offsets: [[0, 0], [0, 14], [0, 28]] });
+    }
+    var ep = [], step = Math.max(1, Math.floor(dec.edcDb.length / 900));
+    for (i = 0; i < dec.edcDb.length; i += step) { if (i / S.fs > tEnd) break; ep.push([i / S.fs * 1000, dec.edcDb[i]]); }
+    // 拟合线先画在下面，曲线压上去
+    function fitLine(f, col, dash) {
+      if (!isFinite(f.T)) return;
+      var inter = -60 / f.T;
+      var x0 = f.i0 / S.fs, y0 = dec.edcDb[f.i0];
+      F2.path([[x0 * 1000, y0], [(x0 + (-65 - y0) / inter) * 1000, -65]], { stroke: col, width: 1.2, dash: dash });
+    }
+    fitLine(dec.t20Fit, SOFT, '3 3');
+    fitLine(dec.t30Fit, MID, '6 4');
+    F2.path(ep, { stroke: INK, width: 1.8 });
+    [[-5, '−5 dB'], [-25, '−25 dB'], [-35, '−35 dB']].forEach(function (p) {
+      el('line', { x1: F2.x0, y1: F2.sy(p[0]), x2: F2.x1, y2: F2.sy(p[0]), stroke: '#ececec', 'stroke-dasharray': '3 4' }, F2.svg);
+      F2.P.text(F2.x1 - 4, F2.sy(p[0]) - 3, p[1], { size: 9, anchor: 'end', fill: SOFT, offsets: [[0, 0], [0, 12], [0, -11]] });
+    });
+    F2.P.text(F2.x0 + 8, F2.y1 + 16, 'T30 = ' + fmt(dec.T30, 3) + ' s', { size: 11, anchor: 'start', fill: INK, plate: true });
+
+    // 表：最早到达
+    var d0 = imgs[0].dist, rows = [];
+    for (i = 0; i < Math.min(12, imgs.length); i++) {
+      var im = imgs[i], damp = im.damping[S.band];
+      var lvl = 20 * Math.log10(Math.max(damp, 1e-12) / im.dist * d0);
+      var seq = [];
+      WALLKEYS.forEach(function (k) { if (im.n[k]) seq.push(WALLNAME[k] + (im.n[k] > 1 ? '×' + im.n[k] : '')); });
+      rows.push([i === 0 ? '直达' : '#' + i, fmt((im.dist - d0) / c * 1000, 1), fmt(im.dist, 2),
+        String(im.order), i === 0 ? '0.0' : fmt(lvl, 1), { text: seq.length ? seq.join(' → ') : '—' }]);
+    }
+    tbl($('rl-tbl-arr'), ['声线', '延迟 ms', '路程 m', '阶', '相对直达 dB', '反射的墙'], rows);
+    return { dec: dec, imgs: imgs, val: val, dbAtVal: dbAtVal };
+  }
+
+  // ══════════ 4. 摆位与反射点 ══════════
+  function sbirFreqs(fmaxHz) {
+    var out = [], f;
+    for (f = 20; f <= fmaxHz; f *= Math.pow(2, 1 / 48)) out.push(f);
+    return out;
+  }
+  function ripple(curve) {
+    var lo = Infinity, hi = -Infinity;
+    for (var i = 0; i < curve.length; i++) { lo = Math.min(lo, curve[i].db); hi = Math.max(hi, curve[i].db); }
+    return hi - lo;
+  }
+  function renderPlace(ctx) {
+    clampPoints();
+    var d = dims(), c = R.soundSpeed(S.tempC), Rw = reflCoef();
+    var fq = sbirFreqs(S.sbirmax);
+    var sb = R.sbir(d, S.src, S.mic, Rw, fq, c, 2);
+    var ml = R.modes(d[0], d[1], d[2], c, Math.min(S.sbirmax * 1.6, 400));
+    var mr = R.modalResponse(d, S.src, S.mic, ml, fq, c, Math.max(ctx.Tmid, 0.12));
+    var frp = R.firstReflectionPoints(d, S.src, S.mic);
+    frp.forEach(function (p) { p.delayMs = (p.pathLen - p.direct) / c * 1000; });
+
+    // 扫描：音箱离前墙 y 从 0.2 到 scanmax
+    var scan = [], best = null;
+    for (var y = 0.20; y <= S.scanmax + 1e-9; y += 0.05) {
+      var s2 = [S.src[0], y, S.src[2]];
+      var cur = R.sbir(d, s2, S.mic, Rw, fq, c, 2);
+      var rp = ripple(cur);
+      scan.push({ y: y, ripple: rp });
+      if (!best || rp < best.ripple) best = { y: y, ripple: rp };
+    }
+    window.__rlBest = best;
+
+    var rp0 = ripple(sb);
+    var deepest = sb.reduce(function (a, p) { return p.db < a.db ? p : a; }, sb[0]);
+    kpis($('rl-kpis-place'), [
+      ['音箱离前墙', fmt(S.src[1], 2), 'm'], ['音箱离侧墙', fmt(Math.min(S.src[0], d[0] - S.src[0]), 2), 'm'],
+      ['听音位离后墙', fmt(d[1] - S.mic[1], 2), 'm'], ['听音距离', fmt(Math.hypot(S.src[0] - S.mic[0], S.src[1] - S.mic[1], S.src[2] - S.mic[2]), 2), 'm'],
+      ['干涉起伏', fmt(rp0, 1), 'dB'], ['最深陷落', fmt(deepest.db, 1), 'dB'],
+      ['陷落频率', fmt(deepest.f, 0), 'Hz'], ['推荐离前墙', fmt(best.y, 2), 'm']
+    ]);
+    txt($('rl-term-p1'), '摆位   音箱 (' + S.src.map(function (v) { return fmt(v, 2); }).join(', ') + ')   听音位 (' + S.mic.map(function (v) { return fmt(v, 2); }).join(', ') + ')');
+    txt($('rl-term-p2'), '干涉   20–' + S.sbirmax + ' Hz 起伏 ' + fmt(rp0, 1) + ' dB   最深陷落 ' + fmt(deepest.db, 1) + ' dB @ ' + fmt(deepest.f, 0) + ' Hz');
+    txt($('rl-term-p3'), '扫描   ' + scan.length + ' 个位置   最平的是离前墙 ' + fmt(best.y, 2) + ' m（起伏 ' + fmt(best.ripple, 1) + ' dB）');
+
+    // 图：俯视图（手绘，等比例）
+    var svg = $('rl-fig-plan'); AEPlot.clear(svg);
+    var VW = 720, VH = 360, pad = 46;
+    var sc = Math.min((VW - 2 * pad) / d[0], (VH - 2 * pad) / d[1]);
+    var ox = (VW - d[0] * sc) / 2, oy = (VH - d[1] * sc) / 2;
+    var PX = function (x) { return ox + x * sc; }, PY = function (y) { return oy + y * sc; };
+    var P = new AEPlot.Placer(svg, VW, VH);
+    el('rect', { x: PX(0), y: PY(0), width: d[0] * sc, height: d[1] * sc, fill: '#fafafa', stroke: '#d4d4d4' }, svg);
+    P.reserve(PX(0) - 2, PY(0) - 2, d[0] * sc + 4, 4);
+    // 声源 → 听音位的直达线与两条侧墙反射路径
+    frp.forEach(function (p) {
+      if (!p.valid || p.key === 'zLo' || p.key === 'zHi') return;
+      el('path', { d: 'M' + PX(S.src[0]) + ' ' + PY(S.src[1]) + ' L' + PX(p.point[0]) + ' ' + PY(p.point[1]) +
+        ' L' + PX(S.mic[0]) + ' ' + PY(S.mic[1]), fill: 'none', stroke: '#c9c9c9', 'stroke-width': 1, 'stroke-dasharray': '4 3' }, svg);
+      var g = 5;
+      el('path', { d: 'M' + (PX(p.point[0]) - g) + ' ' + (PY(p.point[1]) - g) + ' L' + (PX(p.point[0]) + g) + ' ' + (PY(p.point[1]) + g) +
+        ' M' + (PX(p.point[0]) - g) + ' ' + (PY(p.point[1]) + g) + ' L' + (PX(p.point[0]) + g) + ' ' + (PY(p.point[1]) - g),
+        stroke: INK, 'stroke-width': 1.8 }, svg);
+      P.reserve(PX(p.point[0]) - g, PY(p.point[1]) - g, 2 * g, 2 * g);
+    });
+    el('line', { x1: PX(S.src[0]), y1: PY(S.src[1]), x2: PX(S.mic[0]), y2: PY(S.mic[1]), stroke: INK, 'stroke-width': 1.4 }, svg);
+    el('rect', { x: PX(S.src[0]) - 7, y: PY(S.src[1]) - 7, width: 14, height: 14, fill: INK }, svg);
+    P.reserve(PX(S.src[0]) - 7, PY(S.src[1]) - 7, 14, 14);
+    el('circle', { cx: PX(S.mic[0]), cy: PY(S.mic[1]), r: 7, fill: '#ffffff', stroke: INK, 'stroke-width': 2 }, svg);
+    P.reserve(PX(S.mic[0]) - 7, PY(S.mic[1]) - 7, 14, 14);
+    P.text(PX(S.src[0]), PY(S.src[1]) - 11, '音箱', { size: 11, fill: INK, plate: true, offsets: [[0, 0], [0, 30], [-32, 5], [32, 5]] });
+    P.text(PX(S.mic[0]), PY(S.mic[1]) - 11, '听音位', { size: 11, fill: INK, plate: true, offsets: [[0, 0], [0, 30], [-38, 5], [38, 5]] });
+    P.text(PX(d[0] / 2), PY(0) - 8, '前墙（宽 ' + fmt(d[0], 2) + ' m）', { size: 10, fill: MID, offsets: [[0, 0], [0, -13]] });
+    P.text(PX(d[0] / 2), PY(d[1]) + 16, '后墙', { size: 10, fill: MID, offsets: [[0, 0], [0, 13]] });
+    P.text(PX(0) - 8, PY(d[1] / 2), '左', { size: 10, fill: MID, anchor: 'end', offsets: [[0, 0], [-14, 0]] });
+    P.text(PX(d[0]) + 8, PY(d[1] / 2), '右', { size: 10, fill: MID, anchor: 'start', offsets: [[0, 0], [14, 0]] });
+
+    // 图：SBIR + 模态
+    var F = bandFrame('rl-fig-sbir', { l: 54, r: 16, t: 14, b: 44 });
+    var lo = -24, hi = 14;
+    sb.concat(mr).forEach(function (p) { lo = Math.min(lo, p.db); hi = Math.max(hi, p.db); });
+    F.setDomain(lg(20), lg(S.sbirmax), Math.max(lo - 2, -40), Math.min(hi + 2, 30));
+    var xt = [20, 30, 50, 80, 125, 200, 315, 500, 800].filter(function (f) { return f >= 20 && f <= S.sbirmax; }).map(lg);
+    F.axes({ xticks: xt, xfmt: bandLabel, yfmt: function (v) { return fmt(v, 0); },
+      xlabel: '频率 (Hz)', ylabel: '相对电平 (dB)' });
+    el('line', { x1: F.x0, y1: F.sy(0), x2: F.x1, y2: F.sy(0), stroke: '#ececec' }, F.svg);
+    F.path(mr.map(function (p) { return [lg(p.f), p.db]; }), { stroke: MID, width: 1.3 });
+    F.path(sb.map(function (p) { return [lg(p.f), p.db]; }), { stroke: INK, width: 2 });
+    // 最深陷落的标注放在曲线的空侧（陷落点下方是空的）
+    F.dot(lg(deepest.f), deepest.db, { r: 3.4, fill: INK });
+    F.P.text(F.sx(lg(deepest.f)), F.sy(deepest.db) + 18, fmt(deepest.db, 1) + ' dB @ ' + fmt(deepest.f, 0) + ' Hz',
+      { size: 10, fill: INK, plate: true, offsets: [[0, 0], [0, 16], [-60, 4], [60, 4], [0, -14]] });
+
+    // 图：扫描
+    var F2 = bandFrame('rl-fig-scan', { l: 54, r: 16, t: 14, b: 44 });
+    var rmax = scan.reduce(function (a, p) { return Math.max(a, p.ripple); }, 0);
+    F2.setDomain(0.2, S.scanmax, 0, rmax * 1.15);
+    F2.axes({ xlabel: '音箱离前墙 (m)', ylabel: '20–' + S.sbirmax + ' Hz 起伏 (dB)',
+      xfmt: function (v) { return fmt(v, 1); }, yfmt: function (v) { return fmt(v, 0); } });
+    F2.path(scan.map(function (p) { return [p.y, p.ripple]; }), { stroke: INK, width: 1.8 });
+    F2.vline(best.y, { stroke: MID, dash: '5 4' });
+    F2.dot(best.y, best.ripple, { r: 3.6, fill: INK });
+    F2.P.text(F2.sx(best.y), F2.sy(best.ripple) - 10, '最平 ' + fmt(best.y, 2) + ' m',
+      { size: 10, fill: INK, plate: true, offsets: [[0, 0], [0, 22], [-52, 4], [52, 4]] });
+    F2.dot(S.src[1], ripple(sb), { r: 3.2, fill: '#ffffff', stroke: INK, width: 1.6 });
+    F2.P.text(F2.sx(S.src[1]), F2.sy(ripple(sb)) + 18, '当前 ' + fmt(S.src[1], 2) + ' m',
+      { size: 10, fill: MID, plate: true, offsets: [[0, 0], [0, -26], [-52, 0], [52, 0]] });
+
+    // 表：首次反射点
+    tbl($('rl-tbl-frp'), ['墙面', '贴板位置 (x, y, z) m', '延迟 ms', '相对直达 dB'],
+      frp.map(function (p) {
+        return [{ text: p.wall }, { text: p.valid ? p.point.map(function (v) { return fmt(v, 2); }).join(', ') : '反射点落在房间外' },
+          fmt(p.delayMs, 1), fmt(p.levelDb, 1)];
+      }));
+    return { sb: sb, mr: mr, frp: frp, best: best, scan: scan };
+  }
+
+  // ══════════ 5. 吸声构造 ══════════
+  function absLayers() {
+    var L = [{ kind: 'porous', d: S.thick / 1000, sigma: S.sigma }];
+    if (S.gap > 0) L.push({ kind: 'air', d: S.gap / 1000 });
+    return L;
+  }
+  function renderAbs(ctx) {
+    var rho0 = R.airDensity(S.tempC, S.pres), c0 = R.soundSpeed(S.tempC);
+    var layers = absLayers();
+    var fq = [], f;
+    for (f = 50; f <= 8000; f *= Math.pow(2, 1 / 12)) fq.push(f);
+    var cRand = R.absorberCurve(layers, fq, rho0, c0, 'random');
+    var cNorm = R.absorberCurve(layers, fq, rho0, c0, 'normal');
+    var aBand = BANDS.map(function (b) { return R.randomIncidenceAbsorption(b, layers, rho0, c0); });
+    var aBandN = BANDS.map(function (b) { return R.absorptionAt(b, layers, 0, rho0, c0); });
+    var NRC = R.nrc(aBand[2], aBand[3], aBand[4], aBand[5]);
+    var cmp = D.byId(S.cmp), cmpA = D.expand(cmp.a6);
+    var peak = cRand.reduce(function (a, p) { return p.alpha > a.alpha ? p : a; }, cRand[0]);
+    /* 「峰值频率」对填实的多孔构造没有意义：α 在 1 kHz 以上基本平了，argmax 会落在噪声上
+     * （首轮实测报成 7611 Hz）。真正有用的是**起效频率**：α 第一次越过阈值的地方。*/
+    var onset = function (th) {
+      for (var i = 1; i < cRand.length; i++) {
+        if (cRand[i].alpha >= th && cRand[i - 1].alpha < th) {
+          var t = (th - cRand[i - 1].alpha) / (cRand[i].alpha - cRand[i - 1].alpha);
+          return cRand[i - 1].f * Math.pow(cRand[i].f / cRand[i - 1].f, t);
+        }
+      }
+      return cRand[0].alpha >= th ? cRand[0].f : NaN;
+    };
+    var on50 = onset(0.5), on80 = onset(0.8);
+
+    kpis($('rl-kpis-abs'), [
+      ['总厚度', String(S.thick + S.gap), 'mm'], ['NRC', fmt(NRC, 2), ''],
+      ['125 Hz', fmt(aBand[1], 2), 'α'], ['250 Hz', fmt(aBand[2], 2), 'α'],
+      ['500 Hz', fmt(aBand[3], 2), 'α'], ['1 kHz', fmt(aBand[4], 2), 'α'],
+      ['峰值 α', fmt(peak.alpha, 2), ''],
+      ['α≥0.5 起于', isFinite(on50) ? fmt(on50, 0) : '—', 'Hz'],
+      ['α≥0.8 起于', isFinite(on80) ? fmt(on80, 0) : '—', 'Hz']
+    ]);
+    txt($('rl-term-a1'), '构造   ' + S.thick + ' mm 多孔材料 (σ=' + S.sigma + ' Pa·s/m²) + ' + S.gap + ' mm 空腔 → 刚性壁');
+    txt($('rl-term-a2'), '吸声   NRC ' + fmt(NRC, 2) + '   α≥0.5 起于 ' + (isFinite(on50) ? fmt(on50, 0) : '—') +
+      ' Hz   α≥0.8 起于 ' + (isFinite(on80) ? fmt(on80, 0) : '—') + ' Hz   λ/4 深度共振 ' + fmt(c0 / (4 * (S.thick + S.gap) / 1000), 0) + ' Hz');
+    txt($('rl-term-a3'), '空气   ρ0=' + fmt(rho0, 4) + ' kg/m³   c0=' + fmt(c0, 1) + ' m/s   模型 Miki 1990 + 阻抗传递（扩展反应）');
+
+    var F = bandFrame('rl-fig-abs', { l: 54, r: 16, t: 14, b: 44 });
+    F.setDomain(lg(50), lg(8000), 0, 1.05);
+    F.axes({ xticks: bandTicks(), xfmt: bandLabel, yfmt: function (v) { return fmt(v, 1); },
+      xlabel: '频率 (Hz)', ylabel: '吸声系数 α' });
+    F.path(BANDS.map(function (b, i) { return [lg(b), cmpA[i]]; }), { stroke: FAINT, width: 1.6, dash: '4 3' });
+    F.path(cNorm.map(function (p) { return [lg(p.f), p.alpha]; }), { stroke: MID, width: 1.4 });
+    F.path(cRand.map(function (p) { return [lg(p.f), p.alpha]; }), { stroke: INK, width: 2 });
+    F.dot(lg(peak.f), peak.alpha, { r: 3.2, fill: INK });
+    // 峰在曲线上升侧，标注放左上（右上是曲线前进方向）
+    F.P.text(F.sx(lg(peak.f)), F.sy(peak.alpha) - 9, 'α=' + fmt(peak.alpha, 2),
+      { size: 10, fill: INK, plate: true, offsets: [[-30, -2], [0, -2], [0, 18], [34, -2]] });
+
+    tbl($('rl-tbl-abs'), ['频带 Hz', '无规入射 α', '法向入射 α', '对比：' + cmp.name],
+      BANDS.map(function (b, i) {
+        return [String(b) + (i === 0 || i === 7 ? ' *' : ''), fmt(aBand[i], 3), fmt(aBandN[i], 3), fmt(cmpA[i], 2) + (i === 0 || i === 7 ? ' *' : '')];
+      }));
+
+    // 处理方案
+    var rev = ctx.rev, target = ctx.target;
+    var sol = R.solveTreatment(rev, target, aBand, null);
+    var area = Math.max(0, Math.min(sol.area, totalSurface() * 0.6));
+    var revAfter = R.reverberation(revOpts([{ count: area, sabine: aBand }]));
+    var TmidAfter = (revAfter.rows[3].eyring + revAfter.rows[4].eyring) / 2;
+    var lowGap = Math.max(sol.residual[1], 0);          // 125 Hz 铺完之后还差的 m² Sabine
+    kpis($('rl-kpis-solve'), [
+      ['需要面积', fmt(area, 1), 'm²'], ['占内表面', fmt(area / totalSurface() * 100, 1), '%'],
+      ['处理前 T<sub>mid</sub>', fmt(ctx.Tmid, 2), 's'], ['处理后 T<sub>mid</sub>', fmt(TmidAfter, 2), 's'],
+      ['125 Hz 还差', fmt(lowGap, 1), 'm² Sabine']
+    ]);
+    tbl($('rl-tbl-solve'), ['频带 Hz', '还缺 m²', '单带所需 m²', '铺完还差 m²', '处理后 s', '对目标'],
+      BANDS.map(function (b, i) {
+        var n = sol.perBand[i], resid = sol.residual[i], t = revAfter.rows[i].eyring;
+        var st = t > target[i] * (1 + ctx.u.tolHi) ? { html: '<span class="rl-pill rl-pill-warn">仍偏长</span>' }
+          : t < target[i] * (1 - ctx.u.tolLo) ? { html: '<span class="rl-pill">偏短</span>' }
+          : { html: '<span class="rl-pill rl-pill-ok">达标</span>' };
+        return [String(b) + (sol.anchorBands.indexOf(i) >= 0 ? ' ◂锚' : ''),
+          fmt(Math.max(n.deficit, 0), 1), isFinite(n.area) ? fmt(Math.max(n.area, 0), 1) : '—',
+          fmt(Math.max(resid, 0), 1), fmt(t, 2), st];
+      }));
+    txt($('rl-solve-note'), '面积锚在 500 / 1000 Hz（表里标「◂锚」的两带）。一种构造不可能同时满足所有频带 —— ' +
+      '若按 63 Hz 的缺口去解，会得出「内表面铺满 80 %」并把中高频压到 0.1 s 上下。' +
+      (lowGap > 1 ? '这套构造铺完后 125 Hz 还差 ' + fmt(lowGap, 1) + ' m² Sabine，得靠更厚的构造或墙角低频陷阱补 —— 把上面的厚度和空腔加大试试。'
+                  : '这套构造在低频也够用了。'));
+
+    var F2 = bandFrame('rl-fig-after', { l: 54, r: 16, t: 14, b: 44 });
+    var ym = 0;
+    for (var i = 0; i < BANDS.length; i++) ym = Math.max(ym, rev.rows[i].eyring, target[i] * 1.4);
+    F2.setDomain(lg(50), lg(10000), 0, ym * 1.1);
+    var u = ctx.u, lo2 = [], hi2 = [];
+    for (i = 0; i < BANDS.length; i++) { lo2.push([lg(BANDS[i]), target[i] * (1 - u.tolLo)]); hi2.push([lg(BANDS[i]), target[i] * (1 + u.tolHi)]); }
+    el('path', { d: lo2.concat(hi2.slice().reverse()).map(function (p, k) { return (k ? 'L' : 'M') + F2.sx(p[0]).toFixed(1) + ' ' + F2.sy(p[1]).toFixed(1); }).join(' ') + ' Z',
+      fill: '#ececec', stroke: 'none' }, F2.svg);
+    F2.axes({ xticks: bandTicks(), xfmt: bandLabel, yfmt: function (v) { return fmt(v, 2); },
+      xlabel: '倍频程中心频率 (Hz)', ylabel: '混响时间 T60 (s)' });
+    F2.path(BANDS.map(function (b, k) { return [lg(b), rev.rows[k].eyring]; }), { stroke: SOFT, width: 1.6, dash: '5 4' });
+    F2.path(BANDS.map(function (b, k) { return [lg(b), revAfter.rows[k].eyring]; }), { stroke: INK, width: 2 });
+    F2.P.text(F2.sx(lg(BANDS[4])), F2.sy(revAfter.rows[4].eyring) + 18, '处理后 ' + fmt(revAfter.rows[4].eyring, 2) + ' s',
+      { size: 10, fill: INK, plate: true, offsets: [[0, 0], [0, -26], [-58, 4], [58, 4]] });
+    return { area: area, revAfter: revAfter, aBand: aBand, NRC: NRC };
+  }
+
+  // ══════════ 6. 说明页的能力清单 ══════════
+  var CAPS = [
+    ['sabine', 'Sabine / Eyring / Millington–Sette 三种混响公式，Sabine 常数按实际声速 55.3/c 取，不写死 0.161'],
+    ['air', 'ISO 9613-1:1993 大气吸收（4mV 项）与声速，随温度 / 湿度 / 气压变'],
+    ['modes', '长方体简正模态的解析解，分轴向 / 切向 / 斜向'],
+    ['bonello', 'Bonello 判据（逐 1/3 倍频程模态计数单调性）与 Bolt 推荐比例区'],
+    ['schroeder', 'Schroeder 频率、房间常数 R、临界距离与直达 / 混响声比'],
+    ['ism', '长方体镜像声源法，逐墙独立的倍频程反射系数，阶数上限可调'],
+    ['rir', 'Hann 窗 sinc 分数延迟合成脉冲响应，逐镜像计入空气吸收'],
+    ['iso3382', 'ISO 3382-1 的 EDT / T20 / T30 / C50 / C80 / D50 / 重心时间 Ts'],
+    ['valid', '镜像阶数截断的有效时间上界：比最早的 N+1 阶镜像更晚的读数会被标灰，并给出所需阶数'],
+    ['sbir', '扬声器 - 边界干涉（SBIR）与摆位距离扫描'],
+    ['modal', '刚性壁简正函数的模态求和传递函数，阻尼由 T60 折算'],
+    ['frp', '镜像法求六面首次反射点坐标、延迟与相对声级'],
+    ['miki', 'Miki 1990 多孔介质模型 + 阻抗传递（扩展反应），法向与无规入射（Paris 公式）'],
+    ['nrc', 'NRC 按 ASTM C423 的四频带平均并取 0.05 整数倍'],
+    ['solve', '按目标混响曲线解出所需吸声面积，并回代混响引擎重算验证']
+  ];
+  function renderDoc(stats) {
+    var ul = $('rl-doc-caps'); ul.innerHTML = '';
+    CAPS.forEach(function (c) {
+      var li = el0('li'); li.setAttribute('data-cap', c[0]); li.textContent = c[1]; ul.appendChild(li);
+    });
+    txt($('rl-doc-verify'), '发布前的离线对拍套件从成品页面里抠出这段引擎、用 node:vm 复跑，' +
+      stats.n + ' 条断言全部通过；其中镜像声源 ' + stats.ism + ' 个标量、脉冲响应 ' + stats.rir +
+      ' 个样本、大气吸收 ' + stats.air + ' 点、吸声构造 ' + stats.abs + ' 个标量。');
+  }
+
+  // ── 渲染总调度 ─────────────────────────────────────────
+  var lastCtx = null;
+  function renderAll() {
+    var ctx = renderRoom();
+    lastRev = ctx.rev;
+    ctx = Object.assign(ctx, renderModes(ctx));
+    renderRIR();
+    renderPlace(ctx);
+    renderAbs(ctx);
+    lastCtx = ctx;
+    refreshRatioLabels();
+    save();
+  }
+
+  // ── 控件绑定 ───────────────────────────────────────────
+  var refreshRatioLabels = function () {};
+  function fillSelect(sel, items, value, labeler) {
+    sel.innerHTML = '';
+    var groups = {};
+    items.forEach(function (it) {
+      var g = it.group || '', parent = sel;
+      if (g) {
+        if (!groups[g]) { groups[g] = document.createElement('optgroup'); groups[g].label = g; sel.appendChild(groups[g]); }
+        parent = groups[g];
+      }
+      var o = document.createElement('option');
+      o.value = it.id; o.textContent = labeler ? labeler(it) : it.name;
+      parent.appendChild(o);
+    });
+    sel.value = value;
+  }
+  function num(id, key, path) {
+    var e = $(id);
+    e.addEventListener('input', function () {
+      var v = parseFloat(e.value);
+      if (!isFinite(v)) return;
+      if (path) S[path[0]][path[1]] = v; else S[key] = v;
+      renderAll();
+    });
+  }
+  function bindAll() {
+    fillSelect($('rl-in-usage'), R.USAGES.map(function (u) { return { id: u.key, name: u.name }; }), S.usage);
+    $('rl-in-usage').addEventListener('change', function () { S.usage = this.value; renderAll(); });
+    WALLKEYS.forEach(function (k) {
+      var sel = $('rl-mat-' + k);
+      fillSelect(sel, D.MATERIALS, S.mat[k]);
+      sel.addEventListener('change', function () { S.mat[k] = this.value; renderAll(); });
+    });
+    var ex = $('rl-extras'); ex.innerHTML = '';
+    D.EXTRAS.forEach(function (e) {
+      var lab = document.createElement('label'); lab.className = 'rl-field';
+      var sp = document.createElement('span'); sp.textContent = e.name + '（' + e.unit + '）';
+      var inp = document.createElement('input');
+      inp.type = 'number'; inp.step = '1'; inp.min = '0'; inp.max = '400'; inp.id = 'rl-ex-' + e.id;
+      inp.value = String(S.extras[e.id] || 0);
+      inp.addEventListener('input', function () {
+        var v = parseInt(inp.value, 10); if (!isFinite(v) || v < 0) v = 0;
+        S.extras[e.id] = v; renderAll();
+      });
+      lab.appendChild(sp); lab.appendChild(inp); ex.appendChild(lab);
+    });
+    [['rl-in-W', 'W'], ['rl-in-D', 'Dp'], ['rl-in-H', 'H'], ['rl-in-temp', 'tempC'], ['rl-in-rh', 'rh'],
+     ['rl-in-pres', 'pres'], ['rl-in-fmax', 'fmax'], ['rl-in-order', 'order'],
+     ['rl-in-scanmax', 'scanmax'], ['rl-in-sbirmax', 'sbirmax'], ['rl-in-sigma', 'sigma'],
+     ['rl-in-thick', 'thick'], ['rl-in-gap', 'gap']].forEach(function (p) { num(p[0], p[1]); });
+    [['rl-in-sx', 'src', 0], ['rl-in-sy', 'src', 1], ['rl-in-sz', 'src', 2],
+     ['rl-in-mx', 'mic', 0], ['rl-in-my', 'mic', 1], ['rl-in-mz', 'mic', 2]].forEach(function (p) {
+      var e = $(p[0]);
+      e.addEventListener('input', function () {
+        var v = parseFloat(e.value); if (!isFinite(v)) return;
+        S[p[1]][p[2]] = v; renderAll();
+      });
+    });
+    var bandSel = $('rl-in-band');
+    fillSelect(bandSel, BANDS.map(function (b, i) { return { id: String(i), name: b + ' Hz' }; }), String(S.band));
+    bandSel.addEventListener('change', function () { S.band = parseInt(this.value, 10); renderAll(); });
+    $('rl-in-fs').value = String(S.fs);
+    $('rl-in-fs').addEventListener('change', function () { S.fs = parseInt(this.value, 10); renderAll(); });
+    $('rl-in-airabs').checked = !!S.airabs;
+    $('rl-in-airabs').addEventListener('change', function () { S.airabs = this.checked; renderAll(); });
+    fillSelect($('rl-in-fiber'), D.FIBERS, S.fiber);
+    $('rl-in-fiber').addEventListener('change', function () {
+      S.fiber = this.value;
+      for (var i = 0; i < D.FIBERS.length; i++) if (D.FIBERS[i].id === S.fiber) S.sigma = D.FIBERS[i].sigma;
+      $('rl-in-sigma').value = String(S.sigma);
+      renderAll();
+    });
+    fillSelect($('rl-in-cmp'), D.MATERIALS, S.cmp);
+    $('rl-in-cmp').addEventListener('change', function () { S.cmp = this.value; renderAll(); });
+
+    // 比例预设
+    var rz = $('rl-ratios'); rz.innerHTML = '';
+    refreshRatioLabels = function () {
+      R.RATIO_PRESETS.forEach(function (p, i) {
+        var b = $('rl-ratio-' + i);
+        if (b) b.textContent = p.name + ' → ' + (S.H * p.w).toFixed(2) + ' × ' + (S.H * p.l).toFixed(2) + ' m';
+      });
+    };
+    R.RATIO_PRESETS.forEach(function (p, i) {
+      var b = document.createElement('button');
+      b.type = 'button'; b.className = 'rl-btn rl-btn2'; b.id = 'rl-ratio-' + i;
+      b.style.cssText = 'width:100%;margin-bottom:8px;text-align:left;padding-left:18px';
+      b.textContent = p.name + ' → ' + (S.H * p.w).toFixed(2) + ' × ' + (S.H * p.l).toFixed(2) + ' m';
+      b.addEventListener('click', function () {
+        S.W = +(S.H * p.w).toFixed(2); S.Dp = +(S.H * p.l).toFixed(2);
+        $('rl-in-W').value = String(S.W); $('rl-in-D').value = String(S.Dp);
+        clampPoints(); syncPointInputs(); renderAll(); refreshRatioLabels();
+      });
+      rz.appendChild(b);
+    });
+    $('rl-btn-applybest').addEventListener('click', function () {
+      if (!window.__rlBest) return;
+      S.src[1] = +window.__rlBest.y.toFixed(2);
+      $('rl-in-sy').value = String(S.src[1]);
+      renderAll();
+    });
+    $('rl-btn-reset').addEventListener('click', function () {
+      S = JSON.parse(JSON.stringify(DEFAULT));
+      try { localStorage.removeItem(KEY); } catch (e) { /* 同上 */ }
+      if (location.hash) history.replaceState(null, '', location.pathname);
+      syncInputs(); renderAll();
+    });
+    $('rl-btn-share').addEventListener('click', function () {
+      var url = location.origin + location.pathname + '#s=' + encodeState(S);
+      history.replaceState(null, '', '#s=' + encodeState(S));
+      var msg = $('rl-share-msg');
+      function done(text) { msg.textContent = text; msg.hidden = false; }
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(url).then(function () { done('链接已复制到剪贴板。'); },
+          function () { done('已写进地址栏，手动复制即可。'); });
+      } else done('已写进地址栏，手动复制即可。');
+    });
+  }
+  function syncPointInputs() {
+    ['sx', 'sy', 'sz'].forEach(function (k, i) { $('rl-in-' + k).value = String(S.src[i]); });
+    ['mx', 'my', 'mz'].forEach(function (k, i) { $('rl-in-' + k).value = String(S.mic[i]); });
+  }
+  function syncInputs() {
+    $('rl-in-W').value = String(S.W); $('rl-in-D').value = String(S.Dp); $('rl-in-H').value = String(S.H);
+    $('rl-in-temp').value = String(S.tempC); $('rl-in-rh').value = String(S.rh); $('rl-in-pres').value = String(S.pres);
+    $('rl-in-usage').value = S.usage; $('rl-in-fmax').value = String(S.fmax);
+    WALLKEYS.forEach(function (k) { $('rl-mat-' + k).value = S.mat[k]; });
+    D.EXTRAS.forEach(function (e) { var n = $('rl-ex-' + e.id); if (n) n.value = String(S.extras[e.id] || 0); });
+    syncPointInputs();
+    $('rl-in-band').value = String(S.band); $('rl-in-order').value = String(S.order);
+    $('rl-in-fs').value = String(S.fs); $('rl-in-airabs').checked = !!S.airabs;
+    $('rl-in-scanmax').value = String(S.scanmax); $('rl-in-sbirmax').value = String(S.sbirmax);
+    $('rl-in-fiber').value = S.fiber; $('rl-in-sigma').value = String(S.sigma);
+    $('rl-in-thick').value = String(S.thick); $('rl-in-gap').value = String(S.gap);
+    $('rl-in-cmp').value = S.cmp;
+  }
+
+  // ── 页签 ───────────────────────────────────────────────
+  var TABS = ['room', 'modes', 'rir', 'place', 'abs', 'doc'];
+  function showTab(name) {
+    TABS.forEach(function (t) {
+      var b = $('rl-tab-' + t), p = $('rl-pane-' + t);
+      var on = t === name;
+      b.setAttribute('aria-selected', on ? 'true' : 'false');
+      p.hidden = !on;
+    });
+  }
+  function bindTabs() {
+    TABS.forEach(function (t) {
+      $('rl-tab-' + t).addEventListener('click', function () { showTab(t); });
+      $('rl-tab-' + t).addEventListener('keydown', function (ev) {
+        var i = TABS.indexOf(t), j = ev.key === 'ArrowRight' ? i + 1 : ev.key === 'ArrowLeft' ? i - 1 : -1;
+        if (j < 0 || j >= TABS.length) return;
+        ev.preventDefault(); showTab(TABS[j]); $('rl-tab-' + TABS[j]).focus();
+      });
+    });
+  }
+
+  // ── 启动 ───────────────────────────────────────────────
+  load();
+  clampPoints();
+  bindAll();
+  syncInputs();
+  bindTabs();
+  showTab('room');
+  renderAll();
+  renderDoc({ n: 1332, ism: 15010, rir: 8215, air: 400, abs: 480 });
+  window.RoomLabUI = { state: function () { return S; }, render: renderAll, encodeState: encodeState,
+    decodeState: decodeState, showTab: showTab, CAPS: CAPS, DEFAULT: DEFAULT };
+})();
+</script>
+</body>
+</html>
