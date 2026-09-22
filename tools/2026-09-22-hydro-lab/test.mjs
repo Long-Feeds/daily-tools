@@ -44,6 +44,7 @@ const ORACLE = {
     "pmin15Node": "N10",
     "globMin15": 14.923251152038574,
     "globMin15Node": "N10",
+    "dem15": 103.58707523345947,
     "p1dn200_v0": 1.9448055028915405,
     "p1dn200_pmin0": 17.68831443786621,
     "p15closed_q0": 0,
@@ -112,18 +113,18 @@ export default async ({ page, toolURL, screenshot, assert }) => {
   near(await kpiNum(3), ORACLE.county.dem0, 0.051, '首屏总用水量');
 
   await show('nodes');
-  near(num(await cell('hl-nodetbl', 'N1', 4)), ORACLE.county.n1_p0, 0.01, 'N1 压力');
-  near(num(await cell('hl-nodetbl', 'N10', 4)), ORACLE.county.n10_p0, 0.01, 'N10 压力');
-  near(num(await cell('hl-nodetbl', 'N10', 3)), ORACLE.county.n10_h0, 0.01, 'N10 总水头');
+  near(num(await cell('hl-nodetbl', 'N1', 4)), ORACLE.county.n1_p0, 0.0051, 'N1 压力');
+  near(num(await cell('hl-nodetbl', 'N10', 4)), ORACLE.county.n10_p0, 0.0051, 'N10 压力');
+  near(num(await cell('hl-nodetbl', 'N10', 3)), ORACLE.county.n10_h0, 0.0051, 'N10 总水头');
   /* PRV 把下游节点水头**钉死**在「下游高程 + 设定值」上 —— 这是减压阀的定义式 */
   near(num(await cell('hl-nodetbl', 'N13', 3)), ORACLE.county.n13_h0, 0.005, 'PRV 下游 N13 的总水头');
-  near(num(await cell('hl-nodetbl', 'N14', 4)), ORACLE.county.n14_p0, 0.01, 'N14 压力');
+  near(num(await cell('hl-nodetbl', 'N14', 4)), ORACLE.county.n14_p0, 0.0051, 'N14 压力');
 
   await show('links');
-  near(num(await cell('hl-linktbl', 'P1', 5)), ORACLE.county.p1_q0, 0.02, 'P1 流量');
-  near(num(await cell('hl-linktbl', 'P1', 6)), ORACLE.county.p1_v0, 0.005, 'P1 流速');
-  near(num(await cell('hl-linktbl', 'PS1', 5)), ORACLE.county.ps1_q0, 0.02, 'PS1 流量');
-  near(num(await cell('hl-linktbl', 'PRV1', 5)), ORACLE.county.prv1_q0, 0.02, 'PRV1 流量');
+  near(num(await cell('hl-linktbl', 'P1', 5)), ORACLE.county.p1_q0, 0.0051, 'P1 流量');
+  near(num(await cell('hl-linktbl', 'P1', 6)), ORACLE.county.p1_v0, 0.0051, 'P1 流速');
+  near(num(await cell('hl-linktbl', 'PS1', 5)), ORACLE.county.ps1_q0, 0.0051, 'PS1 流量');
+  near(num(await cell('hl-linktbl', 'PRV1', 5)), ORACLE.county.prv1_q0, 0.0051, 'PRV1 流量');
   assert((await cell('hl-linktbl', 'PRV1', 8)) === '调节中', 'PRV1 应处于调节状态');
   assert((await cell('hl-linktbl', 'PS2', 8)) === '关闭', 'PS2 是备用泵，初始应关闭');
   /* 千米水损：用表里的「管长」列反算回水头损失，与 EPANET 报的水损对拍（异源） */
@@ -140,9 +141,9 @@ export default async ({ page, toolURL, screenshot, assert }) => {
   await page.locator('#hl-time').dispatchEvent('input');
   await page.waitForFunction(() => document.getElementById('hl-timelab').textContent.includes('第 13 /'));
   await show('nodes');
-  near(num(await cell('hl-nodetbl', 'N10', 4)), ORACLE.county.n10_pMid, 0.02, 't=10h 时 N10 的压力');
+  near(num(await cell('hl-nodetbl', 'N10', 4)), ORACLE.county.n10_pMid, 0.0051, 't=10h 时 N10 的压力');
   await show('links');
-  near(num(await cell('hl-linktbl', 'P1', 5)), ORACLE.county.p1_qMid, 0.05, 't=10h 时 P1 的流量');
+  near(num(await cell('hl-linktbl', 'P1', 5)), ORACLE.county.p1_qMid, 0.0051, 't=10h 时 P1 的流量');
   await show('map');
   await page.locator('#hl-time').fill('0');
   await page.locator('#hl-time').dispatchEvent('input');
@@ -153,6 +154,10 @@ export default async ({ page, toolURL, screenshot, assert }) => {
   await page.locator('#hl-dmult').dispatchEvent('input');
   await page.waitForFunction(() => document.getElementById('hl-dmultlab').textContent === '1.50');
   near(await kpiNum(0), ORACLE.county.pmin15, 0.051, '倍率 1.5 时的最低压力');
+  // 压力只差 0.03（1 位小数根本分不出来），真正能判「倍率有没有生效」的是总用水量
+  near(await kpiNum(3), ORACLE.county.dem15, 0.051, '倍率 1.5 时的系统总用水量');
+  assert(Math.abs(ORACLE.county.dem15 - ORACLE.county.dem0) > 20,
+    '倍率 1.5 与 1.0 的总用水量差得太小，这条断言分辨不出来');
   await show('check');
   const v15 = await page.textContent('#hl-verdict-sub');
   assert(v15.includes(ORACLE.county.globMin15Node), `倍率 1.5 的最不利节点不对：${v15}`);
@@ -173,7 +178,7 @@ export default async ({ page, toolURL, screenshot, assert }) => {
   await page.locator('#hl-ed-link_P1_diam').dispatchEvent('change');
   await page.waitForFunction(() => document.getElementById('hl-solveinfo').textContent.includes('已改动'));
   await show('links');
-  near(num(await cell('hl-linktbl', 'P1', 6)), ORACLE.county.p1dn200_v0, 0.01, 'P1 换成 DN200 后的流速');
+  near(num(await cell('hl-linktbl', 'P1', 6)), ORACLE.county.p1dn200_v0, 0.0051, 'P1 换成 DN200 后的流速');
   await show('map');
   near(await kpiNum(0), ORACLE.county.p1dn200_pmin0, 0.051, 'P1 换管后的最低压力');
   await page.click('#hl-reset');
@@ -192,6 +197,18 @@ export default async ({ page, toolURL, screenshot, assert }) => {
   near(await kpiNum(0), ORACLE.county.p15closed_pmin0, 0.051, '关掉 P15 后的最低压力');
   await show('links');
   near(num(await cell('hl-linktbl', 'P15', 5)), ORACLE.county.p15closed_q0, 1e-6, '关掉的管段流量必须报 0');
+  /* 页面上 0.00 与 0.000001 印出来一样，所以这条口径要到引擎层断：
+   * 关闭管段的 flow/velocity/headloss 必须**恒等于 0**（EPANET 工具箱同口径）。*/
+  const closedRaw = await page.evaluate(() => {
+    const S = window.HLS, s = S.res.steps[S.tIdx];
+    const k = S.net.links.findIndex((l) => l.id === 'P15');
+    return { code: s.statusCode[k], flow: s.flow[k], vel: s.velocity[k], hl: s.headloss[k],
+             inner: Math.abs(S.res.h.flow[k + 1]) };
+  });
+  assert(closedRaw.code === 0, `P15 应被判为关闭，实得状态码 ${closedRaw.code}`);
+  assert(closedRaw.flow === 0 && closedRaw.vel === 0 && closedRaw.hl === 0,
+    `关闭管段的流量/流速/水损必须恒等于 0，实得 ${closedRaw.flow}/${closedRaw.vel}/${closedRaw.hl}`);
+  assert(closedRaw.inner > 0, '引擎内部的残余流量应当非零，否则这条口径断言测不出东西');
   await show('map');
   await page.click('#hl-reset');
   await page.waitForFunction(() => !document.getElementById('hl-solveinfo').textContent.includes('已改动'));
@@ -254,10 +271,10 @@ export default async ({ page, toolURL, screenshot, assert }) => {
   await page.waitForFunction((n) => document.getElementById('hl-netsub')
     && document.getElementById('hl-netsub').textContent.includes(n + ' 个节点'), ORACLE.net1.nNodes);
   await show('nodes');
-  near(num(await cell('hl-nodetbl', '11', 4)), ORACLE.net1.n11_p0, 0.02, 'Net1 节点 11 的压力');
+  near(num(await cell('hl-nodetbl', '11', 4)), ORACLE.net1.n11_p0, 0.0051, 'Net1 节点 11 的压力');
   await show('links');
-  near(num(await cell('hl-linktbl', '10', 5)), ORACLE.net1.p10_q0, 0.5, 'Net1 管段 10 的流量');
-  near(num(await cell('hl-linktbl', '9', 5)), ORACLE.net1.pump9_q0, 0.5, 'Net1 水泵 9 的流量');
+  near(num(await cell('hl-linktbl', '10', 5)), ORACLE.net1.p10_q0, 0.0051, 'Net1 管段 10 的流量');
+  near(num(await cell('hl-linktbl', '9', 5)), ORACLE.net1.pump9_q0, 0.0051, 'Net1 水泵 9 的流量');
 
   /* ── 13. 粘一份自己的 INP（走完整解析链路）──────────── */
   await show('inp');
@@ -293,8 +310,9 @@ export default async ({ page, toolURL, screenshot, assert }) => {
   await page.click('#hl-loadex');
   await page.waitForFunction((n) => document.getElementById('hl-netsub').textContent.includes(n + ' 条管段'), ORACLE.county.nLinks);
   const before = await page.evaluate(() => {
-    const s = window.HLS.res.steps[0];
-    return { h: Array.from(s.head), q: Array.from(s.flow) };
+    const r = window.HLS.res, s = r.steps[0], e = r.steps[r.steps.length - 1];
+    return { h: Array.from(s.head), q: Array.from(s.flow), nT: r.t.length,
+             tEnd: r.t[r.t.length - 1], hEnd: Array.from(e.head) };
   });
   await page.click('#hl-export');
   await page.waitForFunction(() => document.getElementById('hl-inp').value.indexOf('[JUNCTIONS]') >= 0
@@ -302,12 +320,20 @@ export default async ({ page, toolURL, screenshot, assert }) => {
   await page.click('#hl-load');
   await page.waitForFunction((n) => document.getElementById('hl-inpstat').textContent.includes('已载入：' + n + ' 节点'), ORACLE.county.nNodes);
   const after = await page.evaluate(() => {
-    const s = window.HLS.res.steps[0];
-    return { h: Array.from(s.head), q: Array.from(s.flow) };
+    const r = window.HLS.res, s = r.steps[0], e = r.steps[r.steps.length - 1];
+    return { h: Array.from(s.head), q: Array.from(s.flow), nT: r.t.length,
+             tEnd: r.t[r.t.length - 1], hEnd: Array.from(e.head) };
   });
   assert(before.h.length === after.h.length, '导出再载入后节点数变了');
+  /* 只比第一个时刻是不够的：模拟时长/时间步写错了，t=0 的解一模一样
+   * （2026-09-22 改坏验证实撞：把导出的 Duration 打九折，首刻断言全绿）。*/
+  assert(before.nT === after.nT && before.tEnd === after.tEnd,
+    `导出再载入后时段数/时长变了：${before.nT}@${before.tEnd} → ${after.nT}@${after.tEnd}`);
   let worstRT = 0;
-  for (let i = 0; i < before.h.length; i++) worstRT = Math.max(worstRT, Math.abs(before.h[i] - after.h[i]));
+  for (let i = 0; i < before.h.length; i++) {
+    worstRT = Math.max(worstRT, Math.abs(before.h[i] - after.h[i]));
+    worstRT = Math.max(worstRT, Math.abs(before.hEnd[i] - after.hEnd[i]));
+  }
   assert(worstRT < 1e-3, `导出 INP 再读回来水头变了 ${worstRT}`);
 
   /* ── 15. 能力清单守卫：说明里列出的每个「支持」段落都必须真被解析过 ── */
