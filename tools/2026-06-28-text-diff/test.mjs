@@ -56,13 +56,17 @@ export default async function ({ page, toolURL, screenshot, assert }) {
 
   // ---- 4. unified view ----
   await page.click('#view-unified');
-  await page.waitForTimeout(120);
+  // 等到「统一视图真的渲染出来了」，不是等 120ms 然后赌它好了
+  // (2026-09-24 反思官落地，结清 2026-07-08 proposed：同族计时 flake 曾卡红发布闸)
+  await page.waitForFunction(() => document.querySelectorAll('.uline.del').length === 2,
+    null, { timeout: 10000 });
   assert((await page.locator('.uline.del').count()) === 2, 'unified view has 2 "-" lines');
   assert((await page.locator('.uline.ins').count()) === 3, 'unified view has 3 "+" lines');
   const unifiedText = (await page.locator('#diff-out').textContent()) || '';
   assert(unifiedText.includes('extra tail'), 'unified view shows the appended line "extra tail"');
   await page.click('#view-split');
-  await page.waitForTimeout(120);
+  await page.waitForFunction(() => document.querySelectorAll('.half.del').length === 2,
+    null, { timeout: 10000 });
 
   // ---- 5. identical inputs -> "完全相同" + 100% ----
   await setAB('alpha\nbeta\ngamma', 'alpha\nbeta\ngamma');
