@@ -5,6 +5,7 @@
  * （框图 2^8、故障树 2^9 状态）、离线套件实跑出来的规模数字。
  */
 import { renderGuards } from '/Users/lon/.agents/cron/daily-website/tools/render-guards.mjs';
+import { makeDisplayCompare } from '/Users/lon/.agents/cron/daily-website/tools/display-tolerance.mjs';
 
 const ORACLE = {
   "meta": {
@@ -215,35 +216,8 @@ export default async ({ page, toolURL, screenshot, assert }) => {
     return m ? parseFloat(m[0]) : NaN;
   });
   const txt = async (sel) => page.$eval(sel, (n) => n.textContent.trim());
-  const parseNum = (s) => {
-    const m = /-?[\d.]+(?:e[+-]?\d+)?/i.exec(String(s).replace(/,/g, ''));
-    return m ? parseFloat(m[0]) : NaN;
-  };
-  /* 容差下界 = **页面显示精度**的半个最小单位（2026-09-05 / 09-09 教训）。
-   * 页面把伯恩鲍姆重要度显示成 5 位有效数字「0.12352」，真值是 0.12352154…，
-   * 拿 1e-5 的相对容差去卡它必然红 —— 那不是引擎错了，是显示位数就只有这么多。 */
-  const tolFromText = (s) => {
-    const m = /(-?\d+(?:\.(\d+))?)(?:e([+-]?\d+))?/i.exec(String(s).replace(/,/g, ''));
-    if (!m) return Infinity;
-    const dec = m[2] ? m[2].length : 0;
-    const exp = m[3] ? parseInt(m[3], 10) : 0;
-    return 0.5 * Math.pow(10, -dec + exp);
-  };
-  const closeS = async (sel, want, what, scale) => {
-    const sc = scale == null ? 1 : scale;
-    const s = await txt(sel);
-    const got = parseNum(s), target = want * sc;
-    const tol = tolFromText(s) * 1.01 + Math.abs(target) * 1e-9;
-    assert(Math.abs(got - target) <= tol,
-      `${what}：页面「${s}」，真值 ${target}（差 ${Math.abs(got - target).toExponential(2)} > 显示精度容差 ${tol.toExponential(2)}）`);
-  };
-  const closeV = (gotText, want, what, scale) => {
-    const sc = scale == null ? 1 : scale;
-    const got = parseNum(gotText), target = want * sc;
-    const tol = tolFromText(gotText) * 1.01 + Math.abs(target) * 1e-9;
-    assert(Math.abs(got - target) <= tol,
-      `${what}：页面「${gotText}」，真值 ${target}（差 ${Math.abs(got - target).toExponential(2)} > 显示精度容差 ${tol.toExponential(2)}）`);
-  };
+  // 按页面**显示精度**给容差的比较器 —— 已固化，别再每期手写（见该文件头部注释）
+  const { closeS, closeV, parseNum } = makeDisplayCompare(page, assert);
   const close = (got, want, tol, what) => {
     const r = Math.abs(got - want) / Math.max(Math.abs(want), 1e-300);
     assert(r <= tol, `${what}：页面 ${got}，真值 ${want}（相对差 ${r.toExponential(2)} > ${tol}）`);
