@@ -1,0 +1,3482 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>疲劳工作台 · Fatigue Lab</title>
+<meta name="description" content="雨流计数、S-N 与 Miner 累积损伤、Haigh 安全系数、裂纹扩展、随机振动谱方法，全在一页里跑完。引擎逐项对拍 rainflow / fatpack / FLife / scipy。">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<style>
+/* 2026-07-20 教训：本站每 run 裸写数百行新 CSS，作者规则与 UA 的 [hidden]{display:none}
+   同特异性但靠后即胜出，会让 JS 的 el.hidden=true 完全失效。这一行必须在最前面。 */
+[hidden]{display:none!important}
+
+/* ── Pinterest 设计语言：#e60023 只给 CTA/活动页签/字标，其余一律单色暖灰；
+      16px 圆角为主、32px 给大卡、pill 给胶囊；全系统无阴影（只有弹层才有）。 ── */
+:root{
+  --pin-red:#e60023; --pin-red-press:#cc001f;
+  --ink:#000000; --ink-soft:#211922; --body:#33332e; --charcoal:#262622;
+  --mute:#62625b; --ash:#91918c; --stone:#c8c8c1;
+  --hair:#dadad3; --hair-soft:#e5e5e0;
+  --canvas:#ffffff; --soft:#fbfbf9; --card:#f6f6f3; --sec:#e5e5e0; --sec-press:#c8c8c1;
+  --focus:#435ee5; --purple:#7e238b; --purple-deep:#6845ab; --blue:#617bff;
+  --green:#103c25; --green-pale:#c7f0da; --err:#9e0a0a;
+  --r-sm:8px; --r-md:16px; --r-lg:32px; --r-full:9999px;
+  --sans:'Inter',-apple-system,system-ui,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;
+  color-scheme:light;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--canvas);color:var(--body);font-family:var(--sans);
+  font-size:16px;line-height:1.4;font-weight:400;-webkit-font-smoothing:antialiased}
+h1,h2,h3{margin:0;color:var(--ink);font-weight:600}
+p{margin:0}
+a{color:var(--ink-soft)}
+:focus-visible{outline:2px solid var(--ink);outline-offset:0;box-shadow:0 0 0 4px var(--focus)}
+.fl-skip{position:absolute;left:-9999px;top:0;background:var(--canvas);padding:12px 16px;border-radius:var(--r-md);z-index:50}
+.fl-skip:focus{left:16px;top:8px}
+
+/* ── 顶栏：白底 + 发丝下边线；左字标、中「搜索条」形态的载荷谱选择器、右唯一红 CTA ── */
+.fl-nav{position:sticky;top:0;z-index:30;background:var(--canvas);border-bottom:1px solid var(--hair)}
+.fl-nav-in{max-width:1280px;margin:0 auto;height:64px;display:flex;align-items:center;gap:12px;padding:0 24px}
+.fl-back{font-size:14px;font-weight:600;color:var(--ink);text-decoration:none;white-space:nowrap;
+  padding:8px 12px;border-radius:var(--r-md)}
+.fl-back:hover{background:var(--card)}
+.fl-mark{font-size:18px;font-weight:700;color:var(--pin-red);letter-spacing:-.4px;white-space:nowrap}
+.fl-searchbar{flex:1 1 auto;min-width:0;display:flex;align-items:center;gap:8px;height:48px;
+  background:var(--card);border-radius:var(--r-full);padding:0 18px;max-width:520px;margin:0 auto}
+.fl-searchbar:focus-within{background:var(--canvas);box-shadow:inset 0 0 0 1px var(--ash)}
+.fl-mag{color:var(--mute);font-size:15px;font-weight:600;flex:0 0 auto}
+.fl-searchbar select{flex:1 1 auto;min-width:0;border:0;background:transparent;font:inherit;
+  font-size:15px;color:var(--ink);height:44px;cursor:pointer;appearance:none}
+.fl-btn{font-family:inherit;font-size:14px;font-weight:700;line-height:1;border:0;cursor:pointer;
+  border-radius:var(--r-md);padding:13px 16px;min-height:40px}
+.fl-btn-primary{background:var(--pin-red);color:#fff}
+.fl-btn-primary:active{background:var(--pin-red-press)}
+.fl-btn-sec{background:var(--sec);color:var(--ink)}
+.fl-btn-sec:active{background:var(--sec-press)}
+
+/* ── hero ── */
+.fl-wrap{max-width:1280px;margin:0 auto;padding:0 24px}
+.fl-hero{padding:56px 0 8px}
+.fl-hero h1{font-size:70px;line-height:1.1;letter-spacing:-1.2px;font-weight:600;max-width:15em}
+.fl-hero p{margin-top:20px;font-size:16px;color:var(--body);max-width:52em}
+.fl-hero-kpis{display:flex;flex-wrap:wrap;gap:8px;margin-top:28px}
+.fl-kpi{background:var(--card);border-radius:var(--r-md);padding:16px 20px;min-width:170px;flex:1 1 170px}
+.fl-kpi b{display:block;font-size:26px;font-weight:600;color:var(--ink);letter-spacing:-.6px;
+  font-variant-numeric:tabular-nums}
+.fl-kpi span{display:block;font-size:12px;font-weight:500;color:var(--mute);margin-top:6px}
+
+/* ── 页签：Pinterest 的 filter-chip，选中反色 ── */
+.fl-chips{display:flex;flex-wrap:wrap;gap:8px;padding:28px 0 24px;position:sticky;top:64px;z-index:20;
+  background:var(--canvas)}
+.fl-chip{font-family:inherit;font-size:14px;font-weight:700;line-height:1;border:0;cursor:pointer;
+  background:var(--card);color:var(--ink);border-radius:var(--r-full);padding:13px 18px}
+.fl-chip[aria-selected="true"]{background:var(--ink);color:#fff}
+
+/* ── 面板 = 左控制栏 + 右「钉板」（列式瀑布流，8px 沟槽） ── */
+.fl-pane{display:grid;grid-template-columns:300px minmax(0,1fr);gap:8px;align-items:start;padding-bottom:64px}
+.fl-rail{background:var(--card);border-radius:var(--r-lg);padding:24px;min-width:0}
+.fl-rail h2{font-size:18px;font-weight:600;margin-bottom:4px}
+.fl-rail .fl-note{font-size:12px;color:var(--mute);margin:8px 0 16px}
+.fl-f{display:block;margin-bottom:14px}
+.fl-f>span{display:block;font-size:12px;font-weight:600;color:var(--mute);margin-bottom:6px}
+.fl-f input,.fl-f select{width:100%;height:44px;background:var(--canvas);border:1px solid var(--ash);
+  border-radius:var(--r-md);padding:0 14px;font:inherit;font-size:15px;color:var(--ink);
+  font-variant-numeric:tabular-nums}
+.fl-f input[type=range]{height:24px;padding:0;border:0;background:transparent;accent-color:var(--pin-red)}
+.fl-f2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.fl-chk{display:flex;align-items:center;gap:10px;margin-bottom:14px;font-size:14px;color:var(--ink)}
+.fl-chk input{flex:0 0 20px;width:20px;height:20px;accent-color:var(--pin-red)}
+.fl-rail hr{border:0;border-top:1px solid var(--hair);margin:18px 0}
+.fl-rail .fl-btn{width:100%;margin-top:6px}
+
+.fl-pins{columns:2;column-gap:8px;min-width:0}
+.fl-pin{break-inside:avoid;background:var(--card);border-radius:var(--r-md);padding:20px;
+  margin:0 0 8px;position:relative;min-width:0}
+.fl-pin.fl-wide{background:var(--canvas);box-shadow:inset 0 0 0 1px var(--hair);column-span:all;margin-bottom:8px}
+.fl-pin h3{font-size:18px;font-weight:600;letter-spacing:-.2px}
+.fl-pin .fl-sub{font-size:12px;color:var(--mute);margin-top:6px}
+.fl-tag{position:absolute;right:14px;top:14px;background:var(--canvas);color:var(--ink);
+  font-size:12px;font-weight:700;line-height:1;border-radius:var(--r-full);padding:7px 12px}
+.fl-fig{width:100%;height:auto;display:block;margin-top:14px;overflow:visible}
+.fl-legend{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:10px;font-size:12px;color:var(--mute)}
+.fl-legend i{display:inline-block;width:14px;height:3px;border-radius:2px;margin-right:6px;
+  vertical-align:middle}
+
+/* 读数列表 */
+dl.fl-dl{display:grid;grid-template-columns:1fr auto;gap:0;margin:14px 0 0}
+dl.fl-dl dt{font-size:13px;color:var(--mute);padding:9px 0;border-top:1px solid var(--hair-soft)}
+dl.fl-dl dd{margin:0;font-size:14px;font-weight:600;color:var(--ink);text-align:right;padding:9px 0;
+  border-top:1px solid var(--hair-soft);font-variant-numeric:tabular-nums}
+dl.fl-dl dt:first-of-type,dl.fl-dl dd:first-of-type{border-top:0}
+
+table.fl-t{width:100%;border-collapse:collapse;margin-top:14px;font-size:13px}
+table.fl-t th{text-align:right;font-size:12px;font-weight:700;color:var(--mute);padding:8px 6px;
+  border-bottom:1px solid var(--hair);white-space:nowrap}
+table.fl-t th:first-child,table.fl-t td:first-child{text-align:left}
+table.fl-t td{text-align:right;padding:8px 6px;border-bottom:1px solid var(--hair-soft);
+  font-variant-numeric:tabular-nums;color:var(--charcoal);white-space:nowrap}
+table.fl-t tr:last-child td{border-bottom:0}
+table.fl-t td.fl-hi{color:var(--pin-red);font-weight:600}
+.fl-bar{display:block;height:6px;border-radius:3px;background:var(--pin-red);min-width:2px}
+
+.fl-scroll{overflow-x:auto;max-width:100%;min-width:0}
+.fl-scroll table.fl-t{min-width:100%}
+.fl-pill{display:inline-block;background:var(--sec);color:var(--ink);font-size:12px;font-weight:700;
+  border-radius:var(--r-full);padding:6px 11px;margin:10px 6px 0 0}
+.fl-pill.fl-ok{background:var(--green-pale);color:var(--green)}
+.fl-pill.fl-bad{background:#f7d9d9;color:var(--err)}
+.fl-prose{font-size:14px;color:var(--body);margin-top:12px}
+.fl-prose p{margin:9px 0}
+.fl-prose b{font-weight:600;color:var(--ink)}
+.fl-prose ul{margin:9px 0;padding-left:18px}
+.fl-prose li{margin:5px 0}
+.fl-prose code{background:var(--canvas);border-radius:var(--r-sm);padding:1px 5px;font-family:inherit;
+  font-weight:500;font-variant-numeric:tabular-nums}
+
+.fl-foot{border-top:1px solid var(--hair);padding:32px 0 48px;font-size:14px;color:var(--mute)}
+.fl-foot b{color:var(--pin-red);font-weight:700}
+.fl-foot a{color:var(--mute)}
+
+@media (max-width:1100px){
+  .fl-pane{grid-template-columns:1fr}
+  .fl-pins{columns:2}
+  .fl-hero h1{font-size:56px;letter-spacing:-1px}
+}
+@media (max-width:820px){
+  .fl-pins{columns:1}
+  .fl-hero{padding-top:40px}
+  .fl-hero h1{font-size:44px;letter-spacing:-.8px}
+  .fl-wrap{padding:0 16px}
+  .fl-nav-in{padding:0 16px;gap:8px}
+  .fl-mark{display:none}
+  .fl-chips{top:64px;padding:20px 0 16px}
+}
+@media (max-width:480px){
+  .fl-hero h1{font-size:36px;letter-spacing:-.6px}
+  .fl-hero{padding-top:32px}
+  .fl-searchbar{padding:0 14px}
+  .fl-back{padding:8px 8px}
+}
+</style>
+</head>
+<body>
+<a class="fl-skip" href="#fl-main">跳到主内容</a>
+
+<header class="fl-nav">
+  <div class="fl-nav-in">
+    <a class="fl-back" href="../../">← 返回工具集</a>
+    <span class="fl-mark">疲劳工作台</span>
+    <label class="fl-searchbar" for="fl-spec">
+      <span class="fl-mag" aria-hidden="true">载荷谱</span>
+      <select id="fl-spec" aria-label="选择载荷谱"></select>
+    </label>
+    <button type="button" id="fl-share" class="fl-btn fl-btn-primary">复制分享链接</button>
+  </div>
+</header>
+
+<main id="fl-main" class="fl-wrap">
+  <section class="fl-hero">
+    <h1>把载荷谱数清楚，<br>再谈能活多久</h1>
+    <p>雨流计数（ASTM E1049 / ISO 12110-2）· S-N 与 Miner 累积损伤 · Haigh 图与 Marin 耐久限 ·
+       缺口应变寿命 · 裂纹扩展与检查间隔 · 随机振动的十种频域谱方法。改一个数，六页读数与图一起重算。</p>
+    <div class="fl-hero-kpis">
+      <div class="fl-kpi"><b id="hero-cyc">—</b><span>雨流循环数</span></div>
+      <div class="fl-kpi"><b id="hero-rng">—</b><span>最大幅值 Δσ (MPa)</span></div>
+      <div class="fl-kpi"><b id="hero-d">—</b><span>一遍载荷谱的损伤 D</span></div>
+      <div class="fl-kpi"><b id="hero-life">—</b><span>可重复次数（寿命）</span></div>
+    </div>
+  </section>
+
+  <nav class="fl-chips" role="tablist" aria-label="工作台分页">
+    <button type="button" class="fl-chip" role="tab" id="tab-signal" aria-selected="true" aria-controls="pane-signal">载荷谱</button>
+    <button type="button" class="fl-chip" role="tab" id="tab-count" aria-selected="false" aria-controls="pane-count">雨流计数</button>
+    <button type="button" class="fl-chip" role="tab" id="tab-damage" aria-selected="false" aria-controls="pane-damage">S-N 与损伤</button>
+    <button type="button" class="fl-chip" role="tab" id="tab-safety" aria-selected="false" aria-controls="pane-safety">安全系数与缺口</button>
+    <button type="button" class="fl-chip" role="tab" id="tab-crack" aria-selected="false" aria-controls="pane-crack">裂纹扩展</button>
+    <button type="button" class="fl-chip" role="tab" id="tab-spectral" aria-selected="false" aria-controls="pane-spectral">随机振动</button>
+    <button type="button" class="fl-chip" role="tab" id="tab-notes" aria-selected="false" aria-controls="pane-notes">口径与出处</button>
+  </nav>
+
+  <div id="fl-panes">
+
+    <!-- ══ 1. 载荷谱 ══ -->
+    <section class="fl-pane" id="pane-signal" role="tabpanel" aria-labelledby="tab-signal">
+      <div class="fl-rail">
+        <h2>载荷谱</h2>
+        <p class="fl-note">顶栏选谱；这里改缩放与平均应力偏置，全站六页跟着变。</p>
+        <label class="fl-f"><span>幅值缩放 ×</span>
+          <input id="sg-scale" type="number" value="1" step="0.05" min="0.05" max="20"></label>
+        <label class="fl-f"><span>平均应力偏置 (MPa)</span>
+          <input id="sg-bias" type="number" value="0" step="5" min="-400" max="400"></label>
+        <label class="fl-f"><span>穿越计数水平数</span>
+          <select id="sg-lc"><option value="17">17</option><option value="25" selected>25</option><option value="41">41</option></select></label>
+        <label class="fl-f"><span>时程图显示</span>
+          <select id="sg-pts"><option value="0" selected>整条</option><option value="600">前 600 点</option><option value="200">前 200 点</option></select></label>
+        <hr>
+        <button type="button" id="sg-reset" class="fl-btn fl-btn-sec">恢复默认参数</button>
+      </div>
+      <div class="fl-pins" id="pins-signal">
+        <div class="fl-pin fl-wide"><span class="fl-tag">时程</span>
+          <h3>载荷-时间历程</h3>
+          <p class="fl-sub" id="sg-desc">—</p>
+          <svg class="fl-fig" id="sg-fig-time" viewBox="0 0 760 300" role="img" aria-label="载荷时程曲线"></svg>
+          <div class="fl-legend"><span><i style="background:#262622"></i>载荷</span>
+            <span><i style="background:#e60023"></i>反向点（峰谷）</span>
+            <span><i style="background:#91918c"></i>均值</span></div>
+        </div>
+        <div class="fl-pin"><span class="fl-tag">统计</span>
+          <h3>谱特征</h3>
+          <dl class="fl-dl">
+            <dt>采样点数</dt><dd id="sg-n">—</dd>
+            <dt>最小 / 最大 (MPa)</dt><dd id="sg-minmax">—</dd>
+            <dt>均值 (MPa)</dt><dd id="sg-mean">—</dd>
+            <dt>标准差 (MPa)</dt><dd id="sg-sd">—</dd>
+            <dt>均方根 (MPa)</dt><dd id="sg-rms">—</dd>
+            <dt>反向点数</dt><dd id="sg-revs">—</dd>
+            <dt>时长 (s)</dt><dd id="sg-T">—</dd>
+            <dt>上穿均值率 (1/s)</dt><dd id="sg-nu0">—</dd>
+            <dt>峰值率 (1/s)</dt><dd id="sg-nup">—</dd>
+            <dt>不规则因子 γ</dt><dd id="sg-irr">—</dd>
+          </dl>
+          <p class="fl-sub">γ = 上穿均值次数 / 峰值个数。γ→1 是窄带，γ→0 是宽带 —— 这个数决定下面「随机振动」页各方法的差距有多大。</p>
+        </div>
+        <div class="fl-pin"><span class="fl-tag">穿越</span>
+          <h3>水平穿越计数</h3>
+          <p class="fl-sub">每个应力水平被向上穿过多少次。它和雨流计数不是一回事：穿越谱丢掉了「哪个峰配哪个谷」。</p>
+          <svg class="fl-fig" id="sg-fig-lc" viewBox="0 0 360 300" role="img" aria-label="水平穿越计数图"></svg>
+        </div>
+        <div class="fl-pin"><span class="fl-tag">峰谷</span>
+          <h3>峰谷值分布</h3>
+          <p class="fl-sub">反向点按取值分箱 —— 峰与谷分开画。</p>
+          <svg class="fl-fig" id="sg-fig-pv" viewBox="0 0 360 300" role="img" aria-label="峰谷分布图"></svg>
+          <div class="fl-legend"><span><i style="background:#e60023"></i>峰</span><span><i style="background:#617bff"></i>谷</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══ 2. 雨流计数 ══ -->
+    <section class="fl-pane" id="pane-count" role="tabpanel" aria-labelledby="tab-count" hidden>
+      <div class="fl-rail">
+        <h2>雨流计数</h2>
+        <p class="fl-note">三点法 = ASTM E1049-85 §5.4.4（残余算半循环）；四点法 = ISO 12110-2 / Amzallag。</p>
+        <label class="fl-f"><span>计数方法</span>
+          <select id="ct-mode">
+            <option value="astm" selected>三点法 · 残余算半循环（ASTM E1049）</option>
+            <option value="repeat">四点法 · 残余自接再数（重复历程）</option>
+            <option value="drop">四点法 · 丢掉残余（只数闭合）</option>
+          </select></label>
+        <label class="fl-f"><span>幅值分箱数</span>
+          <input id="ct-bins" type="number" value="24" step="1" min="6" max="64"></label>
+        <label class="fl-f"><span>雨流矩阵分箱数</span>
+          <input id="ct-mbins" type="number" value="16" step="1" min="6" max="32"></label>
+        <label class="fl-f"><span>循环表排序</span>
+          <select id="ct-sort"><option value="rng" selected>按幅值降序</option><option value="mean">按均值降序</option><option value="seq">按出现顺序</option></select></label>
+        <hr>
+        <p class="fl-note">「重复历程」适合旋转/往复类的周期性载荷；一次性的飞行剖面用 ASTM 的半循环更贴近实际。</p>
+      </div>
+      <div class="fl-pins" id="pins-count">
+        <div class="fl-pin"><span class="fl-tag">直方图</span>
+          <h3>幅值直方图</h3>
+          <p class="fl-sub">横轴是应力幅值范围 Δσ，纵轴是循环数（可含半循环）。</p>
+          <svg class="fl-fig" id="ct-fig-hist" viewBox="0 0 360 300" role="img" aria-label="雨流幅值直方图"></svg>
+        </div>
+        <div class="fl-pin"><span class="fl-tag">矩阵</span>
+          <h3>雨流矩阵（起点 → 终点）</h3>
+          <p class="fl-sub">颜色越深，落在该「从-到」格子里的循环越多。对角线附近是小循环，离对角线越远幅值越大。</p>
+          <svg class="fl-fig" id="ct-fig-matrix" viewBox="0 0 360 330" role="img" aria-label="雨流矩阵热图"></svg>
+        </div>
+        <div class="fl-pin"><span class="fl-tag">对比</span>
+          <h3>三种口径一起看</h3>
+          <div class="fl-scroll"><table class="fl-t" id="ct-cmp">
+            <thead><tr><th>口径</th><th>循环数</th><th>整 / 半</th><th>最大 Δσ</th></tr></thead>
+            <tbody id="ct-cmp-tbody"></tbody>
+          </table></div>
+          <p class="fl-sub">同一条谱，换口径会改损伤 —— 页面上永远写明用的是哪一种。</p>
+        </div>
+        <div class="fl-pin"><span class="fl-tag">残余</span>
+          <h3>残余序列</h3>
+          <p class="fl-sub">四点法第一遍数完剩下的那条「发散-收敛」序列。它接上自己再数一遍，就是重复历程口径。</p>
+          <svg class="fl-fig" id="ct-fig-res" viewBox="0 0 360 240" role="img" aria-label="残余序列图"></svg>
+          <dl class="fl-dl">
+            <dt>残余反向点数</dt><dd id="ct-resn">—</dd>
+            <dt>本口径循环数</dt><dd id="ct-ncyc">—</dd>
+            <dt>整循环 / 半循环</dt><dd id="ct-nfull">—</dd>
+            <dt>最大幅值 (MPa)</dt><dd id="ct-maxrng">—</dd>
+          </dl>
+        </div>
+        <div class="fl-pin fl-wide"><span class="fl-tag">循环表</span>
+          <h3>循环清单（前 18 条）</h3>
+          <div class="fl-scroll"><table class="fl-t">
+            <thead><tr><th>#</th><th>Δσ (MPa)</th><th>σm (MPa)</th><th>σa (MPa)</th><th>R</th><th>计数</th><th>起点 → 终点</th></tr></thead>
+            <tbody id="ct-tbody"></tbody>
+          </table></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══ 3. S-N 与损伤 ══ -->
+    <section class="fl-pane" id="pane-damage" role="tabpanel" aria-labelledby="tab-damage" hidden>
+      <div class="fl-rail">
+        <h2>S-N 与损伤</h2>
+        <p class="fl-note">曲线口径（幅 / 范围）是实务里最常见的错源，所以这里显式给出，不做隐式换算。</p>
+        <label class="fl-f"><span>曲线类型</span>
+          <select id="dm-curve">
+            <option value="ec3" selected>EN 1993-1-9 细节类别（FAT）</option>
+            <option value="2slope">双斜率 + 拐点（Haibach）</option>
+            <option value="basquin">Basquin 单斜率 N = C·S^-k</option>
+          </select></label>
+        <label class="fl-f"><span>应力口径</span>
+          <select id="dm-conv"><option value="range" selected>应力范围 Δσ（EC3 / IIW）</option>
+            <option value="amp">应力幅 σa（Basquin / 振动疲劳）</option></select></label>
+        <label class="fl-f" id="dm-f-fat"><span>FAT 等级 ΔσC @2e6 (MPa)</span>
+          <select id="dm-fat"></select></label>
+        <div class="fl-f2">
+          <label class="fl-f" id="dm-f-sref"><span>参考应力 (MPa)</span>
+            <input id="dm-sref" type="number" value="300" step="10" min="10" max="2000"></label>
+          <label class="fl-f" id="dm-f-nref"><span>参考寿命 N</span>
+            <input id="dm-nref" type="number" value="1000000" step="100000" min="1000" max="100000000"></label>
+        </div>
+        <div class="fl-f2">
+          <label class="fl-f" id="dm-f-k1"><span>斜率 k₁</span>
+            <input id="dm-k1" type="number" value="5" step="0.5" min="2" max="14"></label>
+          <label class="fl-f" id="dm-f-knee"><span>拐点 N</span>
+            <input id="dm-knee" type="number" value="1000000" step="100000" min="10000" max="100000000"></label>
+        </div>
+        <hr>
+        <label class="fl-f"><span>平均应力修正</span>
+          <select id="dm-mean">
+            <option value="none">不修正</option>
+            <option value="goodman" selected>Goodman</option>
+            <option value="gerber">Gerber</option>
+            <option value="soderberg">Soderberg</option>
+            <option value="morrow">Morrow</option>
+            <option value="swt">Smith-Watson-Topper</option>
+            <option value="walker">Walker（带 γ）</option>
+          </select></label>
+        <label class="fl-f"><span>Walker 指数 γ</span>
+          <input id="dm-gamma" type="number" value="0.5" step="0.05" min="0.1" max="1"></label>
+        <label class="fl-f"><span>材料（取 Su / Sy / σf′）</span>
+          <select id="dm-mat"></select></label>
+        <div class="fl-chk"><input id="dm-comp" type="checkbox"><label for="dm-comp">压平均应力也按公式修正（默认保守地当作无益）</label></div>
+        <div class="fl-f2">
+          <label class="fl-f"><span>临界损伤 D</span>
+            <input id="dm-dcrit" type="number" value="1" step="0.1" min="0.1" max="2"></label>
+          <label class="fl-f"><span>每小时跑几遍谱</span>
+            <input id="dm-rate" type="number" value="60" step="10" min="0.01" max="100000"></label>
+        </div>
+      </div>
+      <div class="fl-pins" id="pins-damage">
+        <div class="fl-pin fl-wide"><span class="fl-tag">S-N</span>
+          <h3>S-N 曲线与落在上面的循环</h3>
+          <p class="fl-sub" id="dm-curve-label">—</p>
+          <svg class="fl-fig" id="dm-fig-sn" viewBox="0 0 760 340" role="img" aria-label="S-N 曲线与计数循环"></svg>
+          <div class="fl-legend"><span><i style="background:#262622"></i>S-N 曲线</span>
+            <span><i style="background:#e60023"></i>载荷谱超越曲线（实线 = 跑满寿命，虚线 = 跑一遍）</span>
+            <span><i style="background:#91918c"></i>截止应力</span></div>
+        </div>
+        <div class="fl-pin"><span class="fl-tag">寿命</span>
+          <h3>累积损伤与寿命</h3>
+          <dl class="fl-dl">
+            <dt>一遍谱的损伤 D</dt><dd id="dm-D">—</dd>
+            <dt>可重复遍数（D 到临界）</dt><dd id="dm-life">—</dd>
+            <dt>折合小时</dt><dd id="dm-hours">—</dd>
+            <dt>折合年（按上面的频率）</dt><dd id="dm-years">—</dd>
+            <dt>参与计数的循环数</dt><dd id="dm-ncyc">—</dd>
+            <dt>最大等效幅 σar (MPa)</dt><dd id="dm-sarmax">—</dd>
+            <dt>等效损伤幅 DEL @2e6</dt><dd id="dm-del">—</dd>
+            <dt>截止以下（无损伤）的循环</dt><dd id="dm-below">—</dd>
+          </dl>
+          <p class="fl-sub" id="dm-crit">—</p>
+        </div>
+        <div class="fl-pin"><span class="fl-tag">分布</span>
+          <h3>循环数 vs 损伤</h3>
+          <p class="fl-sub">小幅值循环最多，但损伤往往集中在最右边那几根 —— 这就是为什么删掉小循环通常没关系。</p>
+          <svg class="fl-fig" id="dm-fig-bins" viewBox="0 0 360 300" role="img" aria-label="循环数与损伤分布"></svg>
+          <div class="fl-legend"><span><i style="background:#c8c8c1"></i>循环数（左轴）</span>
+            <span><i style="background:#e60023"></i>损伤占比（右轴）</span></div>
+        </div>
+        <div class="fl-pin"><span class="fl-tag">贡献</span>
+          <h3>损伤贡献前 12 条</h3>
+          <div class="fl-scroll"><table class="fl-t">
+            <thead><tr><th>Δσ</th><th>σm</th><th>σar</th><th>N</th><th>n</th><th>损伤占比</th></tr></thead>
+            <tbody id="dm-tbody"></tbody>
+          </table></div>
+        </div>
+        <div class="fl-pin fl-wide"><span class="fl-tag">修正对比</span>
+          <h3>七种平均应力修正放在一起</h3>
+          <p class="fl-sub">同一条谱、同一条曲线，只换修正方法 —— 差出一个数量级是常事，所以报告里必须写清用了哪个。</p>
+          <div class="fl-scroll"><table class="fl-t">
+            <thead><tr><th>方法</th><th>最大 σar (MPa)</th><th>损伤 D</th><th>可重复遍数</th><th>相对 Goodman</th></tr></thead>
+            <tbody id="dm-mean-tbody"></tbody>
+          </table></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══ 4. 安全系数与缺口 ══ -->
+    <section class="fl-pane" id="pane-safety" role="tabpanel" aria-labelledby="tab-safety" hidden>
+      <div class="fl-rail">
+        <h2>安全系数与缺口</h2>
+        <p class="fl-note">Marin 修正与缺口敏感照 Shigley《机械工程设计》的做法，每个系数都单列出来。</p>
+        <label class="fl-f"><span>材料</span><select id="sf-mat"></select></label>
+        <div class="fl-f2">
+          <label class="fl-f"><span>Su (MPa)</span><input id="sf-su" type="number" value="621" step="10" min="100" max="2500"></label>
+          <label class="fl-f"><span>Sy (MPa)</span><input id="sf-sy" type="number" value="382" step="10" min="50" max="2200"></label>
+        </div>
+        <label class="fl-f"><span>表面加工</span>
+          <select id="sf-surf">
+            <option value="ground">磨削</option><option value="machined" selected>机加工 / 冷拔</option>
+            <option value="hotrolled">热轧</option><option value="forged">锻造表面</option></select></label>
+        <div class="fl-f2">
+          <label class="fl-f"><span>直径 (mm)</span><input id="sf-d" type="number" value="32" step="2" min="2" max="250"></label>
+          <label class="fl-f"><span>温度 (℃)</span><input id="sf-temp" type="number" value="20" step="10" min="20" max="600"></label>
+        </div>
+        <div class="fl-f2">
+          <label class="fl-f"><span>载荷型式</span>
+            <select id="sf-mode"><option value="bending" selected>弯曲</option><option value="axial">轴向</option><option value="torsion">扭转</option></select></label>
+          <label class="fl-f"><span>可靠度</span>
+            <select id="sf-rel"><option value="50">50%</option><option value="90">90%</option><option value="95">95%</option><option value="99" selected>99%</option><option value="99.9">99.9%</option><option value="99.99">99.99%</option></select></label>
+        </div>
+        <hr>
+        <div class="fl-f2">
+          <label class="fl-f"><span>理论应力集中 Kt</span><input id="sf-kt" type="number" value="2.5" step="0.1" min="1" max="8"></label>
+          <label class="fl-f"><span>缺口半径 r (mm)</span><input id="sf-r" type="number" value="3" step="0.5" min="0.05" max="50"></label>
+        </div>
+        <label class="fl-f"><span>缺口敏感口径</span>
+          <select id="sf-rule"><option value="peterson" selected>Peterson</option><option value="neuber">Neuber</option></select></label>
+        <div class="fl-f2">
+          <label class="fl-f"><span>工作 σa (MPa)</span><input id="sf-sa" type="number" value="90" step="5" min="0" max="1500"></label>
+          <label class="fl-f"><span>工作 σm (MPa)</span><input id="sf-sm" type="number" value="120" step="5" min="-500" max="1500"></label>
+        </div>
+        <div class="fl-chk"><input id="sf-fromspec" type="checkbox" checked><label for="sf-fromspec">工作点取当前载荷谱的最大循环</label></div>
+      </div>
+      <div class="fl-pins" id="pins-safety">
+        <div class="fl-pin fl-wide"><span class="fl-tag">Haigh</span>
+          <h3>等寿命图（Haigh 图）</h3>
+          <p class="fl-sub">横轴平均应力、纵轴应力幅。工作点落在哪条线以内就算过 —— 六条准则的保守程度一目了然。</p>
+          <svg class="fl-fig" id="sf-fig-haigh" viewBox="0 0 760 360" role="img" aria-label="Haigh 等寿命图"></svg>
+          <div class="fl-legend">
+            <span><i style="background:#262622"></i>Goodman</span><span><i style="background:#7e238b"></i>Gerber</span>
+            <span><i style="background:#617bff"></i>Soderberg</span><span><i style="background:#103c25"></i>ASME 椭圆</span>
+            <span><i style="background:#91918c"></i>Morrow</span><span><i style="background:#c8c8c1"></i>Langer 屈服线</span>
+            <span><i style="background:#e60023"></i>工作点与载荷线</span></div>
+        </div>
+        <div class="fl-pin"><span class="fl-tag">Marin</span>
+          <h3>耐久限修正</h3>
+          <div class="fl-scroll"><table class="fl-t">
+            <thead><tr><th>系数</th><th>取值</th><th>依据</th></tr></thead>
+            <tbody id="sf-marin-tbody"></tbody>
+          </table></div>
+          <dl class="fl-dl">
+            <dt>未修正 Se′ (MPa)</dt><dd id="sf-seprime">—</dd>
+            <dt>修正后 Se (MPa)</dt><dd id="sf-se">—</dd>
+          </dl>
+        </div>
+        <div class="fl-pin"><span class="fl-tag">安全系数</span>
+          <h3>各准则下的安全系数</h3>
+          <div class="fl-scroll"><table class="fl-t">
+            <thead><tr><th>准则</th><th>许用 σa</th><th>安全系数 n</th><th>结论</th></tr></thead>
+            <tbody id="sf-fos-tbody"></tbody>
+          </table></div>
+          <p class="fl-sub" id="sf-verdict">—</p>
+        </div>
+        <div class="fl-pin"><span class="fl-tag">缺口</span>
+          <h3>缺口：从 Kt 到局部应变</h3>
+          <dl class="fl-dl">
+            <dt>缺口敏感系数 q</dt><dd id="sf-q">—</dd>
+            <dt>疲劳缺口系数 Kf</dt><dd id="sf-kf">—</dd>
+            <dt>名义弹性幅 Kf·σa (MPa)</dt><dd id="sf-nom">—</dd>
+            <dt>Neuber 局部应力 (MPa)</dt><dd id="sf-sig">—</dd>
+            <dt>Neuber 局部应变幅</dt><dd id="sf-eps">—</dd>
+            <dt>Glinka 局部应力 (MPa)</dt><dd id="sf-sigg">—</dd>
+            <dt>应变寿命 Nf（Morrow）</dt><dd id="sf-nlife">—</dd>
+            <dt>过渡寿命 Nt</dt><dd id="sf-nt">—</dd>
+          </dl>
+          <p class="fl-sub">Neuber 法则：(Kf·S)²/E = σ·ε，局部塑性一旦出现，局部应力就低于弹性外推值。</p>
+        </div>
+        <div class="fl-pin"><span class="fl-tag">ε-N</span>
+          <h3>应变-寿命曲线</h3>
+          <p class="fl-sub">Coffin-Manson-Basquin：弹性项与塑性项在过渡寿命处相等。低周看塑性、高周看弹性。</p>
+          <svg class="fl-fig" id="sf-fig-en" viewBox="0 0 360 300" role="img" aria-label="应变寿命曲线"></svg>
+          <div class="fl-legend"><span><i style="background:#262622"></i>总应变幅</span>
+            <span><i style="background:#617bff"></i>弹性项</span><span><i style="background:#7e238b"></i>塑性项</span>
+            <span><i style="background:#e60023"></i>缺口处工作点</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══ 5. 裂纹扩展 ══ -->
+    <section class="fl-pane" id="pane-crack" role="tabpanel" aria-labelledby="tab-crack" hidden>
+      <div class="fl-rail">
+        <h2>裂纹扩展</h2>
+        <p class="fl-note">单位：应力 MPa、长度 mm、K 用 MPa·m^0.5、da/dN 用 mm/循环。</p>
+        <label class="fl-f"><span>几何</span><select id="ck-geom"></select></label>
+        <div class="fl-f2">
+          <label class="fl-f"><span>宽度 W (mm)</span><input id="ck-w" type="number" value="100" step="5" min="5" max="2000"></label>
+          <label class="fl-f"><span>半长 c (mm)</span><input id="ck-c" type="number" value="12" step="1" min="0.5" max="500"></label>
+        </div>
+        <div class="fl-f2">
+          <label class="fl-f"><span>初始裂纹 a₀ (mm)</span><input id="ck-a0" type="number" value="1" step="0.1" min="0.02" max="200"></label>
+          <label class="fl-f"><span>可检出 aD (mm)</span><input id="ck-ad" type="number" value="2" step="0.2" min="0.05" max="300"></label>
+        </div>
+        <div class="fl-f2">
+          <label class="fl-f"><span>Δσ (MPa)</span><input id="ck-dsig" type="number" value="120" step="5" min="1" max="1200"></label>
+          <label class="fl-f"><span>应力比 R</span><input id="ck-r" type="number" value="0.1" step="0.05" min="-1" max="0.9"></label>
+        </div>
+        <hr>
+        <label class="fl-f"><span>速率律</span>
+          <select id="ck-law"><option value="paris" selected>Paris  da/dN = C·ΔK^m</option>
+            <option value="walker">Walker（R 效应）</option>
+            <option value="forman">Forman（含 Kc 渐近）</option></select></label>
+        <label class="fl-f"><span>材料（取 C / m / Kc / ΔKth）</span><select id="ck-mat"></select></label>
+        <div class="fl-f2">
+          <label class="fl-f"><span>C (mm/循环)</span><input id="ck-cc" type="text" inputmode="decimal" value="6.9e-9" spellcheck="false"></label>
+          <label class="fl-f"><span>指数 m</span><input id="ck-m" type="number" value="3" step="0.05" min="1.5" max="6"></label>
+        </div>
+        <div class="fl-f2">
+          <label class="fl-f"><span>Walker γ</span><input id="ck-gamma" type="number" value="0.6" step="0.05" min="0.1" max="1"></label>
+          <label class="fl-f"><span>Kc (MPa·m^0.5)</span><input id="ck-kc" type="number" value="100" step="5" min="5" max="300"></label>
+        </div>
+        <div class="fl-chk"><input id="ck-th" type="checkbox" checked><label for="ck-th">启用门槛 ΔKth</label></div>
+        <div class="fl-f2">
+          <label class="fl-f"><span>ΔKth (MPa·m^0.5)</span><input id="ck-dkth" type="number" value="6" step="0.5" min="0.5" max="25"></label>
+          <label class="fl-f"><span>检查安全系数</span><input id="ck-sf" type="number" value="2" step="0.5" min="1" max="10"></label>
+        </div>
+        <div class="fl-chk"><input id="ck-usespec" type="checkbox" checked><label for="ck-usespec">同时用当前载荷谱逐循环扩展</label></div>
+      </div>
+      <div class="fl-pins" id="pins-crack">
+        <div class="fl-pin fl-wide"><span class="fl-tag">a-N</span>
+          <h3>裂纹长度随循环数</h3>
+          <p class="fl-sub" id="ck-geom-note">—</p>
+          <svg class="fl-fig" id="ck-fig-an" viewBox="0 0 760 320" role="img" aria-label="裂纹长度随循环数曲线"></svg>
+          <div class="fl-legend"><span><i style="background:#262622"></i>等幅 Δσ</span>
+            <span><i style="background:#e60023"></i>变幅（当前载荷谱逐循环）</span>
+            <span><i style="background:#91918c"></i>临界尺寸 a_crit</span>
+            <span><i style="background:#617bff"></i>可检出尺寸 aD</span></div>
+        </div>
+        <div class="fl-pin"><span class="fl-tag">读数</span>
+          <h3>剩余寿命与检查间隔</h3>
+          <dl class="fl-dl">
+            <dt>a₀ 处的 K (MPa·m^0.5)</dt><dd id="ck-k0">—</dd>
+            <dt>a₀ 处的 ΔK</dt><dd id="ck-dk0">—</dd>
+            <dt>形状因子 Y(a₀)</dt><dd id="ck-y0">—</dd>
+            <dt>临界裂纹 a_crit (mm)</dt><dd id="ck-acrit">—</dd>
+            <dt>a₀ → a_crit 的循环数</dt><dd id="ck-n">—</dd>
+            <dt>aD → a_crit 的循环数</dt><dd id="ck-nd">—</dd>
+            <dt>建议检查间隔（循环）</dt><dd id="ck-insp">—</dd>
+            <dt>净截面应力 / Sy</dt><dd id="ck-net">—</dd>
+            <dt>变幅：到临界的谱遍数</dt><dd id="ck-blocks">—</dd>
+          </dl>
+          <p class="fl-sub" id="ck-stop">—</p>
+        </div>
+        <div class="fl-pin"><span class="fl-tag">da/dN</span>
+          <h3>扩展速率曲线</h3>
+          <p class="fl-sub">双对数下 Paris 段是直线；左端被门槛掐断、右端向 Kc 发散。</p>
+          <svg class="fl-fig" id="ck-fig-dadn" viewBox="0 0 360 300" role="img" aria-label="da/dN 与 ΔK 曲线"></svg>
+          <div class="fl-legend"><span><i style="background:#262622"></i>当前 R</span>
+            <span><i style="background:#91918c"></i>R=0</span><span><i style="background:#617bff"></i>R=0.7</span></div>
+        </div>
+        <div class="fl-pin"><span class="fl-tag">K(a)</span>
+          <h3>应力强度因子随裂纹长度</h3>
+          <p class="fl-sub">几何的形状因子 Y(a) 决定这条线怎么翘 —— 到 Kc 的交点就是临界尺寸。</p>
+          <svg class="fl-fig" id="ck-fig-k" viewBox="0 0 360 300" role="img" aria-label="K 随裂纹长度曲线"></svg>
+        </div>
+        <div class="fl-pin"><span class="fl-tag">E647</span>
+          <h3>CT 试样标定（ASTM E647）</h3>
+          <p class="fl-sub">做 da/dN 试验用的紧凑拉伸试样：K = P/(B√W)·f(a/W)。取 B = W/2、P 为下表载荷。</p>
+          <div class="fl-scroll"><table class="fl-t">
+            <thead><tr><th>a/W</th><th>f(α)</th><th>K @P=10 kN, W=50 mm</th></tr></thead>
+            <tbody id="ck-ct-tbody"></tbody>
+          </table></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══ 6. 随机振动 ══ -->
+    <section class="fl-pane" id="pane-spectral" role="tabpanel" aria-labelledby="tab-spectral" hidden>
+      <div class="fl-rail">
+        <h2>随机振动疲劳</h2>
+        <p class="fl-note">口径与开源实现 FLife 对齐：N = C·σa^-k（σa 是**幅**），谱矩按圆频率加权 m_i = ∫(2πf)^i G df。</p>
+        <label class="fl-f"><span>谱的来源</span>
+          <select id="sp-src"><option value="welch" selected>当前载荷谱的 Welch 估计</option>
+            <option value="param">参数谱（下面两段带宽）</option></select></label>
+        <label class="fl-f"><span>Welch 段长 nperseg</span>
+          <select id="sp-nperseg"><option value="256">256</option><option value="512">512</option>
+            <option value="1024" selected>1024</option><option value="2048">2048</option></select></label>
+        <div class="fl-f2">
+          <label class="fl-f"><span>S-N 系数 C</span><input id="sp-c" type="text" inputmode="decimal" value="1e18" spellcheck="false"></label>
+          <label class="fl-f"><span>反斜率 k</span><input id="sp-k" type="number" value="5" step="0.1" min="2" max="12"></label>
+        </div>
+        <label class="fl-f"><span>目标暴露时长 (s)</span>
+          <input id="sp-t" type="number" value="3600" step="600" min="1" max="100000000"></label>
+        <hr>
+        <div class="fl-f2">
+          <label class="fl-f"><span>带 1：f₁ / f₂ (Hz)</span><input id="sp-f1" type="number" value="30" step="5" min="0.5" max="2000"></label>
+          <label class="fl-f"><span>　</span><input id="sp-f2" type="number" value="70" step="5" min="1" max="2000"></label>
+        </div>
+        <div class="fl-f2">
+          <label class="fl-f"><span>带 2：f₃ / f₄ (Hz)</span><input id="sp-f3" type="number" value="150" step="5" min="0.5" max="2000"></label>
+          <label class="fl-f"><span>　</span><input id="sp-f4" type="number" value="190" step="5" min="1" max="2000"></label>
+        </div>
+        <div class="fl-f2">
+          <label class="fl-f"><span>带 1 谱密度</span><input id="sp-g1" type="number" value="22.5" step="1" min="0" max="10000"></label>
+          <label class="fl-f"><span>带 2 谱密度</span><input id="sp-g2" type="number" value="10" step="1" min="0" max="10000"></label>
+        </div>
+      </div>
+      <div class="fl-pins" id="pins-spectral">
+        <div class="fl-pin fl-wide"><span class="fl-tag">PSD</span>
+          <h3>功率谱密度</h3>
+          <p class="fl-sub" id="sp-psd-note">—</p>
+          <svg class="fl-fig" id="sp-fig-psd" viewBox="0 0 760 300" role="img" aria-label="功率谱密度曲线"></svg>
+        </div>
+        <div class="fl-pin"><span class="fl-tag">谱矩</span>
+          <h3>谱矩与带宽参数</h3>
+          <dl class="fl-dl">
+            <dt>m₀（= 方差）</dt><dd id="sp-m0">—</dd>
+            <dt>RMS = √m₀ (MPa)</dt><dd id="sp-rms">—</dd>
+            <dt>m₁</dt><dd id="sp-m1">—</dd>
+            <dt>m₂</dt><dd id="sp-m2">—</dd>
+            <dt>m₄</dt><dd id="sp-m4">—</dd>
+            <dt>上穿零点率 ν (1/s)</dt><dd id="sp-nu">—</dd>
+            <dt>峰值率 νp (1/s)</dt><dd id="sp-mp">—</dd>
+            <dt>α₁</dt><dd id="sp-a1">—</dd>
+            <dt>不规则因子 α₂</dt><dd id="sp-a2">—</dd>
+            <dt>α₀.₇₅</dt><dd id="sp-a075">—</dd>
+            <dt>谱宽 ε</dt><dd id="sp-eps">—</dd>
+          </dl>
+        </div>
+        <div class="fl-pin"><span class="fl-tag">概率密度</span>
+          <h3>幅值概率密度</h3>
+          <p class="fl-sub">四条解析密度 vs 时域雨流数出来的直方图 —— 谁更贴合直方图，谁在这条谱上更可信。</p>
+          <svg class="fl-fig" id="sp-fig-pdf" viewBox="0 0 360 300" role="img" aria-label="幅值概率密度对比"></svg>
+          <div class="fl-legend"><span><i style="background:#c8c8c1"></i>时域雨流</span>
+            <span><i style="background:#262622"></i>窄带 Rayleigh</span><span><i style="background:#e60023"></i>Dirlik</span>
+            <span><i style="background:#7e238b"></i>Tovo-Benasciutti</span><span><i style="background:#617bff"></i>Zhao-Baker</span></div>
+        </div>
+        <div class="fl-pin fl-wide"><span class="fl-tag">十种方法</span>
+          <h3>频域方法一览（与时域雨流对照）</h3>
+          <div class="fl-scroll"><table class="fl-t">
+            <thead><tr><th>方法</th><th>损伤率 (1/s)</th><th>寿命 (s)</th><th>ρ vs 窄带</th><th>vs 时域雨流</th><th>目标时长内的 D</th></tr></thead>
+            <tbody id="sp-tbody"></tbody>
+          </table></div>
+          <p class="fl-sub" id="sp-cross">—</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══ 7. 口径与出处 ══ -->
+    <section class="fl-pane" id="pane-notes" role="tabpanel" aria-labelledby="tab-notes" hidden>
+      <div class="fl-rail">
+        <h2>口径与出处</h2>
+        <p class="fl-note">这一页说明每个数字是按哪一套口径算的、引擎和谁对拍过、以及哪些地方不能当设计依据。</p>
+        <button type="button" id="nt-copy" class="fl-btn fl-btn-sec">复制当前全部读数</button>
+      </div>
+      <div class="fl-pins" id="pins-notes">
+        <div class="fl-pin"><span class="fl-tag">计数</span>
+          <h3>雨流计数</h3>
+          <div class="fl-prose">
+            <p><b>三点法</b>照 ASTM E1049-85 §5.4.4 逐条实现：栈里取最近三点，<code>X ≥ Y</code> 就把 Y 记一次，
+              含起点时记半循环；跑完剩下的残余全部按半循环记。</p>
+            <p><b>四点法</b>照 ISO 12110-2 / Amzallag：<code>|S2−S1| ≤ |S1−S0|</code> 且 <code>≤ |S3−S2|</code> 时闭合中间那一对。
+              残余接上自己再数一遍，就是「重复历程」口径，结果全是整循环。</p>
+            <p>反向点提取把首末点都算作反向点，连续相等的点跳过（平台取最后一个下标）。</p>
+            <p><b>对拍</b>：三点法与 python 包 <code>rainflow 3.2.0</code> 逐字段（幅值/均值/计数/两个下标）一致；
+              四点法与 <code>fatpack 0.7.8</code> 的 <code>find_rainflow_cycles</code> + <code>concatenate_reversals</code> 一致；
+              8 条内置谱 + 140 条随机谱全部逐条比过。</p>
+          </div>
+        </div>
+        <div class="fl-pin"><span class="fl-tag">S-N</span>
+          <h3>S-N 曲线与损伤</h3>
+          <div class="fl-prose">
+            <p><b>EN 1993-1-9</b>：ΔσC 定在 2×10⁶，m=3 到 5×10⁶（ΔσD = ΔσC·(2/5)^⅓），m=5 到 10⁸（ΔσL = ΔσD·(5/100)^⅕），之后截止。
+              FAT 90 因此给出 ΔσD = 66.3、ΔσL = 36.4，与规范表一致。</p>
+            <p><b>口径</b>：EC3 / IIW 用应力<b>范围</b> Δσ，Basquin 与振动疲劳文献用应力<b>幅</b> σa。
+              页面上每处都写明用的是哪一个，引擎内部不做隐式换算。</p>
+            <p><b>平均应力修正</b>（等效全反向幅 σar）：Goodman σa/(1−σm/Su)、Gerber σa/(1−(σm/Su)²)、
+              Soderberg 用 Sy、Morrow 用 σf′、SWT √(σmax·σa)、Walker σmax^(1−γ)·σa^γ（γ=0.5 时就是 SWT，γ=1 等于不修正）。
+              默认对压平均应力不做修正（保守），可在左栏打开。</p>
+            <p><b>对拍</b>：曲线的 N(S)/S(N) 与 <code>fatpack</code> 的 Linear / BiLinear / TriLinear 耐久曲线一致；
+              Miner 和与 <code>find_miner_sum</code> 一致；四种等效应力与 <code>fatpack.stresscorrection</code> 一致。</p>
+          </div>
+        </div>
+        <div class="fl-pin"><span class="fl-tag">Marin</span>
+          <h3>耐久限与缺口</h3>
+          <div class="fl-prose">
+            <p>Se = ka·kb·kc·kd·ke·Se′，Se′ 取 0.5Su（钢，Su ≤ 1400 MPa）或 0.4Su（铝）。
+              ka = a·Su^b 按表面加工取 (a,b)；kb 用旋转弯曲的 1.24d^−0.107 / 1.51d^−0.157；
+              kc 弯曲 1 / 轴向 0.85 / 扭转 0.59；kd 按温度表插值；ke = 1 − 0.08·z。</p>
+            <p>缺口：Peterson q = 1/(1+a/r)、Neuber q = 1/(1+√a/√r)，Kf = 1 + q(Kt−1)。
+              Neuber 法则 (Kf·S)²/E = σ·ε 配 Ramberg-Osgood ε = σ/E + (σ/K′)^(1/n′) 解局部应力应变；
+              另给 Glinka 应变能密度法则作对照（它给出的局部应力总是不高于 Neuber）。</p>
+            <p>ε-N 用 Coffin-Manson-Basquin：εa = σf′/E·(2Nf)^b + εf′·(2Nf)^c，平均应力走 Morrow 或 SWT。
+              材料的 K′、n′ 由 σf′/b/εf′/c 导出（n′ = b/c，K′ = σf′/εf′^n′），保证四个参数自洽。</p>
+            <p><b>验证</b>：这一页没有第三方库可对拍，改用两类断言 —— ①各准则线上的安全系数必须恒等于 1、
+              Neuber 解必须精确满足 σ·ε = (Kf·S)²/E、应变寿命解回代必须还原输入；
+              ②ka(690, 机加工)=0.798、kb(32)=0.858、ke(99%)=0.814 等公开算例的点值。</p>
+          </div>
+        </div>
+        <div class="fl-pin"><span class="fl-tag">断裂</span>
+          <h3>裂纹扩展的几何与适用范围</h3>
+          <div class="fl-prose">
+            <ul>
+              <li><b>无限宽板中心裂纹</b>：K = σ√(πa)，精确解。</li>
+              <li><b>有限宽板中心裂纹</b>：Feddersen 正割式 Y = √sec(πa/W)，适用 2a/W ≤ 0.7。</li>
+              <li><b>单边裂纹拉伸</b>：Tada 多项式，适用 a/W ≤ 0.6（a→0 时 Y → 1.1215 的自由表面值）。</li>
+              <li><b>圆形（钱币）裂纹</b>：K = (2/π)σ√(πa)，精确解。</li>
+              <li><b>内部椭圆裂纹最深点</b>：Irwin 精确解 K = σ√(πa)/E(k)，k² = 1−(a/c)²；a/c=1 时退化为钱币裂纹。</li>
+              <li><b>CT 试样</b>：ASTM E647 的 f(α) 多项式，适用 α ≥ 0.2。</li>
+            </ul>
+            <p>速率律：Paris C·ΔK^m、Walker（把 ΔK 换成 ΔK/(1−R)^(1−γ)）、Forman（含 (1−R)Kc−ΔK 的分母，
+              自带 Kc 渐近）。门槛可开关，开时 ΔK &lt; ΔKth 不扩展。</p>
+            <p><b>验证</b>：等幅寿命与 <code>scipy.integrate.quad</code> 对同一个被积函数独立积分一致（90 个几何×律×载荷组合）；
+              Y=1 的 Paris 情形另有闭式解；变幅积分器在等幅谱上必须退化到闭式解；
+              椭圆形状因子逐点对拍 <code>scipy.special.ellipe</code>。</p>
+            <p>变幅扩展按雨流循环逐个施加，<b>不含</b>过载迟滞/裂纹闭合等相互作用效应 ——
+              真实变幅谱下这类效应可能显著，这里只给无相互作用的基线。</p>
+          </div>
+        </div>
+        <div class="fl-pin"><span class="fl-tag">谱方法</span>
+          <h3>频域方法</h3>
+          <div class="fl-prose">
+            <p>Welch 谱：Hann 窗（周期型）、50% 重叠、逐段去均值、单边密度定标 —— 与
+              <code>scipy.signal.welch(window='hann', detrend='constant', scaling='density')</code> 逐点一致。</p>
+            <p>谱矩按圆频率加权 m_i = ∫(2πf)^i G(f) df，于是 m₀ = 方差、ν = √(m₂/m₀)/2π、νp = √(m₄/m₂)/2π、
+              α_i = m_i/√(m₀·m_2i)。十种方法：窄带（Rayleigh）、Dirlik、Tovo-Benasciutti（1989 与 2005 两版）、
+              Wirsching-Light、Ortiz-Chen、α₀.₇₅、单矩法、Zhao-Baker（法 1、法 2）。</p>
+            <p><b>对拍</b>：12 条形状各异的谱 × 4 组 (C,k) × 10 种方法与 <code>FLife</code> 一致，
+              概率密度也逐点对过。<b>一处分歧</b>：Zhao-Baker 法 2 的定标方程在宽带谱上可能没有正实根，
+              FLife 用 <code>fsolve</code> 从 0 出发不收敛却照样返回一个数；这里改用解析三次根，
+              无正根时直接标「不适用」而不给假数。</p>
+          </div>
+        </div>
+        <div class="fl-pin"><span class="fl-tag">别当设计依据</span>
+          <h3>材料数据与免责</h3>
+          <div class="fl-prose">
+            <p>材料库里的 Su/Sy/σf′/b/εf′/c 与 Paris 的 C/m/Kc/ΔKth 都是<b>教材典型值</b>（Shigley、Dowling、
+              Barsom-Rolfe 那一档量级），只为让工具开箱能跑；<b>每个数都可以在左栏改</b>。
+              真实设计必须用自己那一批材料、那一种工艺、那一个环境下的试验数据。</p>
+            <p>内置载荷谱除「ASTM E1049 教科书序列」外全部是<b>固定种子合成</b>的，不是实测记录；
+              它们只用来演示方法差异。</p>
+            <p>这个页面是估算与教学工具，不替代规范评定、不替代有限元与试验验证。</p>
+          </div>
+        </div>
+        <div class="fl-pin"><span class="fl-tag">离线可用</span>
+          <h3>纯前端</h3>
+          <div class="fl-prose">
+            <p>整页一个 HTML 文件，CSS 与 JS 全内联，没有后端、没有上传、没有第三方接口。
+              左栏改过的参数存在浏览器 localStorage 里；「复制分享链接」把当前设置压进 URL 的 hash，
+              发给别人打开就是同一套参数。</p>
+            <p>设计语言：Pinterest（红色只给唯一的主行动按钮与活动页签，16px 圆角、发丝边、零阴影、
+              列式钉板布局；读数用 Inter 的表格数字，整页不用等宽字体 —— 这套系统里没有等宽）。</p>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <footer class="fl-foot">
+    <p><b>疲劳工作台</b> · 每日工具集 · 2026-09-26 —— 引擎逐项对拍 rainflow / fatpack / FLife / scipy；
+      <a href="../../">回到工具集首页</a></p>
+  </footer>
+</main>
+
+<script id="fl-engine">/* 疲劳工作台 —— 数值基础层。所有引擎模块共用。
+ * 约定：全部挂在 var FL 下（vm 上下文要求顶层用 var，见 offline-harness 注释）。 */
+var FL = (function () {
+  'use strict';
+
+  /* ── Γ(x)：Lanczos g=7, n=9（|相对误差| < 1e-15 在 x>0） ── */
+  var LANCZOS = [0.99999999999980993, 676.5203681218851, -1259.1392167224028,
+    771.32342877765313, -176.61502916214059, 12.507343278686905,
+    -0.13857109526572012, 9.9843695780195716e-6, 1.5056327351493116e-7];
+  function gamma(z) {
+    if (z < 0.5) return Math.PI / (Math.sin(Math.PI * z) * gamma(1 - z));
+    z -= 1;
+    var x = LANCZOS[0], i;
+    for (i = 1; i < 9; i++) x += LANCZOS[i] / (z + i);
+    var t = z + 7.5;
+    return Math.sqrt(2 * Math.PI) * Math.pow(t, z + 0.5) * Math.exp(-t) * x;
+  }
+  function lgamma(z) { return Math.log(Math.abs(gamma(z))); }
+
+  /* ── 第二类完全椭圆积分 E(m)，m = k^2 ∈ [0,1)；AGM 迭代，机器精度 ──
+   * 椭圆裂纹的形状因子要用它（Irwin 1962 的解析解），对拍 scipy.special.ellipe。 */
+  function ellipe(m) {
+    if (m < 0 || m >= 1) { if (m === 1) return 1; throw new Error('ellipe: m 必须在 [0,1]'); }
+    var a = 1, b = Math.sqrt(1 - m), c = Math.sqrt(m), sum = m / 2, p = 1, i;
+    for (i = 0; i < 60; i++) {
+      var an = 0.5 * (a + b), bn = Math.sqrt(a * b);
+      c = 0.5 * (a - b);
+      p *= 2;
+      sum += p * c * c / 2;
+      a = an; b = bn;
+      if (Math.abs(c) < 1e-17) break;
+    }
+    // K(m) = pi/(2 agm)，E = K (1 - sum)
+    var K = Math.PI / (2 * a);
+    return K * (1 - sum);
+  }
+  function ellipk(m) {
+    if (m < 0 || m >= 1) throw new Error('ellipk: m 必须在 [0,1)');
+    var a = 1, b = Math.sqrt(1 - m), i;
+    for (i = 0; i < 60; i++) {
+      var an = 0.5 * (a + b), bn = Math.sqrt(a * b);
+      if (Math.abs(a - b) < 1e-17) break;
+      a = an; b = bn;
+    }
+    return Math.PI / (2 * a);
+  }
+
+  /* ── 误差函数（Abramowitz-Stegun 7.1.26 精度不够，用 series+continued fraction） ── */
+  function erf(x) {
+    var s = x < 0 ? -1 : 1; x = Math.abs(x);
+    if (x < 2.2) {   // 级数
+      var t = x * x, sum = x, term = x, n;
+      for (n = 1; n < 200; n++) {
+        term *= -t / n;
+        var add = term / (2 * n + 1);
+        sum += add;
+        if (Math.abs(add) < 1e-18 * Math.abs(sum)) break;
+      }
+      return s * 2 / Math.sqrt(Math.PI) * sum;
+    }
+    // 连分式（Lentz）算 erfc
+    var f = 0, i;
+    for (i = 60; i >= 1; i--) f = i / 2 / (x + f);
+    return s * (1 - Math.exp(-x * x) / Math.sqrt(Math.PI) / (x + f));
+  }
+
+  /* ── Brent 求根：f(a)f(b) < 0 ── */
+  function brent(f, a, b, tol, maxit) {
+    tol = tol || 1e-14; maxit = maxit || 200;
+    var fa = f(a), fb = f(b);
+    if (fa === 0) return a;
+    if (fb === 0) return b;
+    if (fa * fb > 0) return NaN;
+    var c = a, fc = fa, d = b - a, e = d, it, m, p, q, r, s, tol1, xm;
+    for (it = 0; it < maxit; it++) {
+      if (fb * fc > 0) { c = a; fc = fa; d = b - a; e = d; }
+      if (Math.abs(fc) < Math.abs(fb)) { a = b; b = c; c = a; fa = fb; fb = fc; fc = fa; }
+      tol1 = 2 * 2.22e-16 * Math.abs(b) + 0.5 * tol;
+      xm = 0.5 * (c - b);
+      if (Math.abs(xm) <= tol1 || fb === 0) return b;
+      if (Math.abs(e) >= tol1 && Math.abs(fa) > Math.abs(fb)) {
+        s = fb / fa;
+        if (a === c) { p = 2 * xm * s; q = 1 - s; }
+        else {
+          q = fa / fc; r = fb / fc;
+          p = s * (2 * xm * q * (q - r) - (b - a) * (r - 1));
+          q = (q - 1) * (r - 1) * (s - 1);
+        }
+        if (p > 0) q = -q; else p = -p;
+        if (2 * p < Math.min(3 * xm * q - Math.abs(tol1 * q), Math.abs(e * q))) { e = d; d = p / q; }
+        else { d = xm; e = d; }
+      } else { d = xm; e = d; }
+      a = b; fa = fb;
+      b += Math.abs(d) > tol1 ? d : (xm > 0 ? tol1 : -tol1);
+      fb = f(b);
+    }
+    return b;
+  }
+  /* 扫描 + Brent：在 [lo, hi] 上按对数/线性网格找第一个符号变化区间 */
+  function findRoot(f, lo, hi, n, log) {
+    n = n || 400;
+    var xs = [], i;
+    for (i = 0; i <= n; i++) {
+      xs.push(log ? lo * Math.pow(hi / lo, i / n) : lo + (hi - lo) * i / n);
+    }
+    var prev = f(xs[0]);
+    for (i = 1; i <= n; i++) {
+      var cur = f(xs[i]);
+      if (isFinite(prev) && isFinite(cur) && prev * cur <= 0) return brent(f, xs[i - 1], xs[i]);
+      prev = cur;
+    }
+    return NaN;
+  }
+
+  /* ── 自适应 Simpson 积分（用于 PDF 的 k 阶矩、裂纹寿命的 ∫da/f(a)） ── */
+  function quad(f, a, b, tol, depth) {
+    tol = tol == null ? 1e-12 : tol;
+    function step(a, b, fa, fm, fb, whole, d) {
+      var m = 0.5 * (a + b), h = (b - a) / 4;
+      var lm = a + h, rm = b - h;
+      var flm = f(lm), frm = f(rm);
+      var left = h / 3 * (fa + 4 * flm + fm), right = h / 3 * (fm + 4 * frm + fb);
+      var delta = left + right - whole;
+      if (d <= 0 || Math.abs(delta) <= 15 * tol * Math.max(1, Math.abs(left + right))) {
+        return left + right + delta / 15;
+      }
+      return step(a, m, fa, flm, fm, left, d - 1) + step(m, b, fm, frm, fb, right, d - 1);
+    }
+    var m0 = 0.5 * (a + b), fa = f(a), fm = f(m0), fb = f(b);
+    var whole = (b - a) / 6 * (fa + 4 * fm + fb);
+    return step(a, b, fa, fm, fb, whole, depth == null ? 50 : depth);
+  }
+
+  /* ── 三次方程实根（Zhao-Baker method 2 要解 A p^3 + B p + C = 0） ── */
+  function cubicRoots(a, b, c, d) {
+    // a x^3 + b x^2 + c x + d
+    if (Math.abs(a) < 1e-300) {
+      if (Math.abs(b) < 1e-300) return Math.abs(c) < 1e-300 ? [] : [-d / c];
+      var disc2 = c * c - 4 * b * d;
+      if (disc2 < 0) return [];
+      return [(-c + Math.sqrt(disc2)) / (2 * b), (-c - Math.sqrt(disc2)) / (2 * b)];
+    }
+    var p = (3 * a * c - b * b) / (3 * a * a);
+    var q = (2 * b * b * b - 9 * a * b * c + 27 * a * a * d) / (27 * a * a * a);
+    var off = -b / (3 * a), roots = [];
+    var disc = q * q / 4 + p * p * p / 27;
+    if (disc > 0) {
+      var u = Math.cbrt(-q / 2 + Math.sqrt(disc)), v = Math.cbrt(-q / 2 - Math.sqrt(disc));
+      roots = [u + v];
+    } else if (Math.abs(disc) < 1e-300) {
+      roots = [2 * Math.cbrt(-q / 2), -Math.cbrt(-q / 2)];
+    } else {
+      var r = Math.sqrt(-p * p * p / 27), phi = Math.acos(-q / (2 * r)), t = 2 * Math.sqrt(-p / 3), k;
+      for (k = 0; k < 3; k++) roots.push(t * Math.cos((phi + 2 * Math.PI * k) / 3));
+    }
+    return roots.map(function (x) { return x + off; });
+  }
+
+  /* ── 迭代 FFT（radix-2，就地，输入长度必须是 2 的幂） ── */
+  function fft(re, im) {
+    var n = re.length, i, j, k;
+    for (i = 1, j = 0; i < n; i++) {
+      var bit = n >> 1;
+      for (; j & bit; bit >>= 1) j ^= bit;
+      j ^= bit;
+      if (i < j) {
+        var tr = re[i]; re[i] = re[j]; re[j] = tr;
+        var ti = im[i]; im[i] = im[j]; im[j] = ti;
+      }
+    }
+    for (var len = 2; len <= n; len <<= 1) {
+      var ang = -2 * Math.PI / len;
+      var wr = Math.cos(ang), wi = Math.sin(ang);
+      for (i = 0; i < n; i += len) {
+        var cr = 1, ci = 0;
+        for (k = 0; k < len / 2; k++) {
+          var ar = re[i + k], ai = im[i + k];
+          var br = re[i + k + len / 2] * cr - im[i + k + len / 2] * ci;
+          var bi = re[i + k + len / 2] * ci + im[i + k + len / 2] * cr;
+          re[i + k] = ar + br; im[i + k] = ai + bi;
+          re[i + k + len / 2] = ar - br; im[i + k + len / 2] = ai - bi;
+          var ncr = cr * wr - ci * wi;
+          ci = cr * wi + ci * wr; cr = ncr;
+        }
+      }
+    }
+  }
+
+  /* ── 确定性随机数（xorshift128+ 变体，固定种子 ⇒ 每次刷新页面结果一致） ── */
+  function rng(seed) {
+    var s0 = seed >>> 0 || 88675123, s1 = 362436069, s2 = 521288629, s3 = 2463534242;
+    function u32() {
+      var t = s0 ^ (s0 << 11); s0 = s1; s1 = s2; s2 = s3;
+      s3 = (s3 ^ (s3 >>> 19) ^ t ^ (t >>> 8)) >>> 0;
+      return s3;
+    }
+    var i;
+    for (i = 0; i < 20; i++) u32();
+    // 2^-32 缩放（早先写成 2^-29，实测 unif 只到 0.25、norm 均值 1.36 —— 合成信号
+    // 因此变成脉冲状，各段方差 0.89~213 而不是平稳的 ~7；写死一条自检在离线套件里）
+    function unif() { return (u32() * 2.3283064365386963e-10) + 1.1641532182693481e-10; }
+    var spare = null;
+    function norm() {
+      if (spare !== null) { var v = spare; spare = null; return v; }
+      var u = unif(), w = unif();
+      var r = Math.sqrt(-2 * Math.log(u));
+      spare = r * Math.sin(2 * Math.PI * w);
+      return r * Math.cos(2 * Math.PI * w);
+    }
+    return { unif: unif, norm: norm, u32: u32 };
+  }
+
+  function linspace(a, b, n) {
+    var out = [], i;
+    for (i = 0; i < n; i++) out.push(n === 1 ? a : a + (b - a) * i / (n - 1));
+    return out;
+  }
+  function sum(a) { var s = 0, i; for (i = 0; i < a.length; i++) s += a[i]; return s; }
+  function clamp(x, lo, hi) { return x < lo ? lo : x > hi ? hi : x; }
+
+  return { gamma: gamma, lgamma: lgamma, ellipe: ellipe, ellipk: ellipk, erf: erf,
+    brent: brent, findRoot: findRoot, quad: quad, cubicRoots: cubicRoots, fft: fft,
+    rng: rng, linspace: linspace, sum: sum, clamp: clamp };
+})();
+
+/* 雨流计数（ASTM E1049-85 §5.4.4 三点法 · ISO 12110-2 / Amzallag 四点法）。
+ *
+ * 两套算法都逐行照标准写，并且**与两个第三方实现的语义完全对齐**，便于逐条对拍：
+ *   · 三点法（含残余半循环）→ python 包 rainflow 3.2.0（自称实现 ASTM E1049-85 §5.4.4）
+ *   · 四点法（残余另行处理）→ python 包 fatpack 0.7.8 的 find_rainflow_cycles
+ * 反向点提取也照 rainflow 包的语义：首末点一律算反向点、连续相等的点跳过。 */
+FL.rf = (function () {
+  'use strict';
+
+  /** 反向点（峰谷）提取。返回 [{i, v}]；首末点计入。 */
+  function reversals(y) {
+    /* 逐行照 rainflow 3.2.0 的 reversals()：首点先给，之后在 enumerate 下标 j 处
+     * 比较 y[j+1]；相等就跳过（**下标不前移**，于是平台取的是最后一个点，这点
+     * 2026-09-26 对拍时踩过：原来取平台第一个点，幅值/均值/计数全对、只有下标差一）。*/
+    var out = [], n = y.length;
+    if (n < 2) return out;
+    var xLast = y[0], x = y[1], dLast = x - xLast, j, index = null, xNext = x;
+    out.push({ i: 0, v: xLast });
+    for (j = 1; j + 1 < n; j++) {
+      xNext = y[j + 1];
+      index = j;
+      if (xNext === x) continue;              // 相等的点不构成反向
+      var dNext = xNext - x;
+      if (dLast * dNext < 0) out.push({ i: j, v: x });
+      xLast = x; x = xNext; dLast = dNext;
+    }
+    if (index !== null) out.push({ i: index + 1, v: xNext });
+    return out;
+  }
+
+  /** ASTM E1049-85 三点法。残余按半循环计（count = 0.5）。
+   *  返回 [{rng, mean, count, i1, i2}]，顺序与 rainflow 包 extract_cycles 完全一致。 */
+  function countThreePoint(y) {
+    var pts = [], out = [], revs = reversals(y), r;
+    function emit(p1, p2, cnt) {
+      out.push({ rng: Math.abs(p1.v - p2.v), mean: 0.5 * (p1.v + p2.v), count: cnt, i1: p1.i, i2: p2.i });
+    }
+    for (r = 0; r < revs.length; r++) {
+      pts.push(revs[r]);
+      while (pts.length >= 3) {
+        var x1 = pts[pts.length - 3].v, x2 = pts[pts.length - 2].v, x3 = pts[pts.length - 1].v;
+        var X = Math.abs(x3 - x2), Y = Math.abs(x2 - x1);
+        if (X < Y) break;
+        if (pts.length === 3) { emit(pts[0], pts[1], 0.5); pts.shift(); }
+        else {
+          emit(pts[pts.length - 3], pts[pts.length - 2], 1.0);
+          var last = pts.pop(); pts.pop(); pts.pop(); pts.push(last);
+        }
+      }
+    }
+    while (pts.length > 1) { emit(pts[0], pts[1], 0.5); pts.shift(); }
+    return out;
+  }
+
+  /** 四点法（ISO 12110-2 / Amzallag）。返回 {cycles, residue}，residue 是反向点值数组。 */
+  function countFourPoint(revs) {
+    var res = [], out = [], k;
+    for (k = 0; k < revs.length; k++) {
+      res.push(revs[k]);
+      while (res.length >= 4) {
+        var n = res.length;
+        var S0 = res[n - 4].v, S1 = res[n - 3].v, S2 = res[n - 2].v, S3 = res[n - 1].v;
+        var d1 = Math.abs(S1 - S0), d2 = Math.abs(S2 - S1), d3 = Math.abs(S3 - S2);
+        if (d2 <= d1 && d2 <= d3) {
+          out.push({ rng: Math.abs(S2 - S1), mean: 0.5 * (S1 + S2), count: 1.0,
+            i1: res[n - 3].i, i2: res[n - 2].i });
+          res.splice(n - 3, 2);
+        } else break;
+      }
+    }
+    return { cycles: out, residue: res };
+  }
+
+  /** 把两段反向点序列接起来，保持峰谷交替（照 fatpack.concatenate_reversals）。 */
+  function concatReversals(R1, R2) {
+    if (R1.length < 2 || R2.length < 2) return R1.concat(R2);
+    var dStart = R2[1].v - R2[0].v, dEnd = R1[R1.length - 1].v - R1[R1.length - 2].v;
+    var dJoin = R2[0].v - R1[R1.length - 1].v;
+    var t1 = dEnd * dStart, t2 = dEnd * dJoin;
+    if (t1 > 0 && t2 < 0) return R1.concat(R2);
+    if (t1 > 0 && t2 >= 0) return R1.slice(0, -1).concat(R2.slice(1));
+    if (t1 < 0 && t2 >= 0) return R1.concat(R2.slice(1));
+    if (t1 < 0 && t2 < 0) return R1.slice(0, -1).concat(R2);
+    return R1.concat(R2);   // 退化（相邻等值）时不抛异常，直接拼
+  }
+
+  /** 统一入口。
+   *  mode: 'astm'   —— 三点法，残余算半循环（ASTM E1049 的原样做法）
+   *        'repeat' —— 四点法 + 残余自接一遍再数（SAE / ISO 的重复历程做法，全是整循环）
+   *        'drop'   —— 四点法，残余丢掉（只数闭合循环）*/
+  function count(y, mode) {
+    if (mode === 'astm' || mode == null) return { cycles: countThreePoint(y), residue: [] };
+    var revs = reversals(y);
+    var r = countFourPoint(revs);
+    if (mode === 'drop') return { cycles: r.cycles, residue: r.residue.map(function (p) { return p.v; }) };
+    var resCycles = [];
+    if (r.residue.length >= 2) {
+      var doubled = concatReversals(r.residue, r.residue);
+      resCycles = countFourPoint(doubled).cycles;
+    }
+    return { cycles: r.cycles.concat(resCycles), residue: r.residue.map(function (p) { return p.v; }) };
+  }
+
+  /** 按幅值（range）分箱：返回 [{lo, hi, mid, n}]，n 可为半整数。 */
+  function histRange(cycles, nbins, rmax) {
+    var i, mx = rmax;
+    if (mx == null) { mx = 0; for (i = 0; i < cycles.length; i++) mx = Math.max(mx, cycles[i].rng); }
+    if (!(mx > 0)) mx = 1;
+    var w = mx / nbins, bins = [];
+    for (i = 0; i < nbins; i++) bins.push({ lo: i * w, hi: (i + 1) * w, mid: (i + 0.5) * w, n: 0 });
+    for (i = 0; i < cycles.length; i++) {
+      var b = Math.min(nbins - 1, Math.floor(cycles[i].rng / w));
+      bins[b].n += cycles[i].count;
+    }
+    return bins;
+  }
+
+  /** from-to 雨流矩阵：按起点/终点（= mean ∓ rng/2，用 i1/i2 的实际值定方向）分箱。 */
+  function matrix(cycles, nbins, lo, hi) {
+    var i, j;
+    var m = [];
+    for (i = 0; i < nbins; i++) { m.push([]); for (j = 0; j < nbins; j++) m[i].push(0); }
+    var w = (hi - lo) / nbins;
+    for (i = 0; i < cycles.length; i++) {
+      var c = cycles[i];
+      var from = c.from != null ? c.from : c.mean - c.rng / 2;
+      var to = c.to != null ? c.to : c.mean + c.rng / 2;
+      var r = FL.clamp(Math.floor((from - lo) / w), 0, nbins - 1);
+      var k = FL.clamp(Math.floor((to - lo) / w), 0, nbins - 1);
+      m[r][k] += c.count;
+    }
+    return { m: m, lo: lo, hi: hi, w: w, nbins: nbins };
+  }
+
+  /** 载荷谱统计量：峰谷、均值、RMS、穿越次数、时域不规则因子 */
+  function stats(y, dt) {
+    var n = y.length, i, mn = Infinity, mx = -Infinity, s = 0, s2 = 0;
+    for (i = 0; i < n; i++) { mn = Math.min(mn, y[i]); mx = Math.max(mx, y[i]); s += y[i]; }
+    var mean = s / n;
+    for (i = 0; i < n; i++) s2 += (y[i] - mean) * (y[i] - mean);
+    var sd = Math.sqrt(s2 / (n - 1));
+    var rms = 0;
+    for (i = 0; i < n; i++) rms += y[i] * y[i];
+    rms = Math.sqrt(rms / n);
+    // 上穿均值次数
+    var up = 0;
+    for (i = 1; i < n; i++) if (y[i - 1] <= mean && y[i] > mean) up++;
+    var revs = reversals(y);
+    var peaks = 0;
+    for (i = 1; i < revs.length - 1; i++) {
+      if (revs[i].v > revs[i - 1].v && revs[i].v > revs[i + 1].v) peaks++;
+    }
+    var T = dt * (n - 1);
+    return { n: n, min: mn, max: mx, mean: mean, sd: sd, rms: rms, T: T,
+      revs: revs.length, peaks: peaks, up: up,
+      nu0: T > 0 ? up / T : 0, nup: T > 0 ? peaks / T : 0,
+      irr: peaks > 0 ? up / peaks : 0 };
+  }
+
+  /** 穿越计数（level crossing spectrum）：各水平的上穿次数 */
+  function levelCrossings(y, levels) {
+    var out = [], i, L;
+    for (L = 0; L < levels.length; L++) {
+      var lv = levels[L], c = 0;
+      for (i = 1; i < y.length; i++) if (y[i - 1] <= lv && y[i] > lv) c++;
+      out.push({ level: lv, n: c });
+    }
+    return out;
+  }
+
+  return { reversals: reversals, count: count, countThreePoint: countThreePoint,
+    countFourPoint: countFourPoint, concatReversals: concatReversals,
+    histRange: histRange, matrix: matrix, stats: stats, levelCrossings: levelCrossings };
+})();
+
+/* S-N 曲线（Basquin / 双斜率 Haibach / Eurocode 3 FAT 级）、平均应力修正、
+ * Palmgren-Miner 线性累积损伤、等效损伤载荷 DEL。
+ *
+ * 口径（页面「说明」页逐条写明，别在这里偷偷换）：
+ *   · 曲线一律写成分段幂律：给定锚点 (S_ref, N_ref) 与各段反斜率 k，
+ *     段内 S = S_i·(N/N_i)^(-1/k_i)，等价于 N·S^k = 常数。
+ *   · conv='amp' 时 S 是**应力幅** σa；conv='range' 时是**应力幅值范围** Δσ = 2σa。
+ *     Eurocode 3 / IIW 用 range，Basquin / Shigley / 振动疲劳文献用 amp —— 这是实务里
+ *     最常见的口径错，所以引擎里所有函数都显式带 conv，不做隐式换算。 */
+FL.sn = (function () {
+  'use strict';
+
+  /** 造一条 S-N 曲线。
+   * o = { conv, type, ... }
+   *   type='basquin': { C, k }            —— N = C·S^(-k)
+   *   type='2slope' : { Sref, Nref, k1, Nknee, k2, Ncut }（k2 省略则用 Haibach 2k1-1）
+   *   type='ec3'    : { fat, Ncut }       —— ΔσC@2e6, m=3 到 5e6, m=5 到 1e8
+   * 返回 { Nf(S), Sf(N), segs, Scut, Ncut, kPrimary, conv, label } */
+  function make(o) {
+    var conv = o.conv || 'amp', segs = [], Scut, Ncut, kP, label;
+    if (o.type === 'basquin') {
+      kP = o.k;
+      var N1 = 1e3, S1 = Math.pow(o.C / N1, 1 / o.k);
+      Ncut = o.Ncut == null ? Infinity : o.Ncut;
+      segs = [{ N0: 1, S0: Math.pow(o.C, 1 / o.k), k: o.k, N1: Ncut }];
+      Scut = Ncut === Infinity ? 0 : Math.pow(o.C / Ncut, 1 / o.k);
+      label = 'Basquin  N = ' + o.C.toPrecision(4) + '·S^-' + o.k;
+    } else if (o.type === 'ec3') {
+      // EN 1993-1-9：ΔσC 在 2e6，m=3 至 5e6（ΔσD），m=5 至 1e8（ΔσL），之后截止
+      var dC = o.fat, dD = dC * Math.pow(2 / 5, 1 / 3), dL = dD * Math.pow(5 / 100, 1 / 5);
+      Ncut = o.Ncut == null ? 1e8 : o.Ncut;
+      segs = [{ N0: 2e6, S0: dC, k: 3, N1: 5e6 }, { N0: 5e6, S0: dD, k: 5, N1: Ncut }];
+      Scut = dL; kP = 3;
+      label = 'EN 1993-1-9  FAT ' + dC;
+    } else {  // 2slope
+      var k1 = o.k1, k2 = o.k2 == null ? 2 * o.k1 - 1 : o.k2;
+      var Nk = o.Nknee, Sk = o.Sref * Math.pow(Nk / o.Nref, -1 / k1);
+      Ncut = o.Ncut == null ? Infinity : o.Ncut;
+      segs = [{ N0: o.Nref, S0: o.Sref, k: k1, N1: Nk }];
+      if (isFinite(k2) && k2 > 0) segs.push({ N0: Nk, S0: Sk, k: k2, N1: Ncut });
+      Scut = Ncut === Infinity ? 0 : (segs.length > 1 ? Sk * Math.pow(Ncut / Nk, -1 / k2) : Sk);
+      kP = k1;
+      label = '双斜率  k1=' + k1 + (isFinite(k2) ? ' / k2=' + (Math.round(k2 * 100) / 100) : '') + '  拐点 N=' + Nk.toExponential(1);
+    }
+    // 段首的 S（用于按 S 反查段）
+    function segS(seg, N) { return seg.S0 * Math.pow(N / seg.N0, -1 / seg.k); }
+    function Nf(S) {
+      if (!(S > 0)) return Infinity;
+      if (S <= Scut) return Infinity;
+      var i;
+      for (i = 0; i < segs.length; i++) {
+        var sg = segs[i];
+        var Shi = segS(sg, sg.N0), Slo = segS(sg, sg.N1);   // N 越大 S 越小
+        if (S <= Shi + 1e-12 * Shi && (S >= Slo - 1e-12 * Shi || i === segs.length - 1)) {
+          return sg.N0 * Math.pow(S / sg.S0, -sg.k);
+        }
+      }
+      // 高于第一段起点 ⇒ 沿第一段外推（低周区，页面上会提示超出曲线适用范围）
+      return segs[0].N0 * Math.pow(S / segs[0].S0, -segs[0].k);
+    }
+    function Sf(N) {
+      var i;
+      if (N <= segs[0].N0) return segS(segs[0], N);
+      for (i = 0; i < segs.length; i++) if (N <= segs[i].N1) return segS(segs[i], N);
+      return Scut;
+    }
+    return { conv: conv, segs: segs, Scut: Scut, Ncut: Ncut, kPrimary: kP, label: label,
+      Nf: Nf, Sf: Sf };
+  }
+
+  /** 平均应力修正：把 (σa, σm) 折算成等效全反向幅 σar。
+   * method: none/goodman/gerber/soderberg/morrow/swt/walker
+   * mat: { Su, Sy, sf } ； opt.compression: 'ignore'（默认，保守）| 'include' */
+  function meanCorrect(sa, sm, method, mat, opt) {
+    var o = opt || {}, Su = mat.Su, Sy = mat.Sy, sf = mat.sf;
+    if (sa <= 0) return 0;
+    if (method === 'none') return sa;
+    if (sm < 0 && (o.compression || 'ignore') === 'ignore' && method !== 'swt' && method !== 'walker') return sa;
+    var d;
+    if (method === 'goodman') { d = 1 - sm / Su; return d <= 1e-9 ? Infinity : sa / d; }
+    if (method === 'gerber') { d = 1 - (sm / Su) * (sm / Su); return d <= 1e-9 ? Infinity : sa / d; }
+    if (method === 'soderberg') { d = 1 - sm / Sy; return d <= 1e-9 ? Infinity : sa / d; }
+    if (method === 'morrow') { d = 1 - sm / sf; return d <= 1e-9 ? Infinity : sa / d; }
+    if (method === 'swt') { var smax = sm + sa; return smax <= 0 ? 0 : Math.sqrt(smax * sa); }
+    if (method === 'walker') {
+      var g = o.gamma == null ? 0.5 : o.gamma, smx = sm + sa;
+      if (smx <= 0) return 0;
+      return Math.pow(smx, 1 - g) * Math.pow(sa, g);
+    }
+    return sa;
+  }
+
+  /** 逐循环损伤。cycles: [{rng, mean, count}]（rng 始终是**范围**，与 conv 无关）。
+   * 返回 { D, life, rows, nTot, sarMax, beyond } ；rows 按 σar 降序。 */
+  function damage(cycles, sn, method, mat, opt) {
+    var o = opt || {}, rows = [], D = 0, nTot = 0, sarMax = 0, beyond = 0, i;
+    var scale = o.scale == null ? 1 : o.scale;
+    for (i = 0; i < cycles.length; i++) {
+      var c = cycles[i];
+      var sa = 0.5 * c.rng * scale, sm = c.mean * scale + (o.meanOffset || 0);
+      var sar = meanCorrect(sa, sm, method, mat, o);
+      var S = sn.conv === 'range' ? 2 * sar : sar;
+      var N = sn.Nf(S);
+      var d = isFinite(N) ? c.count / N : 0;
+      D += d; nTot += c.count;
+      if (sar > sarMax) sarMax = sar;
+      if (S > sn.segs[0].S0 * Math.pow(1 / sn.segs[0].N0, -1 / sn.segs[0].k) * 1e9) beyond++;
+      rows.push({ rng: c.rng, sa: sa, sm: sm, sar: sar, S: S, N: N, n: c.count, d: d });
+    }
+    rows.sort(function (a, b) { return b.d - a.d || b.sar - a.sar; });
+    var Dc = o.Dcrit == null ? 1 : o.Dcrit;
+    return { D: D, Dcrit: Dc, life: D > 0 ? Dc / D : Infinity, rows: rows, nTot: nTot,
+      sarMax: sarMax, beyond: beyond };
+  }
+
+  /** 等效损伤载荷（DEL）：在参考循环数 Neq 下产生同等损伤的等幅载荷。
+   * 只对**主斜率段**成立（标准做法），返回与 sn.conv 一致的量。 */
+  function del(rows, k, Neq) {
+    var s = 0, i;
+    for (i = 0; i < rows.length; i++) s += rows[i].n * Math.pow(rows[i].S, k);
+    return Math.pow(s / Neq, 1 / k);
+  }
+
+  /** 把损伤按幅值分箱汇总，给「损伤直方图」用 */
+  function damageByBin(rows, nbins) {
+    var i, mx = 0;
+    for (i = 0; i < rows.length; i++) mx = Math.max(mx, rows[i].rng);
+    if (!(mx > 0)) mx = 1;
+    var w = mx / nbins, bins = [];
+    for (i = 0; i < nbins; i++) bins.push({ lo: i * w, hi: (i + 1) * w, mid: (i + 0.5) * w, n: 0, d: 0 });
+    for (i = 0; i < rows.length; i++) {
+      var b = Math.min(nbins - 1, Math.floor(rows[i].rng / w));
+      bins[b].n += rows[i].n; bins[b].d += rows[i].d;
+    }
+    return bins;
+  }
+
+  return { make: make, meanCorrect: meanCorrect, damage: damage, del: del, damageByBin: damageByBin };
+})();
+
+/* 耐久限修正（Marin 因子）、缺口敏感（Kt→Kf）、Haigh 等寿命图与安全系数、
+ * Ramberg-Osgood 循环曲线 + Neuber 缺口法则 + 应变-寿命（Coffin-Manson-Basquin）。
+ *
+ * 口径：Marin 因子与缺口敏感照 Shigley《机械工程设计》的做法（Se = ka·kb·kc·kd·ke·Se'），
+ * 单位一律 MPa / mm。ka 的 (a,b) 用 MPa 制。每个系数在页面上都单列一行给出数值与依据，
+ * 不做黑箱；页面允许直接覆盖 Se。 */
+FL.mech = (function () {
+  'use strict';
+
+  /* 表面加工系数 ka = a·Su^b（Su 单位 MPa） */
+  var SURF = {
+    ground: { a: 1.58, b: -0.085, label: '磨削' },
+    machined: { a: 4.51, b: -0.265, label: '机加工 / 冷拔' },
+    hotrolled: { a: 57.7, b: -0.718, label: '热轧' },
+    forged: { a: 272, b: -0.995, label: '锻造表面' }
+  };
+  /* 温度系数 kd：ST/SRT 比值表（Shigley 表 6-4），线性插值，单位 ℃ */
+  var TEMPT = [20, 50, 100, 150, 200, 250, 300, 350, 400, 450, 500, 550, 600];
+  var TEMPK = [1.000, 1.010, 1.020, 1.025, 1.020, 1.000, 0.975, 0.943, 0.900, 0.843, 0.768, 0.672, 0.549];
+  /* 可靠度系数 ke = 1 - 0.08·za */
+  var RELZ = { '50': 0, '90': 1.288, '95': 1.645, '99': 2.326, '99.9': 3.091, '99.99': 3.719 };
+
+  function ka(Su, surf) { var s = SURF[surf] || SURF.machined; return Math.min(1, s.a * Math.pow(Su, s.b)); }
+  function kb(d, mode) {
+    if (mode === 'axial') return 1;                    // 轴向载荷无尺寸效应
+    if (d <= 0) return 1;
+    var de = d;
+    if (de < 2.79) de = 2.79;
+    if (de <= 51) return 1.24 * Math.pow(de, -0.107);
+    if (de <= 254) return 1.51 * Math.pow(de, -0.157);
+    return 1.51 * Math.pow(254, -0.157);
+  }
+  function kc(mode) { return mode === 'axial' ? 0.85 : mode === 'torsion' ? 0.59 : 1; }
+  function kd(T) {
+    var i;
+    if (T <= TEMPT[0]) return TEMPK[0];
+    for (i = 1; i < TEMPT.length; i++) {
+      if (T <= TEMPT[i]) {
+        var f = (T - TEMPT[i - 1]) / (TEMPT[i] - TEMPT[i - 1]);
+        return TEMPK[i - 1] + f * (TEMPK[i] - TEMPK[i - 1]);
+      }
+    }
+    return TEMPK[TEMPK.length - 1];
+  }
+  function ke(rel) { var z = RELZ[String(rel)]; return 1 - 0.08 * (z == null ? 0 : z); }
+
+  /** Se' 未修正耐久限：钢 0.5Su（Su ≤ 1400 MPa 时），否则 700 MPa；铝按 0.4Su（取 N=5e8） */
+  function sePrime(Su, family) {
+    if (family === 'al') return 0.4 * Su;
+    return Su <= 1400 ? 0.5 * Su : 700;
+  }
+
+  function marin(o) {
+    var a = ka(o.Su, o.surf), b = kb(o.d, o.mode), c = kc(o.mode), dT = kd(o.T), e = ke(o.rel);
+    var sp = sePrime(o.Su, o.family);
+    return { ka: a, kb: b, kc: c, kd: dT, ke: e, sePrime: sp, Se: a * b * c * dT * e * sp };
+  }
+
+  /** 缺口敏感 q 与疲劳缺口系数 Kf。
+   * Peterson: q = 1/(1 + a/r)，a = 0.0254·(2079/Su)^1.8 mm（Su 用 MPa，Shigley 式 6-35 的公制形态）
+   * Neuber:   q = 1/(1 + sqrt(a)/sqrt(r))，sqrt(a) 按 Su 的经验式（Shigley 图 6-26 的拟合） */
+  function notch(Kt, r, Su, rule) {
+    var q, aP, sqa;
+    if (rule === 'neuber') {
+      // sqrt(a) [mm^0.5]，Shigley 式 6-35a 的公制化：0.246 - 3.08e-3 Su' + 1.51e-5 Su'^2 - 2.67e-8 Su'^3，Su' 单位 kpsi
+      var Sk = Su / 6.8947573;                     // MPa → kpsi
+      var sqin = 0.246 - 3.08e-3 * Sk + 1.51e-5 * Sk * Sk - 2.67e-8 * Sk * Sk * Sk;  // in^0.5
+      sqa = sqin * Math.sqrt(25.4);                // in^0.5 → mm^0.5
+      q = 1 / (1 + sqa / Math.sqrt(r));
+    } else {
+      aP = 0.0254 * Math.pow(2079 / Su, 1.8);      // mm
+      q = 1 / (1 + aP / r);
+    }
+    q = FL.clamp(q, 0, 1);
+    return { q: q, Kf: 1 + q * (Kt - 1), a: aP, sqa: sqa, rule: rule || 'peterson' };
+  }
+
+  /** Haigh 图的各准则：给定 σm 求许用 σa（单位同 Se/Su/Sy）。 */
+  function haighLine(crit, sm, Se, Su, Sy, sf) {
+    if (crit === 'goodman') return Se * (1 - sm / Su);
+    if (crit === 'gerber') return Se * (1 - (sm / Su) * (sm / Su));
+    if (crit === 'soderberg') return Se * (1 - sm / Sy);
+    if (crit === 'asme') { var t = 1 - (sm / Sy) * (sm / Sy); return t <= 0 ? 0 : Se * Math.sqrt(t); }
+    if (crit === 'morrow') return Se * (1 - sm / sf);
+    if (crit === 'langer') return Sy - sm;           // 首次循环屈服线
+    return Se;
+  }
+
+  /** 安全系数：沿比例载荷线（σa/σm 固定）放大到准则曲线的倍数。 */
+  function fos(crit, sa, sm, Se, Su, Sy, sf) {
+    if (sa <= 0) return Infinity;
+    if (crit === 'goodman') return 1 / (sa / Se + sm / Su);
+    if (crit === 'soderberg') return 1 / (sa / Se + sm / Sy);
+    if (crit === 'morrow') return 1 / (sa / Se + sm / sf);
+    if (crit === 'asme') return 1 / Math.sqrt((sa / Se) * (sa / Se) + (sm / Sy) * (sm / Sy));
+    if (crit === 'langer') return Sy / (sa + sm);
+    if (crit === 'gerber') {
+      // 解 n：sa·n/Se + (sm·n/Su)^2 = 1  ⇒ (sm^2/Su^2) n^2 + (sa/Se) n - 1 = 0
+      var A = (sm / Su) * (sm / Su), B = sa / Se;
+      if (A < 1e-18) return 1 / B;
+      return (-B + Math.sqrt(B * B + 4 * A)) / (2 * A);
+    }
+    return Infinity;
+  }
+
+  /** Ramberg-Osgood 循环应力-应变：ε = σ/E + (σ/K')^(1/n')（幅值形式） */
+  function ramberg(sig, E, Kp, np) { return sig / E + Math.pow(Math.abs(sig) / Kp, 1 / np) * (sig < 0 ? -1 : 1); }
+
+  /** Neuber 缺口法则：Kt^2·S·e = σ·ε。给定名义应力幅 S（弹性），解局部 σ。
+   * 弹性名义时 e = S/E ⇒ (Kf·S)^2/E = σ·(σ/E + (σ/K')^(1/n'))。 */
+  function neuber(S, Kf, E, Kp, np) {
+    var lhs = (Kf * S) * (Kf * S) / E;
+    var f = function (sig) { return sig * ramberg(sig, E, Kp, np) - lhs; };
+    var hi = Math.max(10, Kf * S * 4);
+    var sig = FL.findRoot(f, 1e-6, hi, 600);
+    if (!isFinite(sig)) sig = Kf * S;
+    return { sig: sig, eps: ramberg(sig, E, Kp, np), lhs: lhs };
+  }
+
+  /** Glinka（应变能密度）法则：Kt^2 S^2/(2E) = ∫σ dε */
+  function glinka(S, Kf, E, Kp, np) {
+    var lhs = (Kf * S) * (Kf * S) / (2 * E);
+    var f = function (sig) {
+      return sig * sig / (2 * E) + (sig / (np + 1)) * Math.pow(sig / Kp, 1 / np) - lhs;
+    };
+    var sig = FL.findRoot(f, 1e-6, Math.max(10, Kf * S * 4), 600);
+    if (!isFinite(sig)) sig = Kf * S;
+    return { sig: sig, eps: ramberg(sig, E, Kp, np) };
+  }
+
+  /** 应变-寿命：Δε/2 = σf'/E·(2Nf)^b + εf'·(2Nf)^c，解 2Nf。
+   * mean: 'none' | 'morrow'（σf' → σf'-σ0）| 'swt'（σmax·εa = σf'^2/E (2Nf)^2b + σf'εf'(2Nf)^(b+c)） */
+  function strainLife(ea, o) {
+    var E = o.E, sf = o.sf, b = o.b, ef = o.ef, c = o.c;
+    var f;
+    if (o.mean === 'swt') {
+      var smax = o.smax;
+      if (!(smax > 0)) return Infinity;
+      f = function (x) {   // x = 2Nf
+        return sf * sf / E * Math.pow(x, 2 * b) + sf * ef * Math.pow(x, b + c) - smax * ea;
+      };
+    } else {
+      var sfe = o.mean === 'morrow' ? sf - (o.s0 || 0) : sf;
+      f = function (x) { return sfe / E * Math.pow(x, b) + ef * Math.pow(x, c) - ea; };
+    }
+    var x = FL.findRoot(f, 1, 1e12, 900, true);
+    return isFinite(x) ? x / 2 : Infinity;
+  }
+
+  /** ε-N 曲线上的过渡寿命 2Nt（弹性项 = 塑性项） */
+  function transitionLife(o) {
+    var x = Math.pow(o.ef * o.E / o.sf, 1 / (o.b - o.c));
+    return x / 2;
+  }
+
+  /** 材料参数自洽性检查：n' ≈ b/c，K' ≈ σf'/εf'^n' */
+  function consistency(m) {
+    var np = m.b / m.c, Kp = m.sf / Math.pow(m.ef, np);
+    return { npCalc: np, KpCalc: Kp,
+      npErr: m.np ? (m.np - np) / np : 0, KpErr: m.Kp ? (m.Kp - Kp) / Kp : 0 };
+  }
+
+  return { SURF: SURF, RELZ: RELZ, ka: ka, kb: kb, kc: kc, kd: kd, ke: ke, sePrime: sePrime,
+    marin: marin, notch: notch, haighLine: haighLine, fos: fos, ramberg: ramberg,
+    neuber: neuber, glinka: glinka, strainLife: strainLife, transitionLife: transitionLife,
+    consistency: consistency };
+})();
+
+/* 线弹性断裂力学：应力强度因子手册解、裂纹扩展速率律、a-N 积分、临界裂纹与检查间隔。
+ *
+ * 单位约定（页面上写明）：应力 MPa，长度 mm，K 用 MPa·m^0.5 ⇒ K = Y·σ·sqrt(pi·a/1000)；
+ * da/dN 用 mm/循环，C 的单位随之为 mm/循环/(MPa·m^0.5)^m。
+ *
+ * 每个几何的出处与适用范围都在页面「说明」页列出；每个几何都配一条**不依赖实现**的
+ * 极限性质（a→0 时 Y→1 / 1.1215 / 2/pi 等），离线套件逐条断言。 */
+FL.crack = (function () {
+  'use strict';
+
+  /** 几何库。Y(a, g) 返回无量纲形状因子（K = Y·σ·sqrt(pi a)）。
+   *  ct 型用载荷 P 而不是 σ，单独走 Kct()。*/
+  var GEOM = {
+    infinite: {
+      label: '无限宽板中心裂纹', note: 'K = σ√(πa)，精确解（Irwin）',
+      Y: function () { return 1; }, amax: function (g) { return g.W; }, limit: 1
+    },
+    center: {
+      label: '有限宽板中心裂纹（2a）', note: 'Feddersen 正割式 Y = √sec(πa/W)，2a/W ≤ 0.7',
+      Y: function (a, g) { return Math.sqrt(1 / Math.cos(Math.PI * a / g.W)); },
+      amax: function (g) { return 0.35 * g.W; }, limit: 0.7
+    },
+    sent: {
+      label: '单边裂纹板拉伸（SENT）',
+      note: 'Tada 多项式 Y = 1.12 − 0.231α + 10.55α² − 21.72α³ + 30.39α⁴，α = a/W ≤ 0.6',
+      Y: function (a, g) {
+        var x = a / g.W;
+        return 1.12 - 0.231 * x + 10.55 * x * x - 21.72 * x * x * x + 30.39 * x * x * x * x;
+      },
+      amax: function (g) { return 0.6 * g.W; }, limit: 0.6
+    },
+    penny: {
+      label: '无限体内圆形（钱币）裂纹', note: 'K = (2/π)σ√(πa)，精确解',
+      Y: function () { return 2 / Math.PI; }, amax: function (g) { return g.W; }, limit: 1
+    },
+    ellipse: {
+      label: '无限体内椭圆裂纹（最深点）',
+      note: 'Irwin 精确解 K = σ√(πa)/E(k)，k² = 1 − (a/c)²；a/c = 1 退化为钱币裂纹',
+      Y: function (a, g) {
+        var ac = FL.clamp(a / g.c, 1e-6, 1);
+        return 1 / FL.ellipe(1 - ac * ac);
+      },
+      amax: function (g) { return g.c; }, limit: 1
+    }
+  };
+
+  /** K = Y σ sqrt(pi a)，a 用 mm ⇒ 换成 m 开方 */
+  function K(a, sig, geom, g) {
+    return GEOM[geom].Y(a, g) * sig * Math.sqrt(Math.PI * a / 1000);
+  }
+  /** ASTM E647 紧凑拉伸试样：K = P/(B√W)·f(α)，P 单位 kN、B/W 单位 mm ⇒ MPa√m */
+  function fCT(alpha) {
+    var A = alpha;
+    return (2 + A) / Math.pow(1 - A, 1.5) *
+      (0.886 + 4.64 * A - 13.32 * A * A + 14.72 * A * A * A - 5.6 * A * A * A * A);
+  }
+  function Kct(a, P, B, W) {
+    // P[kN] = 1e3 N；B,W[mm]；K = P/(B sqrt(W)) f(a/W) → N/(mm·mm^0.5) = MPa·mm^0.5 ⇒ ×sqrt(1e-3)
+    return P * 1e3 / (B * Math.sqrt(W)) * fCT(a / W) * Math.sqrt(1e-3);
+  }
+
+  /** 门槛值的 R 相关性（可关）：ΔKth(R) = ΔKth0·(1−R)^gth，R>0 时生效 */
+  function dKth(law, R) {
+    if (!law.thR) return law.dKth;
+    return law.dKth * Math.pow(Math.max(1 - R, 1e-6), law.gth == null ? 0.3 : law.gth);
+  }
+
+  /** 扩展速率 da/dN [mm/循环]。law = {type, C, m, gamma, Kc, dKth, thOn, thR, gth} */
+  function rate(dK, R, law) {
+    if (!(dK > 0)) return 0;
+    if (law.thOn && dK < dKth(law, R)) return 0;
+    var Kmax = dK / Math.max(1e-9, 1 - Math.min(R, 0.999));
+    if (law.type === 'forman') {
+      var den = (1 - R) * law.Kc - dK;
+      if (den <= 1e-9) return Infinity;
+      return law.C * Math.pow(dK, law.m) / den;
+    }
+    if (law.type === 'walker') {
+      var g = law.gamma == null ? 0.5 : law.gamma;
+      var Keff = R >= 0 ? dK / Math.pow(Math.max(1 - R, 1e-6), 1 - g) : dK;
+      return law.C * Math.pow(Keff, law.m);
+    }
+    if (law.type === 'paris' && law.Kc && Kmax >= law.Kc) return Infinity;
+    return law.C * Math.pow(dK, law.m);
+  }
+
+  /** 临界裂纹尺寸：Kmax(a) = Kc 的解（Kmax 用 σmax）。找不到就返回几何上限。 */
+  function aCrit(sigMax, geom, g, Kc) {
+    var hi = GEOM[geom].amax(g) * 0.999, lo = 1e-4;
+    var f = function (a) { return K(a, sigMax, geom, g) - Kc; };
+    if (f(lo) >= 0) return lo;
+    if (f(hi) < 0) return hi;
+    return FL.brent(f, lo, hi, 1e-12);
+  }
+
+  /** 等幅载荷下的 a-N 曲线（自适应分段 Simpson 积分 dN = da/f(a)）。
+   *  返回 { pts:[[N,a]], N, aEnd, stopped } */
+  function grow(o) {
+    var a0 = o.a0, af = o.af, geom = o.geom, g = o.g, law = o.law;
+    var dsig = o.dsig, R = o.R, nstep = o.nstep || 240;
+    var sigMax = dsig / Math.max(1e-9, 1 - R);
+    function f(a) {
+      var dK = K(a, dsig, geom, g);
+      var r = rate(dK, R, law);
+      return r;
+    }
+    var pts = [[0, a0]], N = 0, i, stopped = '';
+    if (f(a0) <= 0) return { pts: pts, N: Infinity, aEnd: a0, stopped: '门槛以下不扩展' };
+    var ratio = Math.pow(af / a0, 1 / nstep);
+    var a = a0;
+    for (i = 0; i < nstep; i++) {
+      var a1 = a * ratio;
+      // Simpson：∫ da/f(a)
+      var fm = f(0.5 * (a + a1)), fa = f(a), fb = f(a1);
+      if (!isFinite(1 / fb) || fb === Infinity) { stopped = '到达断裂韧性'; a = a1; break; }
+      var dN = (a1 - a) / 6 * (1 / fa + 4 / fm + 1 / fb);
+      if (!isFinite(dN)) { stopped = '速率发散'; a = a1; break; }
+      N += dN; a = a1;
+      pts.push([N, a]);
+      if (law.Kc && K(a, sigMax, geom, g) >= law.Kc) { stopped = '到达断裂韧性'; break; }
+    }
+    return { pts: pts, N: N, aEnd: a, stopped: stopped };
+  }
+
+  /** 等幅 + Y=1 + Paris 的闭式寿命（m ≠ 2）：不依赖任何积分器的对照 */
+  function closedForm(a0, af, dsig, C, m) {
+    var e = 1 - m / 2;
+    var A = C * Math.pow(dsig * Math.sqrt(Math.PI / 1000), m);
+    return (Math.pow(af, e) - Math.pow(a0, e)) / (A * e);
+  }
+
+  /** 变幅载荷（雨流循环序列）逐循环扩展。为了不做上亿次循环，
+   *  采用「块缩放」：一整块历程若把 a 长大不到 tol（默认 0.5%），就按线性外推
+   *  一次跳过若干块（标准做法，页面上写明；等幅退化时与闭式解一致，离线套件断言）。 */
+  function growSpectrum(o) {
+    var cycles = o.cycles, geom = o.geom, g = o.g, law = o.law;
+    var a = o.a0, aLim = o.aLim, scale = o.scale == null ? 1 : o.scale;
+    var maxBlocks = o.maxBlocks || 1e12, tol = o.tol == null ? 0.004 : o.tol;
+    var blocks = 0, cyc = 0, pts = [[0, a]], stopped = '', i;
+    /* 一整块历程在裂纹长度固定为 aFix 时造成的增量与循环数 */
+    function block(aFix) {
+      var da = 0, n = 0, broke = false, j;
+      for (j = 0; j < cycles.length; j++) {
+        var c = cycles[j];
+        var dsig = c.rng * scale;
+        var smax = c.mean * scale + dsig / 2;
+        if (smax <= 0) continue;                       // 全压循环不扩展
+        var R = FL.clamp((smax - dsig) / smax, -1, 0.95);
+        var r = rate(K(aFix, dsig, geom, g), R, law);
+        if (!isFinite(r)) { broke = true; break; }
+        da += r * c.count; n += c.count;
+      }
+      return { da: da, n: n, broke: broke };
+    }
+    var guard = 0, guardMax = Math.max(4000, Math.ceil(40 / tol));
+    while (a < aLim && blocks < maxBlocks && guard++ < guardMax) {
+      var b0 = block(a);
+      if (b0.broke) { stopped = '到达断裂韧性'; break; }
+      if (!(b0.da > 0)) { stopped = '门槛以下不扩展'; break; }
+      var mult = 1;
+      if (b0.da < a * tol) {
+        mult = Math.max(1, Math.floor(a * tol / b0.da));
+        var room = Math.floor((aLim - a) / b0.da);
+        mult = Math.min(mult, Math.max(1, room));
+      }
+      var da = b0.da * mult;
+      if (mult > 1) {
+        // 中点（RK2）修正：线性外推按块首速率会系统性偏一侧，误差 O(tol)，
+        // 用半步处的速率重算一遍后降到 O(tol^2)（离线套件用等幅退化对拍闭式解卡住这一条）
+        var bm = block(a + da / 2);
+        if (bm.broke) { stopped = '到达断裂韧性'; break; }
+        da = bm.da * mult;
+      }
+      a += da; blocks += mult; cyc += b0.n * mult;
+      pts.push([blocks, a]);
+      if (a >= aLim) { stopped = '到达临界尺寸'; break; }
+    }
+    if (!stopped) stopped = '到达块数上限';
+    return { blocks: blocks, cycles: cyc, aEnd: a, pts: pts, stopped: stopped };
+  }
+
+  /** 检查间隔：从可检出尺寸 aD 长到临界 aC 的寿命，除以安全系数（通常 2） */
+  function inspection(o) {
+    // af 直接用调用方给的 aC（调用方已经按 a_crit 留过余量了）。
+    // 原来这里又乘了一次 0.999，等于把积分上限再往回缩 0.1% —— 与 scipy.quad 的
+    // 对拍差了 5e-5（469,510 vs 469,535，2026-09-26 卡红过一次集成测试）。
+    var r1 = grow({ a0: o.aD, af: o.aC, geom: o.geom, g: o.g, law: o.law,
+      dsig: o.dsig, R: o.R, nstep: 400 });
+    return { N: r1.N, interval: r1.N / (o.sf || 2), aD: o.aD, aC: o.aC };
+  }
+
+  /** 净截面屈服检查：σ·W/(W−a_eff) ≥ Sy ? */
+  function netYield(a, sigMax, geom, g, Sy) {
+    var aEff = geom === 'center' ? 2 * a : a;
+    var net = 1 - aEff / g.W;
+    if (net <= 0) return { ratio: Infinity, yields: true };
+    var s = sigMax / net;
+    return { ratio: s / Sy, sNet: s, yields: s >= Sy };
+  }
+
+  return { GEOM: GEOM, K: K, fCT: fCT, Kct: Kct, rate: rate, dKth: dKth, aCrit: aCrit,
+    grow: grow, growSpectrum: growSpectrum, closedForm: closedForm,
+    inspection: inspection, netYield: netYield };
+})();
+
+/* 频域（随机振动）疲劳：Welch 功率谱 → 谱矩 → 八种谱方法的损伤率与寿命。
+ *
+ * 全部口径与开源参考实现 FLife 1.x 对齐（Zorman/Slavič/Boltežar 2023 的综述实现）：
+ *   · S-N 用 N = C·σa^(-k)，**σa 是应力幅**（不是范围）；
+ *   · 谱矩用圆频率加权 m_i = ∫ (2πf)^i G(f) df，于是 m0 = 方差、
+ *     ν = (1/2π)·sqrt(m2/m0)（上穿零点率）、m_p = (1/2π)·sqrt(m4/m2)（峰值率）；
+ *   · 带宽参数 α_i = m_i / sqrt(m0·m_2i)。
+ * Welch 谱与 scipy.signal.welch(window='hann', detrend='constant', scaling='density') 逐点一致。 */
+FL.spec = (function () {
+  'use strict';
+
+  /** 周期 Hann 窗（= scipy.signal.get_window('hann', n)，sym=False） */
+  function hann(n) {
+    var w = [], i;
+    for (i = 0; i < n; i++) w.push(0.5 - 0.5 * Math.cos(2 * Math.PI * i / n));
+    return w;
+  }
+  function hamming(n) {
+    var w = [], i;
+    for (i = 0; i < n; i++) w.push(0.54 - 0.46 * Math.cos(2 * Math.PI * i / n));
+    return w;
+  }
+
+  /** Welch 单边功率谱密度。返回 { f:[], p:[], df } */
+  function welch(x, fs, nperseg, win) {
+    var n = x.length;
+    nperseg = Math.min(nperseg || 1024, n);
+    // nperseg 必须是 2 的幂（内部用 radix-2 FFT）
+    var np2 = 1 << Math.floor(Math.log2(nperseg));
+    nperseg = np2;
+    var noverlap = nperseg >> 1, step = nperseg - noverlap;
+    var w = (win === 'hamming' ? hamming : hann)(nperseg);
+    var wsum2 = 0, i, k;
+    for (i = 0; i < nperseg; i++) wsum2 += w[i] * w[i];
+    var nfreq = nperseg / 2 + 1;
+    var acc = new Array(nfreq);
+    for (i = 0; i < nfreq; i++) acc[i] = 0;
+    var nseg = 0;
+    for (var start = 0; start + nperseg <= n; start += step) {
+      // detrend='constant'：逐段去均值
+      var mean = 0;
+      for (i = 0; i < nperseg; i++) mean += x[start + i];
+      mean /= nperseg;
+      var re = new Float64Array(nperseg), im = new Float64Array(nperseg);
+      for (i = 0; i < nperseg; i++) { re[i] = (x[start + i] - mean) * w[i]; im[i] = 0; }
+      FL.fft(re, im);
+      for (k = 0; k < nfreq; k++) {
+        var mag2 = re[k] * re[k] + im[k] * im[k];
+        var scale = 1 / (fs * wsum2);
+        var v = mag2 * scale;
+        if (k > 0 && k < nperseg / 2) v *= 2;      // 单边：除 DC 与 Nyquist 外乘 2
+        acc[k] += v;
+      }
+      nseg++;
+    }
+    var f = [], p = [];
+    for (k = 0; k < nfreq; k++) { f.push(k * fs / nperseg); p.push(nseg ? acc[k] / nseg : 0); }
+    return { f: f, p: p, df: fs / nperseg, nseg: nseg, nperseg: nperseg };
+  }
+
+  /** i 阶谱矩（圆频率加权，梯形积分） */
+  function moment(psd, i) {
+    var f = psd.f, p = psd.p, s = 0, k;
+    for (k = 1; k < f.length; k++) {
+      var w0 = Math.pow(2 * Math.PI * f[k - 1], i) * p[k - 1];
+      var w1 = Math.pow(2 * Math.PI * f[k], i) * p[k];
+      if (!isFinite(w0)) w0 = 0;
+      s += 0.5 * (w0 + w1) * (f[k] - f[k - 1]);
+    }
+    return s;
+  }
+
+  /** 谱特征量一次算全 */
+  function bands(psd) {
+    var m0 = moment(psd, 0), m1 = moment(psd, 1), m2 = moment(psd, 2), m4 = moment(psd, 4);
+    var m075 = moment(psd, 0.75), m15 = moment(psd, 1.5);
+    var nu = 1 / (2 * Math.PI) * Math.sqrt(m2 / m0);
+    var mp = 1 / (2 * Math.PI) * Math.sqrt(m4 / m2);
+    return { m0: m0, m1: m1, m2: m2, m4: m4, nu: nu, mp: mp,
+      alpha1: m1 / Math.sqrt(m0 * m2), alpha2: m2 / Math.sqrt(m0 * m4),
+      alpha075: m075 / Math.sqrt(m0 * m15),
+      eps: Math.sqrt(1 - Math.pow(m2 / Math.sqrt(m0 * m4), 2)),
+      rms: Math.sqrt(m0) };
+  }
+
+  function dNB(m0, nu, C, k) {
+    return nu * Math.pow(Math.sqrt(2 * m0), k) * FL.gamma(1 + k / 2) / C;
+  }
+
+  /** Dirlik 的六个系数（照 Dirlik 1985 / FLife 的写法） */
+  function dirlikCoef(b) {
+    var m0 = b.m0, m1 = b.m1, m2 = b.m2, m4 = b.m4;
+    var xm = (m1 / m0) * Math.sqrt(m2 / m4);
+    var g = m2 / Math.sqrt(m0 * m4);                      // = alpha2
+    var D1 = 2 * (xm - g * g) / (1 + g * g);
+    var R = (g - xm - D1 * D1) / (1 - g - D1 + D1 * D1);
+    var D2 = (1 - g - D1 + D1 * D1) / (1 - R);
+    var D3 = 1 - D1 - D2;
+    var Q = 1.25 * (g - D3 - D2 * R) / D1;
+    return { xm: xm, g: g, D1: D1, D2: D2, D3: D3, R: R, Q: Q };
+  }
+  /** Dirlik 的幅值概率密度（自变量是**幅** s = range/2） */
+  function dirlikPDF(b, s) {
+    var c = dirlikCoef(b), Z = s / Math.sqrt(b.m0);
+    return (1 / Math.sqrt(b.m0)) * (
+      (c.D1 / c.Q) * Math.exp(-Z / c.Q) +
+      (c.D2 * Z / (c.R * c.R)) * Math.exp(-Z * Z / (2 * c.R * c.R)) +
+      c.D3 * Z * Math.exp(-Z * Z / 2));
+  }
+  function nbPDF(b, s) { return (s / b.m0) * Math.exp(-s * s / (2 * b.m0)); }
+  function tbPDF(b, s, bw) {
+    var a2 = b.alpha2;
+    return bw * nbPDF(b, s) + (1 - bw) * (s / (b.m0 * a2 * a2)) * Math.exp(-s * s / (2 * a2 * a2 * b.m0));
+  }
+  function tbCoef(b, method) {
+    var a1 = b.alpha1, a2 = b.alpha2;
+    if (method === 'm1') return Math.min((a1 - a2) / (1 - a1), 1);
+    if (method === 'm3') return (b.alpha075 * b.alpha075 - a2 * a2) / (1 - a2 * a2);
+    return (a1 - a2) * (1.112 * (1 + a1 * a2 - (a1 + a2)) * Math.exp(2.11 * a2) + (a1 - a2)) / Math.pow(a2 - 1, 2);
+  }
+  function zbCoef(b, method, k) {
+    var a2 = b.alpha2, bb, a, w;
+    bb = a2 < 0.9 ? 1.1 : 1.1 + 9 * (a2 - 0.9);
+    if (method === 'm2') {
+      var ro = b.alpha075 >= 0.5 ? -0.4154 + 1.392 * b.alpha075 : 0.28;
+      // Γ(1+3/b)(1-α2)p³ + 3Γ(1+1/b)(ρα2-1)p + 3√(π/2)α2(1-ρ) = 0，取离 0 最近的正根
+      var A = FL.gamma(1 + 3 / bb) * (1 - a2);
+      var B = 3 * FL.gamma(1 + 1 / bb) * (ro * a2 - 1);
+      var Cc = 3 * Math.sqrt(Math.PI / 2) * a2 * (1 - ro);
+      /* 取**最小正实根**。FLife 用 fsolve(eq, 0)，从 0 出发的第一步是 -C/B > 0，
+       * 所以它落在正根上；早先这里按「离 0 最近」挑，碰上负根就 Math.pow(负, -1.1) = NaN
+       * （2026-09-26 实撞，flat-wide 等 8 条谱上 zb2 全是 NaN）。*/
+      var roots = FL.cubicRoots(A, 0, B, Cc).filter(function (x) { return isFinite(x) && x > 0; });
+      roots.sort(function (u, v) { return u - v; });
+      var p = roots.length ? roots[0] : NaN;
+      a = Math.pow(p, -bb);
+    } else {
+      a = 8 - 7 * a2;
+    }
+    w = (1 - a2) / (1 - Math.sqrt(2 / Math.PI) * FL.gamma(1 + 1 / bb) * Math.pow(a, -1 / bb));
+    return { a: a, b: bb, w: w };
+  }
+  function zbPDF(b, s, co) {
+    var m0 = b.m0, z = s / Math.sqrt(m0);
+    return (1 / Math.sqrt(m0)) * (co.w * co.a * co.b * Math.pow(z, co.b - 1) * Math.exp(-co.a * Math.pow(z, co.b))
+      + (1 - co.w) * z * Math.exp(-z * z / 2));
+  }
+
+  /** 八种方法的损伤率（每秒损伤）。psd 需要能算任意阶矩 ⇒ 传 psd 本体。 */
+  function methods(psd, b, C, k) {
+    var out = [], m0 = b.m0, nu = b.nu, mp = b.mp, a2 = b.alpha2;
+    var base = dNB(m0, nu, C, k);
+    function add(id, label, d, note) { out.push({ id: id, label: label, d: d, T: 1 / d, note: note }); }
+    add('nb', '窄带（Rayleigh）', base, 'd = ν·(√2m₀)^k·Γ(1+k/2)/C');
+    // Dirlik
+    var c = dirlikCoef(b);
+    var dD = (1 / C) * (mp * Math.pow(Math.sqrt(m0), k) *
+      (c.D1 * Math.pow(c.Q, k) * FL.gamma(1 + k) + Math.pow(Math.sqrt(2), k) * FL.gamma(1 + k / 2) *
+        (c.D2 * Math.pow(Math.abs(c.R), k) + c.D3)));
+    add('dirlik', 'Dirlik', dD, '经验闭式（1985 博士论文，指数 + 两个 Rayleigh 的混合）');
+    var bw = tbCoef(b, 'm2');
+    add('tb', 'Tovo-Benasciutti（2005）', base * (bw + (1 - bw) * Math.pow(a2, k - 1)), 'b = ' + bw.toFixed(4));
+    var bw1 = tbCoef(b, 'm1');
+    add('tb1', 'Tovo-Benasciutti（1989 原版）', base * (bw1 + (1 - bw1) * Math.pow(a2, k - 1)), 'b = ' + bw1.toFixed(4));
+    var ak = 0.926 - 0.033 * k, bk = 1.587 * k - 2.323;
+    var ro = ak + (1 - ak) * Math.pow(1 - b.eps, bk);
+    add('wl', 'Wirsching-Light', ro * base, 'ρ = ' + ro.toFixed(4));
+    var m2k = moment(psd, 2 / k), m2k2 = moment(psd, 2 / k + 2);
+    var roOC = 1 / a2 * Math.pow(Math.sqrt(b.m2 * m2k / (m0 * m2k2)), k);
+    add('oc', 'Ortiz-Chen', roOC * base, 'ρ = ' + roOC.toFixed(4));
+    add('a075', 'α₀.₇₅ 法（Benasciutti）', b.alpha075 * b.alpha075 * base, 'ρ = α₀.₇₅² = ' + (b.alpha075 * b.alpha075).toFixed(4));
+    var dSM = Math.pow(2, k / 2) / (2 * Math.PI * C) * FL.gamma(1 + k / 2) * Math.pow(m2k, k / 2);
+    add('sm', '单矩法（Larsen-Lutes）', dSM, '只用 m_(2/k) 一个矩');
+    var co1 = zbCoef(b, 'm1', k);
+    var dZB = (mp / C) * Math.pow(m0, 0.5 * k) * (co1.w * Math.pow(co1.a, -k / co1.b) * FL.gamma(1 + k / co1.b)
+      + (1 - co1.w) * Math.pow(2, 0.5 * k) * FL.gamma(1 + 0.5 * k));
+    add('zb', 'Zhao-Baker（法 1）', dZB, 'a=' + co1.a.toFixed(3) + ' b=' + co1.b.toFixed(3) + ' w=' + co1.w.toFixed(3));
+    var co2 = zbCoef(b, 'm2', k);
+    var dZB2 = (mp / C) * Math.pow(m0, 0.5 * k) * (co2.w * Math.pow(co2.a, -k / co2.b) * FL.gamma(1 + k / co2.b)
+      + (1 - co2.w) * Math.pow(2, 0.5 * k) * FL.gamma(1 + 0.5 * k));
+    /* 法 2 的那条三次方程在宽带谱上可能**没有正实根**（它本来是为 k=3 的窄带情形拟合的）。
+     * 参考实现 FLife 用 fsolve(eq, 0)，这时不收敛、返回一个不满足方程的数（会打 RuntimeWarning）
+     * 却照样算出寿命；这里宁可标成「不适用」也不给假数。*/
+    if (!isFinite(dZB2)) {
+      out.push({ id: 'zb2', label: 'Zhao-Baker（法 2，k=3 专用）', d: NaN, T: NaN, na: true,
+        note: '该谱上定标方程无正实根 ⇒ 方法不适用（法 2 是为 k=3 的窄带情形拟合的）' });
+    } else {
+      add('zb2', 'Zhao-Baker（法 2，k=3 专用）', dZB2, 'a=' + co2.a.toFixed(3) + ' b=' + co2.b.toFixed(3));
+    }
+    return out;
+  }
+
+  /** 由带状规格造一条单边 PSD，并（可选）合成对应的高斯时域信号。
+   * bands: [{f1, f2, level}]（level 单位 MPa²/Hz）*/
+  function makePSD(specs, fs, n) {
+    var nfreq = n / 2 + 1, f = [], p = [], k, i;
+    for (k = 0; k < nfreq; k++) {
+      var fr = k * fs / n, v = 0;
+      for (i = 0; i < specs.length; i++) {
+        var s = specs[i];
+        if (fr >= s.f1 && fr <= s.f2) {
+          if (s.slope) {
+            // 对数-对数线性插值（dB/oct 型）
+            var t = (Math.log(Math.max(fr, 1e-9)) - Math.log(Math.max(s.f1, 1e-9))) /
+              (Math.log(s.f2) - Math.log(Math.max(s.f1, 1e-9)));
+            v += s.level * Math.pow(10, t * s.slope / 10);
+          } else v += s.level;
+        }
+      }
+      f.push(fr); p.push(v);
+    }
+    return { f: f, p: p, df: fs / n };
+  }
+
+  /** 随机相位法合成时域信号：x[n] = Σ sqrt(2 G(f) df) cos(2π f t + φ) —— 用逆 FFT 实现 */
+  function synth(psd, fs, n, seed) {
+    var rg = FL.rng(seed || 12345);
+    var re = new Float64Array(n), im = new Float64Array(n), k;
+    var nfreq = n / 2;
+    for (k = 1; k < nfreq; k++) {
+      var G = psd.p[k] || 0;
+      var amp = Math.sqrt(2 * G * psd.df);      // 该谐波的幅值
+      var ph = 2 * Math.PI * rg.unif();
+      // 实信号：X[k] = A/2 e^{i phi}，X[n-k] = 共轭
+      re[k] = amp / 2 * Math.cos(ph); im[k] = amp / 2 * Math.sin(ph);
+      re[n - k] = re[k]; im[n - k] = -im[k];
+    }
+    // 逆变换：ifft(X) = conj(fft(conj(X)))/n
+    for (k = 0; k < n; k++) im[k] = -im[k];
+    FL.fft(re, im);
+    var x = [];
+    for (k = 0; k < n; k++) x.push(re[k]);      // 取实部；虚部为数值误差
+    return x;
+  }
+
+  return { hann: hann, welch: welch, moment: moment, bands: bands, dNB: dNB,
+    dirlikCoef: dirlikCoef, dirlikPDF: dirlikPDF, nbPDF: nbPDF, tbPDF: tbPDF, tbCoef: tbCoef,
+    zbCoef: zbCoef, zbPDF: zbPDF, methods: methods, makePSD: makePSD, synth: synth };
+})();
+
+/* 材料库与内置载荷谱。
+ * 材料参数是**教材典型值**（Shigley / Dowling / SAE J1099 那一档量级），页面上每个数都可改，
+ * 页面与「说明」页都写明：设计必须用自己材料的试验数据，这里只是让工具开箱能跑。
+ * 载荷谱除 ASTM 教科书那条外全部是**固定种子合成**的（不是实测记录），页面上逐条注明。 */
+FL.data = (function () {
+  'use strict';
+
+  var MATS = [
+    { id: 'sae1045', name: 'SAE 1045 钢（正火）', family: 'steel',
+      E: 205000, Su: 621, Sy: 382, sf: 948, b: -0.092, ef: 0.26, c: -0.445,
+      Cp: 6.9e-9, mp: 3.0, Kc: 100, dKth: 6,
+      note: '铁素体-珠光体钢；da/dN 用 Barsom 的 6.9e-12 m/循环·ΔK³' },
+    { id: 'aisi4340', name: 'AISI 4340 钢（调质 350 HB）', family: 'steel',
+      E: 200000, Su: 1240, Sy: 1172, sf: 1655, b: -0.076, ef: 0.73, c: -0.62,
+      Cp: 1.35e-7, mp: 2.25, Kc: 90, dKth: 5,
+      note: '马氏体钢；da/dN 用 Barsom 的 1.35e-10 m/循环·ΔK^2.25' },
+    { id: 'al2024', name: '2024-T3 铝合金', family: 'al',
+      E: 73100, Su: 469, Sy: 353, sf: 927, b: -0.113, ef: 0.409, c: -0.713,
+      Cp: 1.0e-7, mp: 3.3, Kc: 37, dKth: 2.5,
+      note: '航空铝；da/dN 取 ΔK=10 时约 2e-4 mm/循环的典型量级' },
+    { id: 'al7075', name: '7075-T6 铝合金', family: 'al',
+      E: 71000, Su: 572, Sy: 469, sf: 1466, b: -0.143, ef: 0.262, c: -0.619,
+      Cp: 1.5e-7, mp: 3.4, Kc: 29, dKth: 2.2, note: '高强铝，韧性偏低' },
+    { id: 'ti64', name: 'Ti-6Al-4V（退火）', family: 'ti',
+      E: 117000, Su: 1000, Sy: 910, sf: 2030, b: -0.104, ef: 0.841, c: -0.688,
+      Cp: 2.0e-8, mp: 3.4, Kc: 75, dKth: 4, note: '钛合金' },
+    { id: 'weld', name: '焊接钢结构（EN 1993 细节）', family: 'steel',
+      E: 210000, Su: 510, Sy: 355, sf: 800, b: -0.09, ef: 0.3, c: -0.5,
+      Cp: 6.9e-9, mp: 3.0, Kc: 90, dKth: 2,
+      note: '焊接接头按 EN 1993-1-9 的 FAT 级查 S-N，不用母材曲线' }
+  ];
+  function mat(id) {
+    var i;
+    for (i = 0; i < MATS.length; i++) if (MATS[i].id === id) return MATS[i];
+    return MATS[0];
+  }
+  /** 由 σf'/b/εf'/c 导出 Ramberg-Osgood 的 K'、n'（保证四个应变寿命参数自洽） */
+  function cyclic(m) {
+    var np = m.b / m.c;
+    return { np: np, Kp: m.sf / Math.pow(m.ef, np) };
+  }
+
+  /* ── 载荷谱 ── */
+  var SPECS = [
+    { id: 'astm', name: 'ASTM E1049 教科书序列', dt: 1, unit: 'MPa',
+      note: 'ASTM E1049-85 图 6 的九点序列 ×40 MPa —— 用来对着标准核对计数结果' },
+    { id: 'const', name: '等幅（σm=100, σa=80）', dt: 0.02, unit: 'MPa',
+      note: '200 个等幅循环；等幅是所有公式的退化检验点' },
+    { id: 'block', name: '五级块状程序载荷', dt: 0.02, unit: 'MPa',
+      note: '试验室常用的块状程序谱（高幅少次 → 低幅多次）' },
+    { id: 'broad', name: '宽带随机（双峰谱）', dt: 1 / 512, unit: 'MPa',
+      note: '两个模态（30~70 Hz 与 150~190 Hz）的高斯平稳信号，固定种子合成' },
+    { id: 'narrow', name: '窄带随机（单模态）', dt: 1 / 512, unit: 'MPa',
+      note: '单模态（48~52 Hz）窄带高斯信号，固定种子合成；α₂ 接近 1' },
+    { id: 'gag', name: '飞行剖面（地-空-地）', dt: 1, unit: 'MPa',
+      note: '滑行/爬升/巡航阵风/下降/着陆的合成剖面；整个飞行只有一个大的 GAG 循环' },
+    { id: 'road', name: '路面载荷（悬架）', dt: 0.01, unit: 'MPa',
+      note: '低幅路面噪声 + 间歇的过坎冲击，固定种子合成' },
+    { id: 'wind', name: '风机塔筒（缓慢漂移 + 湍流）', dt: 0.1, unit: 'MPa',
+      note: '慢变平均载荷叠加湍流小循环，固定种子合成；平均应力效应明显' }
+  ];
+
+  function spec(id) {
+    var i;
+    for (i = 0; i < SPECS.length; i++) if (SPECS[i].id === id) return SPECS[i];
+    return SPECS[0];
+  }
+
+  /** 生成载荷谱数据（单位 MPa）。全部确定性，同一 id 每次结果逐位相同。 */
+  function series(id) {
+    var y = [], i, j, rg;
+    if (id === 'astm') {
+      var base = [-2, 1, -3, 5, -1, 3, -4, 4, -2];
+      for (i = 0; i < base.length; i++) y.push(base[i] * 40);
+      return y;
+    }
+    if (id === 'const') {
+      for (i = 0; i <= 400; i++) y.push(100 + 80 * (i % 2 === 0 ? -1 : 1));
+      return y;
+    }
+    if (id === 'block') {
+      var blocks = [{ sa: 180, sm: 60, n: 5 }, { sa: 140, sm: 60, n: 20 },
+        { sa: 100, sm: 60, n: 100 }, { sa: 70, sm: 60, n: 400 }, { sa: 45, sm: 60, n: 1200 }];
+      y.push(blocks[0].sm);
+      for (i = 0; i < blocks.length; i++) {
+        for (j = 0; j < blocks[i].n; j++) {
+          y.push(blocks[i].sm + blocks[i].sa);
+          y.push(blocks[i].sm - blocks[i].sa);
+        }
+      }
+      y.push(60);
+      return y;
+    }
+    if (id === 'broad' || id === 'narrow') {
+      var n = 8192, fs = 512;
+      var specs = id === 'broad'
+        ? [{ f1: 30, f2: 70, level: 900 / 40 }, { f1: 150, f2: 190, level: 400 / 40 }]
+        : [{ f1: 48, f2: 52, level: 1200 / 4 }];
+      var psd = FL.spec.makePSD(specs, fs, n);
+      y = FL.spec.synth(psd, fs, n, id === 'broad' ? 20260926 : 771);
+      for (i = 0; i < y.length; i++) y[i] += 40;      // 抬一个平均应力
+      return y;
+    }
+    if (id === 'gag') {
+      rg = FL.rng(4242);
+      var flights = 6;
+      for (i = 0; i < flights; i++) {
+        y.push(5);                                     // 地面
+        for (j = 0; j < 6; j++) y.push(18 + 10 * rg.unif());   // 滑行
+        y.push(4);
+        y.push(150);                                   // 爬升到巡航
+        for (j = 0; j < 40; j++) {                     // 巡航阵风
+          y.push(150 + 28 * rg.norm());
+        }
+        y.push(120);
+        for (j = 0; j < 8; j++) y.push(90 + 30 * rg.norm());   // 下降
+        y.push(160); y.push(20);                       // 着陆冲击
+        for (j = 0; j < 4; j++) y.push(12 + 14 * rg.unif());
+        y.push(3);
+      }
+      return y;
+    }
+    if (id === 'road') {
+      rg = FL.rng(98765);
+      var prev = 60;
+      for (i = 0; i < 4000; i++) {
+        prev = 0.82 * prev + 0.18 * 60 + 9 * rg.norm();
+        y.push(prev);
+        if (i % 500 === 250) {                         // 过坎
+          y.push(prev + 120 + 40 * rg.unif());
+          y.push(prev - 70 - 20 * rg.unif());
+          y.push(prev + 45);
+        }
+      }
+      return y;
+    }
+    // wind
+    rg = FL.rng(31415);
+    var mean = 80;
+    for (i = 0; i < 3000; i++) {
+      mean = 80 + 45 * Math.sin(2 * Math.PI * i / 900) + 12 * Math.sin(2 * Math.PI * i / 137);
+      y.push(mean + 16 * rg.norm());
+    }
+    return y;
+  }
+
+  /* ── 缺口几何库（Kt 的经验式，用于「缺口」卡片） ── */
+  var NOTCHES = [
+    { id: 'plate-hole', name: '板中圆孔（拉伸）', Kt: function (p) {
+      var x = 2 * p.r / p.W;   // d/W
+      return 3 - 3.14 * x + 3.667 * x * x - 1.527 * x * x * x;
+    }, note: 'Howland 解的多项式拟合，d/W ≤ 0.5' },
+    { id: 'shoulder', name: '圆轴台阶（弯曲）', Kt: function (p) {
+      var rd = p.r / p.d;
+      return 1 + 0.5 / Math.sqrt(rd) * 0.9;
+    }, note: '仅为量级估算，精确值查 Peterson 图谱' },
+    { id: 'manual', name: '手工输入 Kt', Kt: function (p) { return p.Kt; }, note: '直接给 Kt' }
+  ];
+
+  return { MATS: MATS, mat: mat, cyclic: cyclic, SPECS: SPECS, spec: spec, series: series,
+    NOTCHES: NOTCHES };
+})();
+</script>
+<script id="fl-app">/* 本站通用的 SVG 绘图骨架：Frame（坐标框 + 刻度 + 裁剪）+ Placer（文字避让器）。
+ *
+ * 固化背景：09-14 journal 明写「这套 Placer 每期都在重写，值得连同保守盒 + 退让位一起抽进
+ * 公共脚手架」，09-15（SVG 机器人图）与 09-16（12 张图）又各重写一遍。本文件 = 09-16 版，
+ * 已经把历次踩过的坑都焊进去了：
+ *   ① 每一段文字（**含坐标轴刻度**）都走 Placer，撞了就按退让位挪、全撞就丢（07-28…08-11 共 7 次事故）；
+ *   ② 退让位第一顺位要落在数据的空侧，带 plate 的标注会擦掉底下的曲线（08-07）；
+ *   ③ 刻度档位按「刻度个数最接近目标」挑，不是「第一个 ≥ raw 的步长」（08-27 y 轴塌成 2 根）；
+ *   ④ setDomain **允许上下界倒置**（俯视图要 y 向下）—— 强行要求 ymax > ymin 会把整张图画空（09-16）；
+ *   ⑤ 曲线一律 clip 到绘图矩形，越界分支不许糊到坐标轴外（09-16）。
+ *
+ * 用法（作为 app 的第一个源文件内联进页面即可）：
+ *   node tools/build-inline.mjs --template page.template.html --out index.html \
+ *     --inline '/*APP*\/=<本文件>,app_part1.js,…'
+ *   var F = new AEPlot.Frame('fig-id', { pad: { l: 56, r: 18, t: 16, b: 38 } });
+ *   F.setDomain(x0, x1, y0, y1);
+ *   F.axes({ xlabel: '…', ylabel: '…', xfmt: fn, yfmt: fn });
+ *   F.path(pts, { stroke: '#da291c' }); F.dot(x, y); F.vline(x); F.hline(y);
+ *   F.P.text(px, py, '标注', { size: 10, fill: '#fff', plate: true, offsets: [[0,0],[0,-13],[0,20]] });
+ * 需要宿主提供一个 fmt(v, d) 数字格式函数：new Frame(id, { fmt: myFmt })，默认用内置的。
+ */
+var AEPlot = (function () {
+  'use strict';
+  var SVGNS = 'http://www.w3.org/2000/svg';
+  /* 主题色。09-16 抽出来时把 Ferrari 的深色写死在 axes/Placer 里，浅色设计系统（Expo）
+   * 用起来刻度与网格几乎看不见 —— 2026-09-17 改成可覆盖，默认值与旧版逐字相同。
+   * 用法：AEPlot.theme({ grid:'#f0f0f3', axis:'#dcdee0', tick:'#60646c', label:'#999' }); */
+  var TH = { grid: '#282828', axis: '#303030', tick: '#8f8f8f', label: '#666',
+             text: '#969696', plate: '#181818', series: '#da291c' };
+  function theme(o) { for (var k in o) if (o[k] != null) TH[k] = o[k]; return TH; }
+  function $(id) { return document.getElementById(id); }
+  function fmt(v, d) {
+    if (v == null || !isFinite(v)) return '—';
+    var x = +v;
+    if (Math.abs(x) >= 1e6 || (Math.abs(x) < 1e-4 && x !== 0)) return x.toExponential(d == null ? 3 : d);
+    var s = x.toFixed(d == null ? 3 : d);
+    if (/^-0\.?0*$/.test(s)) s = s.slice(1);
+    return s;
+  }
+  // ── SVG 基础 ──
+  function el(tag, attrs, parent) {
+    var n = document.createElementNS(SVGNS, tag), k;
+    for (k in attrs) if (attrs[k] != null) n.setAttribute(k, attrs[k]);
+    if (parent) parent.appendChild(n);
+    return n;
+  }
+  function clear(node) { while (node.firstChild) node.removeChild(node.firstChild); }
+
+  /* 文字避让器：**这张图上的每一段文字**都必须经过它（含坐标轴刻度）。
+   * 教训来源：07-28/07-29/07-30/08-05/08-07/08-08/08-11 连撞 7 次标签重叠，
+   * 全部逃过 DOM 断言，只有人工看图才发现。 */
+  function Placer(svg, w, h) {
+    this.svg = svg; this.w = w; this.h = h; this.boxes = []; this.drawn = 0; this.dropped = 0;
+  }
+  Placer.prototype.measure = function (text, size) {
+    var n = 0, i, c;
+    for (i = 0; i < text.length; i++) {
+      c = text.charCodeAt(i);
+      n += (c > 0x2e80 && c < 0xa000) || (c >= 0xff00 && c <= 0xffef) ? 1 : 0.6;
+    }
+    return n * size;
+  };
+  Placer.prototype.hit = function (b) {
+    if (b.x < -1 || b.y < -1 || b.x + b.w > this.w + 1 || b.y + b.h > this.h + 1) return true;  // 出画布
+    for (var i = 0; i < this.boxes.length; i++) {
+      var o = this.boxes[i];
+      if (b.x < o.x + o.w && o.x < b.x + b.w && b.y < o.y + o.h && o.y < b.y + b.h) return true;
+    }
+    return false;
+  };
+  Placer.prototype.reserve = function (x, y, w, h) { this.boxes.push({ x: x, y: y, w: w, h: h }); };
+  /* opts: {size, fill, anchor, weight, offsets:[[dx,dy]…], plate:bool} */
+  Placer.prototype.text = function (x, y, str, opts) {
+    var o = opts || {}, size = o.size || 11, anchor = o.anchor || 'middle';
+    var tw = this.measure(str, size) + 3, th = size + 3;
+    var offs = o.offsets || [[0, 0]], i, dx, dy, bx, by, box = null, ox = 0, oy = 0;
+    for (i = 0; i < offs.length; i++) {
+      dx = offs[i][0]; dy = offs[i][1];
+      bx = x + dx - (anchor === 'middle' ? tw / 2 : anchor === 'end' ? tw : 0);
+      by = y + dy - th + 2;
+      if (!this.hit({ x: bx, y: by, w: tw, h: th })) { box = { x: bx, y: by, w: tw, h: th }; ox = dx; oy = dy; break; }
+    }
+    if (!box) { this.dropped++; return null; }
+    this.boxes.push(box); this.drawn++;
+    if (o.plate) el('rect', { x: box.x, y: box.y, width: box.w, height: box.h, fill: o.plate === true ? TH.plate : o.plate, opacity: 0.88 }, this.svg);
+    var t = el('text', { x: x + ox, y: y + oy, 'text-anchor': anchor, 'font-size': size, fill: o.fill || TH.text,
+      'font-weight': o.weight || 400, 'font-family': 'inherit' }, this.svg);
+    t.textContent = str;
+    return t;
+  };
+
+  /* 直角坐标绘图框 */
+  function Frame(svgId, opt) {
+    var svg = $(svgId), o = opt || {};
+    clear(svg);
+    var vb = svg.getAttribute('viewBox').split(/\s+/).map(Number);
+    this.svg = svg; this.W = vb[2]; this.H = vb[3];
+    // 宿主传进来的 fmt 以前只存不用：axes() 里写死了模块自带的 fmt，
+    // 于是 `new Frame(id, { fmt: myFmt })` 会被**静默忽略**（2026-09-18 实撞，
+    // 「各节点排队人数」那张图的 x 轴因此打出了 3 位小数）。这里收起来，下面用它。
+    this.fmt = o.fmt || fmt;
+    this.pad = o.pad || { l: 56, r: 18, t: 16, b: 38 };
+    this.x0 = this.pad.l; this.x1 = this.W - this.pad.r;
+    this.y0 = this.H - this.pad.b; this.y1 = this.pad.t;
+    this.P = new Placer(svg, this.W, this.H);
+    // 裁剪：曲线一律夹在绘图矩形内（否则超出量程的分支会画到坐标轴外、糊到图例上）
+    this.clipId = 'ae-clip-' + svgId + '-' + Math.random().toString(36).slice(2, 8);
+    var defs = el('defs', {}, svg);
+    var cp = el('clipPath', { id: this.clipId }, defs);
+    el('rect', { x: this.pad.l, y: this.pad.t, width: this.W - this.pad.l - this.pad.r,
+      height: this.H - this.pad.t - this.pad.b }, cp);
+    this.setDomain(o.xmin == null ? 0 : o.xmin, o.xmax == null ? 1 : o.xmax, o.ymin == null ? 0 : o.ymin, o.ymax == null ? 1 : o.ymax);
+  }
+  Frame.prototype.setDomain = function (xmin, xmax, ymin, ymax) {
+    // 只修「退化」（上下界相等/非数），**不能**强行要求 ymax > ymin ——
+    // 俯视图要把 y 轴倒过来画（2026-09-16 实撞：平面形状图整张空白，
+    // 因为这里把倒置域改写成了 [ymin, ymin+1]，机翼落在域外）。
+    if (!isFinite(xmin) || !isFinite(xmax) || xmax === xmin) { xmin = xmin || 0; xmax = xmin + 1; }
+    if (!isFinite(ymin) || !isFinite(ymax) || ymax === ymin) { ymin = ymin || 0; ymax = ymin + 1; }
+    this.xmin = xmin; this.xmax = xmax; this.ymin = ymin; this.ymax = ymax;
+  };
+  Frame.prototype.sx = function (x) { return this.x0 + (x - this.xmin) / (this.xmax - this.xmin) * (this.x1 - this.x0); };
+  Frame.prototype.sy = function (y) { return this.y0 + (y - this.ymin) / (this.ymax - this.ymin) * (this.y1 - this.y0); };
+  /* 刻度档位：按「刻度个数最接近目标」挑，而不是「第一个 ≥ raw 的步长」
+   * （2026-08-27 教训：后者会把 y 轴塌成 2 根刻度）。 */
+  Frame.prototype.ticks = function (min, max, target) {
+    var span = max - min, best = null, mag, s, i, cand, cnt;
+    if (!(span > 0)) return [min];
+    for (mag = Math.floor(Math.log10(span)) - 1; mag <= Math.floor(Math.log10(span)) + 1; mag++) {
+      var base = Math.pow(10, mag);
+      var steps = [1, 2, 2.5, 5, 10];
+      for (i = 0; i < steps.length; i++) {
+        s = steps[i] * base;
+        cnt = Math.floor(max / s) - Math.ceil(min / s) + 1;
+        if (cnt < 2 || cnt > 24) continue;
+        cand = Math.abs(cnt - (target || 6));
+        if (best === null || cand < best.score) best = { step: s, score: cand };
+      }
+    }
+    if (!best) return [min, max];
+    var out = [], v0 = Math.ceil(min / best.step) * best.step;
+    for (var v = v0; v <= max + best.step * 1e-6; v += best.step) out.push(Math.abs(v) < best.step * 1e-9 ? 0 : v);
+    return out;
+  };
+  Frame.prototype.axes = function (o) {
+    var op = o || {}, i, t, px, py;
+    // 域可以是**倒置**的（阿贝图 x 轴从大到小、俯视图 y 轴向下），取刻度前先排序，
+    // 否则 ticks() 拿到负 span 直接 return [min]，整条轴只剩一个刻度
+    // （2026-09-17 实撞：阿贝图 x 轴只画出一个孤零零的「89」）。
+    var xt = op.xticks || this.ticks(Math.min(this.xmin, this.xmax), Math.max(this.xmin, this.xmax), 6);
+    var yt = op.yticks || this.ticks(Math.min(this.ymin, this.ymax), Math.max(this.ymin, this.ymax), 6);
+    el('rect', { x: this.x0, y: this.y1, width: this.x1 - this.x0, height: this.y0 - this.y1, fill: 'none', stroke: TH.axis }, this.svg);
+    for (i = 0; i < yt.length; i++) {
+      py = this.sy(yt[i]);
+      if (py < this.y1 - 0.5 || py > this.y0 + 0.5) continue;
+      el('line', { x1: this.x0, y1: py, x2: this.x1, y2: py, stroke: TH.grid }, this.svg);
+      this.P.text(this.x0 - 6, py + 4, (op.yfmt || this.fmt)(yt[i]), { anchor: 'end', size: 10, fill: TH.tick,
+        offsets: [[0, 0], [0, -9], [0, 9]] });
+    }
+    for (i = 0; i < xt.length; i++) {
+      px = this.sx(xt[i]);
+      if (px < this.x0 - 0.5 || px > this.x1 + 0.5) continue;
+      el('line', { x1: px, y1: this.y0, x2: px, y2: this.y1, stroke: TH.grid }, this.svg);
+      this.P.text(px, this.y0 + 16, (op.xfmt || this.fmt)(xt[i]), { anchor: 'middle', size: 10, fill: TH.tick });
+    }
+    if (op.xlabel) this.P.text((this.x0 + this.x1) / 2, this.H - 6, op.xlabel, { size: 11, fill: TH.label });
+    if (op.ylabel) {
+      var t2 = el('text', { x: 12, y: (this.y0 + this.y1) / 2, 'font-size': 11, fill: TH.label, 'text-anchor': 'middle',
+        transform: 'rotate(-90 12 ' + ((this.y0 + this.y1) / 2) + ')' }, this.svg);
+      t2.textContent = op.ylabel;
+      this.P.reserve(4, this.y1, 16, this.y0 - this.y1);
+    }
+  };
+  Frame.prototype.path = function (pts, o) {
+    var op = o || {}, d = '', i, px, py, started = false;
+    for (i = 0; i < pts.length; i++) {
+      if (pts[i] == null || !isFinite(pts[i][0]) || !isFinite(pts[i][1])) { started = false; continue; }
+      px = this.sx(pts[i][0]); py = this.sy(pts[i][1]);
+      d += (started ? 'L' : 'M') + px.toFixed(2) + ' ' + py.toFixed(2) + ' ';
+      started = true;
+    }
+    if (!d) return null;
+    return el('path', { d: d, fill: op.fill || 'none', stroke: op.stroke || TH.series, 'stroke-width': op.width || 1.6,
+      'stroke-dasharray': op.dash, opacity: op.opacity, 'stroke-linejoin': 'round', 'stroke-linecap': 'round',
+      'clip-path': op.noclip ? null : 'url(#' + this.clipId + ')' }, this.svg);
+  };
+  Frame.prototype.dot = function (x, y, o) {
+    var op = o || {};
+    return el('circle', { cx: this.sx(x), cy: this.sy(y), r: op.r || 3.2, fill: op.fill || TH.series,
+      stroke: op.stroke, 'stroke-width': op.width }, this.svg);
+  };
+  Frame.prototype.vline = function (x, o) {
+    var op = o || {};
+    return el('line', { x1: this.sx(x), y1: this.y0, x2: this.sx(x), y2: this.y1, stroke: op.stroke || '#5a5a5a',
+      'stroke-width': op.width || 1, 'stroke-dasharray': op.dash || '4 4' }, this.svg);
+  };
+  Frame.prototype.hline = function (y, o) {
+    var op = o || {};
+    return el('line', { x1: this.x0, y1: this.sy(y), x2: this.x1, y2: this.sy(y), stroke: op.stroke || '#5a5a5a',
+      'stroke-width': op.width || 1, 'stroke-dasharray': op.dash || '4 4' }, this.svg);
+  };
+
+
+  /* 对数轴刻度：在 [lo, hi]（以 10 为底的指数）区间里挑 1/2/5 × 10^k 这些档，
+   * 返回**真值**数组（调用方自己取 log 当域坐标、并用 yfmt 把它换算回来显示）。
+   * 2026-09-18 抽出：等待时间 / 成本 / 误差这类跨几个数量级的量，线性轴会把
+   * 关心的那一段全压在零线附近（实撞：16 席要 2.2 分钟、19 席只要 11 秒）。
+   * ⚠️ 配套的一条硬规矩：域要**夹**在关注点附近若干个数量级内 —— 只要有一个
+   * 病态点（比如 ρ=1-1e-16 解出 1e17）就能把量程撑到刻度全被避让器丢光。 */
+  function logTicks(lo, hi) {
+    var out = [], k, m, v, lg;
+    for (k = Math.floor(lo); k <= Math.ceil(hi); k++) {
+      for (m = 0; m < 3; m++) {
+        v = [1, 2, 5][m] * Math.pow(10, k);
+        lg = Math.log(v) / Math.LN10;
+        if (lg >= lo - 1e-9 && lg <= hi + 1e-9) out.push(v);
+      }
+    }
+    return out;
+  }
+
+  return { Frame: Frame, Placer: Placer, el: el, clear: clear, fmt: fmt, theme: theme, TH: TH,
+           logTicks: logTicks };
+})();
+
+/* 渲染层：15 张 SVG 图 + 全部读数与表格。图里的每一段文字都走 svg-plot 的 Placer 避让器。 */
+var FLR = (function () {
+  'use strict';
+  var el = AEPlot.el, $ = function (id) { return document.getElementById(id); };
+  var PIN = { ink: '#262622', red: '#e60023', purple: '#7e238b', blue: '#617bff',
+    green: '#103c25', ash: '#91918c', stone: '#c8c8c1', hair: '#dadad3', mute: '#62625b' };
+
+  function clearFig(id) { var s = $(id); if (s) AEPlot.clear(s); return s; }
+  function tb(id, html) { var e = $(id); if (e) e.innerHTML = html; }
+  function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+  function bar(F, x0, x1, yv, fill, op) {
+    var px = F.sx(x0), pw = Math.max(1, F.sx(x1) - F.sx(x0) - 1);
+    var py = F.sy(yv), ph = F.sy(F.ymin) - py;
+    if (!(ph > 0)) return null;
+    return el('rect', { x: px, y: py, width: pw, height: ph, fill: fill, opacity: op == null ? 1 : op }, F.svg);
+  }
+  function lg(v) { return Math.log(Math.max(v, 1e-300)) / Math.LN10; }
+  /** 跨度大于 3.5 个数量级时只留整十次幂的刻度，否则 1/2/5 三档会把轴挤满 */
+  function decTicks(lo, hi) {
+    var t = AEPlot.logTicks(lo, hi);
+    if (hi - lo >= 3.5) {
+      t = t.filter(function (v) { var e = Math.log10(v); return Math.abs(e - Math.round(e)) < 1e-9; });
+    }
+    return t.map(lg);
+  }
+  function logAxis(F, o) {
+    var xt = decTicks(F.xmin, F.xmax);
+    var yt = decTicks(F.ymin, F.ymax);
+    F.axes({ xticks: o.xlog ? xt : null, yticks: o.ylog ? yt : null,
+      xfmt: o.xlog ? function (v) { return o.xfmt ? o.xfmt(Math.pow(10, v)) : fmtPow10(Math.pow(10, v)); } : o.xfmt,
+      yfmt: o.ylog ? function (v) { return o.yfmt ? o.yfmt(Math.pow(10, v)) : fmtPow10(Math.pow(10, v)); } : o.yfmt,
+      xlabel: o.xlabel, ylabel: o.ylabel });
+  }
+  function fmtPow10(v) {
+    if (v <= 0) return '0';
+    var e = Math.log10(v), r = Math.round(e);
+    if (Math.abs(e - r) < 1e-9) return r === 0 ? '1' : (r >= 4 || r <= -3) ? '1e' + r : String(+Math.pow(10, r).toPrecision(6));
+    // 早先这里把 200 打成「2」、50 打成「5」—— 只留了尾数、丢了数量级（2026-09-26 看图发现）
+    if (v >= 1e4 || v < 1e-3) return v.toExponential(0).replace('e+', 'e');
+    return String(+v.toPrecision(3));
+  }
+
+  /* ════════ hero ════════ */
+  function renderHero(S, C, A) {
+    var ntot = 0, i;
+    for (i = 0; i < C.cycles.length; i++) ntot += C.cycles[i].count;
+    A.setT('hero-cyc', A.fmtInt(ntot));
+    A.setT('hero-rng', A.fmt(C.stats.max - C.stats.min, 1));
+    A.setT('hero-d', C.dam.D > 0 ? A.fmt(C.dam.D, 4) : '0');
+    A.setT('hero-life', isFinite(C.dam.life) ? A.fmtBig(C.dam.life, 3) : '无限（全在截止以下）');
+  }
+
+  /* ════════ 1. 载荷谱 ════════ */
+  function paneSignal(S, C, A) {
+    var i, y = C.y, st = C.stats;
+    A.setT('sg-desc', C.spec.name + ' —— ' + C.spec.note + '（Δt = ' + A.fmt(C.dt, 4) + ' s）');
+    A.setT('sg-n', A.fmtInt(st.n));
+    A.setT('sg-minmax', A.fmt(st.min, 1) + ' / ' + A.fmt(st.max, 1));
+    A.setT('sg-mean', A.fmt(st.mean, 2));
+    A.setT('sg-sd', A.fmt(st.sd, 2));
+    A.setT('sg-rms', A.fmt(st.rms, 2));
+    A.setT('sg-revs', A.fmtInt(st.revs));
+    A.setT('sg-T', A.fmt(st.T, 3));
+    A.setT('sg-nu0', A.fmt(st.nu0, 3));
+    A.setT('sg-nup', A.fmt(st.nup, 3));
+    A.setT('sg-irr', A.fmt(st.irr, 4));
+
+    // 时程
+    var nshow = S.pts > 0 ? Math.min(S.pts, y.length) : y.length;
+    var F = new AEPlot.Frame('sg-fig-time', { pad: { l: 62, r: 20, t: 18, b: 42 }, fmt: A.fmt });
+    var pad = (st.max - st.min) * 0.08 || 1;
+    F.setDomain(0, (nshow - 1) * C.dt, st.min - pad, st.max + pad);
+    F.axes({ xlabel: '时间 (s)', ylabel: '应力 (MPa)',
+      xfmt: function (v) { return A.fmt(v, C.dt < 0.01 ? 2 : 1); },
+      yfmt: function (v) { return A.fmt(v, 0); } });
+    F.hline(st.mean, { stroke: PIN.ash, dash: '5 5' });
+    var pts = [];
+    for (i = 0; i < nshow; i++) pts.push([i * C.dt, y[i]]);
+    F.path(pts, { stroke: PIN.ink, width: nshow > 2000 ? 0.7 : 1.3 });
+    if (C.revs.length <= 260) {
+      for (i = 0; i < C.revs.length; i++) {
+        if (C.revs[i].i < nshow) F.dot(C.revs[i].i * C.dt, C.revs[i].v, { r: 2.2, fill: PIN.red });
+      }
+    }
+    // 标注最大峰与最小谷：退让位先往数据的空侧走（08-07 教训）
+    var imax = 0, imin = 0;
+    for (i = 0; i < nshow; i++) { if (y[i] > y[imax]) imax = i; if (y[i] < y[imin]) imin = i; }
+    F.P.text(F.sx(imax * C.dt), F.sy(y[imax]) - 8, '最大 ' + A.fmt(y[imax], 1),
+      { size: 11, fill: PIN.ink, plate: true, weight: 600, offsets: [[0, 0], [0, -14], [40, 0], [-40, 0]] });
+    F.P.text(F.sx(imin * C.dt), F.sy(y[imin]) + 16, '最小 ' + A.fmt(y[imin], 1),
+      { size: 11, fill: PIN.ink, plate: true, weight: 600, offsets: [[0, 0], [0, 14], [40, 0], [-40, 0]] });
+    F.P.text(F.x1 - 4, F.sy(st.mean) - 6, '均值 ' + A.fmt(st.mean, 1),
+      { size: 10, fill: PIN.mute, anchor: 'end', plate: true, offsets: [[0, 0], [0, -12], [0, 16]] });
+
+    // 穿越计数
+    var levels = [], k;
+    for (k = 0; k < S.lc; k++) levels.push(st.min + (st.max - st.min) * k / (S.lc - 1));
+    var lcs = FL.rf.levelCrossings(y, levels);
+    var maxc = 1;
+    for (i = 0; i < lcs.length; i++) maxc = Math.max(maxc, lcs[i].n);
+    var F2 = new AEPlot.Frame('sg-fig-lc', { pad: { l: 58, r: 16, t: 16, b: 42 }, fmt: A.fmt });
+    F2.setDomain(0, maxc * 1.08, st.min, st.max);
+    F2.axes({ xlabel: '上穿次数', ylabel: '应力水平 (MPa)',
+      xfmt: function (v) { return A.fmtInt(v); }, yfmt: function (v) { return A.fmt(v, 0); } });
+    var lp = [];
+    for (i = 0; i < lcs.length; i++) lp.push([lcs[i].n, lcs[i].level]);
+    F2.path(lp, { stroke: PIN.ink, width: 1.6 });
+    for (i = 0; i < lcs.length; i++) if (lcs[i].n > 0) F2.dot(lcs[i].n, lcs[i].level, { r: 2, fill: PIN.red });
+
+    // 峰谷分布
+    var peaks = [], valleys = [];
+    for (i = 1; i < C.revs.length - 1; i++) {
+      if (C.revs[i].v > C.revs[i - 1].v && C.revs[i].v > C.revs[i + 1].v) peaks.push(C.revs[i].v);
+      else if (C.revs[i].v < C.revs[i - 1].v && C.revs[i].v < C.revs[i + 1].v) valleys.push(C.revs[i].v);
+    }
+    var nb = 18, w = (st.max - st.min) / nb || 1, hp = [], hv = [];
+    for (i = 0; i < nb; i++) { hp.push(0); hv.push(0); }
+    function acc(arr, out) {
+      for (var j = 0; j < arr.length; j++) {
+        var b = Math.min(nb - 1, Math.max(0, Math.floor((arr[j] - st.min) / w)));
+        out[b]++;
+      }
+    }
+    acc(peaks, hp); acc(valleys, hv);
+    var hmax = 1;
+    for (i = 0; i < nb; i++) hmax = Math.max(hmax, hp[i], hv[i]);
+    var F3 = new AEPlot.Frame('sg-fig-pv', { pad: { l: 50, r: 16, t: 16, b: 46 }, fmt: A.fmt });
+    F3.setDomain(st.min, st.max, 0, hmax * 1.12);
+    F3.axes({ xlabel: '应力 (MPa)', ylabel: '个数',
+      xfmt: function (v) { return A.fmt(v, 0); }, yfmt: function (v) { return A.fmtInt(v); } });
+    for (i = 0; i < nb; i++) {
+      var x0 = st.min + i * w, xm = x0 + w * 0.5;
+      if (hp[i]) bar(F3, x0, xm, hp[i], PIN.red, 0.9);
+      if (hv[i]) bar(F3, xm, x0 + w, hv[i], PIN.blue, 0.9);
+    }
+    F3.P.text(F3.x1 - 4, F3.y1 + 14, '峰 ' + peaks.length + ' · 谷 ' + valleys.length,
+      { size: 10, fill: PIN.mute, anchor: 'end', plate: true });
+  }
+
+  /* ════════ 2. 雨流计数 ════════ */
+  function paneCount(S, C, A) {
+    var i, cy = C.cycles;
+    var ntot = 0, nfull = 0, nhalf = 0, mx = 0, mxmean = 0;
+    for (i = 0; i < cy.length; i++) {
+      ntot += cy[i].count;
+      if (cy[i].count >= 1) nfull += cy[i].count; else nhalf += cy[i].count;
+      if (cy[i].rng > mx) { mx = cy[i].rng; mxmean = cy[i].mean; }
+    }
+    A.setT('ct-ncyc', A.fmtInt(ntot));
+    A.setT('ct-nfull', A.fmtInt(nfull) + ' / ' + (nhalf * 2) + ' 个半');
+    A.setT('ct-maxrng', A.fmt(mx, 1) + '（σm=' + A.fmt(mxmean, 1) + '）');
+    A.setT('ct-resn', A.fmtInt(C.residue.length));
+
+    // 幅值直方图
+    var bins = FL.rf.histRange(cy, S.ctBins);
+    var hmax = 0;
+    for (i = 0; i < bins.length; i++) hmax = Math.max(hmax, bins[i].n);
+    var F = new AEPlot.Frame('ct-fig-hist', { pad: { l: 52, r: 16, t: 16, b: 46 }, fmt: A.fmt });
+    F.setDomain(0, bins.length ? bins[bins.length - 1].hi : 1, 0, (hmax || 1) * 1.14);
+    F.axes({ xlabel: '应力幅值 Δσ (MPa)', ylabel: '循环数',
+      xfmt: function (v) { return A.fmt(v, 0); }, yfmt: function (v) { return A.fmtInt(v); } });
+    for (i = 0; i < bins.length; i++) if (bins[i].n > 0) bar(F, bins[i].lo, bins[i].hi, bins[i].n, PIN.ink, 0.85);
+    var biggest = bins.filter(function (b) { return b.n > 0; }).pop();
+    if (biggest) {
+      F.P.text(F.sx(biggest.mid), F.sy(biggest.n) - 8, '最大幅值格 ' + A.fmt(biggest.mid, 0),
+        { size: 10, fill: PIN.ink, plate: true, anchor: 'end', offsets: [[0, 0], [0, -13], [-10, -26]] });
+    }
+
+    // 雨流矩阵
+    var lo = C.stats.min, hi = C.stats.max, nbm = S.ctMBins;
+    var cyc2 = cy.map(function (c) {
+      var lohi = C.y[c.i1] <= C.y[c.i2];
+      return { from: lohi ? c.mean - c.rng / 2 : c.mean + c.rng / 2,
+        to: lohi ? c.mean + c.rng / 2 : c.mean - c.rng / 2, rng: c.rng, mean: c.mean, count: c.count };
+    });
+    var M = FL.rf.matrix(cyc2, nbm, lo, hi);
+    var svg = clearFig('ct-fig-matrix');
+    var pl = 52, pt = 14, pr = 16, pb = 46, W = 360, H = 330;
+    var cw = (W - pl - pr) / nbm, ch = (H - pt - pb) / nbm;
+    var vmax = 0, r, c2;
+    for (r = 0; r < nbm; r++) for (c2 = 0; c2 < nbm; c2++) vmax = Math.max(vmax, M.m[r][c2]);
+    el('rect', { x: pl, y: pt, width: W - pl - pr, height: H - pt - pb, fill: '#ffffff', stroke: PIN.hair }, svg);
+    for (r = 0; r < nbm; r++) {
+      for (c2 = 0; c2 < nbm; c2++) {
+        var v = M.m[r][c2];
+        if (!v) continue;
+        var t = Math.pow(v / vmax, 0.42);
+        el('rect', { x: pl + c2 * cw, y: pt + (nbm - 1 - r) * ch, width: cw + 0.5, height: ch + 0.5,
+          fill: PIN.red, opacity: 0.12 + 0.88 * t }, svg);
+      }
+    }
+    var P = new AEPlot.Placer(svg, W, H);
+    P.reserve(pl, pt, W - pl - pr, H - pt - pb);
+    for (i = 0; i <= 4; i++) {
+      var fv = lo + (hi - lo) * i / 4;
+      P.text(pl + (W - pl - pr) * i / 4, H - pb + 16, A.fmt(fv, 0), { size: 10, fill: PIN.mute });
+      P.text(pl - 6, pt + (H - pt - pb) * (1 - i / 4) + 4, A.fmt(fv, 0),
+        { size: 10, fill: PIN.mute, anchor: 'end' });
+    }
+    P.text((pl + W - pr) / 2, H - 6, '终点应力 (MPa)', { size: 11, fill: PIN.ash });
+    var tt = el('text', { x: 12, y: (pt + H - pb) / 2, 'font-size': 11, fill: PIN.ash,
+      'text-anchor': 'middle', transform: 'rotate(-90 12 ' + ((pt + H - pb) / 2) + ')' }, svg);
+    tt.textContent = '起点应力 (MPa)';
+    P.text(W - pr, pt - 2, '最深格 ' + A.fmt(vmax, vmax < 10 ? 1 : 0) + ' 次',
+      { size: 10, fill: PIN.mute, anchor: 'end', plate: true });
+
+    // 残余序列
+    var F4 = new AEPlot.Frame('ct-fig-res', { pad: { l: 52, r: 16, t: 16, b: 40 }, fmt: A.fmt });
+    var res = C.residue;
+    var rmin = Math.min.apply(null, res.length ? res : [0]), rmax2 = Math.max.apply(null, res.length ? res : [1]);
+    F4.setDomain(0, Math.max(1, res.length - 1), rmin - 5, rmax2 + 5);
+    F4.axes({ xlabel: '残余序号', ylabel: '应力 (MPa)',
+      xfmt: function (v) { return A.fmtInt(v); }, yfmt: function (v) { return A.fmt(v, 0); } });
+    var rp = [];
+    for (i = 0; i < res.length; i++) rp.push([i, res[i]]);
+    F4.path(rp, { stroke: PIN.red, width: 1.6 });
+    for (i = 0; i < res.length && res.length <= 40; i++) F4.dot(i, res[i], { r: 2.4, fill: PIN.ink });
+
+    // 三口径对比
+    var rowsHtml = '';
+    [['astm', '三点法 · 残余半循环'], ['repeat', '四点法 · 残余自接'], ['drop', '四点法 · 丢残余']]
+      .forEach(function (p) {
+        var cc = C.cnt[p[0]].cycles, n = 0, nf = 0, nh = 0, m = 0;
+        for (var j = 0; j < cc.length; j++) {
+          n += cc[j].count;
+          if (cc[j].count >= 1) nf += cc[j].count; else nh++;
+          m = Math.max(m, cc[j].rng);
+        }
+        var act = p[0] === S.ctMode;
+        rowsHtml += '<tr><td>' + (act ? '<b>' + p[1] + '</b>' : p[1]) + '</td><td' + (act ? ' class="fl-hi"' : '') +
+          '>' + A.fmtInt(n) + '</td><td>' + A.fmtInt(nf) + ' / ' + nh + '</td><td>' + A.fmt(m, 1) + '</td></tr>';
+      });
+    tb('ct-cmp-tbody', rowsHtml);
+
+    // 循环清单
+    var list = cy.slice();
+    if (S.ctSort === 'rng') list.sort(function (a, b) { return b.rng - a.rng; });
+    else if (S.ctSort === 'mean') list.sort(function (a, b) { return b.mean - a.mean; });
+    var html = '';
+    for (i = 0; i < Math.min(18, list.length); i++) {
+      var c = list[i], sa = c.rng / 2, smax = c.mean + sa, smin = c.mean - sa;
+      var R = smax !== 0 ? smin / smax : 0;
+      html += '<tr><td>' + (i + 1) + '</td><td>' + A.fmt(c.rng, 1) + '</td><td>' + A.fmt(c.mean, 1) +
+        '</td><td>' + A.fmt(sa, 1) + '</td><td>' + (isFinite(R) ? A.fmt(R, 2) : '—') + '</td><td>' +
+        c.count + '</td><td>' + c.i1 + ' → ' + c.i2 + '</td></tr>';
+    }
+    tb('ct-tbody', html);
+  }
+
+  /* ════════ 3. S-N 与损伤 ════════ */
+  function paneDamage(S, C, A) {
+    var i, sn = C.sn, d = C.dam;
+    A.setT('dm-curve-label', sn.label + ' · 口径：' + (sn.conv === 'range' ? '应力范围 Δσ' : '应力幅 σa') +
+      ' · 截止应力 ' + A.fmt(sn.Scut, 2) + ' MPa · 平均应力修正：' + meanName(S.dmMean));
+    A.setT('dm-D', A.fmt(d.D, 5));
+    A.setT('dm-life', isFinite(d.life) ? A.fmtBig(d.life, 3) : '∞');
+    var hours = isFinite(d.life) ? d.life / S.dmRate : Infinity;
+    A.setT('dm-hours', isFinite(hours) ? A.fmtBig(hours, 2) : '∞');
+    A.setT('dm-years', isFinite(hours) ? A.fmtBig(hours / 8760, 3) : '∞');
+    A.setT('dm-ncyc', A.fmtInt(d.nTot));
+    A.setT('dm-sarmax', A.fmt(d.sarMax, 2));
+    A.setT('dm-del', A.fmt(C.del, 2) + '（' + (sn.conv === 'range' ? 'Δσ' : 'σa') + '）');
+    var below = 0;
+    for (i = 0; i < d.rows.length; i++) if (!isFinite(d.rows[i].N)) below += d.rows[i].n;
+    A.setT('dm-below', A.fmtInt(below) + ' / ' + A.fmtInt(d.nTot));
+    var infN = d.rows.filter(function (r) { return !isFinite(r.sar); }).length;
+    A.setT('dm-crit', infN ? '⚠ 有 ' + infN + ' 个循环的平均应力超过了修正公式的分母（σm ≥ Su/Sy/σf′），' +
+      '等效幅被判为无穷 —— 这种循环在这套准则下已经不算疲劳问题，而是静强度问题。'
+      : (below === d.nTot ? '全部循环都在截止应力以下：这套 S-N 曲线判为无限寿命。'
+        : '损伤最大的那一个循环占了总损伤的 ' + A.fmt(100 * (d.rows[0] ? d.rows[0].d / d.D : 0), 1) + '%。'));
+
+    // S-N 图
+    var F = new AEPlot.Frame('dm-fig-sn', { pad: { l: 66, r: 20, t: 20, b: 44 }, fmt: A.fmt });
+    var Nlo = 3, Nhi = 9;
+    var Smin = Math.max(1, sn.Scut * 0.55), Smax = Math.max(sn.segs[0].S0 * 1.6, d.sarMax * (sn.conv === 'range' ? 2 : 1) * 1.3);
+    F.setDomain(Nlo, Nhi, lg(Smin), lg(Smax * 1.05));
+    logAxis(F, { xlog: true, ylog: true, xlabel: '循环数 N', ylabel: (sn.conv === 'range' ? 'Δσ' : 'σa') + ' (MPa)' });
+    var curve = [];
+    for (i = 0; i <= 200; i++) {
+      var Nv = Math.pow(10, Nlo + (Nhi - Nlo) * i / 200);
+      curve.push([lg(Nv), lg(sn.Sf(Nv))]);
+    }
+    F.path(curve, { stroke: PIN.ink, width: 2 });
+    if (sn.Scut > 0) F.hline(lg(sn.Scut), { stroke: PIN.ash, dash: '5 5' });
+    /* 载荷谱的超越曲线（按等效幅从大到小累计循环数）。画两条：
+     *   虚线 = 跑一遍谱；实线 = 跑到损伤达临界那么多遍。
+     * 实线越靠近 S-N 曲线，说明寿命判据越吃紧 —— 比「把循环点画在曲线上」有信息得多
+     * （那种画法里每个点都恰好落在曲线上，纯属同义反复）。*/
+    var byS = d.rows.slice().filter(function (r) { return isFinite(r.S) && r.S > 0; })
+      .sort(function (a2, b2) { return b2.S - a2.S; });
+    var cum = 0, one = [], full = [];
+    var reps = isFinite(d.life) ? Math.max(1, d.life) : 1;
+    for (i = 0; i < byS.length; i++) {
+      cum += byS[i].n;
+      one.push([lg(cum), lg(byS[i].S)]);
+      full.push([lg(cum * reps), lg(byS[i].S)]);
+    }
+    if (one.length) {
+      F.path(one, { stroke: PIN.red, width: 1.4, dash: '6 4' });
+      if (isFinite(d.life)) F.path(full, { stroke: PIN.red, width: 2.2 });
+      var last = one[one.length - 1];
+      F.P.text(F.sx(last[0]) + 6, F.sy(last[1]), '一遍谱 ' + A.fmtInt(cum) + ' 个循环',
+        { size: 10, fill: PIN.red, anchor: 'start', plate: true,
+          offsets: [[0, 0], [0, -13], [0, 15], [-90, -13]] });
+      if (isFinite(d.life)) {
+        var lf = full[full.length - 1];
+        F.P.text(F.sx(lf[0]) - 6, F.sy(lf[1]), '跑满寿命 ×' + A.fmtBig(reps, 2),
+          { size: 11, fill: PIN.ink, weight: 600, anchor: 'end', plate: true,
+            offsets: [[0, 0], [0, -14], [0, 16], [0, -28]] });
+      }
+      var top = byS[0];
+      F.dot(lg(top.n), lg(top.S), { r: 4, fill: PIN.red, stroke: '#ffffff', width: 1 });
+      F.P.text(F.sx(lg(top.n)), F.sy(lg(top.S)) - 10,
+        '谱内最大 ' + (sn.conv === 'range' ? 'Δσ' : 'σa') + ' = ' + A.fmt(top.S, 0),
+        { size: 11, fill: PIN.ink, plate: true, weight: 600, offsets: [[0, 0], [0, -14], [70, -4], [0, 18]] });
+    }
+    if (sn.Scut > 0) {
+      F.P.text(F.x0 + 6, F.sy(lg(sn.Scut)) - 6, '截止 ' + A.fmt(sn.Scut, 1),
+        { size: 10, fill: PIN.mute, anchor: 'start', plate: true, offsets: [[0, 0], [0, -12], [0, 16]] });
+    }
+
+    // 循环数 vs 损伤
+    var F2 = new AEPlot.Frame('dm-fig-bins', { pad: { l: 50, r: 44, t: 16, b: 46 }, fmt: A.fmt });
+    var bins = C.bins, nmax = 0, dsum = 0;
+    for (i = 0; i < bins.length; i++) { nmax = Math.max(nmax, bins[i].n); dsum += bins[i].d; }
+    F2.setDomain(0, bins.length ? bins[bins.length - 1].hi : 1, 0, (nmax || 1) * 1.14);
+    F2.axes({ xlabel: '应力幅值 Δσ (MPa)', ylabel: '循环数',
+      xfmt: function (v) { return A.fmt(v, 0); }, yfmt: function (v) { return A.fmtInt(v); } });
+    for (i = 0; i < bins.length; i++) if (bins[i].n > 0) bar(F2, bins[i].lo, bins[i].hi, bins[i].n, PIN.stone, 1);
+    var dp = [], dmaxb = 0;
+    for (i = 0; i < bins.length; i++) dmaxb = Math.max(dmaxb, bins[i].d);
+    if (dmaxb > 0) {
+      for (i = 0; i < bins.length; i++) dp.push([bins[i].mid, bins[i].d / dmaxb * nmax * 1.0]);
+      F2.path(dp, { stroke: PIN.red, width: 2 });
+      for (i = 0; i < bins.length; i++) if (bins[i].d > 0) F2.dot(bins[i].mid, bins[i].d / dmaxb * nmax, { r: 2.4, fill: PIN.red });
+      var hi = 0;
+      for (i = 0; i < bins.length; i++) if (bins[i].d > bins[hi].d) hi = i;
+      F2.P.text(F2.sx(bins[hi].mid), F2.sy(nmax) + 4,
+        '损伤峰在 ' + A.fmt(bins[hi].mid, 0) + ' MPa 格（占 ' + A.fmt(100 * bins[hi].d / (dsum || 1), 0) + '%）',
+        { size: 10, fill: PIN.ink, plate: true, anchor: 'end', offsets: [[0, 0], [0, 14], [0, 28]] });
+      F2.P.text(F2.x1 + 6, F2.sy(nmax) + 4, A.fmt(dmaxb, 4), { size: 10, fill: PIN.red, anchor: 'start' });
+      F2.P.text(F2.x1 + 6, F2.y0, '0', { size: 10, fill: PIN.red, anchor: 'start' });
+    }
+
+    // 贡献表
+    var html = '';
+    for (i = 0; i < Math.min(12, d.rows.length); i++) {
+      var q = d.rows[i];
+      var frac = d.D > 0 ? q.d / d.D : 0;
+      html += '<tr><td>' + A.fmt(q.rng, 1) + '</td><td>' + A.fmt(q.sm, 1) + '</td><td>' +
+        A.fmt(q.sar, 1) + '</td><td>' + (isFinite(q.N) ? A.fmtBig(q.N, 2) : '∞') + '</td><td>' + q.n +
+        '</td><td>' + A.fmt(100 * frac, 1) + '% <span class="fl-bar" style="width:' +
+        Math.max(2, Math.round(frac * 60)) + 'px"></span></td></tr>';
+    }
+    tb('dm-tbody', html || '<tr><td colspan="6">没有循环</td></tr>');
+
+    // 修正对比
+    var base = C.meanCmp.filter(function (x) { return x.m === 'goodman'; })[0];
+    var html2 = '';
+    for (i = 0; i < C.meanCmp.length; i++) {
+      var m = C.meanCmp[i], act = m.m === S.dmMean;
+      var rel = base && base.D > 0 && isFinite(m.D) ? m.D / base.D : NaN;
+      html2 += '<tr><td>' + (act ? '<b>' + meanName(m.m) + '</b>' : meanName(m.m)) + '</td><td>' +
+        A.fmt(m.sarMax, 1) + '</td><td' + (act ? ' class="fl-hi"' : '') + '>' + A.fmt(m.D, 5) + '</td><td>' +
+        (isFinite(m.life) ? A.fmtBig(m.life, 3) : '∞') + '</td><td>' +
+        (isFinite(rel) ? A.fmt(rel, 2) + '×' : '—') + '</td></tr>';
+    }
+    tb('dm-mean-tbody', html2);
+  }
+  function meanName(m) {
+    return { none: '不修正', goodman: 'Goodman', gerber: 'Gerber', soderberg: 'Soderberg',
+      morrow: 'Morrow', swt: 'Smith-Watson-Topper', walker: 'Walker' }[m] || m;
+  }
+
+  /* ════════ 4. 安全系数与缺口 ════════ */
+  var CRITS = [['goodman', 'Goodman', PIN.ink], ['gerber', 'Gerber', PIN.purple],
+    ['soderberg', 'Soderberg', PIN.blue], ['asme', 'ASME 椭圆', PIN.green],
+    ['morrow', 'Morrow', PIN.ash], ['langer', 'Langer 屈服', PIN.stone]];
+  function paneSafety(S, C, A) {
+    var i, mr = C.marin, Se = mr.Se, Su = S.sfSu, Sy = S.sfSy, sf = C.smat.sf;
+    var w = C.work;
+    A.setT('sf-seprime', A.fmt(mr.sePrime, 1));
+    A.setT('sf-se', A.fmt(Se, 1));
+    A.setT('sf-q', A.fmt(C.notch.q, 4));
+    A.setT('sf-kf', A.fmt(C.notch.Kf, 4));
+    A.setT('sf-nom', A.fmt(C.notch.Kf * w.sa, 2));
+    A.setT('sf-sig', A.fmt(C.neu.sig, 2));
+    A.setT('sf-eps', A.fmt(C.neu.eps, 6));
+    A.setT('sf-sigg', A.fmt(C.gli.sig, 2));
+    A.setT('sf-nlife', isFinite(C.enLife) ? A.fmtBig(C.enLife, 3) : '∞');
+    A.setT('sf-nt', A.fmtBig(C.enNt, 3));
+
+    var rows = '';
+    [['ka 表面', mr.ka, FL.mech.SURF[S.sfSurf].label + '  ka = a·Su^b'],
+      ['kb 尺寸', mr.kb, S.sfMode === 'axial' ? '轴向载荷无尺寸效应' : 'd = ' + A.fmt(S.sfD, 1) + ' mm'],
+      ['kc 载荷', mr.kc, { bending: '弯曲', axial: '轴向', torsion: '扭转' }[S.sfMode]],
+      ['kd 温度', mr.kd, A.fmt(S.sfTemp, 0) + ' ℃'],
+      ['ke 可靠度', mr.ke, S.sfRel + '%  ke = 1 − 0.08z']].forEach(function (r) {
+      rows += '<tr><td>' + r[0] + '</td><td>' + A.fmt(r[1], 4) + '</td><td>' + esc(r[2]) + '</td></tr>';
+    });
+    tb('sf-marin-tbody', rows);
+
+    var worst = null, rows2 = '';
+    for (i = 0; i < CRITS.length; i++) {
+      var cid = CRITS[i][0];
+      var allow = FL.mech.haighLine(cid, w.sm, Se, Su, Sy, sf);
+      var n = FL.mech.fos(cid, w.sa, w.sm, Se, Su, Sy, sf);
+      if (worst === null || n < worst.n) worst = { n: n, name: CRITS[i][1] };
+      var okk = n >= 1;
+      rows2 += '<tr><td>' + CRITS[i][1] + '</td><td>' + (allow > 0 ? A.fmt(allow, 1) : '0') + '</td><td' +
+        (okk ? '' : ' class="fl-hi"') + '>' + (isFinite(n) ? A.fmt(n, 3) : '∞') + '</td><td>' +
+        (okk ? '过' : '不过') + '</td></tr>';
+    }
+    tb('sf-fos-tbody', rows2);
+    A.setT('sf-verdict', '工作点 σa = ' + A.fmt(w.sa, 1) + '、σm = ' + A.fmt(w.sm, 1) + ' MPa' +
+      (S.sfFromSpec ? '（取自当前载荷谱的最大循环）' : '（手工输入）') +
+      '；最保守的是 ' + worst.name + '，n = ' + A.fmt(worst.n, 3) +
+      (worst.n >= 1 ? ' —— 无限寿命侧安全。' : ' —— 按该准则已不满足无限寿命，需要看有限寿命或降载。'));
+
+    // Haigh 图
+    var F = new AEPlot.Frame('sf-fig-haigh', { pad: { l: 62, r: 20, t: 20, b: 44 }, fmt: A.fmt });
+    var xmax = Math.max(Su * 1.05, w.sm * 1.2, 10), ymax = Math.max(Se * 1.25, w.sa * 1.25, Sy * 0.6);
+    F.setDomain(0, xmax, 0, ymax);
+    F.axes({ xlabel: '平均应力 σm (MPa)', ylabel: '应力幅 σa (MPa)',
+      xfmt: function (v) { return A.fmt(v, 0); }, yfmt: function (v) { return A.fmt(v, 0); } });
+    for (i = 0; i < CRITS.length; i++) {
+      var pts = [], j;
+      for (j = 0; j <= 120; j++) {
+        var sm = xmax * j / 120;
+        var v = FL.mech.haighLine(CRITS[i][0], sm, Se, Su, Sy, sf);
+        if (v >= 0) pts.push([sm, v]);
+      }
+      F.path(pts, { stroke: CRITS[i][2], width: CRITS[i][0] === 'langer' ? 1.2 : 1.8,
+        dash: CRITS[i][0] === 'langer' ? '6 4' : null });
+    }
+    // 载荷线 + 工作点
+    if (w.sa > 0) {
+      var t = Math.min(xmax / Math.max(w.sm, 1e-6), ymax / w.sa) * 1.0;
+      F.path([[0, 0], [w.sm * t, w.sa * t]], { stroke: PIN.red, width: 1, dash: '4 4' });
+    }
+    F.dot(w.sm, w.sa, { r: 5, fill: PIN.red, stroke: '#ffffff', width: 1.2 });
+    // 标注放在数据的空侧（右上角通常是空的）
+    F.P.text(F.sx(w.sm), F.sy(w.sa) - 10, '工作点 (' + A.fmt(w.sm, 0) + ', ' + A.fmt(w.sa, 0) + ')',
+      { size: 11, fill: PIN.ink, weight: 600, plate: true, offsets: [[0, 0], [0, -15], [0, 20], [-70, 0]] });
+    var labs = [['Se', 0, Se], ['Su', Su, 0], ['Sy', Sy, 0]];
+    for (i = 0; i < labs.length; i++) {
+      if (labs[i][1] > xmax || labs[i][2] > ymax) continue;
+      F.P.text(F.sx(labs[i][1]) + (i === 0 ? 16 : 0), F.sy(labs[i][2]) - 6,
+        labs[i][0] + '=' + A.fmt(labs[i][1] || labs[i][2], 0),
+        { size: 10, fill: PIN.mute, plate: true, offsets: [[0, 0], [0, -12], [0, 16], [-24, -12]] });
+    }
+
+    // ε-N
+    var m = C.smat, cy = C.cyclic;
+    var F2 = new AEPlot.Frame('sf-fig-en', { pad: { l: 58, r: 18, t: 16, b: 46 }, fmt: A.fmt });
+    F2.setDomain(0, 8, lg(2e-5), lg(0.06));
+    logAxis(F2, { xlog: true, ylog: true, xlabel: '反向次数 2Nf', ylabel: '应变幅 εa' });
+    var tot = [], ela = [], pla = [];
+    for (i = 0; i <= 160; i++) {
+      var x = Math.pow(10, 8 * i / 160);
+      var e1 = m.sf / m.E * Math.pow(x, m.b), e2 = m.ef * Math.pow(x, m.c);
+      tot.push([lg(x), lg(e1 + e2)]); ela.push([lg(x), lg(e1)]); pla.push([lg(x), lg(e2)]);
+    }
+    F2.path(ela, { stroke: PIN.blue, width: 1.3, dash: '5 4' });
+    F2.path(pla, { stroke: PIN.purple, width: 1.3, dash: '5 4' });
+    F2.path(tot, { stroke: PIN.ink, width: 2 });
+    if (isFinite(C.enLife) && C.enLife > 0.5) {
+      F2.dot(lg(2 * C.enLife), lg(C.neu.eps), { r: 4.5, fill: PIN.red, stroke: '#ffffff', width: 1 });
+      F2.P.text(F2.sx(lg(2 * C.enLife)), F2.sy(lg(C.neu.eps)) - 9,
+        'Nf = ' + A.fmtBig(C.enLife, 2), { size: 11, fill: PIN.ink, weight: 600, plate: true,
+          offsets: [[0, 0], [0, -14], [-46, -4], [0, 18]] });
+    }
+    F2.P.text(F2.sx(lg(2 * C.enNt)), F2.y1 + 12, '过渡 2Nt', { size: 10, fill: PIN.mute, plate: true,
+      offsets: [[0, 0], [0, 13], [0, 26]] });
+    F2.vline(lg(2 * C.enNt), { stroke: PIN.stone, dash: '3 4' });
+  }
+
+  /* ════════ 5. 裂纹扩展 ════════ */
+  function paneCrack(S, C, A) {
+    var i, ck = C.crack, G = FL.crack.GEOM[S.ckGeom];
+    A.setT('ck-geom-note', G.label + ' —— ' + G.note + '；σmax = ' + A.fmt(ck.sigMax, 1) +
+      ' MPa（Δσ=' + A.fmt(S.ckDsig, 0) + ', R=' + A.fmt(S.ckR, 2) + '）');
+    A.setT('ck-k0', A.fmt(ck.K0, 3));
+    A.setT('ck-dk0', A.fmt(ck.dK0, 3) + (S.ckTh ? '（门槛 ' + A.fmt(FL.crack.dKth(ck.law, S.ckR), 2) + '）' : ''));
+    A.setT('ck-y0', A.fmt(ck.Y0, 4));
+    A.setT('ck-acrit', A.fmt(ck.aCrit, 3) + (ck.aCrit >= ck.aMaxGeom * 0.99 ? '（受几何上限约束）' : ''));
+    A.setT('ck-n', isFinite(ck.grow.N) ? A.fmtBig(ck.grow.N, 3) : '不扩展');
+    A.setT('ck-nd', isFinite(ck.insp.N) ? A.fmtBig(ck.insp.N, 3) : '不扩展');
+    A.setT('ck-insp', isFinite(ck.insp.interval) ? A.fmtBig(ck.insp.interval, 3) : '—');
+    A.setT('ck-net', A.fmt(ck.net.ratio, 3) + (ck.net.yields ? '  ⚠ 已净截面屈服' : ''));
+    A.setT('ck-blocks', ck.spec ? A.fmtBig(ck.spec.blocks, 3) + ' 遍（' + A.fmtBig(ck.spec.cycles, 3) + ' 循环）' : '未启用');
+    A.setT('ck-stop', (ck.grow.stopped ? '等幅：' + ck.grow.stopped + '。' : '') +
+      (ck.spec ? '变幅：' + ck.spec.stopped + '（谱压成 ' + ck.specN + ' 个幅值×均值格子以便快算）。' : '') +
+      (S.ckTh && ck.dK0 < FL.crack.dKth(ck.law, S.ckR) ? ' 注意 a₀ 处的 ΔK 已在门槛以下 —— 该裂纹按此准则不会扩展。' : ''));
+
+    // a-N
+    var F = new AEPlot.Frame('ck-fig-an', { pad: { l: 62, r: 20, t: 20, b: 44 }, fmt: A.fmt });
+    var Nmax = 1;
+    if (isFinite(ck.grow.N) && ck.grow.N > 0) Nmax = ck.grow.N;
+    if (ck.spec && isFinite(ck.spec.cycles)) Nmax = Math.max(Nmax, ck.spec.cycles);
+    F.setDomain(0, Nmax * 1.04, 0, ck.aCrit * 1.12);
+    F.axes({ xlabel: '循环数 N', ylabel: '裂纹尺寸 a (mm)',
+      xfmt: function (v) { return v >= 1e5 ? v.toExponential(1) : A.fmtInt(v); },
+      yfmt: function (v) { return A.fmt(v, 1); } });
+    F.hline(ck.aCrit, { stroke: PIN.ash, dash: '6 4' });
+    F.hline(ck.aD, { stroke: PIN.blue, dash: '3 4' });
+    if (ck.grow.pts.length > 1) F.path(ck.grow.pts, { stroke: PIN.ink, width: 2 });
+    if (ck.spec && ck.spec.pts.length > 1) {
+      var sp = ck.spec.pts.map(function (p) { return [p[0] * (ck.spec.cycles / Math.max(1, ck.spec.blocks)), p[1]]; });
+      F.path(sp, { stroke: PIN.red, width: 2, dash: '7 4' });
+    }
+    F.P.text(F.x0 + 6, F.sy(ck.aCrit) - 6, 'a_crit = ' + A.fmt(ck.aCrit, 2) + ' mm',
+      { size: 10, fill: PIN.mute, anchor: 'start', plate: true, offsets: [[0, 0], [0, -12], [0, 16]] });
+    F.P.text(F.x0 + 6, F.sy(ck.aD) - 6, '可检出 aD = ' + A.fmt(ck.aD, 2),
+      { size: 10, fill: PIN.blue, anchor: 'start', plate: true, offsets: [[0, 0], [0, -12], [0, 16], [120, 0]] });
+    if (isFinite(ck.grow.N) && ck.grow.N > 0) {
+      // 单调递增曲线 ⇒ 标注先往左上退（08-07 教训）
+      F.P.text(F.sx(ck.grow.N), F.sy(ck.aCrit * 0.999) + 2, '等幅 N = ' + A.fmtBig(ck.grow.N, 3),
+        { size: 11, fill: PIN.ink, weight: 600, anchor: 'end', plate: true,
+          offsets: [[-8, -8], [-8, -24], [-8, 14], [-60, -40]] });
+    }
+
+    // da/dN
+    var F2 = new AEPlot.Frame('ck-fig-dadn', { pad: { l: 62, r: 18, t: 16, b: 46 }, fmt: A.fmt });
+    var dkLo = S.ckTh ? Math.max(0.5, S.ckDkth * 0.7) : 1, dkHi = Math.min(S.ckKc * 0.98, 400);
+    var rLo = 1e-9, rHi = 1e-1;
+    F2.setDomain(lg(dkLo), lg(dkHi), lg(rLo), lg(rHi));
+    logAxis(F2, { xlog: true, ylog: true, xlabel: 'ΔK (MPa·m^0.5)', ylabel: 'da/dN (mm/循环)' });
+    [[S.ckR, PIN.ink, 2], [0, PIN.ash, 1.3], [0.7, PIN.blue, 1.3]].forEach(function (rr) {
+      var pts = [], j;
+      for (j = 0; j <= 160; j++) {
+        var dk = Math.pow(10, lg(dkLo) + (lg(dkHi) - lg(dkLo)) * j / 160);
+        var v = FL.crack.rate(dk, rr[0], ck.law);
+        if (v > rLo && isFinite(v) && v < rHi) pts.push([lg(dk), lg(v)]);
+        else pts.push(null);
+      }
+      F2.path(pts, { stroke: rr[1], width: rr[2] });
+    });
+    F2.dot(lg(Math.max(ck.dK0, dkLo)), lg(Math.max(rLo * 1.2, FL.crack.rate(ck.dK0, S.ckR, ck.law))),
+      { r: 4, fill: PIN.red, stroke: '#ffffff', width: 1 });
+    F2.P.text(F2.sx(lg(Math.max(ck.dK0, dkLo))), F2.sy(lg(Math.max(rLo * 1.2, FL.crack.rate(ck.dK0, S.ckR, ck.law)))) - 9,
+      'a₀ 处', { size: 10, fill: PIN.ink, plate: true, weight: 600, offsets: [[0, 0], [0, -13], [26, -4], [0, 16]] });
+
+    // K(a)
+    var F3 = new AEPlot.Frame('ck-fig-k', { pad: { l: 58, r: 18, t: 16, b: 46 }, fmt: A.fmt });
+    var aHi = Math.min(ck.aMaxGeom * 0.995, ck.aCrit * 1.5);
+    F3.setDomain(0, aHi, 0, Math.max(S.ckKc * 1.15, ck.K0 * 1.2));
+    F3.axes({ xlabel: '裂纹尺寸 a (mm)', ylabel: 'K (MPa·m^0.5)',
+      xfmt: function (v) { return A.fmt(v, 1); }, yfmt: function (v) { return A.fmt(v, 0); } });
+    var kp = [], dkp = [];
+    for (i = 1; i <= 160; i++) {
+      var a = aHi * i / 160;
+      kp.push([a, FL.crack.K(a, ck.sigMax, S.ckGeom, ck.g)]);
+      dkp.push([a, FL.crack.K(a, S.ckDsig, S.ckGeom, ck.g)]);
+    }
+    F3.path(kp, { stroke: PIN.ink, width: 2 });
+    F3.path(dkp, { stroke: PIN.red, width: 1.6, dash: '6 4' });
+    F3.hline(S.ckKc, { stroke: PIN.ash, dash: '5 5' });
+    F3.vline(ck.aCrit, { stroke: PIN.stone, dash: '3 4' });
+    F3.P.text(F3.x0 + 6, F3.sy(S.ckKc) - 6, 'Kc = ' + A.fmt(S.ckKc, 0),
+      { size: 10, fill: PIN.mute, anchor: 'start', plate: true, offsets: [[0, 0], [0, -12], [0, 16]] });
+    F3.P.text(F3.sx(ck.aCrit), F3.y1 + 12, 'a_crit', { size: 10, fill: PIN.ink, plate: true,
+      offsets: [[0, 0], [0, 14], [-24, 0], [24, 0]] });
+    F3.P.text(F3.x1 - 4, F3.sy(FL.crack.K(aHi * 0.98, S.ckDsig, S.ckGeom, ck.g)) - 8, 'ΔK',
+      { size: 10, fill: PIN.red, anchor: 'end', plate: true, offsets: [[0, 0], [0, -12], [0, 16]] });
+
+    // CT 表
+    var html = '';
+    [0.2, 0.3, 0.4, 0.5, 0.6, 0.7].forEach(function (al) {
+      var f = FL.crack.fCT(al), K = FL.crack.Kct(al * 50, 10, 25, 50);
+      html += '<tr><td>' + al.toFixed(2) + '</td><td>' + A.fmt(f, 4) + '</td><td>' + A.fmt(K, 2) + '</td></tr>';
+    });
+    tb('ck-ct-tbody', html);
+  }
+
+  /* ════════ 6. 随机振动 ════════ */
+  function paneSpectral(S, C, A) {
+    var i, b = C.bands, psd = C.psd;
+    A.setT('sp-psd-note', (S.spSrc === 'welch'
+      ? 'Welch 估计：' + C.spec.name + '，fs = ' + A.fmt(1 / C.dt, 1) + ' Hz，段长 ' + psd.nperseg +
+        '（Hann 窗 · 50% 重叠 · 逐段去均值 · 单边密度），共 ' + psd.nseg + ' 段'
+      : '参数谱：' + S.spF1 + '–' + S.spF2 + ' Hz @ ' + A.fmt(S.spG1, 2) + ' 与 ' +
+        S.spF3 + '–' + S.spF4 + ' Hz @ ' + A.fmt(S.spG2, 2) + ' MPa²/Hz') +
+      ' · 谱矩按圆频率加权，m₀ 就是方差');
+    A.setT('sp-m0', A.fmt(b.m0, 3));
+    A.setT('sp-rms', A.fmt(b.rms, 3));
+    A.setT('sp-m1', A.fmtBig(b.m1, 4));
+    A.setT('sp-m2', A.fmtBig(b.m2, 4));
+    A.setT('sp-m4', A.fmtBig(b.m4, 4));
+    A.setT('sp-nu', A.fmt(b.nu, 3));
+    A.setT('sp-mp', A.fmt(b.mp, 3));
+    A.setT('sp-a1', A.fmt(b.alpha1, 4));
+    A.setT('sp-a2', A.fmt(b.alpha2, 4));
+    A.setT('sp-a075', A.fmt(b.alpha075, 4));
+    A.setT('sp-eps', A.fmt(b.eps, 4));
+
+    // PSD 图
+    var F = new AEPlot.Frame('sp-fig-psd', { pad: { l: 66, r: 20, t: 18, b: 44 }, fmt: A.fmt });
+    var pmax = 0, pmin = Infinity;
+    for (i = 1; i < psd.p.length; i++) {
+      pmax = Math.max(pmax, psd.p[i]);
+      if (psd.p[i] > 0) pmin = Math.min(pmin, psd.p[i]);
+    }
+    if (!isFinite(pmin) || pmin <= 0) pmin = pmax * 1e-6 || 1e-9;
+    var loP = Math.max(lg(pmin), lg(pmax) - 6);
+    F.setDomain(0, psd.f[psd.f.length - 1], loP, lg(pmax) + 0.3);
+    logAxis(F, { ylog: true, xlabel: '频率 (Hz)', ylabel: 'PSD (MPa²/Hz)',
+      xfmt: function (v) { return A.fmt(v, 0); } });
+    var pp = [];
+    for (i = 0; i < psd.f.length; i++) {
+      pp.push(psd.p[i] > 0 ? [psd.f[i], Math.max(loP, lg(psd.p[i]))] : null);
+    }
+    F.path(pp, { stroke: PIN.ink, width: 1.3 });
+    var ipk = 1;
+    for (i = 2; i < psd.p.length; i++) if (psd.p[i] > psd.p[ipk]) ipk = i;
+    F.dot(psd.f[ipk], lg(psd.p[ipk]), { r: 3.4, fill: PIN.red });
+    F.P.text(F.sx(psd.f[ipk]), F.sy(lg(psd.p[ipk])) - 9,
+      '峰 ' + A.fmt(psd.f[ipk], 1) + ' Hz · ' + A.fmt(psd.p[ipk], 3),
+      { size: 11, fill: PIN.ink, weight: 600, plate: true, offsets: [[0, 0], [0, -14], [60, -4], [-60, -4]] });
+    F.P.text(F.x1 - 4, F.y1 + 14, 'RMS = ' + A.fmt(b.rms, 2) + ' MPa · α₂ = ' + A.fmt(b.alpha2, 3),
+      { size: 10, fill: PIN.mute, anchor: 'end', plate: true, offsets: [[0, 0], [0, 14]] });
+
+    // 方法表
+    var nbT = C.methods[0].T, rows = '';
+    var tdT = C.tdRate ? 1 / C.tdRate : null;
+    for (i = 0; i < C.methods.length; i++) {
+      var m = C.methods[i];
+      if (m.na) {
+        rows += '<tr><td>' + m.label + '</td><td colspan="5">不适用 —— ' + esc(m.note) + '</td></tr>';
+        continue;
+      }
+      var rel = tdT ? m.T / tdT : NaN;
+      rows += '<tr><td>' + m.label + '</td><td>' + A.fmt(m.d, 4) + '</td><td>' + A.fmtBig(m.T, 3) +
+        '</td><td>' + A.fmt(nbT / m.T, 3) + '</td><td>' + (isFinite(rel) ? A.fmt(rel, 3) + '×' : '—') +
+        '</td><td>' + A.fmt(m.d * S.spT, 6) + '</td></tr>';
+    }
+    if (tdT) {
+      rows += '<tr><td><b>时域雨流（参照）</b></td><td class="fl-hi">' + A.fmt(C.tdRate, 4) +
+        '</td><td class="fl-hi">' + A.fmtBig(tdT, 3) + '</td><td>' + A.fmt(nbT / tdT, 3) +
+        '</td><td>1.000×</td><td>' + A.fmt(C.tdRate * S.spT, 6) + '</td></tr>';
+    }
+    tb('sp-tbody', rows);
+    if (tdT) {
+      var best = null;
+      for (i = 0; i < C.methods.length; i++) {
+        if (C.methods[i].na) continue;
+        var e = Math.abs(Math.log(C.methods[i].T / tdT));
+        if (best === null || e < best.e) best = { e: e, m: C.methods[i] };
+      }
+      A.setT('sp-cross', '时域参照：把这条信号按四点法雨流计数，用同一条 N = C·σa^-k 算损伤，' +
+        '得到寿命 ' + A.fmtBig(tdT, 3) + ' s（信号本身只有 ' + A.fmt(C.stats.T, 2) + ' s，' +
+        '所以这是把损伤率外推出去的结果）。这条谱上最接近时域结果的是 ' + best.m.label +
+        '（差 ' + A.fmt(100 * (best.m.T / tdT - 1), 1) + '%）；窄带解差 ' +
+        A.fmt(100 * (nbT / tdT - 1), 1) + '%。');
+    } else {
+      A.setT('sp-cross', '参数谱没有对应的时域信号，所以这一格没有时域参照 —— 想对照就把谱的来源切回「当前载荷谱的 Welch 估计」。');
+    }
+
+    // 概率密度对比
+    var F2 = new AEPlot.Frame('sp-fig-pdf', { pad: { l: 62, r: 18, t: 16, b: 46 }, fmt: A.fmt });
+    var smax = 4.2 * b.rms;
+    var hist = null;
+    if (C.tdCycles) {
+      var nb2 = 22, hw = smax / nb2, h = [], tot = 0;
+      for (i = 0; i < nb2; i++) h.push(0);
+      for (i = 0; i < C.tdCycles.length; i++) {
+        var sa = C.tdCycles[i].rng / 2;
+        if (sa >= smax) continue;
+        h[Math.min(nb2 - 1, Math.floor(sa / hw))] += C.tdCycles[i].count;
+        tot += C.tdCycles[i].count;
+      }
+      if (tot > 0) { hist = { h: h, hw: hw, tot: tot, nb: nb2 }; }
+    }
+    var pdfMax = 0;
+    for (i = 1; i <= 100; i++) {
+      var s = smax * i / 100;
+      pdfMax = Math.max(pdfMax, FL.spec.nbPDF(b, s), FL.spec.dirlikPDF(b, s));
+    }
+    if (hist) for (i = 0; i < hist.nb; i++) pdfMax = Math.max(pdfMax, hist.h[i] / hist.tot / hist.hw);
+    F2.setDomain(0, smax, 0, pdfMax * 1.15);
+    F2.axes({ xlabel: '应力幅 σa (MPa)', ylabel: '概率密度',
+      xfmt: function (v) { return A.fmt(v, 0); }, yfmt: function (v) { return A.fmt(v, 3); } });
+    if (hist) {
+      for (i = 0; i < hist.nb; i++) {
+        if (hist.h[i] > 0) bar(F2, i * hist.hw, (i + 1) * hist.hw, hist.h[i] / hist.tot / hist.hw, PIN.stone, 1);
+      }
+    }
+    var bw = FL.spec.tbCoef(b, 'm2'), zc = FL.spec.zbCoef(b, 'm1');
+    [[function (s) { return FL.spec.nbPDF(b, s); }, PIN.ink, 2],
+      [function (s) { return FL.spec.dirlikPDF(b, s); }, PIN.red, 2],
+      [function (s) { return FL.spec.tbPDF(b, s, bw); }, PIN.purple, 1.4],
+      [function (s) { return FL.spec.zbPDF(b, s, zc); }, PIN.blue, 1.4]].forEach(function (fn) {
+      var pts = [], j;
+      for (j = 1; j <= 160; j++) {
+        var sv = smax * j / 160, vv = fn[0](sv);
+        pts.push(isFinite(vv) ? [sv, vv] : null);
+      }
+      F2.path(pts, { stroke: fn[1], width: fn[2] });
+    });
+    F2.P.text(F2.x1 - 4, F2.y1 + 14, 'α₂ = ' + A.fmt(b.alpha2, 3) + '（1 = 窄带）',
+      { size: 10, fill: PIN.mute, anchor: 'end', plate: true, offsets: [[0, 0], [0, 14]] });
+  }
+
+  /* ════════ 读数导出 ════════ */
+  function dumpReadouts(S, C, A) {
+    var L = [], i;
+    L.push('疲劳工作台 · 当前读数');
+    L.push('载荷谱：' + C.spec.name + '（缩放 ×' + S.scale + '，偏置 ' + S.bias + ' MPa）');
+    L.push('统计：n=' + C.stats.n + '，min/max=' + A.fmt(C.stats.min, 1) + '/' + A.fmt(C.stats.max, 1) +
+      '，均值=' + A.fmt(C.stats.mean, 2) + '，RMS=' + A.fmt(C.stats.rms, 2) +
+      '，反向点=' + C.stats.revs + '，不规则因子=' + A.fmt(C.stats.irr, 4));
+    var n = 0;
+    for (i = 0; i < C.cycles.length; i++) n += C.cycles[i].count;
+    L.push('雨流（' + S.ctMode + '）：循环数=' + n + '，最大幅值=' + A.fmt(C.stats.max - C.stats.min, 1));
+    L.push('S-N：' + C.sn.label + '，口径=' + C.sn.conv + '，修正=' + S.dmMean +
+      '，D=' + A.fmt(C.dam.D, 6) + '，可重复遍数=' + A.fmtBig(C.dam.life, 4) + '，DEL@2e6=' + A.fmt(C.del, 2));
+    L.push('耐久限：Se′=' + A.fmt(C.marin.sePrime, 1) + '，Se=' + A.fmt(C.marin.Se, 1) +
+      '，Kf=' + A.fmt(C.notch.Kf, 3) + '，Neuber σ=' + A.fmt(C.neu.sig, 2) +
+      '，ε=' + A.fmt(C.neu.eps, 6) + '，Nf=' + A.fmtBig(C.enLife, 3));
+    L.push('裂纹：a_crit=' + A.fmt(C.crack.aCrit, 3) + ' mm，等幅寿命=' + A.fmtBig(C.crack.grow.N, 4) +
+      '，检查间隔=' + A.fmtBig(C.crack.insp.interval, 4));
+    L.push('谱：m0=' + A.fmt(C.bands.m0, 4) + '，ν=' + A.fmt(C.bands.nu, 3) + '，α₂=' + A.fmt(C.bands.alpha2, 4));
+    for (i = 0; i < C.methods.length; i++) {
+      L.push('  ' + C.methods[i].label + '：寿命 ' + (C.methods[i].na ? '不适用' : A.fmtBig(C.methods[i].T, 4) + ' s'));
+    }
+    return L.join('\n');
+  }
+
+  function renderPane(t, S, C, A) {
+    if (t === 'signal') paneSignal(S, C, A);
+    else if (t === 'count') paneCount(S, C, A);
+    else if (t === 'damage') paneDamage(S, C, A);
+    else if (t === 'safety') paneSafety(S, C, A);
+    else if (t === 'crack') paneCrack(S, C, A);
+    else if (t === 'spectral') paneSpectral(S, C, A);
+  }
+
+  return { renderHero: renderHero, renderPane: renderPane, dumpReadouts: dumpReadouts };
+})();
+
+/* 疲劳工作台 —— 状态、控件绑定、计算流水线、页签。绘图与表格在 app_render.js。 */
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+  var PIN = { ink: '#262622', red: '#e60023', purple: '#7e238b', blue: '#617bff',
+    green: '#103c25', ash: '#91918c', stone: '#c8c8c1', hair: '#dadad3', mute: '#62625b' };
+  // 浅色设计系统必须先覆盖绘图主题（svg-plot 的默认值是深色的，09-17 实撞过白底看不见网格）
+  AEPlot.theme({ grid: '#e5e5e0', axis: PIN.hair, tick: PIN.mute, label: PIN.ash,
+    text: '#33332e', plate: '#ffffff', series: PIN.red });
+
+  var TABS = ['signal', 'count', 'damage', 'safety', 'crack', 'spectral', 'notes'];
+
+  var DEF = {
+    spec: 'broad', scale: 1, bias: 0, lc: 25, pts: 0,
+    ctMode: 'astm', ctBins: 24, ctMBins: 16, ctSort: 'rng',
+    dmCurve: 'ec3', dmConv: 'range', dmFat: 90, dmSref: 300, dmNref: 1e6, dmK1: 5, dmKnee: 1e6,
+    dmMean: 'goodman', dmGamma: 0.5, dmMat: 'sae1045', dmComp: false, dmDcrit: 1, dmRate: 60,
+    sfMat: 'sae1045', sfSu: 621, sfSy: 382, sfSurf: 'machined', sfD: 32, sfTemp: 20,
+    sfMode: 'bending', sfRel: '99', sfKt: 2.5, sfR: 3, sfRule: 'peterson',
+    sfSa: 90, sfSm: 120, sfFromSpec: true,
+    ckGeom: 'center', ckW: 100, ckC: 12, ckA0: 1, ckAd: 2, ckDsig: 120, ckR: 0.1,
+    ckLaw: 'paris', ckMat: 'sae1045', ckCc: 6.9e-9, ckM: 3, ckGamma: 0.6, ckKc: 100,
+    ckTh: true, ckDkth: 6, ckSf: 2, ckUseSpec: true,
+    spSrc: 'welch', spNperseg: 1024, spC: 1e18, spK: 5, spT: 3600,
+    spF1: 30, spF2: 70, spF3: 150, spF4: 190, spG1: 22.5, spG2: 10,
+    tab: 'signal'
+  };
+  var S = {};
+  for (var k0 in DEF) S[k0] = DEF[k0];
+
+  /* 控件绑定表：[元素 id, 状态键, 类型] */
+  var BIND = [
+    ['fl-spec', 'spec', 's'], ['sg-scale', 'scale', 'n'], ['sg-bias', 'bias', 'n'],
+    ['sg-lc', 'lc', 'i'], ['sg-pts', 'pts', 'i'],
+    ['ct-mode', 'ctMode', 's'], ['ct-bins', 'ctBins', 'i'], ['ct-mbins', 'ctMBins', 'i'],
+    ['ct-sort', 'ctSort', 's'],
+    ['dm-curve', 'dmCurve', 's'], ['dm-conv', 'dmConv', 's'], ['dm-fat', 'dmFat', 'n'],
+    ['dm-sref', 'dmSref', 'n'], ['dm-nref', 'dmNref', 'n'], ['dm-k1', 'dmK1', 'n'],
+    ['dm-knee', 'dmKnee', 'n'], ['dm-mean', 'dmMean', 's'], ['dm-gamma', 'dmGamma', 'n'],
+    ['dm-mat', 'dmMat', 's'], ['dm-comp', 'dmComp', 'b'], ['dm-dcrit', 'dmDcrit', 'n'],
+    ['dm-rate', 'dmRate', 'n'],
+    ['sf-mat', 'sfMat', 's'], ['sf-su', 'sfSu', 'n'], ['sf-sy', 'sfSy', 'n'],
+    ['sf-surf', 'sfSurf', 's'], ['sf-d', 'sfD', 'n'], ['sf-temp', 'sfTemp', 'n'],
+    ['sf-mode', 'sfMode', 's'], ['sf-rel', 'sfRel', 's'], ['sf-kt', 'sfKt', 'n'],
+    ['sf-r', 'sfR', 'n'], ['sf-rule', 'sfRule', 's'], ['sf-sa', 'sfSa', 'n'],
+    ['sf-sm', 'sfSm', 'n'], ['sf-fromspec', 'sfFromSpec', 'b'],
+    ['ck-geom', 'ckGeom', 's'], ['ck-w', 'ckW', 'n'], ['ck-c', 'ckC', 'n'],
+    ['ck-a0', 'ckA0', 'n'], ['ck-ad', 'ckAd', 'n'], ['ck-dsig', 'ckDsig', 'n'],
+    ['ck-r', 'ckR', 'n'], ['ck-law', 'ckLaw', 's'], ['ck-mat', 'ckMat', 's'],
+    ['ck-cc', 'ckCc', 'e'], ['ck-m', 'ckM', 'n'], ['ck-gamma', 'ckGamma', 'n'],
+    ['ck-kc', 'ckKc', 'n'], ['ck-th', 'ckTh', 'b'], ['ck-dkth', 'ckDkth', 'n'],
+    ['ck-sf', 'ckSf', 'n'], ['ck-usespec', 'ckUseSpec', 'b'],
+    ['sp-src', 'spSrc', 's'], ['sp-nperseg', 'spNperseg', 'i'], ['sp-c', 'spC', 'e'],
+    ['sp-k', 'spK', 'n'], ['sp-t', 'spT', 'n'], ['sp-f1', 'spF1', 'n'], ['sp-f2', 'spF2', 'n'],
+    ['sp-f3', 'spF3', 'n'], ['sp-f4', 'spF4', 'n'], ['sp-g1', 'spG1', 'n'], ['sp-g2', 'spG2', 'n']
+  ];
+
+  /* ── 数字格式 ── */
+  function fmt(v, d) {
+    if (v == null || !isFinite(v)) return '—';
+    var a = Math.abs(v);
+    if (a !== 0 && (a >= 1e6 || a < 1e-4)) return v.toExponential(d == null ? 3 : d);
+    return v.toFixed(d == null ? 3 : d);
+  }
+  function fmtInt(v) {
+    if (v == null || !isFinite(v)) return '—';
+    if (Math.abs(v) >= 1e7) return v.toExponential(4);
+    return Math.round(v).toLocaleString('en-US');
+  }
+  function fmtBig(v, d) {
+    if (v == null || !isFinite(v)) return '∞';
+    if (v >= 1e6) return v.toExponential(d == null ? 3 : d);
+    if (v >= 1000) return Math.round(v).toLocaleString('en-US');
+    return v.toFixed(d == null ? 2 : d);
+  }
+  function fmtPow(v) {
+    if (v <= 0) return '0';
+    var e = Math.round(Math.log10(v));
+    if (Math.abs(Math.log10(v) - e) < 1e-9) return e === 0 ? '1' : '1e' + e;
+    return v >= 1000 ? v.toExponential(0) : String(Math.round(v * 100) / 100);
+  }
+  function setT(id, s) { var e = $(id); if (e) e.textContent = s; }
+
+  /* ── 计算流水线 ── */
+  var C = {};
+  function compute() {
+    var i;
+    // 1. 载荷谱
+    var raw = FL.data.series(S.spec), sp = FL.data.spec(S.spec);
+    var y = [];
+    for (i = 0; i < raw.length; i++) y.push(raw[i] * S.scale + S.bias);
+    C.spec = sp; C.y = y; C.dt = sp.dt;
+    C.stats = FL.rf.stats(y, sp.dt);
+    C.revs = FL.rf.reversals(y);
+    // 2. 计数（三种口径都算，「对比」卡要用）
+    C.cnt = { astm: FL.rf.count(y, 'astm'), repeat: FL.rf.count(y, 'repeat'), drop: FL.rf.count(y, 'drop') };
+    C.cycles = C.cnt[S.ctMode].cycles;
+    C.residue = C.cnt.repeat.residue;
+    // 3. S-N 与损伤
+    var mat = FL.data.mat(S.dmMat);
+    C.mat = mat;
+    C.sn = snCurve();
+    var matSN = { Su: mat.Su, Sy: mat.Sy, sf: mat.sf };
+    C.dmOpt = { gamma: S.dmGamma, compression: S.dmComp ? 'include' : 'ignore', Dcrit: S.dmDcrit };
+    C.dam = FL.sn.damage(C.cycles, C.sn, S.dmMean, matSN, C.dmOpt);
+    C.del = FL.sn.del(C.dam.rows, C.sn.kPrimary, 2e6);
+    C.bins = FL.sn.damageByBin(C.dam.rows, Math.min(30, S.ctBins));
+    C.meanCmp = ['none', 'goodman', 'gerber', 'soderberg', 'morrow', 'swt', 'walker'].map(function (m) {
+      var d = FL.sn.damage(C.cycles, C.sn, m, matSN, C.dmOpt);
+      return { m: m, D: d.D, life: d.life, sarMax: d.sarMax };
+    });
+    // 4. 安全系数与缺口
+    var smat = FL.data.mat(S.sfMat);
+    C.marin = FL.mech.marin({ Su: S.sfSu, surf: S.sfSurf, d: S.sfD, mode: S.sfMode,
+      T: S.sfTemp, rel: S.sfRel, family: smat.family });
+    C.notch = FL.mech.notch(S.sfKt, S.sfR, S.sfSu, S.sfRule);
+    var work = { sa: S.sfSa, sm: S.sfSm };
+    if (S.sfFromSpec && C.cycles.length) {
+      var best = C.cycles[0];
+      for (i = 1; i < C.cycles.length; i++) if (C.cycles[i].rng > best.rng) best = C.cycles[i];
+      work = { sa: best.rng / 2, sm: best.mean };
+    }
+    C.work = work;
+    var cyc = FL.data.cyclic(smat);
+    C.cyclic = cyc; C.smat = smat;
+    C.neu = FL.mech.neuber(work.sa, C.notch.Kf, smat.E, cyc.Kp, cyc.np);
+    C.gli = FL.mech.glinka(work.sa, C.notch.Kf, smat.E, cyc.Kp, cyc.np);
+    C.enLife = FL.mech.strainLife(C.neu.eps, { E: smat.E, sf: smat.sf, b: smat.b, ef: smat.ef,
+      c: smat.c, mean: 'morrow', s0: work.sm });
+    C.enNt = FL.mech.transitionLife(smat);
+    // 5. 裂纹
+    crackCompute();
+    // 6. 谱
+    specCompute();
+  }
+
+  function snCurve() {
+    if (S.dmCurve === 'ec3') return FL.sn.make({ conv: S.dmConv, type: 'ec3', fat: S.dmFat });
+    if (S.dmCurve === 'basquin') {
+      // 用参考点换成 C：N = C·S^-k ⇒ C = Nref·Sref^k
+      var Cc = S.dmNref * Math.pow(S.dmSref, S.dmK1);
+      return FL.sn.make({ conv: S.dmConv, type: 'basquin', C: Cc, k: S.dmK1 });
+    }
+    return FL.sn.make({ conv: S.dmConv, type: '2slope', Sref: S.dmSref, Nref: S.dmNref,
+      k1: S.dmK1, Nknee: S.dmKnee, Ncut: 1e9 });
+  }
+
+  /** 把循环表压成 幅值×均值 的格子（变幅扩展要跑上千遍谱，不压会卡住页面） */
+  function binCycles(cycles, nr, nm) {
+    var i, rmax = 0, mmin = Infinity, mmax = -Infinity;
+    for (i = 0; i < cycles.length; i++) {
+      rmax = Math.max(rmax, cycles[i].rng);
+      mmin = Math.min(mmin, cycles[i].mean); mmax = Math.max(mmax, cycles[i].mean);
+    }
+    if (!(rmax > 0)) return cycles.slice();
+    if (mmax <= mmin) mmax = mmin + 1;
+    var map = {}, out = [];
+    for (i = 0; i < cycles.length; i++) {
+      var c = cycles[i];
+      var ri = Math.min(nr - 1, Math.floor(c.rng / rmax * nr));
+      var mi = Math.min(nm - 1, Math.floor((c.mean - mmin) / (mmax - mmin) * nm));
+      var key = ri + '|' + mi;
+      if (!map[key]) { map[key] = { rng: 0, mean: 0, count: 0 }; out.push(map[key]); }
+      var b = map[key];
+      b.rng += c.rng * c.count; b.mean += c.mean * c.count; b.count += c.count;
+    }
+    for (i = 0; i < out.length; i++) { out[i].rng /= out[i].count; out[i].mean /= out[i].count; }
+    return out;
+  }
+
+  function crackCompute() {
+    var g = { W: S.ckW, c: S.ckC };
+    var law = { type: S.ckLaw, C: S.ckCc, m: S.ckM, gamma: S.ckGamma, Kc: S.ckKc,
+      dKth: S.ckDkth, thOn: S.ckTh };
+    var sigMax = S.ckDsig / Math.max(1e-6, 1 - S.ckR);
+    var aMaxGeom = FL.crack.GEOM[S.ckGeom].amax(g);
+    var aCrit = FL.crack.aCrit(sigMax, S.ckGeom, g, S.ckKc);
+    var a0 = Math.min(S.ckA0, aCrit * 0.98);
+    C.crack = { g: g, law: law, sigMax: sigMax, aCrit: aCrit, aMaxGeom: aMaxGeom, a0: a0 };
+    C.crack.K0 = FL.crack.K(a0, sigMax, S.ckGeom, g);
+    C.crack.dK0 = FL.crack.K(a0, S.ckDsig, S.ckGeom, g);
+    C.crack.Y0 = FL.crack.GEOM[S.ckGeom].Y(a0, g);
+    C.crack.grow = FL.crack.grow({ a0: a0, af: aCrit * 0.999, geom: S.ckGeom, g: g, law: law,
+      dsig: S.ckDsig, R: S.ckR, nstep: 260 });
+    var aD = Math.min(Math.max(S.ckAd, a0), aCrit * 0.995);
+    C.crack.aD = aD;
+    C.crack.insp = FL.crack.inspection({ aD: aD, aC: aCrit * 0.999, geom: S.ckGeom, g: g,
+      law: law, dsig: S.ckDsig, R: S.ckR, sf: S.ckSf });
+    C.crack.net = FL.crack.netYield(a0, sigMax, S.ckGeom, g, S.sfSy);
+    if (S.ckUseSpec) {
+      var binned = binCycles(C.cycles, 24, 6);
+      C.crack.spec = FL.crack.growSpectrum({ cycles: binned, geom: S.ckGeom, g: g, law: law,
+        a0: a0, aLim: aCrit * 0.999, tol: 0.01 });
+      C.crack.specN = binned.length;
+    } else { C.crack.spec = null; }
+  }
+
+  function specCompute() {
+    var psd, note;
+    if (S.spSrc === 'param') {
+      var n = 16384, fsr = Math.max(64, Math.ceil(Math.max(S.spF2, S.spF4) * 2.56 / 64) * 64);
+      psd = FL.spec.makePSD([{ f1: S.spF1, f2: S.spF2, level: S.spG1 },
+        { f1: S.spF3, f2: S.spF4, level: S.spG2 }], fsr, n);
+      note = '参数谱：两段平坦带 ' + S.spF1 + '–' + S.spF2 + ' Hz（' + fmt(S.spG1, 2) +
+        ' MPa²/Hz）与 ' + S.spF3 + '–' + S.spF4 + ' Hz（' + fmt(S.spG2, 2) + ' MPa²/Hz）';
+      C.spTime = null;
+    } else {
+      var fs2 = 1 / C.dt;
+      psd = FL.spec.welch(C.y, fs2, S.spNperseg);
+      note = 'Welch 估计：' + C.spec.name + '，fs = ' + fmt(fs2, 1) + ' Hz，段长 ' +
+        psd.nperseg + '（Hann 窗、50% 重叠、逐段去均值），共 ' + psd.nseg + ' 段';
+      C.spTime = { y: C.y, dt: C.dt };
+    }
+    C.psd = psd;
+    C.bands = FL.spec.bands(psd);
+    C.methods = FL.spec.methods(psd, C.bands, S.spC, S.spK);
+    // 时域参照：同一条信号的雨流损伤率（只有 Welch 源才有时域信号）
+    C.tdRate = null;
+    if (C.spTime) {
+      var sn = FL.sn.make({ conv: 'amp', type: 'basquin', C: S.spC, k: S.spK });
+      var d = FL.sn.damage(C.cnt.repeat.cycles, sn, 'none', { Su: 1e9, Sy: 1e9, sf: 1e9 });
+      var T = C.stats.T;
+      C.tdRate = T > 0 ? d.D / T : null;
+      C.tdCycles = C.cnt.repeat.cycles;
+    }
+  }
+
+  /* ── 状态读写 ── */
+  function readControls() {
+    for (var i = 0; i < BIND.length; i++) {
+      var b = BIND[i], el = $(b[0]);
+      if (!el) continue;
+      if (b[2] === 'b') S[b[1]] = el.checked;
+      else if (b[2] === 'n' || b[2] === 'e') { var v = parseFloat(el.value); if (isFinite(v) && v !== 0) S[b[1]] = v; }
+      else if (b[2] === 'i') { var w = parseInt(el.value, 10); if (isFinite(w)) S[b[1]] = w; }
+      else S[b[1]] = el.value;
+    }
+  }
+  function writeControls() {
+    for (var i = 0; i < BIND.length; i++) {
+      var b = BIND[i], el = $(b[0]);
+      if (!el) continue;
+      if (b[2] === 'b') el.checked = !!S[b[1]];
+      // 'e' 型（C 系数这类跨十几个数量级的）写成科学记数，否则 1e18 会展开成 19 位数字
+      else if (b[2] === 'e') {
+        var vv = S[b[1]];
+        el.value = (Math.abs(vv) >= 1e5 || (vv !== 0 && Math.abs(vv) < 1e-3)) ? vv.toExponential() : String(vv);
+      } else el.value = S[b[1]];
+    }
+  }
+  function save() {
+    try { localStorage.setItem('fl-lab-v1', JSON.stringify(S)); } catch (e) { /* 隐身模式等 */ }
+  }
+  function load() {
+    var raw = null;
+    try {
+      var h = location.hash || '';
+      if (h.indexOf('s=') >= 0) raw = decodeURIComponent(h.slice(h.indexOf('s=') + 2));
+      if (raw) raw = atob(raw);
+    } catch (e) { raw = null; }
+    if (!raw) { try { raw = localStorage.getItem('fl-lab-v1'); } catch (e2) { raw = null; } }
+    if (!raw) return;
+    try {
+      var o = JSON.parse(raw), k;
+      for (k in DEF) if (o[k] !== undefined && typeof o[k] === typeof DEF[k]) S[k] = o[k];
+    } catch (e3) { /* 坏数据就用默认 */ }
+  }
+
+  /* ── 页签 ── */
+  function setTab(t) {
+    S.tab = t;
+    for (var i = 0; i < TABS.length; i++) {
+      var on = TABS[i] === t;
+      var chip = $('tab-' + TABS[i]), pane = $('pane-' + TABS[i]);
+      chip.setAttribute('aria-selected', on ? 'true' : 'false');
+      chip.setAttribute('tabindex', on ? '0' : '-1');
+      pane.hidden = !on;
+    }
+    FLR.renderPane(t, S, C, API);
+    save();
+    bumpRev();
+  }
+
+  /* ── 依赖显隐（曲线类型换了就换控件） ── */
+  function syncVisibility() {
+    var isEc3 = S.dmCurve === 'ec3', isBas = S.dmCurve === 'basquin';
+    $('dm-f-fat').hidden = !isEc3;
+    $('dm-f-sref').hidden = isEc3;
+    $('dm-f-nref').hidden = isEc3;
+    $('dm-f-k1').hidden = isEc3;
+    $('dm-f-knee').hidden = isEc3 || isBas;
+    var lab = $('dm-f-k1').querySelector('span');
+    if (lab) lab.textContent = isBas ? '反斜率 k' : '斜率 k₁';
+  }
+
+  var API = { fmt: fmt, fmtInt: fmtInt, fmtBig: fmtBig, fmtPow: fmtPow, setT: setT, $: $, PIN: PIN };
+
+  var REV = 0;
+  function bumpRev() { REV++; document.body.setAttribute('data-rev', String(REV)); }
+  function refresh() {
+    readControls();
+    syncVisibility();
+    compute();
+    FLR.renderHero(S, C, API);
+    FLR.renderPane(S.tab, S, C, API);
+    save();
+    bumpRev();   // 测试靠它判断「这次改动已经重算完了」，比等某段文字变化可靠
+  }
+
+  /* ── 初始化 ── */
+  function init() {
+    // 下拉框选项
+    var sel = $('fl-spec'), i;
+    for (i = 0; i < FL.data.SPECS.length; i++) {
+      var o = document.createElement('option');
+      o.value = FL.data.SPECS[i].id; o.textContent = FL.data.SPECS[i].name;
+      sel.appendChild(o);
+    }
+    var fats = [36, 40, 45, 50, 56, 63, 71, 80, 90, 100, 112, 125, 140, 160, 180];
+    for (i = 0; i < fats.length; i++) {
+      var f = document.createElement('option');
+      f.value = fats[i]; f.textContent = 'FAT ' + fats[i];
+      $('dm-fat').appendChild(f);
+    }
+    ['dm-mat', 'sf-mat', 'ck-mat'].forEach(function (id) {
+      for (var j = 0; j < FL.data.MATS.length; j++) {
+        var m = document.createElement('option');
+        m.value = FL.data.MATS[j].id; m.textContent = FL.data.MATS[j].name;
+        $(id).appendChild(m);
+      }
+    });
+    var gs = Object.keys(FL.crack.GEOM);
+    for (i = 0; i < gs.length; i++) {
+      var gg = document.createElement('option');
+      gg.value = gs[i]; gg.textContent = FL.crack.GEOM[gs[i]].label;
+      $('ck-geom').appendChild(gg);
+    }
+
+    load();
+    writeControls();
+
+    // 控件事件
+    for (i = 0; i < BIND.length; i++) {
+      (function (id) {
+        var el = $(id);
+        if (!el) return;
+        var ev = el.tagName === 'SELECT' || el.type === 'checkbox' ? 'change' : 'input';
+        el.addEventListener(ev, function () {
+          // 材料下拉联动：换材料就把该材料的默认参数写回输入框
+          if (id === 'sf-mat') {
+            var m = FL.data.mat(el.value);
+            $('sf-su').value = m.Su; $('sf-sy').value = m.Sy;
+          }
+          if (id === 'ck-mat') {
+            var m2 = FL.data.mat(el.value);
+            $('ck-cc').value = m2.Cp.toExponential(); $('ck-m').value = m2.mp;
+            $('ck-kc').value = m2.Kc; $('ck-dkth').value = m2.dKth;
+          }
+          refresh();
+        });
+      })(BIND[i][0]);
+    }
+    // 页签
+    TABS.forEach(function (t) {
+      $('tab-' + t).addEventListener('click', function () { setTab(t); });
+      $('tab-' + t).addEventListener('keydown', function (e) {
+        var ix = TABS.indexOf(t);
+        if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+          e.preventDefault();
+          var nx = (ix + (e.key === 'ArrowRight' ? 1 : TABS.length - 1)) % TABS.length;
+          setTab(TABS[nx]);
+          $('tab-' + TABS[nx]).focus();
+        }
+      });
+    });
+    $('sg-reset').addEventListener('click', function () {
+      for (var k in DEF) S[k] = DEF[k];
+      writeControls(); refresh();
+    });
+    $('fl-share').addEventListener('click', function () {
+      var btn = this, txt;
+      try {
+        location.hash = 's=' + btoa(JSON.stringify(S));
+        txt = location.href;
+      } catch (e) { txt = location.href; }
+      var done = function () { btn.textContent = '已复制链接'; setTimeout(function () { btn.textContent = '复制分享链接'; }, 1600); };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(txt).then(done, done);
+      } else done();
+    });
+    $('nt-copy').addEventListener('click', function () {
+      var btn = this, lines = FLR.dumpReadouts(S, C, API);
+      var done = function () { btn.textContent = '已复制读数'; setTimeout(function () { btn.textContent = '复制当前全部读数'; }, 1600); };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(lines).then(done, done);
+      } else done();
+    });
+
+    syncVisibility();
+    readControls();
+    compute();
+    FLR.renderHero(S, C, API);
+    setTab(S.tab && TABS.indexOf(S.tab) >= 0 ? S.tab : 'signal');
+    document.body.setAttribute('data-ready', '1');
+    bumpRev();
+  }
+
+  window.FLAB = { get S() { return S; }, get C() { return C; }, refresh: refresh, setTab: setTab,
+    compute: compute, binCycles: binCycles };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
+})();
+</script>
+</body>
+</html>
