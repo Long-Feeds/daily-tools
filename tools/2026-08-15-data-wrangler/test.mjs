@@ -280,6 +280,8 @@ export default async ({ page, toolURL, screenshot, assert }) => {
   await page.waitForSelector('#dw-projList [data-load="0"]');
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.waitForSelector('#dw-table td[data-r="0"]');
+  // 刷新后清洗步骤是异步重放的：首行出现时行数可能还是原始的 44，要等它收敛（2026-09-28 全量测试里偶发读到 44）
+  await page.waitForFunction(() => /\b41\b/.test(document.getElementById('dw-mRows').textContent), null, { timeout: 10000 }).catch(() => {});
   assert((await rowsNow()) === 41, '刷新后应保留清洗结果（41 行），实际 ' + (await rowsNow()));
   assert((await page.textContent('#dw-recipeBadge')) === '8', '刷新后配方应还是 8 步');
   await goTab('recipe');
