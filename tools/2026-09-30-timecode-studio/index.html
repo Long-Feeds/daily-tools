@@ -1,0 +1,1800 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>时间码工作台 · Timecode Studio</title>
+<meta name="description" content="SMPTE 时间码计算（含 29.97/59.94 丢帧）、算式纸、CMX3600 EDL 解析体检与时间线、跨帧率换算、2:3 下拉可视化。纯前端，零上传。">
+<style>
+[hidden]{display:none!important}
+:root{
+  --tcs-black:#000;--tcs-deep:#030303;--tcs-surface:#1a1a1a;--tcs-surface2:#111;--tcs-border:#27272a;
+  --tcs-white:#fff;--tcs-slate:#767d88;--tcs-mid:#7d848e;--tcs-muted:#a7a7a7;--tcs-silver:#c9ccd1;
+  --tcs-cloud:#e9ecf2;--tcs-char:#404040;--tcs-alert:#ff6b5e;--tcs-warnc:#e8c46b;
+  --tcs-font:"Inter","DM Sans",-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  --tcs-mono:"SF Mono","JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--tcs-black);color:var(--tcs-white)}
+body{font-family:var(--tcs-font);font-size:16px;line-height:1.4;letter-spacing:-0.16px;-webkit-font-smoothing:antialiased}
+a{color:var(--tcs-white)}
+button,input,select,textarea{font-family:inherit;font-size:14px;letter-spacing:-0.1px}
+:focus-visible{outline:2px solid var(--tcs-white);outline-offset:2px}
+
+/* 导航 —— 透明、极简 */
+.tcs-nav{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:18px 32px;max-width:1600px;margin:0 auto}
+.tcs-back{color:var(--tcs-muted);text-decoration:none;font-size:14px;font-weight:500}
+.tcs-back:hover{color:var(--tcs-white)}
+.tcs-mark{font-size:16px;font-weight:600;letter-spacing:-0.3px;display:flex;align-items:center;gap:10px}
+.tcs-mark i{display:inline-block;width:18px;height:12px;border:1.5px solid var(--tcs-white);border-radius:2px;position:relative}
+.tcs-mark i::after{content:"";position:absolute;left:3px;right:3px;top:3px;height:2px;background:var(--tcs-white)}
+
+/* 电影感 hero：大号时间码 = 本页的「画面」 */
+.tcs-hero{position:relative;max-width:1600px;margin:0 auto;padding:56px 32px 48px;overflow:hidden}
+.tcs-hero::before{content:"";position:absolute;inset:0;background:
+  repeating-linear-gradient(90deg,rgba(255,255,255,.035) 0 1px,transparent 1px 64px),
+  radial-gradient(ellipse at 70% 30%,rgba(255,255,255,.07),transparent 60%);pointer-events:none}
+.tcs-eyebrow{font-size:11px;font-weight:450;text-transform:uppercase;letter-spacing:.35px;color:var(--tcs-slate);margin:0 0 18px}
+.tcs-hero h1{font-size:48px;font-weight:400;line-height:1;letter-spacing:-1.2px;margin:0 0 16px}
+.tcs-hero p.tcs-lede{color:var(--tcs-slate);max-width:640px;margin:0;font-size:16px;line-height:1.45}
+.tcs-slate{position:relative;margin-top:40px;display:flex;flex-wrap:wrap;align-items:flex-end;gap:12px 32px}
+.tcs-tod{font-family:var(--tcs-mono);font-variant-numeric:tabular-nums;font-size:clamp(40px,9vw,112px);line-height:1;letter-spacing:-2px;font-weight:400}
+.tcs-tod-meta{color:var(--tcs-slate);font-size:13px;line-height:1.5}
+.tcs-tod-meta b{color:var(--tcs-white);font-weight:500}
+
+/* 工具条 + 页签 */
+.tcs-bar{position:sticky;top:0;z-index:5;background:#000;border-top:1px solid var(--tcs-border);border-bottom:1px solid var(--tcs-border)}
+.tcs-bar-in{max-width:1600px;margin:0 auto;padding:0 32px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.tcs-tabs{display:flex;gap:4px;overflow-x:auto}
+.tcs-tab{appearance:none;background:none;border:0;border-bottom:2px solid transparent;color:var(--tcs-mid);padding:16px 14px 14px;font-size:14px;font-weight:500;cursor:pointer;white-space:nowrap;min-width:52px}
+.tcs-tab:hover{color:var(--tcs-white)}
+.tcs-tab[aria-selected="true"]{color:var(--tcs-white);border-bottom-color:var(--tcs-white)}
+.tcs-rate-pick{display:flex;align-items:center;gap:10px;padding:8px 0}
+.tcs-rate-pick label{color:var(--tcs-slate);font-size:13px;white-space:nowrap}
+#tcs-in-kind{min-height:55px}
+#tcs-edl{white-space:pre;overflow-x:auto}
+
+main{max-width:1600px;margin:0 auto;padding:40px 32px 78px}
+.tcs-pane{display:block}
+.tcs-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:24px}
+.tcs-grid > *{min-width:0}
+.tcs-span{grid-column:1/-1}
+.tcs-card{background:var(--tcs-surface);border:1px solid var(--tcs-border);border-radius:8px;padding:24px;min-width:0}
+.tcs-card h2{font-size:24px;font-weight:400;line-height:1;margin:0 0 6px;letter-spacing:-0.4px}
+.tcs-card .tcs-sub{color:var(--tcs-slate);font-size:13px;margin:0 0 20px;line-height:1.4}
+.tcs-kicker{font-size:11px;font-weight:450;text-transform:uppercase;letter-spacing:.35px;color:var(--tcs-slate);margin:0 0 10px}
+
+/* 表单控件 —— 暗色、细边、4px 圆角 */
+.tcs-field{display:flex;flex-direction:column;gap:6px;min-width:0}
+.tcs-field > label, .tcs-lbl{font-size:13px;color:var(--tcs-muted);font-weight:500}
+.tcs-row{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end}
+.tcs-row > .tcs-field{flex:1 1 150px}
+input[type=text],input[type=number],select,textarea{background:var(--tcs-black);color:var(--tcs-white);border:1px solid var(--tcs-border);border-radius:4px;padding:9px 11px;min-height:38px;min-width:100px;width:100%}
+input[type=text]:hover,select:hover,textarea:hover{border-color:#3a3a3e}
+input[type=text]:focus,select:focus,textarea:focus{border-color:var(--tcs-silver);outline:none}
+input.tcs-big{font-family:var(--tcs-mono);font-size:28px;letter-spacing:-0.5px;padding:10px 14px;font-variant-numeric:tabular-nums}
+textarea{font-family:var(--tcs-mono);font-size:13px;line-height:1.55;resize:vertical}
+.tcs-btn{appearance:none;background:var(--tcs-white);color:var(--tcs-black);border:1px solid var(--tcs-white);border-radius:4px;padding:9px 14px;font-weight:600;font-size:14px;cursor:pointer;min-width:52px;min-height:38px;white-space:nowrap}
+.tcs-btn:hover{background:var(--tcs-cloud)}
+.tcs-btn-q{background:transparent;color:var(--tcs-white);border-color:var(--tcs-border)}
+.tcs-btn-q:hover{background:#222;border-color:#3a3a3e}
+.tcs-chips{display:flex;flex-wrap:wrap;gap:8px}
+.tcs-radio{display:flex;gap:18px;flex-wrap:wrap;font-size:14px;color:var(--tcs-silver)}
+.tcs-radio label{display:flex;align-items:center;gap:6px;cursor:pointer}
+input[type=radio]{width:18px;height:18px;accent-color:#fff;margin:0}
+
+.tcs-msg{font-size:13px;margin-top:8px;line-height:1.45}
+.tcs-msg-err{color:var(--tcs-alert)}
+.tcs-msg-warn{color:var(--tcs-warnc)}
+
+/* 读数 */
+.tcs-read{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:1px;background:var(--tcs-border);border:1px solid var(--tcs-border);border-radius:6px;overflow:hidden;margin:20px 0 0}
+.tcs-read > div{background:var(--tcs-surface2);padding:14px 16px;min-width:0}
+.tcs-read dt{font-size:12px;color:var(--tcs-slate);margin:0 0 6px}
+.tcs-read dd{margin:0;font-family:var(--tcs-mono);font-size:18px;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.tcs-kpis{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1px;background:var(--tcs-border);border:1px solid var(--tcs-border);border-radius:6px;overflow:hidden;margin:0 0 20px}
+.tcs-kpis > div{background:var(--tcs-surface2);padding:16px}
+.tcs-kpis .tcs-kv{font-family:var(--tcs-mono);font-size:22px;line-height:1.1;font-variant-numeric:tabular-nums;white-space:nowrap}
+.tcs-kpis .tcs-kl{font-size:12px;color:var(--tcs-slate);margin-top:6px}
+
+/* 算式纸 */
+.tcs-tape{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);border:1px solid var(--tcs-border);border-radius:6px;overflow:hidden}
+.tcs-tape textarea{border:0;border-radius:0;min-height:320px;line-height:24px;padding:10px 12px;white-space:pre;overflow-x:auto}
+.tcs-tape-out{background:var(--tcs-surface2);border-left:1px solid var(--tcs-border);padding:10px 12px;font-family:var(--tcs-mono);font-size:13px;overflow:hidden}
+.tcs-tl{height:24px;line-height:24px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
+.tcs-tl-dur{color:var(--tcs-white)}
+.tcs-tl-num{color:var(--tcs-silver)}
+.tcs-tl-tot{color:var(--tcs-white);font-weight:600}
+.tcs-tl-bad{color:var(--tcs-alert);font-family:var(--tcs-font)}
+.tcs-tl-note{color:var(--tcs-warnc)}
+.tcs-tl i{font-style:normal;color:var(--tcs-slate);margin-left:10px}
+.tcs-tape-sum{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-top:14px;flex-wrap:wrap}
+.tcs-tape-sum b{font-family:var(--tcs-mono);font-size:22px;font-weight:400}
+
+/* 表格 */
+.tcs-tbl-wrap{overflow-x:auto;border:1px solid var(--tcs-border);border-radius:6px}
+table.tcs-tbl{border-collapse:collapse;width:100%;font-size:13px;font-variant-numeric:tabular-nums}
+.tcs-tbl th{text-align:left;font-weight:500;color:var(--tcs-slate);font-size:12px;padding:10px 12px;border-bottom:1px solid var(--tcs-border);background:var(--tcs-surface2);white-space:nowrap}
+.tcs-tbl td{padding:8px 12px;border-bottom:1px solid #202023;white-space:nowrap}
+.tcs-tbl tr:last-child td{border-bottom:0}
+.tcs-tbl td.tcs-m{font-family:var(--tcs-mono)}
+.tcs-tbl tr.tcs-cur td{background:#232326}
+.tcs-tbl tr.tcs-flag td:first-child{box-shadow:inset 2px 0 0 var(--tcs-alert)}
+.tcs-tbl td.tcs-name{max-width:220px;overflow:hidden;text-overflow:ellipsis}
+
+/* 问题清单 */
+.tcs-issues{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:1px;background:var(--tcs-border);border:1px solid var(--tcs-border);border-radius:6px;overflow:hidden}
+.tcs-issues li{background:var(--tcs-surface2);padding:10px 14px;font-size:13px;display:flex;gap:12px;align-items:baseline}
+.tcs-issues .tcs-sev{font-size:11px;font-weight:600;min-width:44px;letter-spacing:.2px}
+.tcs-sev-err{color:var(--tcs-alert)}
+.tcs-sev-warn{color:var(--tcs-warnc)}
+.tcs-sev-info{color:var(--tcs-slate)}
+.tcs-issues .tcs-ln{color:var(--tcs-slate);font-family:var(--tcs-mono);font-size:12px;margin-left:auto;white-space:nowrap}
+
+/* 图 */
+.tcs-fig{display:block;width:100%;height:auto;background:var(--tcs-black);border:1px solid var(--tcs-border);border-radius:6px}
+.tcs-legend{display:flex;flex-wrap:wrap;gap:16px;font-size:12px;color:var(--tcs-slate);margin-top:10px}
+.tcs-legend span{display:inline-flex;align-items:center;gap:6px}
+.tcs-legend i{display:inline-block;width:14px;height:10px;border-radius:2px}
+
+.tcs-lib{display:flex;flex-direction:column;gap:8px;margin-top:12px}
+.tcs-lib-item{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--tcs-border);border-radius:4px;font-size:13px}
+.tcs-lib-item span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tcs-empty-note{color:var(--tcs-slate);font-size:13px}
+
+.tcs-prose{color:var(--tcs-silver);font-size:15px;line-height:1.5;max-width:860px}
+.tcs-prose h3{color:var(--tcs-white);font-size:20px;font-weight:400;margin:28px 0 8px;line-height:1}
+.tcs-prose code{font-family:var(--tcs-mono);font-size:13px;background:#0c0c0c;border:1px solid var(--tcs-border);border-radius:4px;padding:1px 5px}
+.tcs-prose ul{padding-left:20px}
+.tcs-prose li{margin:4px 0}
+
+footer{border-top:1px solid var(--tcs-border);color:var(--tcs-footer, #999);font-size:13px;padding:32px;text-align:center}
+
+@media (max-width:1024px){ .tcs-grid{grid-template-columns:minmax(0,1fr)} }
+@media (max-width:640px){
+  .tcs-nav,.tcs-hero,.tcs-bar-in,main{padding-left:16px;padding-right:16px}
+  .tcs-hero h1{font-size:36px;letter-spacing:-0.9px}
+  .tcs-tape{grid-template-columns:minmax(0,1fr)}
+  .tcs-tape-out{border-left:0;border-top:1px solid var(--tcs-border)}
+  .tcs-card{padding:18px}
+  .tcs-kpis .tcs-kv{font-size:18px}
+}
+</style>
+</head>
+<body>
+<nav class="tcs-nav">
+  <a class="tcs-back" href="../../">← 返回工具集</a>
+  <span class="tcs-mark"><i aria-hidden="true"></i>Timecode Studio</span>
+</nav>
+
+<header class="tcs-hero">
+  <p class="tcs-eyebrow">Timecode Studio · SMPTE / CMX 3600</p>
+  <h1>时间码工作台</h1>
+  <p class="tcs-lede">剪辑、调色、混音、字幕交接时最容易出错的那几件事：丢帧时间码怎么算、两个入出点之间到底多长、EDL 里哪条长度对不上、23.976 换到 25 会差几帧。全部在浏览器里算，文件不出本机。</p>
+  <div class="tcs-slate">
+    <div class="tcs-tod" id="tcs-tod" aria-live="off">00:00:00:00</div>
+    <div class="tcs-tod-meta">当日时间码 · <b id="tcs-tod-rate">25</b><br><span id="tcs-tod-note">按本机时钟换算</span></div>
+  </div>
+</header>
+
+<div class="tcs-bar">
+  <div class="tcs-bar-in">
+    <div class="tcs-tabs" role="tablist" aria-label="功能">
+      <button class="tcs-tab" role="tab" id="tab-calc" aria-controls="pane-calc" aria-selected="true">计算</button>
+      <button class="tcs-tab" role="tab" id="tab-edl" aria-controls="pane-edl" aria-selected="false">EDL 体检</button>
+      <button class="tcs-tab" role="tab" id="tab-rate" aria-controls="pane-rate" aria-selected="false">帧率与下拉</button>
+      <button class="tcs-tab" role="tab" id="tab-notes" aria-controls="pane-notes" aria-selected="false">说明</button>
+    </div>
+    <div class="tcs-rate-pick">
+      <label for="tcs-rate">项目帧率</label>
+      <select id="tcs-rate"></select>
+    </div>
+  </div>
+</div>
+
+<main id="tcs-panes">
+  <!-- ───────── 计算 ───────── -->
+  <section class="tcs-pane" id="pane-calc" role="tabpanel" aria-labelledby="tab-calc">
+    <div class="tcs-grid">
+      <div class="tcs-card">
+        <p class="tcs-kicker">Convert</p>
+        <h2>换算</h2>
+        <p class="tcs-sub">输入时间码（可简写：<code>10:00</code> = 10 秒，<code>1000</code> 同上）、帧数、秒或胶片英尺，其余读数同步给出。</p>
+        <div class="tcs-row">
+          <div class="tcs-field" style="flex:0 1 150px">
+            <label for="tcs-in-kind">输入类型</label>
+            <select id="tcs-in-kind">
+              <option value="tc">时间码</option>
+              <option value="frames">帧数</option>
+              <option value="sec">秒（真实时长）</option>
+              <option value="ft35">35mm 英尺+帧</option>
+              <option value="ft16">16mm 英尺+帧</option>
+            </select>
+          </div>
+          <div class="tcs-field" style="flex:1 1 260px">
+            <label for="tcs-in">值</label>
+            <input type="text" id="tcs-in" class="tcs-big" value="01:00:00;00" autocomplete="off" spellcheck="false">
+          </div>
+        </div>
+        <div class="tcs-msg" id="tcs-in-msg" role="status"></div>
+        <dl class="tcs-read" id="tcs-read">
+          <div><dt>规范时间码</dt><dd id="tcs-o-tc">—</dd></div>
+          <div><dt>帧号（从 0 起）</dt><dd id="tcs-o-frames">—</dd></div>
+          <div><dt>真实时长 时:分:秒.毫秒</dt><dd id="tcs-o-real">—</dd></div>
+          <div><dt>时间码读数与墙钟之差</dt><dd id="tcs-o-drift">—</dd></div>
+          <div><dt>35mm 英尺+帧</dt><dd id="tcs-o-ft35">—</dd></div>
+          <div><dt>16mm 英尺+帧</dt><dd id="tcs-o-ft16">—</dd></div>
+          <div><dt>48 kHz 采样数</dt><dd id="tcs-o-samp">—</dd></div>
+          <div><dt>下一个 / 上一个帧</dt><dd id="tcs-o-nb">—</dd></div>
+        </dl>
+      </div>
+
+      <div class="tcs-card">
+        <p class="tcs-kicker">All rates</p>
+        <h2>同一时长，各帧率怎么写</h2>
+        <p class="tcs-sub">把左侧的值当作<b>真实时长</b>，换算到每一种帧率（就近取整到整帧）。标 ≈ 的行表示除不尽、有取整。</p>
+        <div class="tcs-tbl-wrap">
+          <table class="tcs-tbl" id="tcs-all">
+            <thead><tr><th>帧率</th><th>时间码</th><th>帧数</th><th>取整误差</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="tcs-card tcs-span">
+        <p class="tcs-kicker">Tape</p>
+        <h2>算式纸</h2>
+        <p class="tcs-sub">一行一个算式，右侧逐行出结果。<code>A -> B</code> 求区间长度（出点不含），<code>+ 12</code> 的裸数字按帧算，<code>2s</code> <code>1m</code> <code>5f</code> 带单位，<code>_</code> 引用上一行，<code>合计</code> 汇总本段（空行分段），<code>#</code> 之后是注释。</p>
+        <div class="tcs-tape">
+          <textarea id="tcs-tape" spellcheck="false" aria-label="算式纸"></textarea>
+          <div class="tcs-tape-out" id="tcs-tape-out" aria-live="polite"></div>
+        </div>
+        <div class="tcs-tape-sum">
+          <div class="tcs-chips">
+            <button class="tcs-btn tcs-btn-q" id="tcs-tape-ex1" type="button">示例：片段清单</button>
+            <button class="tcs-btn tcs-btn-q" id="tcs-tape-ex2" type="button">示例：丢帧陷阱</button>
+            <button class="tcs-btn tcs-btn-q" id="tcs-tape-clear" type="button">清空</button>
+            <button class="tcs-btn tcs-btn-q" id="tcs-tape-copy" type="button">复制结果</button>
+          </div>
+          <div><span class="tcs-lbl">全部时长行之和 </span><b id="tcs-tape-total">00:00:00:00</b> <span class="tcs-lbl" id="tcs-tape-count"></span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───────── EDL ───────── -->
+  <section class="tcs-pane" id="pane-edl" role="tabpanel" aria-labelledby="tab-edl" hidden>
+    <div class="tcs-grid">
+      <div class="tcs-card">
+        <p class="tcs-kicker">CMX 3600</p>
+        <h2>粘贴或拖入 EDL</h2>
+        <p class="tcs-sub">支持剪切 / 叠化 / 划像、M2 变速、多音轨、<code>FROM CLIP NAME</code>、<code>LOC</code> 标记、FCM 中途切换丢帧制。EDL 本身不记帧率，请在下方选对。</p>
+        <textarea id="tcs-edl" rows="14" spellcheck="false" aria-label="EDL 文本"></textarea>
+        <div class="tcs-row" style="margin-top:12px">
+          <div class="tcs-field" style="flex:0 1 170px">
+            <label for="tcs-edl-rate">EDL 帧率</label>
+            <select id="tcs-edl-rate"></select>
+          </div>
+          <div class="tcs-chips">
+            <button class="tcs-btn" id="tcs-edl-sample" type="button">载入示例</button>
+            <button class="tcs-btn tcs-btn-q" id="tcs-edl-file-btn" type="button">打开文件</button>
+            <input type="file" id="tcs-edl-file" accept=".edl,.txt" hidden>
+            <button class="tcs-btn tcs-btn-q" id="tcs-edl-save" type="button">存入库</button>
+          </div>
+        </div>
+        <div class="tcs-msg" id="tcs-edl-msg" role="status"></div>
+        <p class="tcs-kicker" style="margin-top:22px">Library</p>
+        <div class="tcs-lib" id="tcs-edl-lib"></div>
+      </div>
+
+      <div class="tcs-card">
+        <p class="tcs-kicker">Report</p>
+        <h2>体检</h2>
+        <p class="tcs-sub">长度不一致、同轨重叠、事件号倒序、非法丢帧标签、M2 变速对不上 —— 交接前先过一遍。</p>
+        <div class="tcs-kpis">
+          <div><div class="tcs-kv" id="tcs-k-events">0</div><div class="tcs-kl">事件</div></div>
+          <div><div class="tcs-kv" id="tcs-k-span">—</div><div class="tcs-kl">录制总长</div></div>
+          <div><div class="tcs-kv" id="tcs-k-lanes">0</div><div class="tcs-kl">轨道</div></div>
+          <div><div class="tcs-kv" id="tcs-k-issues">0</div><div class="tcs-kl">问题</div></div>
+        </div>
+        <ul class="tcs-issues" id="tcs-edl-issues"></ul>
+        <div class="tcs-row" style="margin-top:18px">
+          <div class="tcs-field" style="flex:0 1 170px">
+            <label for="tcs-edl-to">换算到帧率</label>
+            <select id="tcs-edl-to"></select>
+          </div>
+          <div class="tcs-chips">
+            <button class="tcs-btn tcs-btn-q" id="tcs-edl-conv" type="button">换算并下载 EDL</button>
+            <button class="tcs-btn tcs-btn-q" id="tcs-edl-norm" type="button">规范化 EDL</button>
+            <button class="tcs-btn tcs-btn-q" id="tcs-edl-csv" type="button">导出 CSV</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="tcs-card tcs-span">
+        <p class="tcs-kicker">Timeline</p>
+        <h2>录制时间线</h2>
+        <p class="tcs-sub">横轴是录制时间码；同轨重叠的片段描红边，叠化区画斜线，空隙留黑。点片段定位到下表。</p>
+        <svg class="tcs-fig" id="tcs-fig-edl" viewBox="0 0 1200 260" role="img" aria-label="EDL 录制时间线"></svg>
+        <div class="tcs-legend">
+          <span><i style="background:#e9ecf2"></i>视频</span>
+          <span><i style="background:#767d88"></i>音频</span>
+          <span><i style="background:transparent;border:1.5px solid #ff6b5e"></i>重叠 / 长度问题</span>
+          <span><i style="background:repeating-linear-gradient(45deg,#fff 0 2px,transparent 2px 5px)"></i>转场</span>
+        </div>
+      </div>
+
+      <div class="tcs-card tcs-span">
+        <p class="tcs-kicker">Events</p>
+        <h2>事件表</h2>
+        <div class="tcs-tbl-wrap">
+          <table class="tcs-tbl" id="tcs-edl-table">
+            <thead><tr><th>事件</th><th>卷</th><th>轨道</th><th>转场</th><th>素材入</th><th>素材出</th><th>录制入</th><th>录制出</th><th>时长</th><th>变速</th><th>片段名</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="tcs-card tcs-span">
+        <p class="tcs-kicker">Reels</p>
+        <h2>素材卷用量</h2>
+        <p class="tcs-sub">每卷被用了几次、在成片里占多长、用到的素材时间码范围 —— 调色回批与素材归档要的就是这张表。</p>
+        <div class="tcs-tbl-wrap">
+          <table class="tcs-tbl" id="tcs-edl-reels">
+            <thead><tr><th>卷</th><th>事件数</th><th>成片占用</th><th>占比</th><th>素材最早</th><th>素材最晚</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───────── 帧率与下拉 ───────── -->
+  <section class="tcs-pane" id="pane-rate" role="tabpanel" aria-labelledby="tab-rate" hidden>
+    <div class="tcs-grid">
+      <div class="tcs-card">
+        <p class="tcs-kicker">Rate conversion</p>
+        <h2>跨帧率换算</h2>
+        <p class="tcs-sub"><b>保持时长</b>：素材重新取样到目标帧率（画面不变速，帧号要取整）。<b>逐帧对应</b>：每一帧原样播到新帧率上（如 24 → 25 的 PAL 加速），时长与音高都会变。</p>
+        <div class="tcs-row">
+          <div class="tcs-field" style="flex:1 1 220px">
+            <label for="tcs-cv-in">时间码 / 时长</label>
+            <input type="text" id="tcs-cv-in" value="01:30:00:00" autocomplete="off" spellcheck="false">
+          </div>
+          <div class="tcs-field" style="flex:0 1 150px">
+            <label for="tcs-cv-from">原帧率</label>
+            <select id="tcs-cv-from"></select>
+          </div>
+          <div class="tcs-field" style="flex:0 1 150px">
+            <label for="tcs-cv-to">目标帧率</label>
+            <select id="tcs-cv-to"></select>
+          </div>
+        </div>
+        <div class="tcs-row" style="margin-top:14px">
+          <div class="tcs-radio" role="radiogroup" aria-label="换算方式">
+            <label><input type="radio" name="tcs-cv-mode" value="real" id="tcs-cv-real" checked>保持时长</label>
+            <label><input type="radio" name="tcs-cv-mode" value="frame" id="tcs-cv-frame">逐帧对应（变速）</label>
+          </div>
+          <div class="tcs-field" style="flex:0 1 160px">
+            <label for="tcs-cv-round">取整</label>
+            <select id="tcs-cv-round">
+              <option value="nearest">就近</option>
+              <option value="floor">向下</option>
+              <option value="ceil">向上</option>
+            </select>
+          </div>
+        </div>
+        <div class="tcs-msg" id="tcs-cv-msg" role="status"></div>
+        <dl class="tcs-read">
+          <div><dt>目标时间码</dt><dd id="tcs-cv-tc">—</dd></div>
+          <div><dt>目标帧数</dt><dd id="tcs-cv-frames">—</dd></div>
+          <div><dt>换算前真实时长</dt><dd id="tcs-cv-real-a">—</dd></div>
+          <div><dt>换算后真实时长</dt><dd id="tcs-cv-real-b">—</dd></div>
+          <div><dt>播放速度</dt><dd id="tcs-cv-speed">—</dd></div>
+          <div><dt>音高偏移（不做变调补偿时）</dt><dd id="tcs-cv-pitch">—</dd></div>
+        </dl>
+      </div>
+
+      <div class="tcs-card">
+        <p class="tcs-kicker">Pulldown</p>
+        <h2>下拉节奏</h2>
+        <p class="tcs-sub">胶片帧按 2、3 个场交替铺进隔行视频；「混帧」由两个不同胶片帧的场拼成，逐行显示会有梳齿 —— 反交错与剪辑点都要避开它。</p>
+        <div class="tcs-row">
+          <div class="tcs-field" style="flex:1 1 220px">
+            <label for="tcs-pd-pat">模式</label>
+            <select id="tcs-pd-pat"></select>
+          </div>
+          <div class="tcs-field" style="flex:0 1 130px">
+            <label for="tcs-pd-phase">起始相位</label>
+            <select id="tcs-pd-phase"></select>
+          </div>
+        </div>
+        <dl class="tcs-read">
+          <div><dt>胶片帧 : 视频帧</dt><dd id="tcs-pd-ratio">—</dd></div>
+          <div><dt>一个循环里的混帧</dt><dd id="tcs-pd-mixed">—</dd></div>
+          <div><dt>节奏</dt><dd id="tcs-pd-cad">—</dd></div>
+        </dl>
+        <div class="tcs-row" style="margin-top:14px">
+          <div class="tcs-field" style="flex:1 1 200px">
+            <label for="tcs-pd-q">查询视频帧号（从 0 起）</label>
+            <input type="text" id="tcs-pd-q" value="7" autocomplete="off">
+          </div>
+        </div>
+        <div class="tcs-msg" id="tcs-pd-ans" role="status"></div>
+      </div>
+
+      <div class="tcs-card tcs-span">
+        <p class="tcs-kicker">Fields</p>
+        <h2>场序展开</h2>
+        <svg class="tcs-fig" id="tcs-fig-pd" viewBox="0 0 1200 250" role="img" aria-label="下拉场序图"></svg>
+        <div class="tcs-tbl-wrap" style="margin-top:16px">
+          <table class="tcs-tbl" id="tcs-pd-table">
+            <thead><tr><th>视频帧</th><th>上场来自</th><th>下场来自</th><th>类型</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───────── 说明 ───────── -->
+  <section class="tcs-pane" id="pane-notes" role="tabpanel" aria-labelledby="tab-notes" hidden>
+    <div class="tcs-card tcs-prose">
+      <p class="tcs-kicker">Notes</p>
+      <h2>口径与验证</h2>
+      <h3>丢帧不丢画面</h3>
+      <p>29.97 fps 每秒其实只有 30000/1001 帧，按 30 帧/秒读时间码，一小时会比墙钟慢 3.6 秒。丢帧制（DF，分隔符写成 <code>;</code>）的办法是<b>跳过标签</b>：每分钟开头跳过 <code>;00</code> <code>;01</code>，逢 0、10、20…分钟不跳；59.94 DF 每次跳 4 个。所以 <code>00:01:00;00</code> 在 DF 里根本不存在，本工具会直接指出并给出下一个合法值。</p>
+      <h3>本工具的约定</h3>
+      <ul>
+        <li>所有量内部都是整数帧；区间 <code>A -> B</code> 的出点不含（与 EDL 相同）。</li>
+        <li>单位 <code>s</code> / <code>m</code> / <code>h</code> 按<b>时间码秒</b>计（1s = 名义帧率个帧，29.97 下是 30 帧），与键入 <code>00:00:01:00</code> 一致；要按墙钟换算请用「换算」卡的「秒（真实时长）」。</li>
+        <li>119.88 / 120 fps 的帧位写成三位数，这不是 SMPTE 12M 的定义（它只到 60），只是方便读数。</li>
+        <li>跨帧率「保持时长」就近取整时，恰好半帧向远离零的方向进位。</li>
+        <li>EDL 的 M2 行是素材播放帧率：素材长度 ≈ 录制长度 × M2 ÷ 项目帧率，差超过 1 帧就报。</li>
+      </ul>
+      <h3>怎么验证的</h3>
+      <ul id="tcs-verify">
+        <li>时间码 ↔ 帧：与 OpenTimelineIO（ASWF）9,090 组、PyPI <code>timecode</code> 库 8,389 组随机与边界值逐字比对 0 失配；29.97 / 59.94 DF 做了 24 小时逐帧穷举（标签单调、往返一致、每天恰好跳 1,296 次）。OTIO 对 1001 系不丢帧时间码按墙钟 24 小时回绕，那 8 组交给 <code>timecode</code> 库裁决。</li>
+        <li>EDL：300 份随机 CMX 3600 交给 OpenTimelineIO 的 cmx_3600 适配器解析，1,441 个事件的素材入点、时长、录制位置全部一致；另有 1,500 份含叠化、划像、M2、音轨、LOC 的随机 EDL 做「打印 → 解析」往返，0 失配、二次打印逐字节相同。</li>
+        <li>下拉：用 ffmpeg 的 telecine 滤镜对三种模式各跑一遍，105 个视频帧的上下场来源逐场一致。</li>
+      </ul>
+      <h3>数据</h3>
+      <p>算式纸、EDL 库与各项设置只存在本机浏览器的 localStorage 里，不会上传。</p>
+    </div>
+  </section>
+</main>
+<footer>时间码工作台 · 每日工具集</footer>
+
+<script id="tcs-engine">
+/* 时间码工作台 · 引擎（纯函数，无 DOM）
+ * 一切时间量内部都是「整数帧」；时间码只是帧号在某个帧率下的「标签」。
+ * 丢帧（DF）只丢标签、不丢帧：29.97 DF 每分钟开头跳过 ;00 ;01（59.94 DF 跳过 ;00–;03），逢 10 分钟不跳。
+ */
+var TC = (function () {
+  'use strict';
+
+  var RATES = [
+    { id: '23.976', num: 24000, den: 1001, tb: 24, df: false, label: '23.976' },
+    { id: '24', num: 24, den: 1, tb: 24, df: false, label: '24' },
+    { id: '25', num: 25, den: 1, tb: 25, df: false, label: '25' },
+    { id: '29.97df', num: 30000, den: 1001, tb: 30, df: true, label: '29.97 DF' },
+    { id: '29.97', num: 30000, den: 1001, tb: 30, df: false, label: '29.97 NDF' },
+    { id: '30', num: 30, den: 1, tb: 30, df: false, label: '30' },
+    { id: '47.952', num: 48000, den: 1001, tb: 48, df: false, label: '47.952' },
+    { id: '48', num: 48, den: 1, tb: 48, df: false, label: '48' },
+    { id: '50', num: 50, den: 1, tb: 50, df: false, label: '50' },
+    { id: '59.94df', num: 60000, den: 1001, tb: 60, df: true, label: '59.94 DF' },
+    { id: '59.94', num: 60000, den: 1001, tb: 60, df: false, label: '59.94 NDF' },
+    { id: '60', num: 60, den: 1, tb: 60, df: false, label: '60' },
+    { id: '119.88', num: 120000, den: 1001, tb: 120, df: false, label: '119.88' },
+    { id: '120', num: 120, den: 1, tb: 120, df: false, label: '120' }
+  ];
+  var BY_ID = {};
+  RATES.forEach(function (r) { BY_ID[r.id] = r; });
+  function rate(id) {
+    if (id && typeof id === 'object') return id;
+    var r = BY_ID[String(id)];
+    if (!r) throw new Error('未知帧率：' + id);
+    return r;
+  }
+  function dropN(r) { return r.df ? r.tb / 15 : 0; }
+  function fps(r) { return r.num / r.den; }
+  function ffDigits(r) { return r.tb > 100 ? 3 : 2; }
+
+  function pad(n, w) { var s = String(n); while (s.length < w) s = '0' + s; return s; }
+
+  // ───────── 帧 ↔ 时间码 ─────────
+  function toFields(F, r) {
+    r = rate(r);
+    var neg = F < 0, a = Math.abs(F), tb = r.tb, d = dropN(r), f = a;
+    if (d) {
+      var per10 = tb * 600 - 9 * d, perMin = tb * 60 - d;
+      var D = Math.floor(a / per10), M = a % per10;
+      f = a + 9 * d * D + (M > d ? d * Math.floor((M - d) / perMin) : 0);
+    }
+    return {
+      neg: neg,
+      h: Math.floor(f / (tb * 3600)),
+      m: Math.floor(f / (tb * 60)) % 60,
+      s: Math.floor(f / tb) % 60,
+      f: f % tb
+    };
+  }
+  function format(F, r) {
+    r = rate(r);
+    var x = toFields(F, r);
+    return (x.neg ? '-' : '') + pad(x.h, 2) + ':' + pad(x.m, 2) + ':' + pad(x.s, 2) +
+      (r.df ? ';' : ':') + pad(x.f, ffDigits(r));
+  }
+  function fromFields(h, m, s, f, r) {
+    r = rate(r);
+    var tb = r.tb, d = dropN(r);
+    var total = ((h * 60 + m) * 60 + s) * tb + f;
+    if (d) {
+      var mins = h * 60 + m;
+      total -= d * (mins - Math.floor(mins / 10));
+    }
+    return total;
+  }
+  function isDroppedLabel(m, s, f, r) {
+    var d = dropN(r);
+    return d > 0 && s === 0 && f < d && m % 10 !== 0;
+  }
+
+  /* 解析时间码。支持：
+   *   01:02:03:04 / 01:02:03;04 / 01.02.03.04（; . , 视为丢帧写法）
+   *   右对齐简写：「10:00」= 00:00:10:00，「1000」= 00:00:10:00（剪辑软件的键入习惯）
+   *   前导 + / -。 返回 {ok, frames, err, warn, dfNotation}
+   */
+  function parse(str, r) {
+    r = rate(r);
+    var s = String(str == null ? '' : str).trim(), neg = false;
+    if (!s) return { ok: false, err: '空输入' };
+    if (s[0] === '-' || s[0] === '+') { neg = s[0] === '-'; s = s.slice(1).trim(); }
+    var parts, dfNote = false, fd = ffDigits(r);
+    if (/^\d+$/.test(s)) {
+      var maxLen = 6 + fd;
+      if (s.length > maxLen) return { ok: false, err: '纯数字简写最多 ' + maxLen + ' 位' };
+      s = pad(s, maxLen);
+      parts = [s.slice(0, 2), s.slice(2, 4), s.slice(4, 6), s.slice(6)];
+    } else {
+      if (!/^\d+([:;.,]\d+){1,3}$/.test(s)) return { ok: false, err: '时间码格式应为 时:分:秒:帧' };
+      var seps = s.match(/[:;.,]/g);
+      dfNote = seps[seps.length - 1] !== ':';
+      parts = s.split(/[:;.,]/);
+      while (parts.length < 4) parts.unshift('0');
+    }
+    var h = +parts[0], m = +parts[1], sec = +parts[2], f = +parts[3];
+    if (m > 59) return { ok: false, err: '分钟应 ≤ 59' };
+    if (sec > 59) return { ok: false, err: '秒应 ≤ 59' };
+    if (f >= r.tb) return { ok: false, err: '帧号应 < ' + r.tb + '（' + r.label + '）' };
+    if (isDroppedLabel(m, sec, f, r)) {
+      var d = dropN(r);
+      return {
+        ok: false, dropped: true,
+        err: '丢帧制下不存在 ' + pad(h, 2) + ':' + pad(m, 2) + ':00;' + pad(f, 2) +
+          '（每分钟开头跳过 ;00–;' + pad(d - 1, 2) + '，逢 10 分钟除外）；下一个合法时间码是 ' +
+          pad(h, 2) + ':' + pad(m, 2) + ':00;' + pad(d, 2)
+      };
+    }
+    var F = fromFields(h, m, sec, f, r);
+    var warn = null;
+    if (dfNote && !r.df) warn = '用了丢帧分隔符（; 或 .），但当前帧率 ' + r.label + ' 不丢帧，已按不丢帧解读';
+    return { ok: true, frames: neg ? -F : F, warn: warn, dfNotation: dfNote };
+  }
+
+  // ───────── 实时 / 胶片英尺 / 采样 ─────────
+  function seconds(F, r) { r = rate(r); return F * r.den / r.num; }
+  function clock(sec) {
+    var neg = sec < 0, a = Math.abs(sec);
+    var ms = Math.round(a * 1000);
+    var h = Math.floor(ms / 3600000), m = Math.floor(ms / 60000) % 60, s = Math.floor(ms / 1000) % 60, x = ms % 1000;
+    return (neg ? '-' : '') + pad(h, 2) + ':' + pad(m, 2) + ':' + pad(s, 2) + '.' + pad(x, 3);
+  }
+  // 标签秒（按名义帧率 tb 读时间码）与真实时钟的偏差：正数 = 时间码比墙钟慢
+  function drift(F, r) {
+    r = rate(r);
+    var x = toFields(F, r);
+    var labelSec = (x.h * 3600 + x.m * 60 + x.s) + x.f / r.tb;
+    if (x.neg) labelSec = -labelSec;
+    return seconds(F, r) - labelSec;
+  }
+  var GAUGES = { '35mm': { fpf: 16, label: '35mm 4 齿孔（16 帧/英尺）' }, '16mm': { fpf: 40, label: '16mm（40 帧/英尺）' } };
+  function feet(F, gauge) {
+    var g = GAUGES[gauge || '35mm'], a = Math.abs(F);
+    return (F < 0 ? '-' : '') + Math.floor(a / g.fpf) + '+' + pad(a % g.fpf, 2);
+  }
+  function parseFeet(str, gauge) {
+    var g = GAUGES[gauge || '35mm'];
+    var m = /^\s*(-)?(\d+)\s*\+\s*(\d+)\s*$/.exec(String(str));
+    if (!m) return { ok: false, err: '英尺写法应为 英尺+帧，如 90+00' };
+    if (+m[3] >= g.fpf) return { ok: false, err: '帧数应 < ' + g.fpf };
+    var F = +m[2] * g.fpf + +m[3];
+    return { ok: true, frames: m[1] ? -F : F };
+  }
+  // 48 kHz 采样数（精确有理数，给出整数部分 + 分数余量）
+  function samples(F, r, sr) {
+    r = rate(r); sr = sr || 48000;
+    var p = BigInt(F) * BigInt(sr) * BigInt(r.den), q = BigInt(r.num);
+    var neg = p < 0n; if (neg) p = -p;
+    var whole = p / q, rem = p % q;
+    return { whole: (neg ? -1 : 1) * Number(whole), frac: Number(rem) / Number(q), exact: rem === 0n };
+  }
+
+  // ───────── 帧率换算 ─────────
+  /* mode: 'real' 保持真实时长（重新取样到目标帧率，需取整）；'frame' 逐帧对应（变速，时长改变）
+   * round: 'nearest'（.5 远离零）| 'floor' | 'ceil' */
+  function convert(F, ra, rb, mode, round) {
+    ra = rate(ra); rb = rate(rb);
+    if (mode === 'frame') return { frames: F, exact: true };
+    var p = BigInt(F) * BigInt(rb.num) * BigInt(ra.den), q = BigInt(rb.den) * BigInt(ra.num);
+    var neg = p < 0n, ap = neg ? -p : p;
+    var fl = ap / q, rem = ap % q, v;
+    var rd = round || 'nearest';
+    if (rem === 0n) v = fl;
+    else if (rd === 'nearest') v = (rem * 2n >= q) ? fl + 1n : fl;
+    else if ((rd === 'floor') !== neg) v = fl;       // 向下取整（对负数是远离零）
+    else v = fl + 1n;
+    return { frames: (neg ? -1 : 1) * Number(v), exact: rem === 0n };
+  }
+  function speedInfo(ra, rb) {
+    ra = rate(ra); rb = rate(rb);
+    var k = fps(rb) / fps(ra);      // 逐帧对应时的播放速度倍率
+    return { factor: k, percent: (k - 1) * 100, semitones: 12 * Math.log(k) / Math.LN2, cents: 1200 * Math.log(k) / Math.LN2, durationFactor: 1 / k };
+  }
+
+  // ───────── 算式 ─────────
+  /* 值类型：{k:'dur', f:整数帧} | {k:'num', v:数}
+   * 字面量：时间码（含 : ; . ,）→ dur；数字 + 单位 f/帧 → dur；s/秒、m/分、h/时 → 名义时间码秒（tb 帧/秒）
+   * 裸数字 → num；在 dur ± num 里视作帧数。A -> B = B − A（出点不含）。
+   */
+  function tokenize(src) {
+    var out = [], i = 0, s = src, m;
+    while (i < s.length) {
+      var c = s[i];
+      if (c === ' ' || c === '\t') { i++; continue; }
+      if (s.slice(i, i + 2) === '->' || c === '→') { out.push({ t: 'op', v: '->' }); i += c === '→' ? 1 : 2; continue; }
+      if ('+-*/()×÷'.indexOf(c) >= 0) {
+        out.push({ t: 'op', v: c === '×' ? '*' : c === '÷' ? '/' : c }); i++; continue;
+      }
+      m = /^\d+(?:[:;.,]\d+){2,3}/.exec(s.slice(i));
+      if (m && /[:;]/.test(m[0])) { out.push({ t: 'tc', v: m[0] }); i += m[0].length; continue; }
+      m = /^\d+:\d+/.exec(s.slice(i));
+      if (m) { out.push({ t: 'tc', v: m[0] }); i += m[0].length; continue; }
+      m = /^(\d+(?:\.\d+)?|\.\d+)\s*(帧|秒|分钟|分|小时|时|fr|f|s|m|h)?(?![A-Za-z])/.exec(s.slice(i));
+      if (m) { out.push({ t: 'num', v: parseFloat(m[1]), u: m[2] || '' }); i += m[0].length; continue; }
+      m = /^(ans|_)(?![A-Za-z0-9])/.exec(s.slice(i));
+      if (m) { out.push({ t: 'ans' }); i += m[0].length; continue; }
+      throw new Error('无法识别「' + s.slice(i, i + 8) + '」');
+    }
+    return out;
+  }
+  var UNIT = { 'f': 'f', 'fr': 'f', '帧': 'f', 's': 's', '秒': 's', 'm': 'm', '分': 'm', '分钟': 'm', 'h': 'h', '时': 'h', '小时': 'h' };
+
+  function evaluate(src, r, ans) {
+    r = rate(r);
+    var toks = tokenize(src), p = 0, notes = [];
+    function peek() { return toks[p]; }
+    function isOp(v) { var t = toks[p]; return t && t.t === 'op' && t.v === v; }
+    function need(v) { if (!isOp(v)) throw new Error('缺少「' + v + '」'); p++; }
+    function asDur(x, why) {
+      if (x.k === 'dur') return x.f;
+      if (!Number.isInteger(x.v)) throw new Error(why + '：帧数必须是整数（' + x.v + '）');
+      return x.v;
+    }
+    function roundDur(v, why) {
+      var q = Math.round(v);
+      if (Math.abs(q - v) > 1e-9) notes.push(why + '：' + (+v.toFixed(4)) + ' 帧 → 四舍五入为 ' + q + ' 帧');
+      return q;
+    }
+    function primary() {
+      var t = peek();
+      if (!t) throw new Error('算式不完整');
+      if (t.t === 'op' && t.v === '(') { p++; var v = arrow(); need(')'); return v; }
+      if (t.t === 'op' && t.v === '-') { p++; var u = primary(); return u.k === 'dur' ? { k: 'dur', f: -u.f } : { k: 'num', v: -u.v }; }
+      if (t.t === 'op' && t.v === '+') { p++; return primary(); }
+      if (t.t === 'tc') {
+        p++;
+        var pr = parse(t.v, r);
+        if (!pr.ok) throw new Error(t.v + '：' + pr.err);
+        if (pr.warn) notes.push(pr.warn);
+        return { k: 'dur', f: pr.frames };
+      }
+      if (t.t === 'num') {
+        p++;
+        if (!t.u) return { k: 'num', v: t.v };
+        var u2 = UNIT[t.u], mul = u2 === 'f' ? 1 : u2 === 's' ? r.tb : u2 === 'm' ? r.tb * 60 : r.tb * 3600;
+        return { k: 'dur', f: roundDur(t.v * mul, t.v + t.u) };
+      }
+      if (t.t === 'ans') {
+        p++;
+        if (!ans) throw new Error('还没有上一行结果可引用');
+        return ans;
+      }
+      throw new Error('意外的「' + t.v + '」');
+    }
+    function term() {
+      var a = primary();
+      while (isOp('*') || isOp('/')) {
+        var op = toks[p++].v, b = primary();
+        if (op === '*') {
+          if (a.k === 'dur' && b.k === 'dur') throw new Error('两个时长不能相乘');
+          if (a.k === 'num' && b.k === 'num') a = { k: 'num', v: a.v * b.v };
+          else { var d = a.k === 'dur' ? a : b, n = a.k === 'dur' ? b : a; a = { k: 'dur', f: roundDur(d.f * n.v, '乘法') }; }
+        } else {
+          if (b.k === 'dur') {
+            if (b.f === 0) throw new Error('除以零长度');
+            if (a.k !== 'dur') throw new Error('数不能除以时长');
+            a = { k: 'num', v: a.f / b.f };
+          } else {
+            if (b.v === 0) throw new Error('除以零');
+            a = a.k === 'dur' ? { k: 'dur', f: roundDur(a.f / b.v, '除法') } : { k: 'num', v: a.v / b.v };
+          }
+        }
+      }
+      return a;
+    }
+    function sum() {
+      var a = term();
+      while (isOp('+') || isOp('-')) {
+        var op = toks[p++].v, b = term(), sg = op === '+' ? 1 : -1;
+        if (a.k === 'num' && b.k === 'num') a = { k: 'num', v: a.v + sg * b.v };
+        else a = { k: 'dur', f: asDur(a, '加减') + sg * asDur(b, '加减') };
+      }
+      return a;
+    }
+    function arrow() {
+      var a = sum();
+      if (isOp('->')) {
+        p++;
+        var b = sum();
+        a = { k: 'dur', f: asDur(b, '区间') - asDur(a, '区间') };
+      }
+      return a;
+    }
+    if (!toks.length) throw new Error('空算式');
+    var v = arrow();
+    if (p < toks.length) throw new Error('多余的「' + (toks[p].v || toks[p].t) + '」');
+    return { value: v, notes: notes };
+  }
+
+  /* 整张算式纸：逐行求值，# 之后为注释；空行分段；「合计」= 本段时长行之和 */
+  function tape(text, r) {
+    r = rate(r);
+    var lines = String(text).split('\n'), out = [], ans = null, seg = 0, total = 0, count = 0;
+    for (var i = 0; i < lines.length; i++) {
+      var raw = lines[i], code = raw.replace(/#.*$/, '').trim();
+      if (!code) { out.push({ line: i, empty: true, comment: raw.trim() }); if (!raw.trim()) seg++; continue; }
+      if (/^(合计|total|sum)$/i.test(code)) {
+        var sv = 0, n = 0;
+        for (var j = out.length - 1; j >= 0; j--) {
+          var o = out[j];
+          if (o.empty && !o.comment) break;
+          if (o.value && o.value.k === 'dur' && !o.isTotal) { sv += o.value.f; n++; }
+        }
+        ans = { k: 'dur', f: sv };
+        out.push({ line: i, value: ans, isTotal: true, n: n });
+        continue;
+      }
+      try {
+        var res = evaluate(code, r, ans);
+        ans = res.value;
+        out.push({ line: i, value: res.value, notes: res.notes });
+        if (res.value.k === 'dur') { total += res.value.f; count++; }
+      } catch (e) {
+        out.push({ line: i, err: e.message });
+      }
+    }
+    return { rows: out, total: total, count: count };
+  }
+
+  // ───────── EDL（CMX 3600）─────────
+  var TRANS_RE = /^(C|D|W\d{3}|K|KB|KO)$/;
+  function parseEDL(text, rateId) {
+    var base = rate(rateId), lines = String(text).replace(/\r\n?/g, '\n').split('\n');
+    var ev = [], warns = [], errs = [], title = '', fcm = null, cur = null, last = null;
+    function rr() {
+      if (base.tb === 30 || base.tb === 60) {
+        var id = (base.tb === 30 ? '29.97' : '59.94') + (fcm === 'DF' ? 'df' : '');
+        if (base.den === 1001) return rate(id);
+      }
+      return base;
+    }
+    function tc(s, ln) {
+      var p = parse(s, rr());
+      if (!p.ok) { errs.push({ line: ln + 1, msg: s + '：' + p.err }); return null; }
+      return p.frames;
+    }
+    for (var i = 0; i < lines.length; i++) {
+      var L = lines[i], t = L.trim();
+      if (!t) continue;
+      var m;
+      if ((m = /^TITLE:\s*(.*)$/i.exec(t))) { title = m[1].trim(); continue; }
+      if ((m = /^FCM:\s*(.*)$/i.exec(t))) {
+        var v = m[1].toUpperCase().replace(/[\s-]+/g, ' ').trim();
+        if (v === 'DROP FRAME') fcm = 'DF';
+        else if (v === 'NON DROP FRAME') fcm = 'NDF';
+        else { warns.push({ line: i + 1, msg: '不认识的 FCM：' + m[1] }); continue; }
+        if (fcm === 'DF' && !(base.den === 1001 && (base.tb === 30 || base.tb === 60)))
+          warns.push({ line: i + 1, msg: 'FCM 声明丢帧，但所选帧率 ' + base.label + ' 没有丢帧制；按不丢帧解读' });
+        continue;
+      }
+      if ((m = /^\*\s*FROM CLIP NAME:\s*(.*)$/i.exec(t))) { if (last) last.clip = m[1].trim(); continue; }
+      if ((m = /^\*\s*TO CLIP NAME:\s*(.*)$/i.exec(t))) { if (last) last.toClip = m[1].trim(); continue; }
+      if ((m = /^\*\s*SOURCE FILE:\s*(.*)$/i.exec(t))) { if (last) last.sourceFile = m[1].trim(); continue; }
+      if ((m = /^\*\s*LOC:\s*(\S+)\s+(\S+)\s*(.*)$/i.exec(t))) {
+        if (last) { var lf = tc(m[1], i); if (lf != null) (last.locs = last.locs || []).push({ at: lf, color: m[2], name: m[3].trim() }); }
+        continue;
+      }
+      if (/^\*/.test(t)) { if (last) (last.comments = last.comments || []).push(t.replace(/^\*\s*/, '')); continue; }
+      if ((m = /^M2\s+(\S+)\s+(-?\d+(?:\.\d+)?)\s+(\S+)\s*$/.exec(t))) {
+        var target = null;
+        for (var k = ev.length - 1; k >= 0 && k >= ev.length - 3; k--) if (ev[k].reel === m[1]) { target = ev[k]; break; }
+        if (!target) { warns.push({ line: i + 1, msg: 'M2 变速找不到对应事件（卷名 ' + m[1] + '）' }); continue; }
+        target.speed = parseFloat(m[2]);
+        target.m2Line = i + 1;
+        continue;
+      }
+      var tk = t.split(/\s+/);
+      if (/^\d+$/.test(tk[0]) && tk.length >= 8) {
+        var n = tk.length, tcs = tk.slice(n - 4), head = tk.slice(0, n - 4);
+        if (head.length < 4 || head.length > 5) { errs.push({ line: i + 1, msg: '事件行字段数不对' }); continue; }
+        var trans = head[3].toUpperCase(), tdur = 0;
+        if (!TRANS_RE.test(trans)) { errs.push({ line: i + 1, msg: '不认识的转场类型：' + head[3] }); continue; }
+        if (head.length === 5) {
+          if (!/^\d{1,4}$/.test(head[4])) { errs.push({ line: i + 1, msg: '转场时长应为帧数：' + head[4] }); continue; }
+          tdur = +head[4];
+        } else if (trans !== 'C') { errs.push({ line: i + 1, msg: trans + ' 转场缺少时长' }); continue; }
+        var a = tcs.map(function (s) { return tc(s, i); });
+        if (a.some(function (x) { return x == null; })) continue;
+        cur = {
+          num: +tk[0], numText: tk[0], reel: head[1], track: head[2].toUpperCase(), trans: trans, transDur: tdur,
+          srcIn: a[0], srcOut: a[1], recIn: a[2], recOut: a[3], fcm: fcm, line: i + 1
+        };
+        ev.push(cur); last = cur;
+        continue;
+      }
+      warns.push({ line: i + 1, msg: '忽略无法识别的行：' + t.slice(0, 40) });
+    }
+    return analyze({ title: title, fcm: fcm, rate: base.id, events: ev, warns: warns, errs: errs });
+  }
+
+  function tracksOf(track) {
+    // V / A / A2 / AA / B / AA/V / A1..A8 → 规范轨道名列表
+    var out = [], t = track;
+    if (t === 'NONE') return out;
+    if (t.indexOf('/') >= 0) { t.split('/').forEach(function (x) { out = out.concat(tracksOf(x)); }); return out; }
+    if (t === 'V') return ['V'];
+    if (t === 'B') return ['V', 'A1'];
+    if (t === 'A') return ['A1'];
+    if (t === 'AA') return ['A1', 'A2'];
+    var m = /^A(\d)$/.exec(t);
+    if (m) return ['A' + m[1]];
+    return [t];
+  }
+
+  function analyze(M) {
+    var r = rate(M.rate), ev = M.events, issues = [];
+    ev.forEach(function (e, idx) {
+      e.idx = idx;
+      e.srcDur = e.srcOut - e.srcIn;
+      e.recDur = e.recOut - e.recIn;
+      e.lanes = tracksOf(e.track);
+      if (e.recDur < 0) issues.push({ sev: 'err', ev: e.numText, line: e.line, msg: '录制出点早于入点' });
+      if (e.srcDur < 0 && e.speed == null) issues.push({ sev: 'err', ev: e.numText, line: e.line, msg: '素材出点早于入点' });
+      if (e.speed != null) {
+        var expect = e.recDur * e.speed / fps(r);
+        e.expectSrc = expect;
+        if (Math.abs(Math.abs(e.srcDur) - Math.abs(expect)) > 1 + 1e-9)
+          issues.push({ sev: 'warn', ev: e.numText, line: e.line, msg: 'M2 变速 ' + e.speed + ' fps：素材长度应约 ' + (+Math.abs(expect).toFixed(2)) + ' 帧，实为 ' + e.srcDur });
+      } else if (e.srcDur !== e.recDur && e.recDur > 0) {
+        issues.push({ sev: 'err', ev: e.numText, line: e.line, msg: '素材长度 ' + e.srcDur + ' 帧 ≠ 录制长度 ' + e.recDur + ' 帧（无 M2 变速）' });
+      }
+      if (idx > 0 && e.num < ev[idx - 1].num)
+        issues.push({ sev: 'warn', ev: e.numText, line: e.line, msg: '事件号倒序（上一条是 ' + ev[idx - 1].numText + '）' });
+    });
+    // 逐轨道：按录制入点排序后找重叠与空隙（0 长度的转场前导行不参与）
+    var lanes = {}, gaps = [], overlaps = [];
+    ev.forEach(function (e) {
+      if (e.recDur <= 0) return;
+      e.lanes.forEach(function (l) { (lanes[l] = lanes[l] || []).push(e); });
+    });
+    var laneNames = Object.keys(lanes).sort(function (a, b) {
+      var ka = a === 'V' ? 0 : 1, kb = b === 'V' ? 0 : 1;
+      return ka - kb || (a < b ? -1 : a > b ? 1 : 0);
+    });
+    laneNames.forEach(function (l) {
+      var arr = lanes[l].slice().sort(function (a, b) { return a.recIn - b.recIn || a.idx - b.idx; });
+      for (var i = 1; i < arr.length; i++) {
+        var p = arr[i - 1], q = arr[i];
+        if (q.recIn < p.recOut) {
+          // 叠化：D/W 事件与上一段合法地重叠 transDur 帧
+          var ov = p.recOut - q.recIn;
+          var isTrans = q.trans !== 'C' && q.num === p.num;
+          if (!isTrans) {
+            overlaps.push({ lane: l, a: p.numText, b: q.numText, frames: ov, at: q.recIn });
+            issues.push({ sev: 'warn', ev: q.numText, line: q.line, msg: l + ' 轨与事件 ' + p.numText + ' 重叠 ' + ov + ' 帧' });
+          }
+        } else if (q.recIn > p.recOut) {
+          gaps.push({ lane: l, after: p.numText, before: q.numText, from: p.recOut, to: q.recIn, frames: q.recIn - p.recOut });
+        }
+      }
+    });
+    var recIn = Infinity, recOut = -Infinity, reels = {};
+    ev.forEach(function (e) {
+      if (e.recDur > 0) { recIn = Math.min(recIn, e.recIn); recOut = Math.max(recOut, e.recOut); }
+      if (e.recDur > 0 && e.reel !== 'BL' && e.reel !== 'BLACK') {
+        var R = reels[e.reel] = reels[e.reel] || { reel: e.reel, events: 0, frames: 0, srcMin: Infinity, srcMax: -Infinity };
+        R.events++; R.frames += e.recDur;
+        R.srcMin = Math.min(R.srcMin, Math.min(e.srcIn, e.srcOut));
+        R.srcMax = Math.max(R.srcMax, Math.max(e.srcIn, e.srcOut));
+      }
+    });
+    M.lanes = laneNames;
+    M.laneEvents = lanes;
+    M.gaps = gaps;
+    M.overlaps = overlaps;
+    M.issues = issues;
+    M.recIn = isFinite(recIn) ? recIn : 0;
+    M.recOut = isFinite(recOut) ? recOut : 0;
+    M.span = M.recOut - M.recIn;
+    M.reels = Object.keys(reels).sort().map(function (k) { return reels[k]; });
+    return M;
+  }
+
+  function pr(s, w) { s = String(s); while (s.length < w) s += ' '; return s; }
+  function speedText(v) {
+    var a = Math.abs(v), t = a.toFixed(1);
+    if (parseFloat(t) !== a) t = String(a);
+    return (v < 0 ? '-' : '') + pad(t, 5);
+  }
+  /* 规范化打印成 CMX 3600（列宽按常见 Avid/Resolve 输出） */
+  function printEDL(M) {
+    var r = rate(M.rate), out = [];
+    out.push('TITLE: ' + (M.title || 'UNTITLED'));
+    var curFcm = null;
+    M.events.forEach(function (e) {
+      var fcm = e.fcm || M.fcm || (r.df ? 'DF' : 'NDF');
+      if (fcm !== curFcm) { out.push('FCM: ' + (fcm === 'DF' ? 'DROP FRAME' : 'NON-DROP FRAME')); curFcm = fcm; }
+      var rr = (r.tb === 30 || r.tb === 60) && r.den === 1001 ? rate((r.tb === 30 ? '29.97' : '59.94') + (fcm === 'DF' ? 'df' : '')) : r;
+      var tr = e.trans === 'C' ? pr('C', 8) : pr(e.trans, 5) + pad(e.transDur, 3);
+      out.push(pad(e.num, 3) + '  ' + pr(e.reel, 8) + ' ' + pr(e.track, 5) + ' ' + pr(tr, 8) + ' ' +
+        [e.srcIn, e.srcOut, e.recIn, e.recOut].map(function (f) { return format(f, rr); }).join(' '));
+      if (e.speed != null) out.push('M2   ' + pr(e.reel, 8) + ' ' + pr(speedText(e.speed), 6) + '   ' + format(e.srcIn, rr));
+      if (e.clip != null) out.push('* FROM CLIP NAME: ' + e.clip);
+      if (e.toClip != null) out.push('* TO CLIP NAME: ' + e.toClip);
+      if (e.sourceFile != null) out.push('* SOURCE FILE: ' + e.sourceFile);
+      (e.locs || []).forEach(function (l) { out.push('* LOC: ' + format(l.at, rr) + ' ' + l.color + ' ' + l.name); });
+      (e.comments || []).forEach(function (c) { out.push('* ' + c); });
+      out.push('');
+    });
+    return out.join('\n');
+  }
+  // 事件的规范化 key（round-trip 断言用）
+  function edlKey(M) {
+    return JSON.stringify(M.events.map(function (e) {
+      return [e.num, e.reel, e.track, e.trans, e.transDur, e.srcIn, e.srcOut, e.recIn, e.recOut,
+        e.speed == null ? null : e.speed, e.clip || null, e.toClip || null, e.sourceFile || null,
+        (e.locs || []).map(function (l) { return [l.at, l.color, l.name]; }), e.comments || []];
+    }));
+  }
+  /* 把整份 EDL 按「保持真实时长」换算到另一帧率（入/出点各自取整，时长 = 出 − 入） */
+  function convertEDL(M, rb, round) {
+    var ra = rate(M.rate); rb = rate(rb);
+    function cv(f) { return convert(f, ra, rb, 'real', round || 'nearest').frames; }
+    var N = {
+      title: M.title, fcm: rb.df ? 'DF' : 'NDF', rate: rb.id, warns: [], errs: [],
+      events: M.events.map(function (e) {
+        var o = {};
+        for (var k in e) if (Object.prototype.hasOwnProperty.call(e, k)) o[k] = e[k];
+        o.fcm = rb.df ? 'DF' : 'NDF';
+        o.srcIn = cv(e.srcIn); o.srcOut = cv(e.srcOut); o.recIn = cv(e.recIn); o.recOut = cv(e.recOut);
+        if (e.transDur) o.transDur = cv(e.transDur);
+        if (e.locs) o.locs = e.locs.map(function (l) { return { at: cv(l.at), color: l.color, name: l.name }; });
+        // M2 速度是 fps 值；换帧率后按比例保持同一变速倍率（CMX 只写一位小数）
+        if (e.speed != null) o.speed = Math.round(e.speed / fps(ra) * fps(rb) * 10) / 10;
+        return o;
+      })
+    };
+    return analyze(N);
+  }
+  function csvCell(s) { s = String(s == null ? '' : s); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }
+  function toCSV(M) {
+    var r = rate(M.rate);
+    var rows = [['事件', '卷', '轨道', '转场', '转场帧', '素材入', '素材出', '录制入', '录制出', '时长帧', '时长', '变速fps', '片段名']];
+    M.events.forEach(function (e) {
+      var rr = (r.tb === 30 || r.tb === 60) && r.den === 1001 ? rate((r.tb === 30 ? '29.97' : '59.94') + (e.fcm === 'DF' ? 'df' : '')) : r;
+      rows.push([e.numText, e.reel, e.track, e.trans, e.transDur, format(e.srcIn, rr), format(e.srcOut, rr),
+        format(e.recIn, rr), format(e.recOut, rr), e.recDur, format(e.recDur, rr), e.speed == null ? '' : e.speed, e.clip || '']);
+    });
+    return rows.map(function (r2) { return r2.map(csvCell).join(','); }).join('\n');
+  }
+
+  // ───────── 下拉（pulldown / telecine）─────────
+  var PULLDOWNS = [
+    { id: '23', label: '2:3 下拉（23.976 → 29.97）', pattern: [2, 3] },
+    { id: '2332', label: '2:3:3:2 高级下拉（23.976 → 29.97）', pattern: [2, 3, 3, 2] },
+    { id: '222222222223', label: '欧洲下拉 2:2…2:3（24 → 25）', pattern: [2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3] }
+  ];
+  function pulldownById(id) {
+    for (var i = 0; i < PULLDOWNS.length; i++) if (PULLDOWNS[i].id === id) return PULLDOWNS[i];
+    throw new Error('未知下拉模式 ' + id);
+  }
+  /* 按场展开：胶片帧 i 占 pattern[(i+phase)%L] 个场；场序上场优先（T,B,T,B…）。
+   * 返回前 nVideo 个视频帧，每帧 {top, bottom, mixed}（值为胶片帧序号）。 */
+  function telecine(patId, nVideo, phase) {
+    var P = pulldownById(patId).pattern, L = P.length, ph = ((phase || 0) % L + L) % L;
+    var fields = [], i = 0;
+    while (fields.length < nVideo * 2) {
+      var k = P[(i + ph) % L];
+      for (var j = 0; j < k; j++) fields.push(i);
+      i++;
+    }
+    var out = [];
+    for (var v = 0; v < nVideo; v++) {
+      var t = fields[2 * v], b = fields[2 * v + 1];
+      out.push({ top: t, bottom: b, mixed: t !== b });
+    }
+    return out;
+  }
+  /* 一个完整循环 = 视频帧也回到整数的最短胶片帧数（2:3 是 4 帧 ABCD → 5 个视频帧，欧洲下拉是 24 → 25） */
+  function pulldownRatio(patId) {
+    var P = pulldownById(patId).pattern, s = 0;
+    P.forEach(function (x) { s += x; });
+    var k = s % 2 ? 2 : 1;
+    return { film: P.length * k, video: s * k / 2, fields: s * k, cycle: P.length * k };
+  }
+  // 胶片帧 i 在节奏里的字母（相位 ph = 片段首帧是循环里的第几帧）
+  function cadenceLetter(patId, i, ph) {
+    var C = pulldownRatio(patId).cycle;
+    return LETTERS[((i + (ph || 0)) % C + C) % C];
+  }
+  var LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  function letter(i, L) { return LETTERS[i % L]; }
+
+  return {
+    RATES: RATES, rate: rate, dropN: dropN, fps: fps,
+    toFields: toFields, format: format, fromFields: fromFields, parse: parse, isDroppedLabel: isDroppedLabel,
+    seconds: seconds, clock: clock, drift: drift, feet: feet, parseFeet: parseFeet, GAUGES: GAUGES, samples: samples,
+    convert: convert, speedInfo: speedInfo,
+    tokenize: tokenize, evaluate: evaluate, tape: tape,
+    parseEDL: parseEDL, printEDL: printEDL, edlKey: edlKey, convertEDL: convertEDL, toCSV: toCSV, tracksOf: tracksOf,
+    PULLDOWNS: PULLDOWNS, telecine: telecine, pulldownRatio: pulldownRatio, letter: letter, cadenceLetter: cadenceLetter
+  };
+})();
+if (typeof module !== 'undefined') module.exports = TC;
+
+</script>
+<script id="tcs-app">
+/* 本站通用的 SVG 绘图骨架：Frame（坐标框 + 刻度 + 裁剪）+ Placer（文字避让器）。
+ *
+ * 固化背景：09-14 journal 明写「这套 Placer 每期都在重写，值得连同保守盒 + 退让位一起抽进
+ * 公共脚手架」，09-15（SVG 机器人图）与 09-16（12 张图）又各重写一遍。本文件 = 09-16 版，
+ * 已经把历次踩过的坑都焊进去了：
+ *   ① 每一段文字（**含坐标轴刻度**）都走 Placer，撞了就按退让位挪、全撞就丢（07-28…08-11 共 7 次事故）；
+ *   ② 退让位第一顺位要落在数据的空侧，带 plate 的标注会擦掉底下的曲线（08-07）；
+ *   ③ 刻度档位按「刻度个数最接近目标」挑，不是「第一个 ≥ raw 的步长」（08-27 y 轴塌成 2 根）；
+ *   ④ setDomain **允许上下界倒置**（俯视图要 y 向下）—— 强行要求 ymax > ymin 会把整张图画空（09-16）；
+ *   ⑤ 曲线一律 clip 到绘图矩形，越界分支不许糊到坐标轴外（09-16）。
+ *
+ * 用法（作为 app 的第一个源文件内联进页面即可）：
+ *   node tools/build-inline.mjs --template page.template.html --out index.html \
+ *     --inline '/*APP*\/=<本文件>,app_part1.js,…'
+ *   var F = new AEPlot.Frame('fig-id', { pad: { l: 56, r: 18, t: 16, b: 38 } });
+ *   F.setDomain(x0, x1, y0, y1);
+ *   F.axes({ xlabel: '…', ylabel: '…', xfmt: fn, yfmt: fn });
+ *   F.path(pts, { stroke: '#da291c' }); F.dot(x, y); F.vline(x); F.hline(y);
+ *   F.P.text(px, py, '标注', { size: 10, fill: '#fff', plate: true, offsets: [[0,0],[0,-13],[0,20]] });
+ * 需要宿主提供一个 fmt(v, d) 数字格式函数：new Frame(id, { fmt: myFmt })，默认用内置的。
+ */
+var AEPlot = (function () {
+  'use strict';
+  var SVGNS = 'http://www.w3.org/2000/svg';
+  /* 主题色。09-16 抽出来时把 Ferrari 的深色写死在 axes/Placer 里，浅色设计系统（Expo）
+   * 用起来刻度与网格几乎看不见 —— 2026-09-17 改成可覆盖，默认值与旧版逐字相同。
+   * 用法：AEPlot.theme({ grid:'#f0f0f3', axis:'#dcdee0', tick:'#60646c', label:'#999' }); */
+  var TH = { grid: '#282828', axis: '#303030', tick: '#8f8f8f', label: '#666',
+             text: '#969696', plate: '#181818', series: '#da291c' };
+  function theme(o) { for (var k in o) if (o[k] != null) TH[k] = o[k]; return TH; }
+  function $(id) { return document.getElementById(id); }
+  function fmt(v, d) {
+    if (v == null || !isFinite(v)) return '—';
+    var x = +v;
+    if (Math.abs(x) >= 1e6 || (Math.abs(x) < 1e-4 && x !== 0)) return x.toExponential(d == null ? 3 : d);
+    var s = x.toFixed(d == null ? 3 : d);
+    if (/^-0\.?0*$/.test(s)) s = s.slice(1);
+    return s;
+  }
+  // ── SVG 基础 ──
+  function el(tag, attrs, parent) {
+    var n = document.createElementNS(SVGNS, tag), k;
+    for (k in attrs) if (attrs[k] != null) n.setAttribute(k, attrs[k]);
+    if (parent) parent.appendChild(n);
+    return n;
+  }
+  function clear(node) { while (node.firstChild) node.removeChild(node.firstChild); }
+
+  /* 文字避让器：**这张图上的每一段文字**都必须经过它（含坐标轴刻度）。
+   * 教训来源：07-28/07-29/07-30/08-05/08-07/08-08/08-11 连撞 7 次标签重叠，
+   * 全部逃过 DOM 断言，只有人工看图才发现。 */
+  function Placer(svg, w, h) {
+    this.svg = svg; this.w = w; this.h = h; this.boxes = []; this.drawn = 0; this.dropped = 0;
+  }
+  Placer.prototype.measure = function (text, size) {
+    var n = 0, i, c;
+    for (i = 0; i < text.length; i++) {
+      c = text.charCodeAt(i);
+      n += (c > 0x2e80 && c < 0xa000) || (c >= 0xff00 && c <= 0xffef) ? 1 : 0.6;
+    }
+    return n * size;
+  };
+  Placer.prototype.hit = function (b) {
+    if (b.x < -1 || b.y < -1 || b.x + b.w > this.w + 1 || b.y + b.h > this.h + 1) return true;  // 出画布
+    for (var i = 0; i < this.boxes.length; i++) {
+      var o = this.boxes[i];
+      if (b.x < o.x + o.w && o.x < b.x + b.w && b.y < o.y + o.h && o.y < b.y + b.h) return true;
+    }
+    return false;
+  };
+  Placer.prototype.reserve = function (x, y, w, h) { this.boxes.push({ x: x, y: y, w: w, h: h }); };
+  /* opts: {size, fill, anchor, weight, offsets:[[dx,dy]…], plate:bool} */
+  Placer.prototype.text = function (x, y, str, opts) {
+    var o = opts || {}, size = o.size || 11, anchor = o.anchor || 'middle';
+    var tw = this.measure(str, size) + 3, th = size + 3;
+    var offs = o.offsets || [[0, 0]], i, dx, dy, bx, by, box = null, ox = 0, oy = 0;
+    for (i = 0; i < offs.length; i++) {
+      dx = offs[i][0]; dy = offs[i][1];
+      bx = x + dx - (anchor === 'middle' ? tw / 2 : anchor === 'end' ? tw : 0);
+      by = y + dy - th + 2;
+      if (!this.hit({ x: bx, y: by, w: tw, h: th })) { box = { x: bx, y: by, w: tw, h: th }; ox = dx; oy = dy; break; }
+    }
+    if (!box) { this.dropped++; return null; }
+    this.boxes.push(box); this.drawn++;
+    if (o.plate) el('rect', { x: box.x, y: box.y, width: box.w, height: box.h, fill: o.plate === true ? TH.plate : o.plate, opacity: 0.88 }, this.svg);
+    var t = el('text', { x: x + ox, y: y + oy, 'text-anchor': anchor, 'font-size': size, fill: o.fill || TH.text,
+      'font-weight': o.weight || 400, 'font-family': 'inherit' }, this.svg);
+    t.textContent = str;
+    return t;
+  };
+
+  /* 直角坐标绘图框 */
+  function Frame(svgId, opt) {
+    var svg = $(svgId), o = opt || {};
+    clear(svg);
+    var vb = svg.getAttribute('viewBox').split(/\s+/).map(Number);
+    this.svg = svg; this.W = vb[2]; this.H = vb[3];
+    // 宿主传进来的 fmt 以前只存不用：axes() 里写死了模块自带的 fmt，
+    // 于是 `new Frame(id, { fmt: myFmt })` 会被**静默忽略**（2026-09-18 实撞，
+    // 「各节点排队人数」那张图的 x 轴因此打出了 3 位小数）。这里收起来，下面用它。
+    this.fmt = o.fmt || fmt;
+    this.pad = o.pad || { l: 56, r: 18, t: 16, b: 38 };
+    this.x0 = this.pad.l; this.x1 = this.W - this.pad.r;
+    this.y0 = this.H - this.pad.b; this.y1 = this.pad.t;
+    this.P = new Placer(svg, this.W, this.H);
+    // 裁剪：曲线一律夹在绘图矩形内（否则超出量程的分支会画到坐标轴外、糊到图例上）
+    this.clipId = 'ae-clip-' + svgId + '-' + Math.random().toString(36).slice(2, 8);
+    var defs = el('defs', {}, svg);
+    var cp = el('clipPath', { id: this.clipId }, defs);
+    el('rect', { x: this.pad.l, y: this.pad.t, width: this.W - this.pad.l - this.pad.r,
+      height: this.H - this.pad.t - this.pad.b }, cp);
+    this.setDomain(o.xmin == null ? 0 : o.xmin, o.xmax == null ? 1 : o.xmax, o.ymin == null ? 0 : o.ymin, o.ymax == null ? 1 : o.ymax);
+  }
+  Frame.prototype.setDomain = function (xmin, xmax, ymin, ymax) {
+    // 只修「退化」（上下界相等/非数），**不能**强行要求 ymax > ymin ——
+    // 俯视图要把 y 轴倒过来画（2026-09-16 实撞：平面形状图整张空白，
+    // 因为这里把倒置域改写成了 [ymin, ymin+1]，机翼落在域外）。
+    if (!isFinite(xmin) || !isFinite(xmax) || xmax === xmin) { xmin = xmin || 0; xmax = xmin + 1; }
+    if (!isFinite(ymin) || !isFinite(ymax) || ymax === ymin) { ymin = ymin || 0; ymax = ymin + 1; }
+    this.xmin = xmin; this.xmax = xmax; this.ymin = ymin; this.ymax = ymax;
+  };
+  Frame.prototype.sx = function (x) { return this.x0 + (x - this.xmin) / (this.xmax - this.xmin) * (this.x1 - this.x0); };
+  Frame.prototype.sy = function (y) { return this.y0 + (y - this.ymin) / (this.ymax - this.ymin) * (this.y1 - this.y0); };
+  /* 刻度档位：按「刻度个数最接近目标」挑，而不是「第一个 ≥ raw 的步长」
+   * （2026-08-27 教训：后者会把 y 轴塌成 2 根刻度）。 */
+  Frame.prototype.ticks = function (min, max, target) {
+    var span = max - min, best = null, mag, s, i, cand, cnt;
+    if (!(span > 0)) return [min];
+    for (mag = Math.floor(Math.log10(span)) - 1; mag <= Math.floor(Math.log10(span)) + 1; mag++) {
+      var base = Math.pow(10, mag);
+      var steps = [1, 2, 2.5, 5, 10];
+      for (i = 0; i < steps.length; i++) {
+        s = steps[i] * base;
+        cnt = Math.floor(max / s) - Math.ceil(min / s) + 1;
+        if (cnt < 2 || cnt > 24) continue;
+        cand = Math.abs(cnt - (target || 6));
+        if (best === null || cand < best.score) best = { step: s, score: cand };
+      }
+    }
+    if (!best) return [min, max];
+    var out = [], v0 = Math.ceil(min / best.step) * best.step;
+    for (var v = v0; v <= max + best.step * 1e-6; v += best.step) out.push(Math.abs(v) < best.step * 1e-9 ? 0 : v);
+    return out;
+  };
+  Frame.prototype.axes = function (o) {
+    var op = o || {}, i, t, px, py;
+    // 域可以是**倒置**的（阿贝图 x 轴从大到小、俯视图 y 轴向下），取刻度前先排序，
+    // 否则 ticks() 拿到负 span 直接 return [min]，整条轴只剩一个刻度
+    // （2026-09-17 实撞：阿贝图 x 轴只画出一个孤零零的「89」）。
+    var xt = op.xticks || this.ticks(Math.min(this.xmin, this.xmax), Math.max(this.xmin, this.xmax), 6);
+    var yt = op.yticks || this.ticks(Math.min(this.ymin, this.ymax), Math.max(this.ymin, this.ymax), 6);
+    el('rect', { x: this.x0, y: this.y1, width: this.x1 - this.x0, height: this.y0 - this.y1, fill: 'none', stroke: TH.axis }, this.svg);
+    for (i = 0; i < yt.length; i++) {
+      py = this.sy(yt[i]);
+      if (py < this.y1 - 0.5 || py > this.y0 + 0.5) continue;
+      el('line', { x1: this.x0, y1: py, x2: this.x1, y2: py, stroke: TH.grid }, this.svg);
+      this.P.text(this.x0 - 6, py + 4, (op.yfmt || this.fmt)(yt[i]), { anchor: 'end', size: 10, fill: TH.tick,
+        offsets: [[0, 0], [0, -9], [0, 9]] });
+    }
+    for (i = 0; i < xt.length; i++) {
+      px = this.sx(xt[i]);
+      if (px < this.x0 - 0.5 || px > this.x1 + 0.5) continue;
+      el('line', { x1: px, y1: this.y0, x2: px, y2: this.y1, stroke: TH.grid }, this.svg);
+      this.P.text(px, this.y0 + 16, (op.xfmt || this.fmt)(xt[i]), { anchor: 'middle', size: 10, fill: TH.tick });
+    }
+    if (op.xlabel) this.P.text((this.x0 + this.x1) / 2, this.H - 6, op.xlabel, { size: 11, fill: TH.label });
+    if (op.ylabel) {
+      var t2 = el('text', { x: 12, y: (this.y0 + this.y1) / 2, 'font-size': 11, fill: TH.label, 'text-anchor': 'middle',
+        transform: 'rotate(-90 12 ' + ((this.y0 + this.y1) / 2) + ')' }, this.svg);
+      t2.textContent = op.ylabel;
+      this.P.reserve(4, this.y1, 16, this.y0 - this.y1);
+    }
+  };
+  Frame.prototype.path = function (pts, o) {
+    var op = o || {}, d = '', i, px, py, started = false;
+    for (i = 0; i < pts.length; i++) {
+      if (pts[i] == null || !isFinite(pts[i][0]) || !isFinite(pts[i][1])) { started = false; continue; }
+      px = this.sx(pts[i][0]); py = this.sy(pts[i][1]);
+      d += (started ? 'L' : 'M') + px.toFixed(2) + ' ' + py.toFixed(2) + ' ';
+      started = true;
+    }
+    if (!d) return null;
+    return el('path', { d: d, fill: op.fill || 'none', stroke: op.stroke || TH.series, 'stroke-width': op.width || 1.6,
+      'stroke-dasharray': op.dash, opacity: op.opacity, 'stroke-linejoin': 'round', 'stroke-linecap': 'round',
+      'clip-path': op.noclip ? null : 'url(#' + this.clipId + ')' }, this.svg);
+  };
+  Frame.prototype.dot = function (x, y, o) {
+    var op = o || {};
+    return el('circle', { cx: this.sx(x), cy: this.sy(y), r: op.r || 3.2, fill: op.fill || TH.series,
+      stroke: op.stroke, 'stroke-width': op.width }, this.svg);
+  };
+  Frame.prototype.vline = function (x, o) {
+    var op = o || {};
+    return el('line', { x1: this.sx(x), y1: this.y0, x2: this.sx(x), y2: this.y1, stroke: op.stroke || '#5a5a5a',
+      'stroke-width': op.width || 1, 'stroke-dasharray': op.dash || '4 4' }, this.svg);
+  };
+  Frame.prototype.hline = function (y, o) {
+    var op = o || {};
+    return el('line', { x1: this.x0, y1: this.sy(y), x2: this.x1, y2: this.sy(y), stroke: op.stroke || '#5a5a5a',
+      'stroke-width': op.width || 1, 'stroke-dasharray': op.dash || '4 4' }, this.svg);
+  };
+
+
+  /* 对数轴刻度：在 [lo, hi]（以 10 为底的指数）区间里挑 1/2/5 × 10^k 这些档，
+   * 返回**真值**数组（调用方自己取 log 当域坐标、并用 yfmt 把它换算回来显示）。
+   * 2026-09-18 抽出：等待时间 / 成本 / 误差这类跨几个数量级的量，线性轴会把
+   * 关心的那一段全压在零线附近（实撞：16 席要 2.2 分钟、19 席只要 11 秒）。
+   * ⚠️ 配套的一条硬规矩：域要**夹**在关注点附近若干个数量级内 —— 只要有一个
+   * 病态点（比如 ρ=1-1e-16 解出 1e17）就能把量程撑到刻度全被避让器丢光。 */
+  function logTicks(lo, hi) {
+    var out = [], k, m, v, lg;
+    for (k = Math.floor(lo); k <= Math.ceil(hi); k++) {
+      for (m = 0; m < 3; m++) {
+        v = [1, 2, 5][m] * Math.pow(10, k);
+        lg = Math.log(v) / Math.LN10;
+        if (lg >= lo - 1e-9 && lg <= hi + 1e-9) out.push(v);
+      }
+    }
+    return out;
+  }
+
+  return { Frame: Frame, Placer: Placer, el: el, clear: clear, fmt: fmt, theme: theme, TH: TH,
+           logTicks: logTicks };
+})();
+
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+  var KEY = 'tcs-v1';
+  var S = load();
+  function load() {
+    var d = { rate: '25', tab: 'calc', kind: 'tc', input: '01:00:00:00', tape: null, edl: null, edlRate: '23.976', edlTo: '25',
+      lib: [], cv: { input: '01:30:00:00', from: '23.976', to: '25', mode: 'real', round: 'nearest' }, pd: { pat: '23', phase: 0, q: '7' } };
+    try {
+      var s = JSON.parse(localStorage.getItem(KEY) || 'null');
+      if (s && typeof s === 'object') for (var k in d) if (s[k] != null) d[k] = s[k];
+    } catch (e) { /* 坏数据按默认 */ }
+    if (!Array.isArray(d.lib)) d.lib = [];
+    return d;
+  }
+  function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { /* 配额满时静默 */ } }
+  function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function R() { return TC.rate(S.rate); }
+  function fillRates(sel, val, filter) {
+    sel.innerHTML = TC.RATES.filter(filter || function () { return true; }).map(function (r) {
+      return '<option value="' + r.id + '">' + r.label + '</option>';
+    }).join('');
+    sel.value = val;
+  }
+  function num(n) { return Number(n).toLocaleString('en-US'); }
+  function download(name, text) {
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([text], { type: 'text/plain;charset=utf-8' }));
+    a.download = name; document.body.appendChild(a); a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+  }
+
+  // ───────── 页签 ─────────
+  var TABS = ['calc', 'edl', 'rate', 'notes'];
+  function showTab(t) {
+    if (TABS.indexOf(t) < 0) t = 'calc';
+    S.tab = t; save();
+    TABS.forEach(function (k) {
+      $('tab-' + k).setAttribute('aria-selected', k === t ? 'true' : 'false');
+      $('tab-' + k).tabIndex = k === t ? 0 : -1;
+      $('pane-' + k).hidden = k !== t;
+    });
+    if (t === 'edl') renderEDL();
+    if (t === 'rate') { renderConvert(); renderPulldown(); }
+  }
+  TABS.forEach(function (k, i) {
+    $('tab-' + k).addEventListener('click', function () { showTab(k); });
+    $('tab-' + k).addEventListener('keydown', function (e) {
+      var d = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+      if (!d) return;
+      var n = TABS[(i + d + TABS.length) % TABS.length];
+      showTab(n); $('tab-' + n).focus(); e.preventDefault();
+    });
+  });
+
+  // ───────── 当日时间码 ─────────
+  function tick() {
+    var r = R(), now = new Date();
+    var sec = (now - new Date(now.getFullYear(), now.getMonth(), now.getDate())) / 1000;
+    var F = Math.floor(sec * r.num / r.den);
+    $('tcs-tod').textContent = TC.format(F, r);
+    requestAnimationFrame(tick);
+  }
+  function todMeta() {
+    var r = R();
+    $('tcs-tod-rate').textContent = r.label;
+    $('tcs-tod-note').textContent = r.den === 1001 && !r.df
+      ? '不丢帧 1001 系：读数每小时比墙钟慢 3.6 秒' : '按本机时钟换算';
+  }
+
+  // ───────── 换算卡 ─────────
+  function readInput() {
+    var r = R(), v = $('tcs-in').value, kind = $('tcs-in-kind').value, p;
+    if (kind === 'tc') return TC.parse(v, r);
+    if (kind === 'frames') {
+      if (!/^\s*-?\d+\s*$/.test(v)) return { ok: false, err: '帧数应为整数' };
+      return { ok: true, frames: parseInt(v, 10) };
+    }
+    if (kind === 'sec') {
+      if (!/^\s*-?(\d+(\.\d*)?|\.\d+)\s*$/.test(v)) return { ok: false, err: '秒数应为数字' };
+      var s = parseFloat(v), exact = s * r.num / r.den, F = Math.round(exact);
+      p = { ok: true, frames: F };
+      if (Math.abs(F - exact) > 1e-9) p.warn = s + ' 秒 = ' + (+exact.toFixed(4)) + ' 帧，就近取整为 ' + F + ' 帧';
+      return p;
+    }
+    return TC.parseFeet(v, kind === 'ft35' ? '35mm' : '16mm');
+  }
+  var lastF = 0;
+  function renderCalc() {
+    var r = R(), p = readInput(), msg = $('tcs-in-msg');
+    msg.className = 'tcs-msg';
+    if (!p.ok) {
+      msg.textContent = p.err; msg.classList.add('tcs-msg-err');
+      $('tcs-in').setAttribute('aria-invalid', 'true');
+      ['tc', 'frames', 'real', 'drift', 'ft35', 'ft16', 'samp', 'nb'].forEach(function (k) { $('tcs-o-' + k).textContent = '—'; });
+      $('tcs-all').tBodies[0].innerHTML = '';
+      return;
+    }
+    $('tcs-in').removeAttribute('aria-invalid');
+    msg.textContent = p.warn || '';
+    if (p.warn) msg.classList.add('tcs-msg-warn');
+    var F = p.frames; lastF = F;
+    $('tcs-o-tc').textContent = TC.format(F, r);
+    $('tcs-o-frames').textContent = num(F);
+    $('tcs-o-real').textContent = TC.clock(TC.seconds(F, r));
+    var dr = TC.drift(F, r);
+    $('tcs-o-drift').textContent = Math.abs(dr) < 5e-4 ? '0' : (dr > 0 ? '慢 ' : '快 ') + Math.abs(dr).toFixed(3) + ' 秒';
+    $('tcs-o-ft35').textContent = TC.feet(F, '35mm');
+    $('tcs-o-ft16').textContent = TC.feet(F, '16mm');
+    var sm = TC.samples(F, r);
+    $('tcs-o-samp').textContent = num(sm.whole) + (sm.exact ? '' : ' + ' + sm.frac.toFixed(3));
+    $('tcs-o-nb').textContent = TC.format(F + 1, r) + ' / ' + TC.format(F - 1, r);
+    // 各帧率
+    var sec = TC.seconds(F, r);
+    $('tcs-all').tBodies[0].innerHTML = TC.RATES.map(function (rb) {
+      var c = TC.convert(F, r, rb, 'real', 'nearest');
+      var errMs = (TC.seconds(c.frames, rb) - sec) * 1000;
+      return '<tr' + (rb.id === r.id ? ' class="tcs-cur"' : '') + ' data-rate="' + rb.id + '"><td>' + rb.label + '</td><td class="tcs-m">' +
+        TC.format(c.frames, rb) + '</td><td class="tcs-m">' + (c.exact ? '' : '≈ ') + num(c.frames) + '</td><td class="tcs-m">' +
+        (c.exact ? '0' : (errMs > 0 ? '+' : '') + errMs.toFixed(3) + ' ms') + '</td></tr>';
+    }).join('');
+  }
+  $('tcs-in').addEventListener('input', function () { S.input = this.value; save(); renderCalc(); });
+  $('tcs-in').addEventListener('keydown', function (e) {
+    if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+    var p = readInput(); if (!p.ok) return;
+    var F = p.frames + (e.key === 'ArrowUp' ? 1 : -1) * (e.shiftKey ? R().tb : 1);
+    var kind = $('tcs-in-kind').value;
+    this.value = kind === 'tc' ? TC.format(F, R()) : kind === 'frames' ? String(F) : kind === 'sec' ? String(+TC.seconds(F, R()).toFixed(6)) : TC.feet(F, kind === 'ft35' ? '35mm' : '16mm');
+    S.input = this.value; save(); renderCalc(); e.preventDefault();
+  });
+  $('tcs-in-kind').addEventListener('change', function () {
+    var kind = this.value, r = R(), F = lastF;
+    $('tcs-in').value = kind === 'tc' ? TC.format(F, r) : kind === 'frames' ? String(F) : kind === 'sec' ? String(+TC.seconds(F, r).toFixed(6)) : TC.feet(F, kind === 'ft35' ? '35mm' : '16mm');
+    S.kind = kind; S.input = $('tcs-in').value; save(); renderCalc();
+  });
+
+  // ───────── 算式纸 ─────────
+  var EX1 = '# 片段清单：入点 -> 出点（出点不含）\n01:00:00:00 -> 01:00:12:10\n01:02:30:00 -> 01:02:41:16\n01:05:00:05 -> 01:05:07:00\n合计\n\n# 片尾 + 黑场\n_ + 3s + 12\n_ * 2';
+  var EX2 = '# 切到 29.97 DF 再看\n00:00:59;29 + 1\n00:09:59;29 + 1\n00:10:00;00 -> 00:20:00;00\n1m                # 1800 帧，不是 00:01:00;00\n00:01:00;00       # 丢帧制里不存在\n01:00:00;00 / 00:00:01;00';
+  if (S.tape == null) S.tape = EX1;
+  function renderTape() {
+    var r = R(), res = TC.tape($('tcs-tape').value, r), out = $('tcs-tape-out'), html = [];
+    var lines = $('tcs-tape').value.split('\n');
+    var byLine = {};
+    res.rows.forEach(function (row) { byLine[row.line] = row; });
+    for (var i = 0; i < lines.length; i++) {
+      var row = byLine[i], h;
+      if (!row || row.empty) h = '<div class="tcs-tl" data-line="' + i + '">&nbsp;</div>';
+      else if (row.err) h = '<div class="tcs-tl tcs-tl-bad" data-line="' + i + '" title="' + esc(row.err) + '">⚠ ' + esc(row.err) + '</div>';
+      else if (row.value.k === 'dur') {
+        var t = TC.format(row.value.f, r);
+        h = '<div class="tcs-tl ' + (row.isTotal ? 'tcs-tl-tot' : 'tcs-tl-dur') + '" data-line="' + i + '" data-frames="' + row.value.f + '"' +
+          (row.notes && row.notes.length ? ' title="' + esc(row.notes.join('；')) + '"' : '') + '>' +
+          (row.isTotal ? '＝ ' : '') + t + '<i>' + num(row.value.f) + ' 帧' + (row.isTotal ? ' · ' + row.n + ' 项' : '') + '</i>' +
+          (row.notes && row.notes.length ? '<i class="tcs-tl-note">· 有取整</i>' : '') + '</div>';
+      } else {
+        var v = row.value.v, vs = Number.isInteger(v) ? String(v) : (+v.toFixed(6)).toString();
+        h = '<div class="tcs-tl tcs-tl-num" data-line="' + i + '" data-num="' + v + '">' + esc(vs) + '<i>比值 / 数</i></div>';
+      }
+      html.push(h);
+    }
+    out.innerHTML = html.join('');
+    $('tcs-tape-total').textContent = TC.format(res.total, r);
+    $('tcs-tape-count').textContent = '（' + res.count + ' 行）';
+  }
+  $('tcs-tape').addEventListener('input', function () { S.tape = this.value; save(); renderTape(); });
+  $('tcs-tape').addEventListener('scroll', function () { $('tcs-tape-out').scrollTop = this.scrollTop; });
+  $('tcs-tape-ex1').addEventListener('click', function () { $('tcs-tape').value = S.tape = EX1; save(); renderTape(); });
+  $('tcs-tape-ex2').addEventListener('click', function () { $('tcs-tape').value = S.tape = EX2; save(); renderTape(); });
+  $('tcs-tape-clear').addEventListener('click', function () { $('tcs-tape').value = S.tape = ''; save(); renderTape(); $('tcs-tape').focus(); });
+  $('tcs-tape-copy').addEventListener('click', function () {
+    var lines = $('tcs-tape').value.split('\n'), outs = $('tcs-tape-out').querySelectorAll('.tcs-tl');
+    var text = lines.map(function (l, i) { var o = outs[i] ? outs[i].textContent.replace(/ /g, '').trim() : ''; return o ? l + '\t= ' + o : l; }).join('\n');
+    if (navigator.clipboard) navigator.clipboard.writeText(text).catch(function () {});
+    this.textContent = '已复制'; var b = this; setTimeout(function () { b.textContent = '复制结果'; }, 1200);
+  });
+
+  // ───────── EDL ─────────
+  var SAMPLE = [
+    'TITLE: SHORT_FILM_R1_V07',
+    'FCM: NON-DROP FRAME',
+    '',
+    '001  A001C003 V     C        14:22:10:05 14:22:14:17 01:00:00:00 01:00:04:12',
+    '* FROM CLIP NAME: A001C003_260914_R1AB.mov',
+    '002  A002C011 V     C        15:03:41:20 15:03:44:02 01:00:04:12 01:00:06:18',
+    '* FROM CLIP NAME: A002C011_260914_R1AB.mov',
+    '003  A002C011 V     C        15:03:44:02 15:03:44:02 01:00:06:18 01:00:06:18',
+    '003  B001C002 V     D    024 09:12:00:00 09:12:05:00 01:00:06:18 01:00:11:18',
+    '* FROM CLIP NAME: A002C011_260914_R1AB.mov',
+    '* TO CLIP NAME: B001C002_260915_R2CD.mov',
+    '* LOC: 01:00:08:00 RED 天空高光溢出，调色注意',
+    '004  A003C007 V     C        16:40:02:08 16:40:04:08 01:00:11:18 01:00:14:06',
+    'M2   A003C007      019.2    16:40:02:08',
+    '* FROM CLIP NAME: A003C007_260916_R3EF.mov',
+    '005  A001C009 V     C        14:31:00:00 14:31:03:00 01:00:14:00 01:00:17:00',
+    '* FROM CLIP NAME: A001C009_260914_R1AB.mov',
+    '006  A004C001 V     C        17:02:10:00 17:02:13:10 01:00:17:00 01:00:20:12',
+    '* FROM CLIP NAME: A004C001_260917_R4GH.mov',
+    '007  BL       V     C        00:00:00:00 00:00:01:00 01:00:21:00 01:00:22:00',
+    '008  MUSIC01  AA    C        00:00:00:00 00:00:22:00 01:00:00:00 01:00:22:00',
+    '* FROM CLIP NAME: score_v3.wav',
+    '009  A002C011 A3    C        15:03:41:20 15:03:44:02 01:00:04:12 01:00:06:18',
+    '* FROM CLIP NAME: A002C011_260914_R1AB.mov',
+    ''
+  ].join('\n');
+  if (S.edl == null) S.edl = SAMPLE;
+  var M = null;
+  function rateFor(e) {
+    var r = TC.rate(M.rate);
+    if ((r.tb === 30 || r.tb === 60) && r.den === 1001) return TC.rate((r.tb === 30 ? '29.97' : '59.94') + (e && e.fcm === 'DF' ? 'df' : ''));
+    return r;
+  }
+  function renderEDL() {
+    var text = $('tcs-edl').value;
+    M = TC.parseEDL(text, $('tcs-edl-rate').value);
+    var r = rateFor(M.events[0]);
+    var all = [];
+    M.errs.forEach(function (x) { all.push({ sev: 'err', line: x.line, msg: x.msg, ev: '' }); });
+    M.issues.forEach(function (x) { all.push(x); });
+    M.warns.forEach(function (x) { all.push({ sev: 'warn', line: x.line, msg: x.msg, ev: '' }); });
+    M.gaps.forEach(function (g) { all.push({ sev: 'info', line: null, ev: g.before, msg: g.lane + ' 轨空隙 ' + g.frames + ' 帧（' + TC.format(g.from, r) + ' → ' + TC.format(g.to, r) + '）' }); });
+    var nProb = all.filter(function (x) { return x.sev !== 'info'; }).length;
+    $('tcs-k-events').textContent = M.events.length;
+    $('tcs-k-span').textContent = M.events.length ? TC.format(M.span, r) : '—';
+    $('tcs-k-lanes').textContent = M.lanes.length;
+    $('tcs-k-issues').textContent = nProb;
+    var SEV = { err: '错误', warn: '警告', info: '提示' };
+    $('tcs-edl-issues').innerHTML = all.length ? all.map(function (x) {
+      return '<li class="tcs-iss tcs-iss-' + x.sev + '" data-sev="' + x.sev + '"><span class="tcs-sev tcs-sev-' + x.sev + '">' + SEV[x.sev] + '</span><span>' +
+        (x.ev ? '事件 ' + esc(x.ev) + '：' : '') + esc(x.msg) + '</span>' + (x.line ? '<span class="tcs-ln">第 ' + x.line + ' 行</span>' : '') + '</li>';
+    }).join('') : '<li class="tcs-iss tcs-iss-ok"><span class="tcs-sev tcs-sev-info">通过</span><span>没有发现问题</span></li>';
+    $('tcs-edl-msg').textContent = M.title ? '标题：' + M.title + (M.fcm ? ' · ' + (M.fcm === 'DF' ? '丢帧' : '不丢帧') : '') : '';
+    var flagged = {};
+    M.issues.forEach(function (x) { if (x.sev !== 'info') flagged[x.ev] = 1; });
+    $('tcs-edl-table').tBodies[0].innerHTML = M.events.map(function (e) {
+      var rr = rateFor(e);
+      return '<tr id="tcs-ev-' + e.idx + '"' + (flagged[e.numText] ? ' class="tcs-flag"' : '') + '><td class="tcs-m">' + esc(e.numText) + '</td><td>' + esc(e.reel) + '</td><td>' + esc(e.track) +
+        '</td><td>' + esc(e.trans) + (e.transDur ? ' ' + e.transDur : '') + '</td><td class="tcs-m">' + TC.format(e.srcIn, rr) + '</td><td class="tcs-m">' + TC.format(e.srcOut, rr) +
+        '</td><td class="tcs-m">' + TC.format(e.recIn, rr) + '</td><td class="tcs-m">' + TC.format(e.recOut, rr) + '</td><td class="tcs-m">' + TC.format(e.recDur, rr) +
+        '</td><td class="tcs-m">' + (e.speed == null ? '' : e.speed + ' fps') + '</td><td class="tcs-name" title="' + esc(e.clip || '') + '">' + esc(e.clip || '') + '</td></tr>';
+    }).join('');
+    var totalRec = 0;
+    M.reels.forEach(function (x) { totalRec += x.frames; });
+    $('tcs-edl-reels').tBodies[0].innerHTML = M.reels.map(function (x) {
+      return '<tr><td>' + esc(x.reel) + '</td><td class="tcs-m">' + x.events + '</td><td class="tcs-m">' + TC.format(x.frames, r) + '</td><td class="tcs-m">' +
+        (totalRec ? (100 * x.frames / totalRec).toFixed(1) + '%' : '—') + '</td><td class="tcs-m">' + TC.format(x.srcMin, r) + '</td><td class="tcs-m">' + TC.format(x.srcMax, r) + '</td></tr>';
+    }).join('');
+    drawTimeline(r, flagged);
+    renderLib();
+  }
+
+  function niceStep(spanF, r, target) {
+    var cands = [1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600, 7200], best = null, bd = 1e9;
+    cands.forEach(function (s) {
+      var n = spanF / (s * r.tb), d = Math.abs(n - target);
+      if (n >= 2 && d < bd) { bd = d; best = s; }
+    });
+    return (best || 1) * r.tb;
+  }
+  function drawTimeline(r, flagged) {
+    var svg = $('tcs-fig-edl'), el = AEPlot.el;
+    AEPlot.clear(svg);
+    var lanes = M.lanes, W = 1200, laneH = 34, gapH = 10, top = 40, left = 64, right = 16;
+    var H = Math.max(120, top + lanes.length * (laneH + gapH) + 16);
+    svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+    var P = new AEPlot.Placer(svg, W, H);
+    var defs = el('defs', {}, svg);
+    var pat = el('pattern', { id: 'tcs-hatch', width: 6, height: 6, patternUnits: 'userSpaceOnUse', patternTransform: 'rotate(45)' }, defs);
+    el('rect', { width: 2.2, height: 6, fill: '#000', opacity: 0.55 }, pat);
+    if (!M.events.length || M.span <= 0) {
+      P.text(W / 2, H / 2, '没有可画的事件', { size: 14, fill: '#767d88' });
+      return;
+    }
+    var x0 = M.recIn, span = M.span;
+    var sx = function (f) { return left + (f - x0) / span * (W - left - right); };
+    // 刻度（先画刻度，占位进避让表）
+    var step = niceStep(span, r, 7), first = Math.ceil(x0 / step) * step;
+    for (var f = first; f <= M.recOut; f += step) {
+      var px = sx(f);
+      el('line', { x1: px, y1: top - 8, x2: px, y2: H - 8, stroke: '#1d1d20' }, svg);
+      P.text(px, 22, TC.format(f, r), { size: 11, fill: '#767d88', anchor: 'middle', offsets: [[0, 0]] });
+    }
+    lanes.forEach(function (ln, li) {
+      var y = top + li * (laneH + gapH);
+      el('rect', { x: left, y: y, width: W - left - right, height: laneH, fill: '#0b0b0c' }, svg);
+      P.text(left - 10, y + laneH / 2 + 4, ln, { size: 12, fill: '#a7a7a7', anchor: 'end' });
+      var evs = M.laneEvents[ln].slice().sort(function (a, b) { return a.recIn - b.recIn; });
+      evs.forEach(function (e) {
+        var a = sx(e.recIn), b = sx(e.recOut), w = Math.max(1.5, b - a);
+        var video = ln === 'V', black = e.reel === 'BL' || e.reel === 'BLACK';
+        var g = el('g', { 'class': 'tcs-blk', 'data-ev': e.numText, 'data-lane': ln, tabindex: 0, role: 'button', 'aria-label': '事件 ' + e.numText + ' ' + (e.clip || e.reel) }, svg);
+        el('rect', { x: a + 0.5, y: y + 1, width: Math.max(1, w - 1), height: laneH - 2, rx: 3,
+          fill: black ? '#1a1a1a' : video ? '#e9ecf2' : '#767d88',
+          stroke: flagged[e.numText] ? '#ff6b5e' : black ? '#3f3f3f' : 'none', 'stroke-width': flagged[e.numText] ? 2 : 1 }, g);
+        if (e.trans !== 'C' && e.transDur > 0) {
+          el('rect', { x: a + 0.5, y: y + 1, width: Math.max(1, Math.min(w, sx(e.recIn + e.transDur) - a) - 1), height: laneH - 2, fill: 'url(#tcs-hatch)' }, g);
+        }
+        var t = el('title', {}, g); t.textContent = '事件 ' + e.numText + ' · ' + (e.clip || e.reel) + ' · ' + TC.format(e.recIn, r) + ' → ' + TC.format(e.recOut, r);
+        var nm = e.trans !== 'C' && e.toClip ? e.toClip : e.clip;
+        var label = e.numText + ' ' + (nm ? nm.replace(/\.[a-z0-9]+$/i, '').replace(/_\d{6}_.*$/, '') : e.reel);
+        var hw = e.trans !== 'C' && e.transDur > 0 ? Math.min(w, sx(e.recIn + e.transDur) - a) : 0;   // 字别压在转场斜线上
+        if (P.measure(label, 11) + 10 < w - hw) P.text(a + hw + 6, y + laneH / 2 + 4, label, { size: 11, anchor: 'start', fill: black ? '#a7a7a7' : '#000' });
+        else if (P.measure(e.numText, 11) + 8 < w - hw) P.text(a + hw + 4, y + laneH / 2 + 4, e.numText, { size: 11, anchor: 'start', fill: black ? '#a7a7a7' : '#000' });
+        g.addEventListener('click', function () { focusEvent(e.idx); });
+        g.addEventListener('keydown', function (ev) { if (ev.key === 'Enter' || ev.key === ' ') { focusEvent(e.idx); ev.preventDefault(); } });
+      });
+    });
+    // LOC 标记
+    M.events.forEach(function (e) {
+      (e.locs || []).forEach(function (l) {
+        var px = sx(l.at);
+        var m = el('path', { d: 'M' + (px - 5) + ' ' + (top - 10) + 'L' + (px + 5) + ' ' + (top - 10) + 'L' + px + ' ' + (top - 2) + 'Z', fill: '#ff6b5e', 'class': 'tcs-loc' }, svg);
+        var t = el('title', {}, m); t.textContent = TC.format(l.at, r) + ' ' + l.name;
+      });
+    });
+  }
+  function focusEvent(idx) {
+    var row = $('tcs-ev-' + idx);
+    if (!row) return;
+    Array.prototype.forEach.call(document.querySelectorAll('#tcs-edl-table tr.tcs-cur'), function (x) { x.classList.remove('tcs-cur'); });
+    row.classList.add('tcs-cur');
+    row.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }
+  function renderLib() {
+    var box = $('tcs-edl-lib');
+    if (!S.lib.length) { box.innerHTML = '<div class="tcs-empty-note">还没有保存的 EDL。</div>'; return; }
+    box.innerHTML = S.lib.map(function (x, i) {
+      return '<div class="tcs-lib-item"><span title="' + esc(x.name) + '">' + esc(x.name) + ' · ' + esc(TC.rate(x.rate).label) + '</span>' +
+        '<button class="tcs-btn tcs-btn-q" type="button" data-load="' + i + '">打开</button><button class="tcs-btn tcs-btn-q" type="button" data-del="' + i + '">删除</button></div>';
+    }).join('');
+  }
+  $('tcs-edl-lib').addEventListener('click', function (e) {
+    var t = e.target;
+    if (t.dataset.load != null) { var x = S.lib[+t.dataset.load]; $('tcs-edl').value = S.edl = x.text; $('tcs-edl-rate').value = S.edlRate = x.rate; save(); renderEDL(); }
+    if (t.dataset.del != null) { S.lib.splice(+t.dataset.del, 1); save(); renderLib(); }
+  });
+  $('tcs-edl').addEventListener('input', function () { S.edl = this.value; save(); renderEDL(); });
+  $('tcs-edl-rate').addEventListener('change', function () { S.edlRate = this.value; save(); renderEDL(); });
+  $('tcs-edl-to').addEventListener('change', function () { S.edlTo = this.value; save(); });
+  $('tcs-edl-sample').addEventListener('click', function () { $('tcs-edl').value = S.edl = SAMPLE; $('tcs-edl-rate').value = S.edlRate = '23.976'; save(); renderEDL(); });
+  $('tcs-edl-file-btn').addEventListener('click', function () { $('tcs-edl-file').click(); });
+  $('tcs-edl-file').addEventListener('change', function () {
+    var f = this.files && this.files[0]; if (!f) return;
+    f.text().then(function (t) { $('tcs-edl').value = S.edl = t; save(); renderEDL(); });
+  });
+  $('tcs-edl-save').addEventListener('click', function () {
+    var name = (M && M.title) || ('EDL ' + (S.lib.length + 1));
+    S.lib = S.lib.filter(function (x) { return x.name !== name; });
+    S.lib.unshift({ name: name, rate: $('tcs-edl-rate').value, text: $('tcs-edl').value });
+    S.lib = S.lib.slice(0, 20); save(); renderLib();
+  });
+  function stem() { return ((M && M.title) || 'edl').replace(/[^\w一-龥-]+/g, '_'); }
+  $('tcs-edl-csv').addEventListener('click', function () { if (M) download(stem() + '.csv', '﻿' + TC.toCSV(M)); });
+  $('tcs-edl-norm').addEventListener('click', function () { if (M) download(stem() + '.edl', TC.printEDL(M)); });
+  $('tcs-edl-conv').addEventListener('click', function () {
+    if (!M) return;
+    var to = $('tcs-edl-to').value, N = TC.convertEDL(M, to);
+    download(stem() + '_' + to.replace('.', 'p') + '.edl', TC.printEDL(N));
+    $('tcs-edl-msg').textContent = '已换算到 ' + TC.rate(to).label + '：' + N.events.length + ' 个事件，总长 ' + TC.format(N.span, TC.rate(to));
+  });
+
+  // ───────── 跨帧率换算 ─────────
+  function renderConvert() {
+    var ra = TC.rate($('tcs-cv-from').value), rb = TC.rate($('tcs-cv-to').value);
+    var mode = $('tcs-cv-frame').checked ? 'frame' : 'real', rd = $('tcs-cv-round').value;
+    S.cv = { input: $('tcs-cv-in').value, from: ra.id, to: rb.id, mode: mode, round: rd }; save();
+    $('tcs-cv-round').disabled = mode === 'frame';
+    var p = TC.parse($('tcs-cv-in').value, ra), msg = $('tcs-cv-msg');
+    msg.className = 'tcs-msg';
+    if (!p.ok) {
+      msg.textContent = p.err; msg.classList.add('tcs-msg-err');
+      ['tc', 'frames', 'real-a', 'real-b', 'speed', 'pitch'].forEach(function (k) { $('tcs-cv-' + k).textContent = '—'; });
+      return;
+    }
+    var c = TC.convert(p.frames, ra, rb, mode, rd);
+    msg.textContent = p.warn || (mode === 'real' && !c.exact ? '除不尽：已按「' + $('tcs-cv-round').selectedOptions[0].textContent + '」取整到整帧' : '');
+    if (msg.textContent) msg.classList.add('tcs-msg-warn');
+    $('tcs-cv-tc').textContent = TC.format(c.frames, rb);
+    $('tcs-cv-frames').textContent = num(c.frames);
+    $('tcs-cv-real-a').textContent = TC.clock(TC.seconds(p.frames, ra));
+    $('tcs-cv-real-b').textContent = TC.clock(TC.seconds(c.frames, rb));
+    if (mode === 'frame') {
+      var sp = TC.speedInfo(ra, rb);
+      $('tcs-cv-speed').textContent = (sp.percent >= 0 ? '+' : '') + sp.percent.toFixed(3) + '%';
+      $('tcs-cv-pitch').textContent = (sp.semitones >= 0 ? '+' : '') + sp.semitones.toFixed(3) + ' 半音（' + (sp.cents >= 0 ? '+' : '') + sp.cents.toFixed(1) + ' 音分）';
+    } else {
+      $('tcs-cv-speed').textContent = '原速';
+      $('tcs-cv-pitch').textContent = '0';
+    }
+  }
+  ['tcs-cv-in', 'tcs-cv-from', 'tcs-cv-to', 'tcs-cv-round', 'tcs-cv-real', 'tcs-cv-frame'].forEach(function (id) {
+    $(id).addEventListener(id === 'tcs-cv-in' ? 'input' : 'change', renderConvert);
+  });
+
+  // ───────── 下拉 ─────────
+  function renderPulldown() {
+    var pat = TC.PULLDOWNS.filter(function (x) { return x.id === $('tcs-pd-pat').value; })[0] || TC.PULLDOWNS[0];
+    var q = TC.pulldownRatio(pat.id), C = q.cycle;
+    var ph = Math.min(+$('tcs-pd-phase').value || 0, C - 1);
+    S.pd = { pat: pat.id, phase: ph, q: $('tcs-pd-q').value }; save();
+    var Lt = function (i) { return TC.cadenceLetter(pat.id, i, ph); };
+    var cycleV = q.video, nV = cycleV < 6 ? cycleV * 2 : cycleV;
+    // 胶片帧相位 ph ⇒ 场模式也从 pattern[ph % L] 起
+    var v = TC.telecine(pat.id, nV, ph % pat.pattern.length);
+    var mixedInCycle = v.slice(0, cycleV).filter(function (x) { return x.mixed; }).length;
+    $('tcs-pd-ratio').textContent = q.film + ' : ' + q.video;
+    $('tcs-pd-mixed').textContent = mixedInCycle + ' / ' + cycleV + ' 帧';
+    $('tcs-pd-cad').textContent = v.slice(0, Math.min(cycleV, 8)).map(function (x) { return Lt(x.top) + Lt(x.bottom); }).join(' ') + (cycleV > 8 ? ' …' : '');
+    $('tcs-pd-table').tBodies[0].innerHTML = v.map(function (x, k) {
+      return '<tr' + (x.mixed ? ' class="tcs-flag"' : '') + '><td class="tcs-m">' + k + '</td><td>' + Lt(x.top) + '（胶片帧 ' + x.top + '）</td><td>' +
+        Lt(x.bottom) + '（胶片帧 ' + x.bottom + '）</td><td>' + (x.mixed ? '混帧' : '整帧') + '</td></tr>';
+    }).join('');
+    // 查询
+    var qs = $('tcs-pd-q').value.trim(), ans = $('tcs-pd-ans');
+    ans.className = 'tcs-msg';
+    if (!/^\d+$/.test(qs) || +qs > 100000) { ans.textContent = '请输入 0–100000 的整数帧号'; ans.classList.add('tcs-msg-err'); }
+    else {
+      var k = +qs, one = TC.telecine(pat.id, k + 1, ph % pat.pattern.length)[k];
+      ans.textContent = '视频帧 ' + k + '：上场来自胶片帧 ' + one.top + '（' + Lt(one.top) + '），下场来自胶片帧 ' + one.bottom + '（' + Lt(one.bottom) + '）' + (one.mixed ? ' —— 混帧' : ' —— 整帧');
+      ans.dataset.top = one.top; ans.dataset.bottom = one.bottom; ans.dataset.mixed = one.mixed ? '1' : '0';
+    }
+    drawPulldown(v, Lt, ph);
+  }
+  function drawPulldown(v, Lt, ph) {
+    var svg = $('tcs-fig-pd'), el = AEPlot.el, W = 1200, H = 250;
+    AEPlot.clear(svg);
+    var PL = new AEPlot.Placer(svg, W, H);
+    var left = 92, right = 12, nF = v.length * 2, fw = (W - left - right) / nF;
+    var yFilm = 34, yField = 104, yVid = 172, hB = 40;
+    PL.text(left - 12, yFilm + 25, '胶片帧', { size: 12, anchor: 'end', fill: '#a7a7a7' });
+    PL.text(left - 12, yField + 18, '场', { size: 12, anchor: 'end', fill: '#a7a7a7' });
+    PL.text(left - 12, yVid + 25, '视频帧', { size: 12, anchor: 'end', fill: '#a7a7a7' });
+    // 场
+    var fields = [];
+    v.forEach(function (x) { fields.push(x.top, x.bottom); });
+    fields.forEach(function (fi, k) {
+      var x = left + k * fw;
+      el('rect', { x: x + 1, y: yField, width: fw - 2, height: 26, rx: 2, fill: k % 2 ? '#1a1a1a' : '#27272a', 'class': 'tcs-fld', 'data-film': fi }, svg);
+      if (fw > 14) PL.text(x + fw / 2, yField + 18, Lt(fi), { size: 11, fill: '#e9ecf2' });
+    });
+    // 胶片帧（跨它占的场）
+    var i = 0, k0 = 0;
+    while (k0 < fields.length) {
+      var k1 = k0; while (k1 < fields.length && fields[k1] === fields[k0]) k1++;
+      var x0 = left + k0 * fw, w = (k1 - k0) * fw;
+      el('rect', { x: x0 + 2, y: yFilm, width: w - 4, height: hB, rx: 4, fill: '#e9ecf2', 'class': 'tcs-film' }, svg);
+      PL.text(x0 + w / 2, yFilm + 26, Lt(fields[k0]), { size: 16, fill: '#000', weight: 600 });
+      // 连线：胶片帧 → 场
+      el('line', { x1: x0 + w / 2, y1: yFilm + hB, x2: x0 + w / 2, y2: yField - 2, stroke: '#3f3f3f' }, svg);
+      k0 = k1; i++;
+    }
+    // 视频帧
+    v.forEach(function (x, k) {
+      var xx = left + k * 2 * fw;
+      el('rect', { x: xx + 2, y: yVid, width: 2 * fw - 4, height: hB, rx: 4, fill: x.mixed ? '#000' : '#767d88',
+        stroke: x.mixed ? '#ff6b5e' : 'none', 'stroke-width': 1.5, 'stroke-dasharray': x.mixed ? '4 3' : null, 'class': 'tcs-vid' + (x.mixed ? ' tcs-vid-mix' : '') }, svg);
+      el('line', { x1: xx + fw, y1: yField + 28, x2: xx + fw, y2: yVid - 2, stroke: '#3f3f3f' }, svg);
+      PL.text(xx + fw, yVid + 26, Lt(x.top) + Lt(x.bottom), { size: 14, fill: x.mixed ? '#ff6b5e' : '#000', weight: 600 });
+    });
+    PL.text(left, H - 8, '相位 ' + ph + ' · 虚线红框 = 混帧（上下场来自不同胶片帧）', { size: 11, anchor: 'start', fill: '#767d88' });
+  }
+  $('tcs-pd-pat').addEventListener('change', function () { fillPhase(); renderPulldown(); });
+  $('tcs-pd-phase').addEventListener('change', renderPulldown);
+  $('tcs-pd-q').addEventListener('input', renderPulldown);
+  function fillPhase(val) {
+    var pat = TC.PULLDOWNS.filter(function (x) { return x.id === $('tcs-pd-pat').value; })[0] || TC.PULLDOWNS[0];
+    var html = '', C = TC.pulldownRatio(pat.id).cycle;
+    for (var i = 0; i < C; i++) html += '<option value="' + i + '">' + TC.cadenceLetter(pat.id, 0, i) + ' 帧起</option>';
+    $('tcs-pd-phase').innerHTML = html;
+    $('tcs-pd-phase').value = String(val != null && val < C ? val : 0);
+  }
+
+  // ───────── 初始化 ─────────
+  fillRates($('tcs-rate'), S.rate);
+  fillRates($('tcs-edl-rate'), S.edlRate, function (r) { return !r.df; });
+  fillRates($('tcs-edl-to'), S.edlTo);
+  fillRates($('tcs-cv-from'), S.cv.from);
+  fillRates($('tcs-cv-to'), S.cv.to);
+  $('tcs-pd-pat').innerHTML = TC.PULLDOWNS.map(function (p) { return '<option value="' + p.id + '">' + p.label + '</option>'; }).join('');
+  $('tcs-pd-pat').value = S.pd.pat;
+  fillPhase(S.pd.phase);
+  $('tcs-pd-q').value = S.pd.q;
+  $('tcs-cv-in').value = S.cv.input;
+  $('tcs-cv-round').value = S.cv.round;
+  $(S.cv.mode === 'frame' ? 'tcs-cv-frame' : 'tcs-cv-real').checked = true;
+  $('tcs-in-kind').value = S.kind;
+  $('tcs-in').value = S.input;
+  $('tcs-tape').value = S.tape;
+  $('tcs-edl').value = S.edl;
+  $('tcs-rate').addEventListener('change', function () {
+    S.rate = this.value; save(); todMeta();
+    // 换帧率时保持帧号不变，把输入框重写成新帧率下的写法
+    if ($('tcs-in-kind').value === 'tc') { $('tcs-in').value = S.input = TC.format(lastF, R()); save(); }
+    renderCalc(); renderTape();
+  });
+  todMeta();
+  renderCalc();
+  renderTape();
+  showTab(S.tab);
+  requestAnimationFrame(tick);
+  window.__tcs = { state: function () { return S; }, model: function () { return M; } };
+})();
+
+</script>
+</body>
+</html>
