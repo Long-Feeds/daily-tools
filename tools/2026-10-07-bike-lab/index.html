@@ -1,0 +1,1362 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>骑行工作台 · Bike Lab</title>
+<meta name="description" content="齿比表与重复档/交叉链、功率与速度互算、爬坡用时与 VAM、固齿刹车皮与链条长度 —— 纯本地计算">
+<style>
+[hidden]{display:none!important}
+:root{
+  --bk-primary:#f7a501;--bk-primary-pressed:#dd9001;--bk-primary-active:#b17816;
+  --bk-ink:#23251d;--bk-body:#4d4f46;--bk-charcoal:#33342d;--bk-mute:#6c6e63;--bk-ash:#9b9c92;
+  --bk-hair:#bfc1b7;--bk-hair-soft:#dcdfd2;--bk-canvas:#eeefe9;--bk-soft:#e5e7e0;--bk-card:#fff;--bk-doc:#fcfcfa;
+  --bk-dark:#23251d;--bk-teal:#1078a3;--bk-blue:#2c84e0;--bk-blue-soft:#dceaf6;--bk-red:#cd4239;--bk-red-soft:#f7d6d3;
+  --bk-green:#2c8c66;--bk-green-soft:#d9eddf;--bk-purple:#7c44a6;--bk-purple-soft:#e7d8ee;
+  --bk-font:"IBM Plex Sans Variable","IBM Plex Sans",-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  --bk-mono:ui-monospace,"Source Code Pro",SFMono-Regular,Menlo,monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bk-canvas);color:var(--bk-body);font:400 15px/1.6 var(--bk-font);-webkit-font-smoothing:antialiased}
+a{color:var(--bk-teal)}
+.bk-wrap{max-width:1120px;margin:0 auto;padding:0 24px 80px}
+.bk-nav{display:flex;align-items:center;gap:16px;height:56px;border-bottom:1px solid var(--bk-hair-soft);margin-bottom:28px}
+.bk-back{color:var(--bk-ink);font-weight:600;text-decoration:none;font-size:15px;padding:6px 10px;border-radius:6px}
+.bk-back:hover{background:var(--bk-soft)}
+.bk-back:focus-visible,.bk-tab:focus-visible,.bk-btn:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid rgba(59,130,246,.5);outline-offset:1px}
+.bk-nav-sp{flex:1}
+.bk-chip{font:600 12px/1.33 var(--bk-font);color:var(--bk-mute);letter-spacing:.02em;border:1px solid var(--bk-hair);border-radius:9999px;padding:3px 10px;background:var(--bk-doc)}
+.bk-hero{display:grid;grid-template-columns:minmax(0,1fr) 190px;gap:24px;align-items:center;margin-bottom:24px}
+.bk-hero h1{font:700 36px/1.3 var(--bk-font);color:var(--bk-ink);margin:0 0 6px;letter-spacing:-.4px}
+.bk-hero p{margin:0;max-width:640px;font-size:16px}
+.bk-hero svg{width:190px;height:auto}
+.bk-tabs{display:flex;flex-wrap:wrap;gap:6px;padding:6px;background:var(--bk-soft);border-radius:9999px;width:max-content;max-width:100%;margin-bottom:20px}
+.bk-tab{font:500 14px/1 var(--bk-font);color:var(--bk-body);background:transparent;border:0;border-radius:9999px;padding:9px 16px;cursor:pointer;min-width:56px}
+.bk-tab:hover{color:var(--bk-ink);background:rgba(255,255,255,.6)}
+.bk-tab[aria-selected="true"]{background:var(--bk-ink);color:#fff}
+.bk-grid{display:grid;grid-template-columns:340px minmax(0,1fr);gap:20px;align-items:start}
+.bk-grid > *{min-width:0}
+.bk-col{display:flex;flex-direction:column;gap:20px;min-width:0}
+.bk-card{background:var(--bk-card);border:1px solid var(--bk-hair);border-radius:6px;padding:20px 22px;min-width:0}
+.bk-card h2{font:700 18px/1.5 var(--bk-font);color:var(--bk-ink);margin:0 0 12px}
+.bk-card h3{font:600 15px/1.5 var(--bk-font);color:var(--bk-ink);margin:16px 0 8px}
+.bk-sub{color:var(--bk-mute);font-size:13px;margin:-6px 0 12px}
+.bk-f{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px 12px}
+.bk-f .bk-span{grid-column:1 / -1}
+.bk-fld{display:flex;flex-direction:column;gap:4px;min-width:0}
+.bk-fld label,.bk-lbl{font:600 13px/1.4 var(--bk-font);color:var(--bk-charcoal)}
+.bk-fld small{color:var(--bk-mute);font-size:12px;line-height:1.4}
+input[type=text],input[type=number],select{font:400 15px/1.4 var(--bk-font);color:var(--bk-ink);background:#fff;border:1px solid var(--bk-hair);border-radius:6px;height:36px;padding:6px 10px;width:100%;min-width:100px}
+input:hover,select:hover{border-color:var(--bk-ash)}
+input.bk-bad{border-color:var(--bk-red);background:#fffafa}
+.bk-seg{display:flex;gap:4px;background:var(--bk-soft);border-radius:6px;padding:3px}
+.bk-seg label{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;font:600 13px/1 var(--bk-font);color:var(--bk-body);padding:8px 6px;border-radius:4px;cursor:pointer;min-height:32px}
+.bk-seg input{width:18px;height:18px;margin:0;accent-color:var(--bk-ink)}
+.bk-seg label:has(input:checked){background:#fff;color:var(--bk-ink);box-shadow:0 0 0 1px var(--bk-hair)}
+.bk-btn{font:700 14px/1.5 var(--bk-font);border-radius:6px;padding:8px 16px;min-height:38px;cursor:pointer;border:1px solid transparent;min-width:56px}
+.bk-btn-pri{background:var(--bk-primary);color:var(--bk-ink)}
+.bk-btn-pri:hover{background:var(--bk-primary-pressed)}
+.bk-btn-pri:active{background:var(--bk-primary-active)}
+.bk-btn-sec{background:var(--bk-soft);color:var(--bk-ink);border-color:var(--bk-hair-soft)}
+.bk-btn-sec:hover{border-color:var(--bk-hair)}
+.bk-btn-ter{background:transparent;color:var(--bk-ink);padding:6px 10px;min-height:32px}
+.bk-btn-ter:hover{background:var(--bk-soft)}
+.bk-tip{border-radius:6px;padding:12px 16px;font-size:14px;color:var(--bk-ink);margin:0}
+.bk-tip-blue{background:var(--bk-blue-soft)}.bk-tip-green{background:var(--bk-green-soft)}
+.bk-tip-red{background:var(--bk-red-soft)}.bk-tip-purple{background:var(--bk-purple-soft)}
+.bk-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:0}
+.bk-kpi{background:var(--bk-doc);border:1px solid var(--bk-hair-soft);border-radius:6px;padding:12px 14px;min-width:0;margin:0}
+.bk-kpi dt{font:600 12px/1.33 var(--bk-font);color:var(--bk-mute);letter-spacing:.02em}
+.bk-kpi dd{margin:4px 0 0;font:700 22px/1.25 var(--bk-font);color:var(--bk-ink);letter-spacing:-.3px;overflow-wrap:anywhere}
+.bk-kpi dd small{font:500 13px/1 var(--bk-font);color:var(--bk-mute);margin-left:3px;letter-spacing:0}
+.bk-kpi-hi{border-color:var(--bk-primary);background:#fff8e8}
+.bk-scroll{overflow-x:auto;position:relative;border:1px solid var(--bk-hair-soft);border-radius:6px}
+table.bk-tbl{border-collapse:collapse;width:100%;font-size:13.5px;font-variant-numeric:tabular-nums}
+.bk-tbl th,.bk-tbl td{padding:6px 10px;text-align:right;border-bottom:1px solid var(--bk-hair-soft);white-space:nowrap}
+.bk-tbl th{font:600 12.5px/1.4 var(--bk-font);color:var(--bk-charcoal);background:var(--bk-doc);position:sticky;top:0}
+.bk-tbl th:first-child,.bk-tbl td:first-child{text-align:left}
+.bk-tbl tbody tr:hover td{background:#fafaf6}
+.bk-tbl td.bk-cx{color:var(--bk-ash);background:repeating-linear-gradient(135deg,#fff 0 6px,#f3f3ee 6px 12px)}
+.bk-tbl td.bk-dp{box-shadow:inset 0 -3px 0 var(--bk-purple)}
+.bk-tbl td.bk-cur,.bk-tbl tr.bk-cur td{background:#fff3d6;color:var(--bk-ink);font-weight:700}
+.bk-legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:12.5px;color:var(--bk-mute);margin:10px 0 0}
+.bk-legend span{display:inline-flex;align-items:center;gap:6px}
+.bk-sw{display:inline-block;width:16px;height:12px;border-radius:2px;border:1px solid var(--bk-hair)}
+.bk-sw-cx{background:repeating-linear-gradient(135deg,#fff 0 3px,#dcdfd2 3px 6px)}
+.bk-sw-dp{background:#fff;box-shadow:inset 0 -3px 0 var(--bk-purple)}
+.bk-sw-cur{background:#fff3d6}
+.bk-figwrap{border:1px solid var(--bk-hair-soft);border-radius:6px;background:var(--bk-doc);padding:6px}
+svg.bk-fig{display:block;width:100%;height:auto;font-family:var(--bk-font)}
+.bk-bars{display:flex;flex-direction:column;gap:8px;margin-top:6px}
+.bk-bar{display:grid;grid-template-columns:96px minmax(0,1fr) 120px;gap:10px;align-items:center;font-size:13.5px}
+.bk-bar-name{color:var(--bk-charcoal);font-weight:600}
+.bk-bar-track{height:14px;background:var(--bk-soft);border-radius:3px;position:relative;overflow:hidden}
+.bk-bar-fill{position:absolute;left:0;top:0;bottom:0;border-radius:3px}
+.bk-bar-val{text-align:right;font-variant-numeric:tabular-nums;color:var(--bk-ink)}
+.bk-steps{display:flex;flex-wrap:wrap;gap:6px;margin:0;padding:0;list-style:none}
+.bk-steps li{font:500 12.5px/1 var(--bk-mono);background:var(--bk-soft);border-radius:2px;padding:5px 7px;color:var(--bk-ink)}
+.bk-steps li.bk-big{background:var(--bk-red-soft)}
+.bk-row-btns{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.bk-note{font-size:13px;color:var(--bk-mute);margin:8px 0 0}
+code{font:500 13px/1.4 var(--bk-mono);background:var(--bk-soft);color:var(--bk-ink);border-radius:2px;padding:1px 5px}
+.bk-doc h3{margin-top:20px}
+.bk-doc p,.bk-doc li{font-size:14.5px}
+.bk-doc ul{padding-left:20px}
+.bk-foot{margin-top:40px;color:var(--bk-mute);font-size:13px;border-top:1px solid var(--bk-hair-soft);padding-top:16px}
+@media (max-width:900px){
+  .bk-grid{grid-template-columns:minmax(0,1fr)}
+  .bk-hero{grid-template-columns:minmax(0,1fr)}
+  .bk-hero svg{display:none}
+}
+@media (max-width:520px){
+  .bk-wrap{padding:0 14px 60px}
+  .bk-hero h1{font-size:28px}
+  .bk-tabs{border-radius:8px}
+  .bk-tab{padding:9px 12px}
+  .bk-bar{grid-template-columns:72px minmax(0,1fr) 100px}
+  .bk-card{padding:16px}
+}
+</style>
+</head>
+<body>
+<div class="bk-wrap">
+  <nav class="bk-nav">
+    <a class="bk-back" href="../../">← 返回工具集</a>
+    <span class="bk-nav-sp"></span>
+    <span class="bk-chip">纯本地计算 · 数据只存在本机</span>
+  </nav>
+
+  <header class="bk-hero">
+    <div>
+      <h1>骑行工作台 · Bike Lab</h1>
+      <p>换飞轮前先看齿比表：哪几档重复、哪几档交叉链、最大跳档多少；给定功率算速度、给定速度算功率；估一段爬坡要骑多久；固齿车能有几个刹车皮、链条该留几节。</p>
+    </div>
+    <svg viewBox="0 0 190 120" aria-hidden="true">
+      <g fill="none" stroke="#23251d" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="42" cy="88" r="24"/><circle cx="148" cy="88" r="24"/>
+        <path d="M42 88 L74 50 L128 50 L148 88 M74 50 L96 88 L128 50 M96 88 L42 88"/>
+        <path d="M128 50 L124 38 L136 36"/><path d="M70 44 L82 44"/>
+        <circle cx="96" cy="88" r="5"/>
+      </g>
+      <g>
+        <path d="M58 46 C 60 18, 104 10, 112 34 L 104 44 Z" fill="#8a6a43"/>
+        <path d="M60 40 L52 30 L66 32 L62 20 L76 26 L78 12 L88 24 L96 12 L98 26 L110 20 L106 32" fill="none" stroke="#5e4529" stroke-width="2.4" stroke-linejoin="round"/>
+        <path d="M104 44 C 112 34, 124 34, 128 42 C 124 48, 112 50, 104 44 Z" fill="#e7c9a0"/>
+        <circle cx="120" cy="40" r="1.8" fill="#23251d"/><circle cx="129" cy="43" r="2" fill="#23251d"/>
+        <path d="M112 46 L 124 38" stroke="#e7c9a0" stroke-width="4" stroke-linecap="round"/>
+        <path d="M86 46 L 96 72" stroke="#e7c9a0" stroke-width="5" stroke-linecap="round"/>
+        <rect x="132" y="26" width="16" height="7" rx="3" fill="#f7a501"/>
+      </g>
+    </svg>
+  </header>
+
+  <div class="bk-tabs" role="tablist" aria-label="功能">
+    <button class="bk-tab" role="tab" id="bk-tab-gear" aria-controls="bk-pane-gear" aria-selected="true">齿比</button>
+    <button class="bk-tab" role="tab" id="bk-tab-power" aria-controls="bk-pane-power" aria-selected="false" tabindex="-1">功率 ↔ 速度</button>
+    <button class="bk-tab" role="tab" id="bk-tab-climb" aria-controls="bk-pane-climb" aria-selected="false" tabindex="-1">爬坡</button>
+    <button class="bk-tab" role="tab" id="bk-tab-fixed" aria-controls="bk-pane-fixed" aria-selected="false" tabindex="-1">固齿与链条</button>
+    <button class="bk-tab" role="tab" id="bk-tab-saved" aria-controls="bk-pane-saved" aria-selected="false" tabindex="-1">方案</button>
+    <button class="bk-tab" role="tab" id="bk-tab-about" aria-controls="bk-pane-about" aria-selected="false" tabindex="-1">说明</button>
+  </div>
+
+  <div id="bk-panes">
+  <!-- ═════ 齿比 ═════ -->
+  <section class="bk-pane" id="bk-pane-gear" role="tabpanel" aria-labelledby="bk-tab-gear">
+    <div class="bk-grid">
+      <div class="bk-col">
+        <div class="bk-card">
+          <h2>传动</h2>
+          <div class="bk-f">
+            <div class="bk-fld bk-span"><label for="bk-g-crankset">牙盘预设</label>
+              <select id="bk-g-crankset"></select></div>
+            <div class="bk-fld bk-span"><label for="bk-g-rings">牙盘齿数</label>
+              <input type="text" id="bk-g-rings" inputmode="numeric" autocomplete="off">
+              <small>逗号或空格分隔，最多 3 片，18–70 齿</small></div>
+            <div class="bk-fld bk-span"><label for="bk-g-cassette">飞轮预设</label>
+              <select id="bk-g-cassette"></select></div>
+            <div class="bk-fld bk-span"><label for="bk-g-cogs">飞轮齿数</label>
+              <input type="text" id="bk-g-cogs" inputmode="numeric" autocomplete="off">
+              <small>最多 13 片，9–60 齿；顺序随意，会自动排序</small></div>
+          </div>
+        </div>
+        <div class="bk-card">
+          <h2>车轮与踩踏</h2>
+          <div class="bk-f">
+            <div class="bk-fld bk-span"><label for="bk-g-wheel">轮胎规格</label>
+              <select id="bk-g-wheel"></select></div>
+            <div class="bk-fld"><label for="bk-g-bsd">胎圈直径 BSD（mm）</label>
+              <input type="number" id="bk-g-bsd" min="200" max="700" step="1"></div>
+            <div class="bk-fld"><label for="bk-g-tire">胎宽（mm）</label>
+              <input type="number" id="bk-g-tire" min="15" max="130" step="1"></div>
+            <div class="bk-fld"><label for="bk-g-crank">曲柄长（mm）</label>
+              <input type="number" id="bk-g-crank" min="100" max="200" step="2.5"></div>
+            <div class="bk-fld"><label for="bk-g-rpm">踏频（rpm）</label>
+              <input type="number" id="bk-g-rpm" min="20" max="200" step="1"></div>
+            <div class="bk-fld"><label for="bk-g-metric">表格显示</label>
+              <select id="bk-g-metric">
+                <option value="kmh">速度 km/h</option>
+                <option value="ratio">齿比</option>
+                <option value="inches">齿英寸</option>
+                <option value="dev">每圈前进 m</option>
+                <option value="gain">增益比</option>
+              </select></div>
+            <div class="bk-fld"><label for="bk-g-dup">重复档阈值（%）</label>
+              <input type="number" id="bk-g-dup" min="0" max="15" step="0.5"></div>
+          </div>
+          <p class="bk-note">轮周长 = π ×（BSD + 2 × 胎宽）= <b id="bk-g-circ">—</b> mm</p>
+        </div>
+      </div>
+      <div class="bk-col">
+        <p class="bk-tip bk-tip-red" id="bk-g-err" role="alert" hidden></p>
+        <dl class="bk-kpis" id="bk-g-kpis">
+          <div class="bk-kpi bk-kpi-hi"><dt>齿比范围</dt><dd id="bk-g-k-range">—</dd></div>
+          <div class="bk-kpi"><dt>最轻 / 最重齿比</dt><dd id="bk-g-k-minmax">—</dd></div>
+          <div class="bk-kpi"><dt>独立档数</dt><dd id="bk-g-k-distinct">—</dd></div>
+          <div class="bk-kpi"><dt>重复档对数</dt><dd id="bk-g-k-dup">—</dd></div>
+          <div class="bk-kpi"><dt>最大跳档（可用档）</dt><dd id="bk-g-k-maxstep">—</dd></div>
+          <div class="bk-kpi"><dt>踏频下速度区间</dt><dd id="bk-g-k-speeds">—</dd></div>
+        </dl>
+        <div class="bk-card">
+          <h2>齿比图</h2>
+          <p class="bk-sub">每行一片牙盘，点 = 飞轮各片在当前踏频下的速度；空心点是交叉链，紫色环标重复档。</p>
+          <div class="bk-figwrap"><svg class="bk-fig" id="bk-fig-gear" viewBox="0 0 760 200" role="img" aria-label="齿比图"></svg></div>
+        </div>
+        <div class="bk-card">
+          <h2>齿比表</h2>
+          <div class="bk-scroll"><table class="bk-tbl" id="bk-g-table"><thead></thead><tbody></tbody></table></div>
+          <div class="bk-legend"><span><i class="bk-sw bk-sw-cx"></i>交叉链（不推荐）</span><span><i class="bk-sw bk-sw-dp"></i>与另一片牙盘的某档重复</span></div>
+          <h3>换挡序列（去掉交叉链后由轻到重）</h3>
+          <ol class="bk-steps" id="bk-g-seq"></ol>
+          <p class="bk-note">每个格子是「牙盘×飞轮 → 与上一档相比重了多少」，红底为跳档 ≥ 15%。</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═════ 功率 ↔ 速度 ═════ -->
+  <section class="bk-pane" id="bk-pane-power" role="tabpanel" aria-labelledby="bk-tab-power" hidden>
+    <div class="bk-grid">
+      <div class="bk-col">
+        <div class="bk-card">
+          <h2>人与车</h2>
+          <div class="bk-f">
+            <div class="bk-fld"><label for="bk-p-rider">骑手体重（kg）</label>
+              <input type="number" id="bk-p-rider" min="20" max="200" step="0.5"></div>
+            <div class="bk-fld"><label for="bk-p-bike">车 + 装备（kg）</label>
+              <input type="number" id="bk-p-bike" min="3" max="60" step="0.1"></div>
+            <div class="bk-fld bk-span"><label for="bk-p-pos">骑姿（风阻面积 CdA 预设）</label>
+              <select id="bk-p-pos"></select></div>
+            <div class="bk-fld"><label for="bk-p-cda">CdA（m²）</label>
+              <input type="number" id="bk-p-cda" min="0.1" max="1.2" step="0.005"></div>
+            <div class="bk-fld"><label for="bk-p-crr">滚阻系数 Crr</label>
+              <input type="number" id="bk-p-crr" min="0.001" max="0.03" step="0.0005"></div>
+            <div class="bk-fld bk-span"><label for="bk-p-surf">路面 / 轮胎预设</label>
+              <select id="bk-p-surf"></select></div>
+            <div class="bk-fld"><label for="bk-p-eta">传动效率（%）</label>
+              <input type="number" id="bk-p-eta" min="80" max="100" step="0.5"></div>
+          </div>
+        </div>
+        <div class="bk-card">
+          <h2>路况与环境</h2>
+          <div class="bk-f">
+            <div class="bk-fld"><label for="bk-p-grade">坡度（%）</label>
+              <input type="number" id="bk-p-grade" min="-25" max="30" step="0.5"></div>
+            <div class="bk-fld"><label for="bk-p-wind">风速（km/h）</label>
+              <input type="number" id="bk-p-wind" min="-60" max="60" step="1"><small>顶风为正、顺风为负</small></div>
+            <div class="bk-fld"><label for="bk-p-alt">海拔（m）</label>
+              <input type="number" id="bk-p-alt" min="-400" max="5500" step="50"></div>
+            <div class="bk-fld"><label for="bk-p-temp">气温（°C）</label>
+              <input type="number" id="bk-p-temp" min="-30" max="50" step="1"></div>
+          </div>
+          <p class="bk-note">空气密度 ρ = <b id="bk-p-rho">—</b> kg/m³（标准大气压 + 理想气体）</p>
+        </div>
+      </div>
+      <div class="bk-col">
+        <div class="bk-card">
+          <h2>求解</h2>
+          <div class="bk-seg" role="radiogroup" aria-label="求解方向">
+            <label><input type="radio" name="bk-p-mode" id="bk-p-mode-power" value="power" checked>给功率 → 算速度</label>
+            <label><input type="radio" name="bk-p-mode" id="bk-p-mode-speed" value="speed">给速度 → 算功率</label>
+          </div>
+          <div class="bk-f" style="margin-top:12px">
+            <div class="bk-fld" id="bk-p-watts-fld"><label for="bk-p-watts">踏板功率（W）</label>
+              <input type="number" id="bk-p-watts" min="0" max="2500" step="5"></div>
+            <div class="bk-fld" id="bk-p-kmh-fld" hidden><label for="bk-p-kmh">速度（km/h）</label>
+              <input type="number" id="bk-p-kmh" min="1" max="120" step="0.5"></div>
+          </div>
+        </div>
+        <p class="bk-tip bk-tip-red" id="bk-p-err" role="alert" hidden></p>
+        <dl class="bk-kpis">
+          <div class="bk-kpi bk-kpi-hi"><dt>速度</dt><dd id="bk-p-k-speed">—</dd></div>
+          <div class="bk-kpi bk-kpi-hi"><dt>踏板功率</dt><dd id="bk-p-k-power">—</dd></div>
+          <div class="bk-kpi"><dt>功体比</dt><dd id="bk-p-k-wkg">—</dd></div>
+          <div class="bk-kpi"><dt>总质量</dt><dd id="bk-p-k-mass">—</dd></div>
+        </dl>
+        <div class="bk-card">
+          <h2>功率花在哪</h2>
+          <div class="bk-bars" id="bk-p-bars"></div>
+          <p class="bk-note" id="bk-p-bars-note"></p>
+        </div>
+        <div class="bk-card">
+          <h2>功率–速度曲线</h2>
+          <p class="bk-sub">当前路况下，匀速骑行所需的踏板功率随速度的变化；橙点是当前解。</p>
+          <div class="bk-figwrap"><svg class="bk-fig" id="bk-fig-power" viewBox="0 0 760 330" role="img" aria-label="功率–速度曲线"></svg></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═════ 爬坡 ═════ -->
+  <section class="bk-pane" id="bk-pane-climb" role="tabpanel" aria-labelledby="bk-tab-climb" hidden>
+    <div class="bk-grid">
+      <div class="bk-col">
+        <div class="bk-card">
+          <h2>这段坡</h2>
+          <div class="bk-f">
+            <div class="bk-fld"><label for="bk-c-len">长度（km）</label>
+              <input type="number" id="bk-c-len" min="0.1" max="100" step="0.1"></div>
+            <div class="bk-fld"><label for="bk-c-gain">爬升（m）</label>
+              <input type="number" id="bk-c-gain" min="0" max="5000" step="1"></div>
+          </div>
+          <p class="bk-note">平均坡度 <b id="bk-c-grade">—</b>（爬升 ÷ 水平距离）。人、车、风、海拔沿用「功率 ↔ 速度」页。</p>
+          <p class="bk-note" id="bk-c-env"></p>
+        </div>
+        <div class="bk-card">
+          <h2>求解</h2>
+          <div class="bk-seg" role="radiogroup" aria-label="爬坡求解方向">
+            <label><input type="radio" name="bk-c-mode" id="bk-c-mode-power" value="power" checked>给功率 → 算用时</label>
+            <label><input type="radio" name="bk-c-mode" id="bk-c-mode-time" value="time">给用时 → 算功率</label>
+          </div>
+          <div class="bk-f" style="margin-top:12px">
+            <div class="bk-fld" id="bk-c-watts-fld"><label for="bk-c-watts">平均功率（W）</label>
+              <input type="number" id="bk-c-watts" min="1" max="2500" step="5"></div>
+            <div class="bk-fld" id="bk-c-time-fld" hidden><label for="bk-c-time">目标用时（时:分:秒 或 分:秒）</label>
+              <input type="text" id="bk-c-time" autocomplete="off"></div>
+          </div>
+        </div>
+      </div>
+      <div class="bk-col">
+        <p class="bk-tip bk-tip-red" id="bk-c-err" role="alert" hidden></p>
+        <dl class="bk-kpis">
+          <div class="bk-kpi bk-kpi-hi"><dt>用时</dt><dd id="bk-c-k-time">—</dd></div>
+          <div class="bk-kpi bk-kpi-hi"><dt>平均功率</dt><dd id="bk-c-k-power">—</dd></div>
+          <div class="bk-kpi"><dt>功体比</dt><dd id="bk-c-k-wkg">—</dd></div>
+          <div class="bk-kpi"><dt>平均速度</dt><dd id="bk-c-k-speed">—</dd></div>
+          <div class="bk-kpi"><dt>VAM（每小时爬升）</dt><dd id="bk-c-k-vam">—</dd></div>
+        </dl>
+        <div class="bk-card">
+          <h2>功体比 → 用时</h2>
+          <p class="bk-sub">同一段坡在不同功体比下的用时；橙点是当前。</p>
+          <div class="bk-figwrap"><svg class="bk-fig" id="bk-fig-climb" viewBox="0 0 760 300" role="img" aria-label="功体比与用时曲线"></svg></div>
+          <div class="bk-scroll" style="margin-top:14px"><table class="bk-tbl" id="bk-c-ladder"><thead><tr><th>功体比</th><th>功率</th><th>用时</th><th>速度</th><th>VAM</th></tr></thead><tbody></tbody></table></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═════ 固齿与链条 ═════ -->
+  <section class="bk-pane" id="bk-pane-fixed" role="tabpanel" aria-labelledby="bk-tab-fixed" hidden>
+    <div class="bk-grid">
+      <div class="bk-col">
+        <div class="bk-card">
+          <h2>固齿 / 单速</h2>
+          <div class="bk-f">
+            <div class="bk-fld"><label for="bk-f-ring">牙盘（齿）</label>
+              <input type="number" id="bk-f-ring" min="18" max="70" step="1"></div>
+            <div class="bk-fld"><label for="bk-f-cog">后齿（齿）</label>
+              <input type="number" id="bk-f-cog" min="9" max="40" step="1"></div>
+          </div>
+          <p class="bk-note">车轮沿用「齿比」页（周长 <b id="bk-f-circ">—</b> mm、踏频 <b id="bk-f-rpm">—</b> rpm）。</p>
+        </div>
+        <div class="bk-card">
+          <h2>链条长度</h2>
+          <div class="bk-f">
+            <div class="bk-fld bk-span"><label for="bk-f-stay">后下叉长（mm，五通中心到后轴）</label>
+              <input type="number" id="bk-f-stay" min="300" max="600" step="1"></div>
+            <div class="bk-fld"><label for="bk-f-bigring">最大牙盘（齿）</label>
+              <input type="number" id="bk-f-bigring" min="18" max="70" step="1"></div>
+            <div class="bk-fld"><label for="bk-f-bigcog">最大飞轮（齿）</label>
+              <input type="number" id="bk-f-bigcog" min="9" max="60" step="1"></div>
+          </div>
+          <div class="bk-row-btns"><button class="bk-btn bk-btn-sec" id="bk-f-fromgear" type="button">取齿比页的最大盘/最大飞轮</button></div>
+        </div>
+      </div>
+      <div class="bk-col">
+        <p class="bk-tip bk-tip-red" id="bk-f-err" role="alert" hidden></p>
+        <dl class="bk-kpis">
+          <div class="bk-kpi bk-kpi-hi"><dt>刹车皮（单脚领滑）</dt><dd id="bk-f-k-skid">—</dd></div>
+          <div class="bk-kpi"><dt>刹车皮（左右脚都会）</dt><dd id="bk-f-k-ambi">—</dd></div>
+          <div class="bk-kpi"><dt>齿英寸</dt><dd id="bk-f-k-inches">—</dd></div>
+          <div class="bk-kpi"><dt>踏频下速度</dt><dd id="bk-f-k-kmh">—</dd></div>
+          <div class="bk-kpi bk-kpi-hi"><dt>链条</dt><dd id="bk-f-k-links">—</dd></div>
+        </dl>
+        <p class="bk-tip bk-tip-blue" id="bk-f-explain"></p>
+        <div class="bk-card">
+          <h2>附近的齿比组合</h2>
+          <p class="bk-sub">格内：齿英寸 · 刹车皮数（单脚 / 双脚）。刹车皮越多，后胎磨损越均匀。</p>
+          <div class="bk-scroll"><table class="bk-tbl" id="bk-f-table"><thead></thead><tbody></tbody></table></div>
+          <div class="bk-legend"><span><i class="bk-sw bk-sw-cur"></i>当前组合</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═════ 方案 ═════ -->
+  <section class="bk-pane" id="bk-pane-saved" role="tabpanel" aria-labelledby="bk-tab-saved" hidden>
+    <div class="bk-grid">
+      <div class="bk-col">
+        <div class="bk-card">
+          <h2>保存当前方案</h2>
+          <p class="bk-sub">把四个页签的全部输入存成一个方案（存在本浏览器的 localStorage 里）。</p>
+          <div class="bk-fld"><label for="bk-s-name">方案名</label>
+            <input type="text" id="bk-s-name" maxlength="40" autocomplete="off" placeholder="比如：公路车 · 冬训"></div>
+          <div class="bk-row-btns"><button class="bk-btn bk-btn-pri" id="bk-s-save" type="button">保存方案</button>
+            <button class="bk-btn bk-btn-sec" id="bk-s-reset" type="button">恢复默认输入</button></div>
+          <p class="bk-note" id="bk-s-msg" role="status"></p>
+        </div>
+      </div>
+      <div class="bk-col">
+        <div class="bk-card">
+          <h2>已存方案</h2>
+          <p class="bk-tip bk-tip-purple" id="bk-s-empty">还没有方案。在左边起个名字保存一个吧。</p>
+          <div class="bk-scroll" id="bk-s-wrap"><table class="bk-tbl" id="bk-s-list"><thead><tr><th>方案</th><th>传动</th><th>齿比范围</th><th>保存于</th><th>操作</th></tr></thead><tbody></tbody></table></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═════ 说明 ═════ -->
+  <section class="bk-pane" id="bk-pane-about" role="tabpanel" aria-labelledby="bk-tab-about" hidden>
+    <div class="bk-card bk-doc">
+      <h2>算法与口径</h2>
+      <h3>齿比</h3>
+      <ul>
+        <li>轮径 D = 胎圈直径 BSD + 2 × 胎宽（ETRTO 口径，例如 700×28C 是 622 + 2 × 28 = 678 mm）。实际充气后会有几毫米出入，要更准就直接改胎宽。</li>
+        <li>齿比 = 牙盘 ÷ 飞轮；齿英寸 = 齿比 × D ÷ 25.4；每圈前进 = 齿比 × π × D；增益比（Sheldon Brown）= 齿比 × (D / 2) ÷ 曲柄长；速度 = 每圈前进 × 踏频。</li>
+        <li>交叉链：多片牙盘时，最小盘配最小的 k 片、最大盘配最大的 k 片算交叉（飞轮 ≤ 8 片时 k = 1，否则 k = 2）。这是经验规则，不同车架的链线略有差别。</li>
+        <li>重复档：不同牙盘之间、齿比相对差小于阈值（默认 3%）的两档。独立档数 = 把全部齿比排好序后，与上一个计入的档相差 ≥ 阈值才计 1 档。</li>
+      </ul>
+      <h3>功率 ↔ 速度</h3>
+      <ul>
+        <li>踏板功率 = [m g sinθ + Crr m g cosθ + ½ ρ CdA (v + 风)|v + 风|] × v ÷ 传动效率，θ = arctan(坡度)。</li>
+        <li>空气密度 ρ = p ÷ (287.058 × T)，气压 p = 101325 × (1 − 2.25577×10⁻⁵ × 海拔)<sup>5.25588</sup>（国际标准大气），T 为开尔文温度。</li>
+        <li>给功率求速度：在 0–60 m/s 上找方程的<b>最大根</b>（下坡时这就是稳定的巡航 / 滑行终速），二分到 10⁻¹³ m/s。</li>
+        <li>CdA 与 Crr 预设是常见量级的参考值，个体差异很大；有功率计的话，用实测平路数据反推 CdA 更准。</li>
+      </ul>
+      <h3>爬坡</h3>
+      <ul>
+        <li>把整段坡当成恒定坡度：坡度 = 爬升 ÷ √(长度² − 爬升²)。长度按路面距离（码表读数）输入。</li>
+        <li>VAM = 爬升 ÷ 用时（m/h）；功体比只除骑手体重，不含车重。</li>
+      </ul>
+      <h3>固齿与链条</h3>
+      <ul>
+        <li>刹车皮数：把齿比约成最简分数 r / c，单脚领滑有 c 个；若 r 为奇数，左右脚交替领滑可得 2c 个。</li>
+        <li>链条长度：Park Tool 估算式 L = 2C + F/4 + R/4 + 1（单位英寸，C = 后下叉长，F = 最大牙盘，R = 最大飞轮），向上取整到整英寸；每英寸 2 节。装后变速器时仍应以实际穿链为准。</li>
+      </ul>
+      <h3>验证</h3>
+      <p id="bk-about-verify">引擎与一份独立的 Python 实现（速度用多项式求根而不是二分、刹车皮用有理数约分）做了随机对拍，详见站点仓库的测试。</p>
+    </div>
+  </section>
+  </div>
+
+  <footer class="bk-foot">骑行工作台 · 所有计算都在你的浏览器里完成，不上传任何数据。</footer>
+</div>
+<script id="bk-engine">
+/* 骑行工作台 · 计算引擎（纯函数，无 DOM）。
+ * 齿比：比值 / 齿英寸 / 每圈前进距离 / 增益比 / 踏频下的速度、重复档、交叉链、换挡序列。
+ * 功率：空气密度（国际标准大气压力 + 理想气体）、坡度/滚阻/风阻分解、给功率解速度（二分取最大根）。
+ * 爬坡：恒定坡度上的用时 / VAM / W/kg 及反解。固齿：刹车皮数（化简分母规则）、链条长度（Park Tool 公式）。 */
+var BK = (function () {
+  'use strict';
+  var G = 9.80665, RD = 287.058, P0 = 101325;
+
+  function gcd(a, b) { a = Math.abs(a); b = Math.abs(b); while (b) { var t = a % b; a = b; b = t; } return a; }
+
+  /* 解析齿数列表：「50,34」「11-12-13」「11 12 13」都认；返回 {ok, list, err} */
+  function parseTeeth(s, lo, hi, maxN) {
+    var str = String(s == null ? '' : s).trim();
+    if (!str) return { ok: false, err: '请输入齿数' };
+    var parts = str.split(/[\s,，、\-–\/]+/).filter(function (x) { return x !== ''; });
+    var list = [], i, n;
+    for (i = 0; i < parts.length; i++) {
+      if (!/^\d+$/.test(parts[i])) return { ok: false, err: '「' + parts[i] + '」不是整数齿数' };
+      n = +parts[i];
+      if (n < lo || n > hi) return { ok: false, err: '齿数 ' + n + ' 超出 ' + lo + '–' + hi };
+      list.push(n);
+    }
+    if (list.length > maxN) return { ok: false, err: '最多 ' + maxN + ' 个' };
+    var seen = {};
+    for (i = 0; i < list.length; i++) { if (seen[list[i]]) return { ok: false, err: '齿数 ' + list[i] + ' 重复' }; seen[list[i]] = 1; }
+    list.sort(function (a, b) { return a - b; });
+    return { ok: true, list: list };
+  }
+
+  /* 轮径（mm）：BSD + 2 × 胎宽 */
+  function wheelDia(bsd, tire) { return bsd + 2 * tire; }
+
+  /* 单个档位的全部指标 */
+  function gearMetrics(ring, cog, diaMm, crankMm, rpm) {
+    var ratio = ring / cog;
+    var dev = ratio * Math.PI * diaMm / 1000;              // m / 曲柄一圈
+    return {
+      ring: ring, cog: cog, ratio: ratio,
+      inches: ratio * diaMm / 25.4,
+      dev: dev,
+      gain: ratio * (diaMm / 2) / crankMm,
+      kmh: dev * rpm * 60 / 1000
+    };
+  }
+
+  /* 交叉链判定：单盘不判；最小盘配最小的 k 片、最大盘配最大的 k 片算交叉（n≤8 时 k=1，否则 2） */
+  function crossK(nCogs) { return nCogs <= 8 ? 1 : 2; }
+  function isCross(ri, nRings, ci, nCogs) {
+    if (nRings < 2) return false;
+    var k = crossK(nCogs);
+    return (ri === 0 && ci < k) || (ri === nRings - 1 && ci >= nCogs - k);
+  }
+
+  /* 整套齿比表 */
+  function gearTable(rings, cogs, diaMm, crankMm, rpm, dupPct) {
+    var cells = [], i, j, a, b;
+    for (i = 0; i < rings.length; i++) for (j = 0; j < cogs.length; j++) {
+      var m = gearMetrics(rings[i], cogs[j], diaMm, crankMm, rpm);
+      m.ri = i; m.ci = j; m.cross = isCross(i, rings.length, j, cogs.length); m.dup = [];
+      cells.push(m);
+    }
+    // 重复档：不同盘之间、比值相对差 < dupPct% 的两档（同一盘内飞轮齿数互异，天然不会重复）
+    for (a = 0; a < cells.length; a++) for (b = a + 1; b < cells.length; b++) {
+      if (cells[a].ri === cells[b].ri) continue;
+      var lo = Math.min(cells[a].ratio, cells[b].ratio), hi = Math.max(cells[a].ratio, cells[b].ratio);
+      if ((hi / lo - 1) * 100 < dupPct) { cells[a].dup.push(b); cells[b].dup.push(a); }
+    }
+    // 可用档 = 非交叉；按比值升序；相邻步进 %
+    var usable = cells.filter(function (c) { return !c.cross; }).slice().sort(function (x, y) { return x.ratio - y.ratio || x.ring - y.ring; });
+    var steps = [];
+    for (i = 1; i < usable.length; i++) steps.push((usable[i].ratio / usable[i - 1].ratio - 1) * 100);
+    var all = cells.map(function (c) { return c.ratio; });
+    var minR = Math.min.apply(null, all), maxR = Math.max.apply(null, all);
+    // 独立档数：比值互不相同（相对差 ≥ dupPct）的档位个数，贪心计数
+    var sorted = all.slice().sort(function (x, y) { return x - y; }), distinct = sorted.length ? 1 : 0, last = sorted[0];
+    for (i = 1; i < sorted.length; i++) if ((sorted[i] / last - 1) * 100 >= dupPct) { distinct++; last = sorted[i]; }
+    // 盘内飞轮步进（每片之间的跳档 %）
+    var cogSteps = [];
+    for (j = 1; j < cogs.length; j++) cogSteps.push((cogs[j] / cogs[j - 1] - 1) * 100);
+    return {
+      cells: cells, usable: usable, steps: steps, cogSteps: cogSteps,
+      minRatio: minR, maxRatio: maxR, range: maxR / minR * 100,
+      distinct: distinct,
+      dupPairs: cells.reduce(function (s, c) { return s + c.dup.length; }, 0) / 2,
+      maxStep: steps.length ? Math.max.apply(null, steps) : 0
+    };
+  }
+
+  /* ── 空气与阻力 ── */
+  function airPressure(altM) { return P0 * Math.pow(1 - 2.25577e-5 * altM, 5.25588); }
+  function airDensity(altM, tempC) { return airPressure(altM) / (RD * (tempC + 273.15)); }
+
+  /* 车轮处需要的功率（W）与分项。v、wind 单位 m/s（wind>0 = 顶风），grade 为小数（0.05 = 5%） */
+  function forces(p, v) {
+    var th = Math.atan(p.grade);
+    var rho = airDensity(p.alt, p.temp);
+    var va = v + p.wind;
+    var fg = p.mass * G * Math.sin(th);
+    var fr = p.crr * p.mass * G * Math.cos(th);
+    var fa = 0.5 * rho * p.cda * va * Math.abs(va);
+    var pw = (fg + fr + fa) * v;
+    return { rho: rho, fg: fg, fr: fr, fa: fa, pg: fg * v, pr: fr * v, pa: fa * v, wheel: pw, legs: pw / p.eta };
+  }
+  function powerAt(p, v) { return forces(p, v).legs; }
+
+  /* 给定踏板功率解速度：在 [0, 60 m/s] 上从高往低扫找到最后一个符号变化后二分，取**最大根**（稳定平衡点）。
+   * 下坡不踩（P=0）解出的就是滑行终速。返回 m/s；无解返回 NaN。 */
+  function speedFor(p, P) {
+    if (!(P >= 0) || !isFinite(P)) return NaN;
+    var VMAX = 60, N = 1200, h = VMAX / N, i, a, b, fa, fb;
+    var f = function (v) { return powerAt(p, v) - P; };
+    if (f(VMAX) < 0) return NaN;                          // 60 m/s 都不够：输入离谱
+    b = VMAX; fb = f(b);
+    for (i = N - 1; i >= 0; i--) {
+      a = i * h; fa = f(a);
+      if (fa <= 0) break;
+      b = a; fb = fa;
+    }
+    if (fa > 0) return 0;                                 // 理论上不会到这里（f(0) = −P ≤ 0）
+    for (i = 0; i < 200; i++) {
+      var m = (a + b) / 2, fm = f(m);
+      if (fm <= 0) a = m; else b = m;
+      if (b - a < 1e-13) break;
+    }
+    return (a + b) / 2;
+  }
+
+  /* 爬坡：长度 km、爬升 m（坡度 = 爬升/水平距离，水平距离 ≈ √(L²−H²)） */
+  function climbGrade(lenKm, gainM) {
+    var L = lenKm * 1000;
+    if (!(L > 0) || !(gainM >= 0) || gainM >= L) return NaN;
+    return gainM / Math.sqrt(L * L - gainM * gainM);
+  }
+  function climbByPower(p, lenKm, gainM, P, riderKg) {
+    var g = climbGrade(lenKm, gainM);
+    if (!isFinite(g)) return null;
+    var q = Object.assign({}, p, { grade: g });
+    var v = speedFor(q, P);
+    if (!(v > 0)) return null;
+    var t = lenKm * 1000 / v;
+    return { grade: g, v: v, t: t, vam: gainM / t * 3600, wkg: P / riderKg, P: P };
+  }
+  function climbByTime(p, lenKm, gainM, tSec, riderKg) {
+    var g = climbGrade(lenKm, gainM);
+    if (!isFinite(g) || !(tSec > 0)) return null;
+    var q = Object.assign({}, p, { grade: g });
+    var v = lenKm * 1000 / tSec;
+    var P = powerAt(q, v);
+    return { grade: g, v: v, t: tSec, vam: gainM / tSec * 3600, wkg: P / riderKg, P: P };
+  }
+
+  /* 固齿刹车皮：比值化简为 r/c；单脚 c 个；r 为奇数时左右脚交替可得 2c 个 */
+  function skid(ring, cog) {
+    var g = gcd(ring, cog), r = ring / g, c = cog / g;
+    return { r: r, c: c, single: c, ambi: r % 2 === 1 ? 2 * c : c };
+  }
+
+  /* 链条长度（Park Tool 估算式）：L(英寸) = 2C + F/4 + R/4 + 1，向上取整到整英寸，链节数 = 2L */
+  function chainLength(chainstayMm, bigRing, bigCog) {
+    var C = chainstayMm / 25.4;
+    var L = 2 * C + bigRing / 4 + bigCog / 4 + 1;
+    var inch = Math.ceil(L - 1e-9);
+    return { raw: L, inch: inch, links: inch * 2 };
+  }
+
+  /* 时间格式 */
+  function fmtTime(sec) {
+    if (!isFinite(sec) || sec < 0) return '—';
+    var s = Math.round(sec), h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), r = s % 60;
+    var pad = function (x) { return (x < 10 ? '0' : '') + x; };
+    return (h ? h + ':' + pad(m) : m) + ':' + pad(r);
+  }
+  function parseTime(str) {
+    var s = String(str || '').trim();
+    if (!/^\d+(:\d{1,2}){0,2}$/.test(s)) return NaN;
+    var parts = s.split(':').map(Number), t = 0, i;
+    for (i = 1; i < parts.length; i++) if (parts[i] >= 60) return NaN;
+    for (i = 0; i < parts.length; i++) t = t * 60 + parts[i];
+    if (parts.length === 1) t = parts[0] * 60;            // 只写一个数 = 分钟
+    return t;
+  }
+
+  return { G: G, gcd: gcd, parseTeeth: parseTeeth, wheelDia: wheelDia, gearMetrics: gearMetrics,
+    isCross: isCross, crossK: crossK, gearTable: gearTable, airPressure: airPressure, airDensity: airDensity,
+    forces: forces, powerAt: powerAt, speedFor: speedFor, climbGrade: climbGrade, climbByPower: climbByPower,
+    climbByTime: climbByTime, skid: skid, chainLength: chainLength, fmtTime: fmtTime, parseTime: parseTime };
+})();
+
+</script>
+<script id="bk-app">
+/* 本站通用的 SVG 绘图骨架：Frame（坐标框 + 刻度 + 裁剪）+ Placer（文字避让器）。
+ *
+ * 固化背景：09-14 journal 明写「这套 Placer 每期都在重写，值得连同保守盒 + 退让位一起抽进
+ * 公共脚手架」，09-15（SVG 机器人图）与 09-16（12 张图）又各重写一遍。本文件 = 09-16 版，
+ * 已经把历次踩过的坑都焊进去了：
+ *   ① 每一段文字（**含坐标轴刻度**）都走 Placer，撞了就按退让位挪、全撞就丢（07-28…08-11 共 7 次事故）；
+ *   ② 退让位第一顺位要落在数据的空侧，带 plate 的标注会擦掉底下的曲线（08-07）；
+ *   ③ 刻度档位按「刻度个数最接近目标」挑，不是「第一个 ≥ raw 的步长」（08-27 y 轴塌成 2 根）；
+ *   ④ setDomain **允许上下界倒置**（俯视图要 y 向下）—— 强行要求 ymax > ymin 会把整张图画空（09-16）；
+ *   ⑤ 曲线一律 clip 到绘图矩形，越界分支不许糊到坐标轴外（09-16）。
+ *
+ * 用法（作为 app 的第一个源文件内联进页面即可）：
+ *   node tools/build-inline.mjs --template page.template.html --out index.html \
+ *     --inline '/*APP*\/=<本文件>,app_part1.js,…'
+ *   var F = new AEPlot.Frame('fig-id', { pad: { l: 56, r: 18, t: 16, b: 38 } });
+ *   F.setDomain(x0, x1, y0, y1);
+ *   F.axes({ xlabel: '…', ylabel: '…', xfmt: fn, yfmt: fn });
+ *   F.path(pts, { stroke: '#da291c' }); F.dot(x, y); F.vline(x); F.hline(y);
+ *   F.P.text(px, py, '标注', { size: 10, fill: '#fff', plate: true, offsets: [[0,0],[0,-13],[0,20]] });
+ * 需要宿主提供一个 fmt(v, d) 数字格式函数：new Frame(id, { fmt: myFmt })，默认用内置的。
+ */
+var AEPlot = (function () {
+  'use strict';
+  var SVGNS = 'http://www.w3.org/2000/svg';
+  /* 主题色。09-16 抽出来时把 Ferrari 的深色写死在 axes/Placer 里，浅色设计系统（Expo）
+   * 用起来刻度与网格几乎看不见 —— 2026-09-17 改成可覆盖，默认值与旧版逐字相同。
+   * 用法：AEPlot.theme({ grid:'#f0f0f3', axis:'#dcdee0', tick:'#60646c', label:'#999' }); */
+  var TH = { grid: '#282828', axis: '#303030', tick: '#8f8f8f', label: '#666',
+             text: '#969696', plate: '#181818', series: '#da291c' };
+  function theme(o) { for (var k in o) if (o[k] != null) TH[k] = o[k]; return TH; }
+  function $(id) { return document.getElementById(id); }
+  function fmt(v, d) {
+    if (v == null || !isFinite(v)) return '—';
+    var x = +v;
+    if (Math.abs(x) >= 1e6 || (Math.abs(x) < 1e-4 && x !== 0)) return x.toExponential(d == null ? 3 : d);
+    var s = x.toFixed(d == null ? 3 : d);
+    if (/^-0\.?0*$/.test(s)) s = s.slice(1);
+    return s;
+  }
+  // ── SVG 基础 ──
+  function el(tag, attrs, parent) {
+    var n = document.createElementNS(SVGNS, tag), k;
+    for (k in attrs) if (attrs[k] != null) n.setAttribute(k, attrs[k]);
+    if (parent) parent.appendChild(n);
+    return n;
+  }
+  function clear(node) { while (node.firstChild) node.removeChild(node.firstChild); }
+
+  /* 文字避让器：**这张图上的每一段文字**都必须经过它（含坐标轴刻度）。
+   * 教训来源：07-28/07-29/07-30/08-05/08-07/08-08/08-11 连撞 7 次标签重叠，
+   * 全部逃过 DOM 断言，只有人工看图才发现。 */
+  function Placer(svg, w, h) {
+    this.svg = svg; this.w = w; this.h = h; this.boxes = []; this.drawn = 0; this.dropped = 0;
+  }
+  Placer.prototype.measure = function (text, size) {
+    var n = 0, i, c;
+    for (i = 0; i < text.length; i++) {
+      c = text.charCodeAt(i);
+      n += (c > 0x2e80 && c < 0xa000) || (c >= 0xff00 && c <= 0xffef) ? 1 : 0.6;
+    }
+    return n * size;
+  };
+  Placer.prototype.hit = function (b) {
+    if (b.x < -1 || b.y < -1 || b.x + b.w > this.w + 1 || b.y + b.h > this.h + 1) return true;  // 出画布
+    for (var i = 0; i < this.boxes.length; i++) {
+      var o = this.boxes[i];
+      if (b.x < o.x + o.w && o.x < b.x + b.w && b.y < o.y + o.h && o.y < b.y + b.h) return true;
+    }
+    return false;
+  };
+  Placer.prototype.reserve = function (x, y, w, h) { this.boxes.push({ x: x, y: y, w: w, h: h }); };
+  /* opts: {size, fill, anchor, weight, offsets:[[dx,dy]…], plate:bool} */
+  Placer.prototype.text = function (x, y, str, opts) {
+    var o = opts || {}, size = o.size || 11, anchor = o.anchor || 'middle';
+    var tw = this.measure(str, size) + 3, th = size + 3;
+    var offs = o.offsets || [[0, 0]], i, dx, dy, bx, by, box = null, ox = 0, oy = 0;
+    for (i = 0; i < offs.length; i++) {
+      dx = offs[i][0]; dy = offs[i][1];
+      bx = x + dx - (anchor === 'middle' ? tw / 2 : anchor === 'end' ? tw : 0);
+      by = y + dy - th + 2;
+      if (!this.hit({ x: bx, y: by, w: tw, h: th })) { box = { x: bx, y: by, w: tw, h: th }; ox = dx; oy = dy; break; }
+    }
+    if (!box) { this.dropped++; return null; }
+    this.boxes.push(box); this.drawn++;
+    if (o.plate) el('rect', { x: box.x, y: box.y, width: box.w, height: box.h, fill: o.plate === true ? TH.plate : o.plate, opacity: 0.88 }, this.svg);
+    var t = el('text', { x: x + ox, y: y + oy, 'text-anchor': anchor, 'font-size': size, fill: o.fill || TH.text,
+      'font-weight': o.weight || 400, 'font-family': 'inherit' }, this.svg);
+    t.textContent = str;
+    return t;
+  };
+
+  /* 直角坐标绘图框 */
+  function Frame(svgId, opt) {
+    var svg = $(svgId), o = opt || {};
+    clear(svg);
+    var vb = svg.getAttribute('viewBox').split(/\s+/).map(Number);
+    this.svg = svg; this.W = vb[2]; this.H = vb[3];
+    // 宿主传进来的 fmt 以前只存不用：axes() 里写死了模块自带的 fmt，
+    // 于是 `new Frame(id, { fmt: myFmt })` 会被**静默忽略**（2026-09-18 实撞，
+    // 「各节点排队人数」那张图的 x 轴因此打出了 3 位小数）。这里收起来，下面用它。
+    this.fmt = o.fmt || fmt;
+    this.pad = o.pad || { l: 56, r: 18, t: 16, b: 38 };
+    this.x0 = this.pad.l; this.x1 = this.W - this.pad.r;
+    this.y0 = this.H - this.pad.b; this.y1 = this.pad.t;
+    this.P = new Placer(svg, this.W, this.H);
+    // 裁剪：曲线一律夹在绘图矩形内（否则超出量程的分支会画到坐标轴外、糊到图例上）
+    this.clipId = 'ae-clip-' + svgId + '-' + Math.random().toString(36).slice(2, 8);
+    var defs = el('defs', {}, svg);
+    var cp = el('clipPath', { id: this.clipId }, defs);
+    el('rect', { x: this.pad.l, y: this.pad.t, width: this.W - this.pad.l - this.pad.r,
+      height: this.H - this.pad.t - this.pad.b }, cp);
+    this.setDomain(o.xmin == null ? 0 : o.xmin, o.xmax == null ? 1 : o.xmax, o.ymin == null ? 0 : o.ymin, o.ymax == null ? 1 : o.ymax);
+  }
+  Frame.prototype.setDomain = function (xmin, xmax, ymin, ymax) {
+    // 只修「退化」（上下界相等/非数），**不能**强行要求 ymax > ymin ——
+    // 俯视图要把 y 轴倒过来画（2026-09-16 实撞：平面形状图整张空白，
+    // 因为这里把倒置域改写成了 [ymin, ymin+1]，机翼落在域外）。
+    if (!isFinite(xmin) || !isFinite(xmax) || xmax === xmin) { xmin = xmin || 0; xmax = xmin + 1; }
+    if (!isFinite(ymin) || !isFinite(ymax) || ymax === ymin) { ymin = ymin || 0; ymax = ymin + 1; }
+    this.xmin = xmin; this.xmax = xmax; this.ymin = ymin; this.ymax = ymax;
+  };
+  Frame.prototype.sx = function (x) { return this.x0 + (x - this.xmin) / (this.xmax - this.xmin) * (this.x1 - this.x0); };
+  Frame.prototype.sy = function (y) { return this.y0 + (y - this.ymin) / (this.ymax - this.ymin) * (this.y1 - this.y0); };
+  /* 刻度档位：按「刻度个数最接近目标」挑，而不是「第一个 ≥ raw 的步长」
+   * （2026-08-27 教训：后者会把 y 轴塌成 2 根刻度）。 */
+  Frame.prototype.ticks = function (min, max, target) {
+    var span = max - min, best = null, mag, s, i, cand, cnt;
+    if (!(span > 0)) return [min];
+    for (mag = Math.floor(Math.log10(span)) - 1; mag <= Math.floor(Math.log10(span)) + 1; mag++) {
+      var base = Math.pow(10, mag);
+      var steps = [1, 2, 2.5, 5, 10];
+      for (i = 0; i < steps.length; i++) {
+        s = steps[i] * base;
+        cnt = Math.floor(max / s) - Math.ceil(min / s) + 1;
+        if (cnt < 2 || cnt > 24) continue;
+        cand = Math.abs(cnt - (target || 6));
+        if (best === null || cand < best.score) best = { step: s, score: cand };
+      }
+    }
+    if (!best) return [min, max];
+    var out = [], v0 = Math.ceil(min / best.step) * best.step;
+    for (var v = v0; v <= max + best.step * 1e-6; v += best.step) out.push(Math.abs(v) < best.step * 1e-9 ? 0 : v);
+    return out;
+  };
+  Frame.prototype.axes = function (o) {
+    var op = o || {}, i, t, px, py;
+    // 域可以是**倒置**的（阿贝图 x 轴从大到小、俯视图 y 轴向下），取刻度前先排序，
+    // 否则 ticks() 拿到负 span 直接 return [min]，整条轴只剩一个刻度
+    // （2026-09-17 实撞：阿贝图 x 轴只画出一个孤零零的「89」）。
+    var xt = op.xticks || this.ticks(Math.min(this.xmin, this.xmax), Math.max(this.xmin, this.xmax), 6);
+    var yt = op.yticks || this.ticks(Math.min(this.ymin, this.ymax), Math.max(this.ymin, this.ymax), 6);
+    el('rect', { x: this.x0, y: this.y1, width: this.x1 - this.x0, height: this.y0 - this.y1, fill: 'none', stroke: TH.axis }, this.svg);
+    for (i = 0; i < yt.length; i++) {
+      py = this.sy(yt[i]);
+      if (py < this.y1 - 0.5 || py > this.y0 + 0.5) continue;
+      el('line', { x1: this.x0, y1: py, x2: this.x1, y2: py, stroke: TH.grid }, this.svg);
+      this.P.text(this.x0 - 6, py + 4, (op.yfmt || this.fmt)(yt[i]), { anchor: 'end', size: 10, fill: TH.tick,
+        offsets: [[0, 0], [0, -9], [0, 9]] });
+    }
+    for (i = 0; i < xt.length; i++) {
+      px = this.sx(xt[i]);
+      if (px < this.x0 - 0.5 || px > this.x1 + 0.5) continue;
+      el('line', { x1: px, y1: this.y0, x2: px, y2: this.y1, stroke: TH.grid }, this.svg);
+      this.P.text(px, this.y0 + 16, (op.xfmt || this.fmt)(xt[i]), { anchor: 'middle', size: 10, fill: TH.tick });
+    }
+    if (op.xlabel) this.P.text((this.x0 + this.x1) / 2, this.H - 6, op.xlabel, { size: 11, fill: TH.label });
+    if (op.ylabel) {
+      var t2 = el('text', { x: 12, y: (this.y0 + this.y1) / 2, 'font-size': 11, fill: TH.label, 'text-anchor': 'middle',
+        transform: 'rotate(-90 12 ' + ((this.y0 + this.y1) / 2) + ')' }, this.svg);
+      t2.textContent = op.ylabel;
+      this.P.reserve(4, this.y1, 16, this.y0 - this.y1);
+    }
+  };
+  Frame.prototype.path = function (pts, o) {
+    var op = o || {}, d = '', i, px, py, started = false;
+    for (i = 0; i < pts.length; i++) {
+      if (pts[i] == null || !isFinite(pts[i][0]) || !isFinite(pts[i][1])) { started = false; continue; }
+      px = this.sx(pts[i][0]); py = this.sy(pts[i][1]);
+      d += (started ? 'L' : 'M') + px.toFixed(2) + ' ' + py.toFixed(2) + ' ';
+      started = true;
+    }
+    if (!d) return null;
+    return el('path', { d: d, fill: op.fill || 'none', stroke: op.stroke || TH.series, 'stroke-width': op.width || 1.6,
+      'stroke-dasharray': op.dash, opacity: op.opacity, 'stroke-linejoin': 'round', 'stroke-linecap': 'round',
+      'clip-path': op.noclip ? null : 'url(#' + this.clipId + ')' }, this.svg);
+  };
+  Frame.prototype.dot = function (x, y, o) {
+    var op = o || {};
+    return el('circle', { cx: this.sx(x), cy: this.sy(y), r: op.r || 3.2, fill: op.fill || TH.series,
+      stroke: op.stroke, 'stroke-width': op.width }, this.svg);
+  };
+  Frame.prototype.vline = function (x, o) {
+    var op = o || {};
+    return el('line', { x1: this.sx(x), y1: this.y0, x2: this.sx(x), y2: this.y1, stroke: op.stroke || '#5a5a5a',
+      'stroke-width': op.width || 1, 'stroke-dasharray': op.dash || '4 4' }, this.svg);
+  };
+  Frame.prototype.hline = function (y, o) {
+    var op = o || {};
+    return el('line', { x1: this.x0, y1: this.sy(y), x2: this.x1, y2: this.sy(y), stroke: op.stroke || '#5a5a5a',
+      'stroke-width': op.width || 1, 'stroke-dasharray': op.dash || '4 4' }, this.svg);
+  };
+
+
+  /* 对数轴刻度：在 [lo, hi]（以 10 为底的指数）区间里挑 1/2/5 × 10^k 这些档，
+   * 返回**真值**数组（调用方自己取 log 当域坐标、并用 yfmt 把它换算回来显示）。
+   * 2026-09-18 抽出：等待时间 / 成本 / 误差这类跨几个数量级的量，线性轴会把
+   * 关心的那一段全压在零线附近（实撞：16 席要 2.2 分钟、19 席只要 11 秒）。
+   * ⚠️ 配套的一条硬规矩：域要**夹**在关注点附近若干个数量级内 —— 只要有一个
+   * 病态点（比如 ρ=1-1e-16 解出 1e17）就能把量程撑到刻度全被避让器丢光。 */
+  function logTicks(lo, hi) {
+    var out = [], k, m, v, lg;
+    for (k = Math.floor(lo); k <= Math.ceil(hi); k++) {
+      for (m = 0; m < 3; m++) {
+        v = [1, 2, 5][m] * Math.pow(10, k);
+        lg = Math.log(v) / Math.LN10;
+        if (lg >= lo - 1e-9 && lg <= hi + 1e-9) out.push(v);
+      }
+    }
+    return out;
+  }
+
+  return { Frame: Frame, Placer: Placer, el: el, clear: clear, fmt: fmt, theme: theme, TH: TH,
+           logTicks: logTicks };
+})();
+
+/* 骑行工作台 · 界面层（依赖 BK 引擎与 AEPlot 绘图骨架） */
+(function () {
+  'use strict';
+  AEPlot.theme({ grid: '#e5e7e0', axis: '#bfc1b7', tick: '#6c6e63', label: '#6c6e63', text: '#33342d', plate: '#fcfcfa', series: '#23251d' });
+  var $ = function (id) { return document.getElementById(id); };
+  var C = { ink: '#23251d', yellow: '#f7a501', blue: '#2c84e0', red: '#cd4239', green: '#2c8c66', purple: '#7c44a6', ash: '#9b9c92', charcoal: '#33342d' };
+  var TABS = ['gear', 'power', 'climb', 'fixed', 'saved', 'about'];
+
+  var CRANKSETS = [
+    { n: '公路 · 50/34 紧凑盘', v: '50,34' }, { n: '公路 · 52/36 半紧凑', v: '52,36' }, { n: '公路 · 53/39 标准盘', v: '53,39' },
+    { n: '公路 · 48/35', v: '48,35' }, { n: '砾石 · 46/30', v: '46,30' }, { n: '公路三片 · 50/39/30', v: '50,39,30' },
+    { n: '单盘 · 40T', v: '40' }, { n: '单盘 · 32T', v: '32' }
+  ];
+  var CASSETTES = [
+    { n: '12 速 · 11-30', v: '11,12,13,14,15,16,17,19,21,24,27,30' },
+    { n: '12 速 · 11-34', v: '11,12,13,14,15,17,19,21,24,27,30,34' },
+    { n: '12 速 · 10-33', v: '10,11,12,13,14,15,17,19,21,24,28,33' },
+    { n: '11 速 · 11-25', v: '11,12,13,14,15,16,17,19,21,23,25' },
+    { n: '11 速 · 11-28', v: '11,12,13,14,15,17,19,21,23,25,28' },
+    { n: '11 速 · 11-32', v: '11,12,13,14,16,18,20,22,25,28,32' },
+    { n: '12 速山地 · 10-52', v: '10,12,14,16,18,21,24,28,32,36,42,52' },
+    { n: '单速 · 16T', v: '16' }
+  ];
+  var WHEELS = [
+    { n: '700×23C', bsd: 622, t: 23 }, { n: '700×25C', bsd: 622, t: 25 }, { n: '700×28C', bsd: 622, t: 28 },
+    { n: '700×32C', bsd: 622, t: 32 }, { n: '700×40C 砾石', bsd: 622, t: 40 }, { n: '650B×47 砾石', bsd: 584, t: 47 },
+    { n: '29×2.2 山地', bsd: 622, t: 56 }, { n: '27.5×2.4 山地', bsd: 584, t: 61 }, { n: '26×2.1 山地', bsd: 559, t: 53 },
+    { n: '20×1.5 小轮', bsd: 406, t: 38 }, { n: '16×1-3/8 折叠', bsd: 349, t: 35 }
+  ];
+  var POSITIONS = [
+    { n: '计时车 · 趴把', v: 0.23 }, { n: '公路车 · 下把', v: 0.30 }, { n: '公路车 · 握变速把', v: 0.36 },
+    { n: '公路车 · 直立握横把', v: 0.42 }, { n: '山地车', v: 0.48 }, { n: '城市车 · 直立', v: 0.55 }
+  ];
+  var SURFACES = [
+    { n: '平整柏油 · 高性能开口胎', v: 0.004 }, { n: '一般柏油 · 普通外胎', v: 0.005 }, { n: '粗糙柏油', v: 0.007 },
+    { n: '碎石路 · 砾石胎', v: 0.012 }, { n: '土路 · 山地胎', v: 0.015 }
+  ];
+  var DEFAULTS = {
+    rings: '50,34', cogs: '11,12,13,14,15,16,17,19,21,24,27,30', bsd: 622, tire: 28, crank: 172.5, rpm: 90, metric: 'kmh', dup: 3,
+    rider: 70, bike: 9, cda: 0.36, crr: 0.005, eta: 97.5, grade: 0, wind: 0, alt: 0, temp: 20, pmode: 'power', watts: 200, kmh: 30,
+    clen: 10, cgain: 600, cmode: 'power', cwatts: 250, ctime: '45:00',
+    fring: 48, fcog: 17, stay: 410, bigring: 50, bigcog: 30
+  };
+  var FIELDS = {
+    rings: 'bk-g-rings', cogs: 'bk-g-cogs', bsd: 'bk-g-bsd', tire: 'bk-g-tire', crank: 'bk-g-crank', rpm: 'bk-g-rpm', metric: 'bk-g-metric', dup: 'bk-g-dup',
+    rider: 'bk-p-rider', bike: 'bk-p-bike', cda: 'bk-p-cda', crr: 'bk-p-crr', eta: 'bk-p-eta', grade: 'bk-p-grade', wind: 'bk-p-wind', alt: 'bk-p-alt', temp: 'bk-p-temp',
+    watts: 'bk-p-watts', kmh: 'bk-p-kmh', clen: 'bk-c-len', cgain: 'bk-c-gain', cwatts: 'bk-c-watts', ctime: 'bk-c-time',
+    fring: 'bk-f-ring', fcog: 'bk-f-cog', stay: 'bk-f-stay', bigring: 'bk-f-bigring', bigcog: 'bk-f-bigcog'
+  };
+  var TEXTUAL = { rings: 1, cogs: 1, metric: 1, ctime: 1 };
+  var LS_STATE = 'bk-state-v1', LS_SAVES = 'bk-saves-v1';
+
+  function f(v, d) { return (v == null || !isFinite(v)) ? '—' : (+v).toFixed(d); }
+  function num(id) { var s = $(id).value.trim(); return s === '' ? NaN : +s; }
+  function store(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* 隐私模式 */ } }
+  function load(k) { try { var s = localStorage.getItem(k); return s ? JSON.parse(s) : null; } catch (e) { return null; } }
+  function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+
+  function fillSelect(id, list, valOf) {
+    var s = $(id), h = '<option value="">自定义</option>';
+    list.forEach(function (o, i) { h += '<option value="' + i + '">' + esc(o.n) + '</option>'; });
+    s.innerHTML = h;
+  }
+  fillSelect('bk-g-crankset', CRANKSETS); fillSelect('bk-g-cassette', CASSETTES); fillSelect('bk-g-wheel', WHEELS);
+  fillSelect('bk-p-pos', POSITIONS); fillSelect('bk-p-surf', SURFACES);
+
+  function getState() {
+    var s = {}, k;
+    for (k in FIELDS) s[k] = TEXTUAL[k] ? $(FIELDS[k]).value : (function (v) { return v === '' ? '' : +v; })($(FIELDS[k]).value.trim());
+    s.pmode = $('bk-p-mode-speed').checked ? 'speed' : 'power';
+    s.cmode = $('bk-c-mode-time').checked ? 'time' : 'power';
+    return s;
+  }
+  function setState(s) {
+    var k;
+    for (k in FIELDS) if (s[k] != null) $(FIELDS[k]).value = s[k];
+    $('bk-p-mode-speed').checked = s.pmode === 'speed'; $('bk-p-mode-power').checked = s.pmode !== 'speed';
+    $('bk-c-mode-time').checked = s.cmode === 'time'; $('bk-c-mode-power').checked = s.cmode !== 'time';
+  }
+  function syncPresets() {
+    var norm = function (v) { var p = BK.parseTeeth(v, 1, 999, 99); return p.ok ? p.list.join(',') : '#'; };
+    var r = norm($('bk-g-rings').value), c = norm($('bk-g-cogs').value);
+    $('bk-g-crankset').value = String(CRANKSETS.findIndex(function (o) { return norm(o.v) === r; })).replace('-1', '');
+    $('bk-g-cassette').value = String(CASSETTES.findIndex(function (o) { return norm(o.v) === c; })).replace('-1', '');
+    var b = num('bk-g-bsd'), t = num('bk-g-tire');
+    $('bk-g-wheel').value = String(WHEELS.findIndex(function (o) { return o.bsd === b && o.t === t; })).replace('-1', '');
+    var cda = num('bk-p-cda'), crr = num('bk-p-crr');
+    $('bk-p-pos').value = String(POSITIONS.findIndex(function (o) { return Math.abs(o.v - cda) < 1e-9; })).replace('-1', '');
+    $('bk-p-surf').value = String(SURFACES.findIndex(function (o) { return Math.abs(o.v - crr) < 1e-9; })).replace('-1', '');
+  }
+
+  function showErr(id, msg) { var e = $(id); e.textContent = msg || ''; e.hidden = !msg; }
+  function mark(id, bad) { $(id).classList.toggle('bk-bad', !!bad); }
+  function inRange(id, lo, hi) { var v = num(id); var ok = isFinite(v) && v >= lo && v <= hi; mark(id, !ok); return ok ? v : NaN; }
+
+  /* viewBox 宽度跟随实际渲染宽度，窄屏上字号不被等比缩成蚂蚁字（隐藏页签宽为 0 时按 760 画，切过去再重画） */
+  function fitVB(id, H) {
+    var svg = $(id), w = svg.getBoundingClientRect().width;
+    var W = w > 0 ? Math.max(320, Math.min(760, Math.round(w))) : 760;
+    svg.setAttribute('viewBox', '0 0 ' + W + ' ' + Math.round(W < 560 ? H * 0.8 : H));
+    return W;
+  }
+
+  /* ═════ 齿比 ═════ */
+  var gearCtx = null;
+  function wheelInputs() {
+    var bsd = inRange('bk-g-bsd', 200, 700), tire = inRange('bk-g-tire', 15, 130);
+    var crank = inRange('bk-g-crank', 100, 200), rpm = inRange('bk-g-rpm', 20, 200);
+    return { bsd: bsd, tire: tire, crank: crank, rpm: rpm, dia: BK.wheelDia(bsd, tire) };
+  }
+  function renderGear() {
+    var R = BK.parseTeeth($('bk-g-rings').value, 18, 70, 3), K = BK.parseTeeth($('bk-g-cogs').value, 9, 60, 13);
+    mark('bk-g-rings', !R.ok); mark('bk-g-cogs', !K.ok);
+    var w = wheelInputs(), dup = inRange('bk-g-dup', 0, 15);
+    $('bk-g-circ').textContent = isFinite(w.dia) ? f(Math.PI * w.dia, 1) : '—';
+    var err = !R.ok ? '牙盘：' + R.err : !K.ok ? '飞轮：' + K.err :
+      !isFinite(w.dia) ? '胎圈直径需在 200–700 mm、胎宽 15–130 mm' : !isFinite(w.crank) ? '曲柄长需在 100–200 mm' :
+      !isFinite(w.rpm) ? '踏频需在 20–200 rpm' : !isFinite(dup) ? '重复档阈值需在 0–15%' : '';
+    showErr('bk-g-err', err);
+    if (err) { gearCtx = null; clearGear(); return; }
+    var T = BK.gearTable(R.list, K.list, w.dia, w.crank, w.rpm, dup);
+    gearCtx = { R: R.list, K: K.list, w: w, T: T, dup: dup };
+    $('bk-g-k-range').innerHTML = f(T.range, 0) + '<small>%</small>';
+    $('bk-g-k-minmax').textContent = f(T.minRatio, 2) + ' / ' + f(T.maxRatio, 2);
+    $('bk-g-k-distinct').innerHTML = T.distinct + '<small>/ ' + T.cells.length + ' 档</small>';
+    $('bk-g-k-dup').innerHTML = T.dupPairs + '<small>对</small>';
+    $('bk-g-k-maxstep').innerHTML = f(T.maxStep, 1) + '<small>%</small>';
+    var sp = T.cells.map(function (c) { return c.kmh; });
+    $('bk-g-k-speeds').innerHTML = f(Math.min.apply(null, sp), 1) + '–' + f(Math.max.apply(null, sp), 1) + '<small>km/h</small>';
+    // 表
+    var metric = $('bk-g-metric').value, dig = { kmh: 1, ratio: 2, inches: 1, dev: 2, gain: 2 }[metric];
+    var th = '<tr><th scope="col">飞轮 \\ 牙盘</th>' + R.list.map(function (r) { return '<th scope="col">' + r + 'T</th>'; }).join('') + '<th scope="col">与上一片</th></tr>';
+    var rows = '';
+    K.list.forEach(function (k, ci) {
+      rows += '<tr><th scope="row">' + k + 'T</th>';
+      R.list.forEach(function (r, ri) {
+        var c = T.cells[ri * K.list.length + ci];
+        var cls = (c.cross ? ' bk-cx' : '') + (c.dup.length ? ' bk-dp' : '');
+        var tip = r + '×' + k + ' 齿比 ' + f(c.ratio, 3) + (c.cross ? '（交叉链）' : '') + (c.dup.length ? '（与 ' + c.dup.map(function (j) { return T.cells[j].ring + '×' + T.cells[j].cog; }).join('、') + ' 重复）' : '');
+        rows += '<td class="bk-gc' + cls + '" data-ring="' + r + '" data-cog="' + k + '" title="' + tip + '">' + f(c[metric], dig) + '</td>';
+      });
+      rows += '<td>' + (ci ? '+' + f(T.cogSteps[ci - 1], 1) + '%' : '—') + '</td></tr>';
+    });
+    $('bk-g-table').tHead.innerHTML = th;
+    $('bk-g-table').tBodies[0].innerHTML = rows;
+    // 序列
+    $('bk-g-seq').innerHTML = T.usable.map(function (c, i) {
+      var s = i ? T.steps[i - 1] : null;
+      return '<li' + (s != null && s >= 15 ? ' class="bk-big"' : '') + '>' + c.ring + '×' + c.cog + (s != null ? ' +' + f(s, 1) + '%' : '') + '</li>';
+    }).join('');
+    drawGear();
+  }
+  function clearGear() {
+    ['bk-g-k-range', 'bk-g-k-minmax', 'bk-g-k-distinct', 'bk-g-k-dup', 'bk-g-k-maxstep', 'bk-g-k-speeds'].forEach(function (id) { $(id).textContent = '—'; });
+    $('bk-g-table').tHead.innerHTML = ''; $('bk-g-table').tBodies[0].innerHTML = ''; $('bk-g-seq').innerHTML = '';
+    AEPlot.clear($('bk-fig-gear'));
+  }
+  function drawGear() {
+    var g = gearCtx, svg = $('bk-fig-gear'), n = g.R.length;
+    var W = fitVB('bk-fig-gear', 0);
+    svg.setAttribute('viewBox', '0 0 ' + W + ' ' + (92 + n * 62));
+    var F = new AEPlot.Frame('bk-fig-gear', { pad: { l: 64, r: 22, t: 18, b: 40 } });
+    var sp = g.T.cells.map(function (c) { return c.kmh; });
+    var lo = Math.min.apply(null, sp), hi = Math.max.apply(null, sp), span = Math.max(hi - lo, 1);
+    F.setDomain(Math.max(0, lo - span * 0.06), hi + span * 0.06, n + 0.5, 0.5);
+    F.axes({ xlabel: '踏频 ' + f(g.w.rpm, 0) + ' rpm 时的速度（km/h）', yticks: [], xfmt: function (v) { return f(v, 0); } });
+    // 先 reserve 所有点，避免标签压在点上
+    var rowOf = function (ri) { return n - ri; };   // 大盘在上
+    g.T.cells.forEach(function (c) { F.P.reserve(F.sx(c.kmh) - 5, F.sy(rowOf(c.ri)) - 5, 10, 10); });
+    g.R.forEach(function (r, ri) {
+      var y = rowOf(ri), cs = g.T.cells.filter(function (c) { return c.ri === ri; });
+      AEPlot.el('line', { x1: F.sx(Math.min.apply(null, cs.map(function (c) { return c.kmh; }))), x2: F.sx(Math.max.apply(null, cs.map(function (c) { return c.kmh; }))),
+        y1: F.sy(y), y2: F.sy(y), stroke: '#dcdfd2', 'stroke-width': 6, 'stroke-linecap': 'round' }, F.svg);
+      F.P.text(F.x0 - 8, F.sy(y) + 4, r + 'T', { anchor: 'end', size: 12, weight: 700, fill: C.ink });
+    });
+    g.T.cells.forEach(function (c) {
+      var px = F.sx(c.kmh), py = F.sy(rowOf(c.ri));
+      if (c.dup.length) AEPlot.el('circle', { cx: px, cy: py, r: 8, fill: 'none', stroke: C.purple, 'stroke-width': 1.6, class: 'bk-dupring' }, F.svg);
+      AEPlot.el('circle', { cx: px, cy: py, r: 4.2, fill: c.cross ? '#fff' : C.ink, stroke: c.cross ? C.ash : C.ink, 'stroke-width': 1.6, class: 'bk-gdot' }, F.svg);
+    });
+    // 标签：飞轮齿数，上 → 下 → 更上 → 更下
+    g.T.cells.forEach(function (c) {
+      var px = F.sx(c.kmh), py = F.sy(rowOf(c.ri));
+      F.P.text(px, py, String(c.cog), { size: 10.5, fill: c.cross ? C.ash : C.charcoal,
+        offsets: [[0, -11], [0, 20], [0, -24], [0, 33]] });
+    });
+    svg.setAttribute('data-drawn', F.P.drawn); svg.setAttribute('data-dropped', F.P.dropped);
+  }
+
+  /* ═════ 功率 ↔ 速度 ═════ */
+  function powerParams() {
+    var rider = inRange('bk-p-rider', 20, 200), bike = inRange('bk-p-bike', 3, 60);
+    var p = { mass: rider + bike, cda: inRange('bk-p-cda', 0.1, 1.2), crr: inRange('bk-p-crr', 0.001, 0.03),
+      eta: inRange('bk-p-eta', 80, 100) / 100, grade: inRange('bk-p-grade', -25, 30) / 100, wind: inRange('bk-p-wind', -60, 60) / 3.6,
+      alt: inRange('bk-p-alt', -400, 5500), temp: inRange('bk-p-temp', -30, 50), rider: rider };
+    var bad = [];
+    if (!isFinite(rider)) bad.push('骑手体重 20–200 kg'); if (!isFinite(bike)) bad.push('车重 3–60 kg');
+    if (!isFinite(p.cda)) bad.push('CdA 0.1–1.2'); if (!isFinite(p.crr)) bad.push('Crr 0.001–0.03');
+    if (!isFinite(p.eta)) bad.push('传动效率 80–100%'); if (!isFinite(p.grade)) bad.push('坡度 −25–30%');
+    if (!isFinite(p.wind)) bad.push('风速 −60–60 km/h'); if (!isFinite(p.alt)) bad.push('海拔 −400–5500 m');
+    if (!isFinite(p.temp)) bad.push('气温 −30–50 °C');
+    p.err = bad.length ? '请检查：' + bad.join('、') : '';
+    return p;
+  }
+  var powerCtx = null;
+  function renderPower() {
+    var p = powerParams(), mode = $('bk-p-mode-speed').checked ? 'speed' : 'power';
+    $('bk-p-watts-fld').hidden = mode !== 'power'; $('bk-p-kmh-fld').hidden = mode !== 'speed';
+    $('bk-p-rho').textContent = isFinite(p.alt) && isFinite(p.temp) ? f(BK.airDensity(p.alt, p.temp), 4) : '—';
+    var err = p.err, v = NaN, P = NaN;
+    if (!err) {
+      if (mode === 'power') {
+        P = inRange('bk-p-watts', 0, 2500);
+        if (!isFinite(P)) err = '踏板功率需在 0–2500 W';
+        else { v = BK.speedFor(p, P); if (!isFinite(v)) err = '这组条件下解不出合理速度（> 216 km/h）'; }
+      } else {
+        var kmh = inRange('bk-p-kmh', 1, 120);
+        if (!isFinite(kmh)) err = '速度需在 1–120 km/h';
+        else { v = kmh / 3.6; P = BK.powerAt(p, v); }
+      }
+    }
+    showErr('bk-p-err', err);
+    if (err) { powerCtx = null; ['bk-p-k-speed', 'bk-p-k-power', 'bk-p-k-wkg', 'bk-p-k-mass'].forEach(function (id) { $(id).textContent = '—'; });
+      $('bk-p-bars').innerHTML = ''; $('bk-p-bars-note').textContent = ''; AEPlot.clear($('bk-fig-power')); renderClimb(); return; }
+    var Fz = BK.forces(p, v);
+    powerCtx = { p: p, v: v, P: P, F: Fz };
+    $('bk-p-k-speed').innerHTML = f(v * 3.6, 1) + '<small>km/h</small>';
+    $('bk-p-k-power').innerHTML = f(P, 0) + '<small>W</small>';
+    $('bk-p-k-wkg').innerHTML = f(P / p.rider, 2) + '<small>W/kg</small>';
+    $('bk-p-k-mass').innerHTML = f(p.mass, 1) + '<small>kg</small>';
+    var loss = Fz.legs - Fz.wheel;
+    var parts = [
+      { k: 'aero', n: '空气阻力', w: Fz.pa, c: C.blue }, { k: 'roll', n: '滚动阻力', w: Fz.pr, c: C.green },
+      { k: 'grav', n: Fz.pg >= 0 ? '爬升（重力）' : '下坡（重力助推）', w: Fz.pg, c: Fz.pg >= 0 ? C.red : C.purple },
+      { k: 'loss', n: '传动损耗', w: loss, c: C.ash }
+    ];
+    var scale = Math.max.apply(null, parts.map(function (q) { return Math.abs(q.w); })) || 1;
+    var pos = parts.reduce(function (s, q) { return s + Math.max(q.w, 0); }, 0);
+    $('bk-p-bars').innerHTML = parts.map(function (q) {
+      var share = pos > 0 && q.w > 0 ? ' · ' + f(q.w / pos * 100, 0) + '%' : '';
+      return '<div class="bk-bar" data-k="' + q.k + '"><span class="bk-bar-name">' + q.n + '</span><span class="bk-bar-track"><span class="bk-bar-fill" style="width:' +
+        (Math.abs(q.w) / scale * 100).toFixed(2) + '%;background:' + q.c + '"></span></span><span class="bk-bar-val" id="bk-p-b-' + q.k + '">' + f(q.w, 1) + ' W' + share + '</span></div>';
+    }).join('');
+    $('bk-p-bars-note').textContent = Fz.pg < 0 ? '下坡时重力在帮你，负值表示它替你出了这么多功率。' :
+      (Fz.pa > Fz.pg ? '空气阻力是大头 —— 压低骑姿（减小 CdA）最划算。' : '重力是大头 —— 减重或降低功率需求只能靠变轻。');
+    drawPower();
+    renderClimb();
+  }
+  function drawPower() {
+    var c = powerCtx, p = c.p;
+    fitVB('bk-fig-power', 330);
+    var F = new AEPlot.Frame('bk-fig-power', { pad: { l: 56, r: 22, t: 18, b: 40 } });
+    var vmax = Math.max(40, Math.ceil(c.v * 3.6 * 1.5 / 10) * 10), pts = [], pa = [], pr = [], i, v, z;
+    for (i = 0; i <= 160; i++) {
+      v = vmax * i / 160 / 3.6; z = BK.forces(p, v);
+      pts.push([v * 3.6, z.legs]); pa.push([v * 3.6, z.pa / p.eta]); pr.push([v * 3.6, (z.pg + z.pr) / p.eta]);
+    }
+    var ys = pts.concat(pa, pr).map(function (q) { return q[1]; });
+    var ymin = Math.min(0, Math.min.apply(null, ys)), ymax = Math.max.apply(null, ys);
+    ymax = Math.min(ymax, Math.max(c.P * 2.2, 300)); ymin = Math.max(ymin, -Math.max(c.P * 2.2, 300));
+    F.setDomain(0, vmax, ymin, ymax + (ymax - ymin) * 0.06);
+    F.axes({ xlabel: '速度（km/h）', ylabel: '踏板功率（W）', xfmt: function (q) { return f(q, 0); }, yfmt: function (q) { return f(q, 0); } });
+    if (ymin < 0) F.hline(0, { stroke: '#9b9c92', dash: '2 3' });
+    F.path(pa, { stroke: C.blue, width: 1.6, dash: '6 4' });
+    F.path(pr, { stroke: C.red, width: 1.6, dash: '2 3' });
+    F.path(pts, { stroke: C.ink, width: 2.4 });
+    F.vline(c.v * 3.6, { stroke: '#bfc1b7' });
+    var px = F.sx(c.v * 3.6), py = F.sy(c.P);
+    F.P.reserve(px - 7, py - 7, 14, 14);
+    F.dot(c.v * 3.6, c.P, { r: 6, fill: C.yellow, stroke: C.ink, width: 1.6 });
+    // 曲线单调上升 ⇒ 空侧在左上
+    F.P.text(px - 10, py - 10, f(c.v * 3.6, 1) + ' km/h · ' + f(c.P, 0) + ' W', { anchor: 'end', size: 12, weight: 700, fill: C.ink, plate: true,
+      offsets: [[0, 0], [0, -16], [20, 26], [0, 30]] });
+    // 图例：左上角（曲线从左下往右上走，左上恒空）
+    var lx = F.x0 + 132, ly = F.y1 + 18;
+    [['总功率', C.ink, null], ['空气阻力', C.blue, '6 4'], ['重力 + 滚阻', C.red, '2 3']].forEach(function (L, k) {
+      var yy = ly + k * 16;
+      if (!F.P.hit({ x: lx - 120, y: yy - 9, w: 120, h: 14 })) {
+        AEPlot.el('line', { x1: lx - 118, x2: lx - 96, y1: yy - 4, y2: yy - 4, stroke: L[1], 'stroke-width': 2, 'stroke-dasharray': L[2] }, F.svg);
+        F.P.text(lx - 90, yy, L[0], { anchor: 'start', size: 11, fill: '#33342d' });
+      }
+    });
+  }
+
+  /* ═════ 爬坡 ═════ */
+  var climbCtx = null;
+  function renderClimb() {
+    var mode = $('bk-c-mode-time').checked ? 'time' : 'power';
+    $('bk-c-watts-fld').hidden = mode !== 'power'; $('bk-c-time-fld').hidden = mode !== 'time';
+    var len = inRange('bk-c-len', 0.1, 100), gain = inRange('bk-c-gain', 0, 5000);
+    var err = '', g = NaN;
+    if (!isFinite(len) || !isFinite(gain)) err = '长度 0.1–100 km、爬升 0–5000 m';
+    else { g = BK.climbGrade(len, gain); if (!isFinite(g) || g > 0.4) { err = '爬升相对长度太大（平均坡度超过 40%）'; mark('bk-c-gain', true); } }
+    $('bk-c-grade').textContent = isFinite(g) ? f(g * 100, 1) + '%' : '—';
+    var pc = powerCtx;
+    if (!err && !pc) err = '「功率 ↔ 速度」页的人车参数有误，先去那边修正';
+    $('bk-c-env').textContent = pc ? '总重 ' + f(pc.p.mass, 1) + ' kg · CdA ' + pc.p.cda + ' · Crr ' + pc.p.crr + ' · 风 ' + f(pc.p.wind * 3.6, 0) + ' km/h · 海拔 ' + f(pc.p.alt, 0) + ' m' : '';
+    var r = null;
+    if (!err) {
+      if (mode === 'power') {
+        var P = inRange('bk-c-watts', 1, 2500);
+        if (!isFinite(P)) err = '平均功率需在 1–2500 W';
+        else r = BK.climbByPower(pc.p, len, gain, P, pc.p.rider);
+      } else {
+        var t = BK.parseTime($('bk-c-time').value);
+        mark('bk-c-time', !(t > 0));
+        if (!(t > 0)) err = '用时格式：45:00（分:秒）或 1:05:30（时:分:秒）';
+        else { r = BK.climbByTime(pc.p, len, gain, t, pc.p.rider); if (r && r.P <= 0) err = '这个用时下靠重力就够了，不需要踩'; }
+      }
+      if (!err && !r) err = '这组条件下解不出';
+    }
+    showErr('bk-c-err', err);
+    climbCtx = err ? null : { r: r, len: len, gain: gain };
+    if (err) { ['bk-c-k-time', 'bk-c-k-power', 'bk-c-k-wkg', 'bk-c-k-speed', 'bk-c-k-vam'].forEach(function (id) { $(id).textContent = '—'; });
+      $('bk-c-ladder').tBodies[0].innerHTML = ''; AEPlot.clear($('bk-fig-climb')); return; }
+    $('bk-c-k-time').textContent = BK.fmtTime(r.t);
+    $('bk-c-k-power').innerHTML = f(r.P, 0) + '<small>W</small>';
+    $('bk-c-k-wkg').innerHTML = f(r.wkg, 2) + '<small>W/kg</small>';
+    $('bk-c-k-speed').innerHTML = f(r.v * 3.6, 1) + '<small>km/h</small>';
+    $('bk-c-k-vam').innerHTML = f(r.vam, 0) + '<small>m/h</small>';
+    var rows = '', w, q;
+    for (w = 2; w <= 6.0001; w += 0.5) {
+      q = BK.climbByPower(pc.p, len, gain, w * pc.p.rider, pc.p.rider);
+      rows += '<tr' + (Math.abs(w - r.wkg) < 0.25 ? ' class="bk-cur"' : '') + '><td>' + f(w, 1) + ' W/kg</td><td>' + f(w * pc.p.rider, 0) + ' W</td><td>' + BK.fmtTime(q.t) + '</td><td>' + f(q.v * 3.6, 1) + ' km/h</td><td>' + f(q.vam, 0) + ' m/h</td></tr>';
+    }
+    $('bk-c-ladder').tBodies[0].innerHTML = rows;
+    drawClimb();
+  }
+  function drawClimb() {
+    var c = climbCtx, pc = powerCtx, r = c.r;
+    fitVB('bk-fig-climb', 300);
+    var F = new AEPlot.Frame('bk-fig-climb', { pad: { l: 64, r: 22, t: 18, b: 40 } });
+    var w0 = Math.min(1.5, r.wkg * 0.8), w1 = Math.max(6.5, r.wkg * 1.15), pts = [], i, w, q;
+    for (i = 0; i <= 120; i++) { w = w0 + (w1 - w0) * i / 120; q = BK.climbByPower(pc.p, c.len, c.gain, w * pc.p.rider, pc.p.rider); pts.push([w, q ? q.t / 60 : null]); }
+    var ys = pts.map(function (p) { return p[1]; }).filter(isFinite);
+    var ymax = Math.max.apply(null, ys), ymin = Math.min.apply(null, ys);
+    F.setDomain(w0, w1, Math.max(0, ymin - (ymax - ymin) * 0.08), ymax + (ymax - ymin) * 0.08);
+    F.axes({ xlabel: '功体比（W/kg）', ylabel: '用时（分钟）', xfmt: function (q) { return f(q, 1); }, yfmt: function (q) { return f(q, 0); } });
+    F.path(pts, { stroke: C.ink, width: 2.4 });
+    var px = F.sx(r.wkg), py = F.sy(r.t / 60);
+    F.P.reserve(px - 7, py - 7, 14, 14);
+    F.dot(r.wkg, r.t / 60, { r: 6, fill: C.yellow, stroke: C.ink, width: 1.6 });
+    // 曲线单调下降 ⇒ 空侧在右上
+    F.P.text(px + 12, py - 10, f(r.wkg, 2) + ' W/kg · ' + BK.fmtTime(r.t), { anchor: 'start', size: 12, weight: 700, fill: C.ink, plate: true,
+      offsets: [[0, 0], [0, -18], [-24, 30], [-24, -30]] });
+  }
+
+  /* ═════ 固齿与链条 ═════ */
+  function renderFixed() {
+    var ring = inRange('bk-f-ring', 18, 70), cog = inRange('bk-f-cog', 9, 40);
+    var stay = inRange('bk-f-stay', 300, 600), br = inRange('bk-f-bigring', 18, 70), bc = inRange('bk-f-bigcog', 9, 60);
+    if (isFinite(ring) && ring % 1) { ring = NaN; mark('bk-f-ring', true); }
+    if (isFinite(cog) && cog % 1) { cog = NaN; mark('bk-f-cog', true); }
+    if (isFinite(br) && br % 1) { br = NaN; mark('bk-f-bigring', true); }
+    if (isFinite(bc) && bc % 1) { bc = NaN; mark('bk-f-bigcog', true); }
+    var w = gearCtx ? gearCtx.w : wheelInputs();
+    $('bk-f-circ').textContent = isFinite(w.dia) ? f(Math.PI * w.dia, 1) : '—';
+    $('bk-f-rpm').textContent = isFinite(w.rpm) ? f(w.rpm, 0) : '—';
+    var errs = [];
+    if (!isFinite(ring) || !isFinite(cog)) errs.push('牙盘 18–70、后齿 9–40 的整数');
+    if (!isFinite(stay) || !isFinite(br) || !isFinite(bc)) errs.push('后下叉 300–600 mm、最大牙盘 18–70、最大飞轮 9–60 的整数');
+    if (!isFinite(w.dia) || !isFinite(w.crank) || !isFinite(w.rpm)) errs.push('「齿比」页的车轮或踏频输入有误');
+    showErr('bk-f-err', errs.join('；'));
+    if (isFinite(ring) && isFinite(cog)) {
+      var s = BK.skid(ring, cog);
+      $('bk-f-k-skid').innerHTML = s.single + '<small>个</small>';
+      $('bk-f-k-ambi').innerHTML = s.ambi + '<small>个</small>';
+      $('bk-f-explain').hidden = false;
+      $('bk-f-explain').textContent = ring + '/' + cog + (s.r === ring ? ' 已是最简分数' : ' 约分为 ' + s.r + '/' + s.c) + '：曲柄每转 ' + s.c + ' 圈后轮正好转 ' + s.r + ' 圈、回到同一相位，所以同一只脚在前领滑时后胎只会落在 ' + s.c + ' 个不同位置' +
+        (s.r % 2 ? '；' + s.r + ' 是奇数，换另一只脚领滑会落在另外 ' + s.c + ' 个位置。' : '；' + s.r + ' 是偶数，换脚也落在同样的位置上。');
+      if (isFinite(w.dia) && isFinite(w.rpm)) {
+        var m = BK.gearMetrics(ring, cog, w.dia, w.crank, w.rpm);
+        $('bk-f-k-inches').innerHTML = f(m.inches, 1) + '<small>in</small>';
+        $('bk-f-k-kmh').innerHTML = f(m.kmh, 1) + '<small>km/h</small>';
+      } else { $('bk-f-k-inches').textContent = '—'; $('bk-f-k-kmh').textContent = '—'; }
+      // 附近组合表
+      var rs = [], cs = [], a;
+      for (a = Math.max(18, ring - 4); a <= Math.min(70, ring + 4); a++) rs.push(a);
+      for (a = Math.max(9, cog - 3); a <= Math.min(40, cog + 3); a++) cs.push(a);
+      $('bk-f-table').tHead.innerHTML = '<tr><th scope="col">牙盘 \\ 后齿</th>' + cs.map(function (k) { return '<th scope="col">' + k + 'T</th>'; }).join('') + '</tr>';
+      $('bk-f-table').tBodies[0].innerHTML = rs.map(function (r) {
+        return '<tr><th scope="row">' + r + 'T</th>' + cs.map(function (k) {
+          var q = BK.skid(r, k), gi = isFinite(w.dia) ? f(r / k * w.dia / 25.4, 1) : '—';
+          return '<td class="bk-fc' + (r === ring && k === cog ? ' bk-cur' : '') + '" data-ring="' + r + '" data-cog="' + k + '">' + gi + ' · ' + q.single + '/' + q.ambi + '</td>';
+        }).join('') + '</tr>';
+      }).join('');
+    } else {
+      ['bk-f-k-skid', 'bk-f-k-ambi', 'bk-f-k-inches', 'bk-f-k-kmh'].forEach(function (id) { $(id).textContent = '—'; });
+      $('bk-f-explain').hidden = true; $('bk-f-table').tHead.innerHTML = ''; $('bk-f-table').tBodies[0].innerHTML = '';
+    }
+    if (isFinite(stay) && isFinite(br) && isFinite(bc)) {
+      var ch = BK.chainLength(stay, br, bc);
+      $('bk-f-k-links').innerHTML = ch.links + '<small>节 · ' + ch.inch + ' in</small>';
+    } else $('bk-f-k-links').textContent = '—';
+  }
+
+  /* ═════ 方案 ═════ */
+  function saves() { var s = load(LS_SAVES); return Array.isArray(s) ? s : []; }
+  function renderSaves() {
+    var list = saves();
+    $('bk-s-empty').hidden = list.length > 0; $('bk-s-wrap').hidden = list.length === 0;
+    $('bk-s-list').tBodies[0].innerHTML = list.map(function (s, i) {
+      var R = BK.parseTeeth(s.state.rings, 18, 70, 3), K = BK.parseTeeth(s.state.cogs, 9, 60, 13), rng = '—';
+      if (R.ok && K.ok) rng = f(R.list[R.list.length - 1] / K.list[0] / (R.list[0] / K.list[K.list.length - 1]) * 100, 0) + '%';
+      return '<tr><td>' + esc(s.name) + '</td><td>' + esc(s.state.rings) + ' × ' + (K.ok ? K.list[0] + '-' + K.list[K.list.length - 1] : '?') + '</td><td>' + rng + '</td><td>' +
+        esc(new Date(s.at).toLocaleString('zh-CN', { hour12: false })) + '</td><td><button class="bk-btn bk-btn-ter bk-sload" type="button" data-i="' + i + '">载入</button> <button class="bk-btn bk-btn-ter bk-sdel" type="button" data-i="' + i + '" aria-label="删除方案 ' + esc(s.name) + '">删除</button></td></tr>';
+    }).join('');
+  }
+
+  /* ═════ 总调度 ═════ */
+  function renderAll() {
+    syncPresets();
+    renderGear(); renderPower(); renderFixed();
+    store(LS_STATE, getState());
+  }
+
+  // 预设选择
+  $('bk-g-crankset').addEventListener('change', function () { var o = CRANKSETS[+this.value]; if (this.value !== '' && o) { $('bk-g-rings').value = o.v; renderAll(); } });
+  $('bk-g-cassette').addEventListener('change', function () { var o = CASSETTES[+this.value]; if (this.value !== '' && o) { $('bk-g-cogs').value = o.v; renderAll(); } });
+  $('bk-g-wheel').addEventListener('change', function () { var o = WHEELS[+this.value]; if (this.value !== '' && o) { $('bk-g-bsd').value = o.bsd; $('bk-g-tire').value = o.t; renderAll(); } });
+  $('bk-p-pos').addEventListener('change', function () { var o = POSITIONS[+this.value]; if (this.value !== '' && o) { $('bk-p-cda').value = o.v; renderAll(); } });
+  $('bk-p-surf').addEventListener('change', function () { var o = SURFACES[+this.value]; if (this.value !== '' && o) { $('bk-p-crr').value = o.v; renderAll(); } });
+  Object.keys(FIELDS).forEach(function (k) { $(FIELDS[k]).addEventListener('input', renderAll); $(FIELDS[k]).addEventListener('change', renderAll); });
+  ['bk-p-mode-power', 'bk-p-mode-speed', 'bk-c-mode-power', 'bk-c-mode-time'].forEach(function (id) { $(id).addEventListener('change', renderAll); });
+  $('bk-f-fromgear').addEventListener('click', function () {
+    if (!gearCtx) return;
+    $('bk-f-bigring').value = gearCtx.R[gearCtx.R.length - 1]; $('bk-f-bigcog').value = gearCtx.K[gearCtx.K.length - 1]; renderAll();
+  });
+  $('bk-s-save').addEventListener('click', function () {
+    var name = $('bk-s-name').value.trim();
+    if (!name) { $('bk-s-msg').textContent = '先起个方案名。'; $('bk-s-name').focus(); return; }
+    var list = saves().filter(function (s) { return s.name !== name; });
+    list.unshift({ name: name, at: Date.now(), state: getState() });
+    store(LS_SAVES, list.slice(0, 50));
+    $('bk-s-msg').textContent = '已保存「' + name + '」。';
+    renderSaves();
+  });
+  $('bk-s-reset').addEventListener('click', function () { setState(DEFAULTS); renderAll(); $('bk-s-msg').textContent = '已恢复默认输入。'; });
+  $('bk-s-list').addEventListener('click', function (e) {
+    var b = e.target.closest('button'); if (!b) return;
+    var list = saves(), i = +b.getAttribute('data-i');
+    if (!list[i]) return;
+    if (b.classList.contains('bk-sload')) { setState(Object.assign({}, DEFAULTS, list[i].state)); $('bk-s-name').value = list[i].name; renderAll(); $('bk-s-msg').textContent = '已载入「' + list[i].name + '」。'; }
+    else { var nm = list[i].name; list.splice(i, 1); store(LS_SAVES, list); renderSaves(); $('bk-s-msg').textContent = '已删除「' + nm + '」。'; }
+  });
+
+  // 页签（方向键 / Home / End）
+  function showTab(t, focus) {
+    TABS.forEach(function (k) {
+      var on = k === t, b = $('bk-tab-' + k);
+      b.setAttribute('aria-selected', on ? 'true' : 'false'); b.tabIndex = on ? 0 : -1;
+      $('bk-pane-' + k).hidden = !on;
+    });
+    if (focus) $('bk-tab-' + t).focus();
+    if (t === 'gear' || t === 'power' || t === 'climb') renderAll();
+    try { history.replaceState(null, '', '#' + t); } catch (e) { /* file:// */ }
+  }
+  TABS.forEach(function (k, i) {
+    var b = $('bk-tab-' + k);
+    b.addEventListener('click', function () { showTab(k); });
+    b.addEventListener('keydown', function (e) {
+      var j = e.key === 'ArrowRight' ? i + 1 : e.key === 'ArrowLeft' ? i - 1 : e.key === 'Home' ? 0 : e.key === 'End' ? TABS.length - 1 : null;
+      if (j == null) return;
+      e.preventDefault(); showTab(TABS[(j + TABS.length) % TABS.length], true);
+    });
+  });
+
+  var rzPending = false;
+  window.addEventListener('resize', function () {
+    if (rzPending) return; rzPending = true;
+    requestAnimationFrame(function () { rzPending = false; renderAll(); });
+  });
+
+  setState(Object.assign({}, DEFAULTS, load(LS_STATE) || {}));
+  renderAll(); renderSaves();
+  var h = location.hash.slice(1); showTab(TABS.indexOf(h) >= 0 ? h : 'gear');
+  window.__bk = { ready: true };
+})();
+
+</script>
+</body>
+</html>
