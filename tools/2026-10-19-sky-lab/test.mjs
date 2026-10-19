@@ -2421,6 +2421,15 @@ export default async ({ page, toolURL, screenshot, assert }) => {
   r0 = await rev();
   await page.check('#sl-layers input[data-layer="atmos"]');
   await frameReady();
+  // 白天打开：天光下几乎没有星 ⇒ 提示条可见；「看今晚 21:00」跳到当天 21:00（当地），提示条随之隐藏
+  await setWhen('2026-10-21', '14:00');
+  assert(await page.$eval('#sl-dayhint', (n) => getComputedStyle(n).display) !== 'none' && (await page.textContent('#sl-dayhint-t')).includes('白天'), '白天应出现「看今晚」提示条');
+  assert(await num('#sl-sky', 'data-stars') === 0, '白天开着天光时不应画出恒星');
+  await page.click('#sl-dh-tonight');
+  await frameReady();
+  assert(await page.evaluate(() => SL.ST.t) === ORACLE.t0 - 3600000, `「看今晚 21:00」应跳到 10-21 21:00 北京（${await page.evaluate(() => SL.ST.t)}）`);
+  assert(await page.$eval('#sl-dayhint', (n) => getComputedStyle(n).display) === 'none', '入夜后提示条隐藏（计算样式）');
+  assert(await num('#sl-sky', 'data-stars') > 900, '入夜后星星回来了');
   await page.click('#sl-red');
   assert(await page.evaluate(() => document.body.classList.contains('sl-red')) && await page.$eval('#sl-red', (n) => n.getAttribute('aria-pressed')) === 'true', '夜视红光开启');
   await page.click('#sl-red');

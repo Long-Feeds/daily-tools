@@ -70,6 +70,7 @@ input[type=date].sl-in,input[type=time].sl-in{color-scheme:dark}
 #sl-labels{pointer-events:none;font-family:var(--sl-sans)}
 .sl-skytools{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin:12px 0 0}
 .sl-viewinfo{text-align:center;margin-top:8px}
+.sl-dayhint{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:8px 12px;margin:12px auto 0;max-width:780px;background:var(--sl-card);border:1px solid var(--sl-hair);border-radius:8px;padding:10px 14px;font-size:14px;line-height:20px;color:var(--sl-body);text-align:center}
 .sl-chk{display:flex;align-items:center;gap:8px;font-size:14px;line-height:20px;color:var(--sl-body);cursor:pointer;min-height:28px}
 .sl-chk input{width:18px;height:18px;accent-color:#ffffff;margin:0}
 .sl-chks{display:grid;grid-template-columns:1fr 1fr;gap:4px 12px}
@@ -177,6 +178,7 @@ svg.sl-fig{width:100%;height:auto;display:block;font-family:var(--sl-sans)}
         <input class="sl-in" id="sl-date" type="date" aria-label="日期">
         <input class="sl-in" id="sl-time" type="time" step="60" aria-label="时间">
         <button class="sl-pill" id="sl-now" type="button">现在</button>
+        <button class="sl-pill" id="sl-tonight" type="button">今晚 21:00</button>
         <button class="sl-pill" id="sl-play" type="button" aria-pressed="false">播放</button>
         <select class="sl-in" id="sl-speed" aria-label="播放速度">
           <option value="60">1 分钟/秒</option>
@@ -225,6 +227,10 @@ svg.sl-fig{width:100%;height:auto;display:block;font-family:var(--sl-sans)}
             <button class="sl-pill sl-sm" id="sl-zin" type="button" aria-label="放大">＋</button>
             <button class="sl-pill sl-sm" id="sl-zout" type="button" aria-label="缩小">－</button>
             <button class="sl-pill sl-sm" id="sl-red" type="button" aria-pressed="false">夜视红光</button>
+          </div>
+          <div class="sl-dayhint" id="sl-dayhint" role="status" hidden>
+            <span id="sl-dayhint-t"></span>
+            <span class="sl-row"><button class="sl-pill sl-sm" id="sl-dh-tonight" type="button">看今晚 21:00</button><button class="sl-pill sl-sm" id="sl-dh-noatm" type="button">关掉天光</button></span>
           </div>
           <p class="sl-meta sl-viewinfo" id="sl-viewinfo"></p>
         </div>
@@ -1761,6 +1767,12 @@ var SLSky = (function () {
     var info = $('sl-viewinfo');
     if (info) info.textContent = (ST.view.mode === 'dome' && ST.view.alt >= 89.9 ? '全天视图' : '朝向 ' + SL.dirName(ST.view.az) + ' ' + Math.round(ST.view.az) + '° · 仰角 ' + Math.round(ST.view.alt) + '°') +
       ' · 视野 ' + Math.round(ST.view.fov) + '° · 画出 ' + F.drawn.stars + ' 颗星 · 有效极限星等 ' + lim.toFixed(1) + ' · 太阳高度 ' + SL.fmtNum(hs, 1) + '°';
+    // 白天 / 黄昏：按真实天光几乎看不到星 ⇒ 给出一键「看今晚」或「关掉天光」
+    var dh = $('sl-dayhint'), showDh = ST.layers.atmos && hs > -6;
+    if (dh) {
+      dh.hidden = !showDh;
+      if (showDh) $('sl-dayhint-t').textContent = (hs > 0 ? '现在是白天' : '天还没黑透') + '（太阳高度 ' + SL.fmtNum(hs, 1) + '°），按真实天光只看得到比 ' + lim.toFixed(1) + ' 等更亮的天体。';
+    }
     cv.setAttribute('data-key', key);
     cv.setAttribute('data-stars', F.drawn.stars);
     cv.setAttribute('data-lim', lim.toFixed(2));
@@ -2549,6 +2561,11 @@ var SLApp = (function () {
   }
   function stepTime(sec) { setTime(ST.t + sec * 1000); }
   function setNow() { ST.live = true; ST.playing = false; syncPlay(); setTime(Date.now(), true); }
+  function setTonight() {          // 当天（地点当地日期）21:00
+    var s = SL.cur(), p = SL.tzParts(s.tz, ST.t);
+    ST.playing = false; syncPlay();
+    setTime(SL.wallToUTC(s.tz, p.y, p.mo, p.d, 21, 0));
+  }
   function readInputs() {
     var s = SL.cur(), dv = $('sl-date').value, tv = $('sl-time').value;
     var dm = /^(\d{4})-(\d\d)-(\d\d)$/.exec(dv), tmm = /^(\d\d):(\d\d)/.exec(tv);
@@ -2675,6 +2692,9 @@ var SLApp = (function () {
     $('sl-date').addEventListener('change', readInputs);
     $('sl-time').addEventListener('change', readInputs);
     $('sl-now').addEventListener('click', setNow);
+    $('sl-tonight').addEventListener('click', setTonight);
+    $('sl-dh-tonight').addEventListener('click', setTonight);
+    $('sl-dh-noatm').addEventListener('click', function () { ST.layers.atmos = false; syncLayers(); SL.save(); SLSky.request(); SLInfo.update(true); });
     $('sl-play').addEventListener('click', togglePlay);
     $('sl-speed').addEventListener('change', function () { ST.speed = +this.value; });
     document.querySelectorAll('[data-step]').forEach(function (b) { b.addEventListener('click', function () { stepTime(+b.getAttribute('data-step')); }); });
@@ -2760,7 +2780,7 @@ var SLApp = (function () {
     setInterval(function () { if (ST.live && !ST.playing) changed('time'); }, 15000);
     requestAnimationFrame(loop);
   }
-  return { init: init, stepTime: stepTime, setNow: setNow, togglePlay: togglePlay, toggleRed: toggleRed, syncLayers: syncLayers, setTime: setTime, setLoc: setLoc, showTab: showTab, goto: goto, addToList: addToList };
+  return { init: init, stepTime: stepTime, setNow: setNow, setTonight: setTonight, togglePlay: togglePlay, toggleRed: toggleRed, syncLayers: syncLayers, setTime: setTime, setLoc: setLoc, showTab: showTab, goto: goto, addToList: addToList };
 })();
 document.addEventListener('DOMContentLoaded', SLApp.init);
 
