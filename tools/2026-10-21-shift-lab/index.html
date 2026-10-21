@@ -1,0 +1,3282 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>排班工作台 · Shift Lab</title>
+<meta name="description" content="浏览器里的自动排班：人员、班次、需求、请假与心愿录入后，用 SAT 求解器排出满足全部硬约束、扣分尽量低的月班表；排不出时给出最小冲突约束集。">
+<style>
+[hidden]{display:none!important}
+*{box-sizing:border-box}
+:root{
+  --sl-ink:#111111;--sl-act:#242424;--sl-body:#374151;--sl-muted:#6b7280;--sl-mut2:#898989;
+  --sl-hair:#e5e7eb;--sl-hair2:#f3f4f6;--sl-canvas:#ffffff;--sl-soft:#f8f9fa;--sl-card:#f5f5f5;--sl-strong:#e5e7eb;
+  --sl-dark:#101010;--sl-dark2:#1a1a1a;--sl-ondk:#a1a1aa;
+  --sl-blue:#3b82f6;--sl-green:#10b981;--sl-amber:#f59e0b;--sl-red:#ef4444;
+  --sl-orange:#fb923c;--sl-pink:#ec4899;--sl-violet:#8b5cf6;--sl-emerald:#34d399;
+  --sl-font:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  --sl-mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --sl-sh1:0 1px 2px rgba(0,0,0,.05);--sl-sh2:0 4px 12px rgba(0,0,0,.08);
+}
+html,body{margin:0;background:var(--sl-canvas);color:var(--sl-body);font:400 16px/1.5 var(--sl-font);-webkit-font-smoothing:antialiased}
+button,input,select,textarea{font:inherit;color:inherit}
+a{color:var(--sl-ink)}
+.sl-wrap{max-width:1200px;margin:0 auto;padding:0 24px}
+:focus-visible{outline:2px solid var(--sl-ink);outline-offset:2px}
+
+/* ── 顶栏 + 胶囊导航（pill-in-pill） ── */
+.sl-top{position:sticky;top:0;z-index:30;background:var(--sl-canvas);border-bottom:1px solid var(--sl-hair2)}
+.sl-top-in{max-width:1200px;margin:0 auto;padding:12px 24px;display:flex;align-items:center;gap:16px;min-height:64px;flex-wrap:wrap}
+.sl-back{font-size:14px;font-weight:500;color:var(--sl-muted);text-decoration:none;white-space:nowrap}
+.sl-back:hover{color:var(--sl-ink)}
+.sl-brand{display:flex;align-items:center;gap:8px;font-weight:600;font-size:18px;letter-spacing:-.04em;color:var(--sl-ink);text-decoration:none;white-space:nowrap}
+.sl-logo{width:22px;height:22px;border-radius:50%;background:var(--sl-ink);position:relative;flex:none}
+.sl-logo::after{content:"";position:absolute;left:6px;top:6px;width:10px;height:10px;border-radius:50%;background:var(--sl-canvas)}
+.sl-pills{display:flex;gap:2px;padding:6px;background:var(--sl-soft);border-radius:9999px;margin-left:auto;flex-wrap:wrap}
+.sl-pill{border:0;background:transparent;color:var(--sl-muted);font-size:14px;font-weight:500;line-height:1.4;padding:8px 14px;border-radius:9999px;cursor:pointer;min-width:52px;white-space:nowrap}
+.sl-pill[aria-selected="true"]{background:var(--sl-canvas);color:var(--sl-ink);box-shadow:var(--sl-sh1)}
+
+/* ── 首屏 ── */
+.sl-hero{display:grid;grid-template-columns:minmax(0,7fr) minmax(0,5fr);gap:32px;align-items:end;padding:56px 0 32px}
+.sl-hero > *{min-width:0}
+.sl-eyebrow{display:inline-block;background:var(--sl-card);color:var(--sl-ink);font-size:13px;font-weight:500;line-height:1.4;padding:4px 12px;border-radius:9999px}
+.sl-hero h1{font-size:44px;line-height:1.1;font-weight:600;letter-spacing:-.04em;color:var(--sl-ink);margin:16px 0 12px}
+.sl-lede{font-size:16px;color:var(--sl-body);margin:0;max-width:640px}
+.sl-kpis{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.sl-kpi{background:var(--sl-card);border-radius:12px;padding:16px 18px;min-width:0}
+.sl-kpi-k{display:block;font-size:13px;font-weight:500;color:var(--sl-muted)}
+.sl-kpi b{display:block;font-size:24px;font-weight:600;letter-spacing:-.03em;color:var(--sl-ink);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sl-kpi small{display:block;font-size:12px;color:var(--sl-mut2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* ── 通用：按钮 / 输入 / 卡片 / 徽标 ── */
+.sl-btn{height:40px;padding:0 20px;border-radius:8px;font-size:14px;font-weight:600;line-height:1;cursor:pointer;white-space:nowrap;min-width:52px}
+.sl-btn-pri{background:var(--sl-ink);color:#fff;border:1px solid var(--sl-ink)}
+.sl-btn-pri:active{background:var(--sl-act)}
+.sl-btn-pri:disabled{background:var(--sl-strong);border-color:var(--sl-strong);color:var(--sl-muted);cursor:default}
+.sl-btn-sec{background:var(--sl-canvas);color:var(--sl-ink);border:1px solid var(--sl-hair)}
+.sl-btn-sec:disabled{color:var(--sl-mut2);cursor:default}
+.sl-btn-sm{height:32px;padding:0 12px;font-size:13px;border-radius:6px}
+.sl-link{border:0;background:none;padding:0;font-size:14px;font-weight:600;color:var(--sl-ink);cursor:pointer;text-decoration:underline;text-underline-offset:3px;min-width:52px;min-height:20px}
+.sl-in,.sl-sel{height:40px;border:1px solid var(--sl-hair);border-radius:8px;background:var(--sl-canvas);padding:0 12px;font-size:15px;color:var(--sl-ink);min-width:100px;width:100%}
+.sl-in:focus,.sl-sel:focus{border-color:var(--sl-ink);outline:none;box-shadow:0 0 0 3px rgba(17,17,17,.08)}
+.sl-in-sm{height:32px;font-size:14px;padding:0 8px;border-radius:6px}
+.sl-field{display:flex;flex-direction:column;gap:6px;min-width:0}
+.sl-field > label,.sl-lab{font-size:13px;font-weight:500;color:var(--sl-muted)}
+.sl-card{background:var(--sl-canvas);border:1px solid var(--sl-hair);border-radius:12px;padding:24px;min-width:0}
+.sl-card-gray{background:var(--sl-card);border-color:transparent}
+.sl-card h2{font-size:22px;line-height:1.25;font-weight:600;letter-spacing:-.03em;color:var(--sl-ink);margin:0 0 4px}
+.sl-card h3{font-size:16px;font-weight:600;color:var(--sl-ink);margin:18px 0 8px}
+.sl-sub{font-size:14px;color:var(--sl-muted);margin:0 0 16px}
+.sl-tag{display:inline-flex;align-items:center;gap:4px;background:var(--sl-card);color:var(--sl-ink);font-size:12px;font-weight:500;line-height:1.4;padding:2px 10px;border-radius:9999px;white-space:nowrap}
+.sl-tag-dark{background:var(--sl-ink);color:#fff}
+.sl-tag-ok{background:#d1fae5;color:#065f46}
+.sl-tag-warn{background:#fef3c7;color:#92400e}
+.sl-tag-bad{background:#fee2e2;color:#991b1b}
+.sl-tag-blue{background:#dbeafe;color:#1e40af}
+.sl-mono{font-family:var(--sl-mono);font-size:13px}
+.sl-hint{font-size:13px;color:var(--sl-mut2);margin:8px 0 0}
+.sl-row{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap}
+.sl-sec{padding:24px 0}
+
+/* ── 工具条 / 状态条 ── */
+.sl-bar{display:grid;grid-template-columns:minmax(160px,1.6fr) minmax(140px,1fr) minmax(100px,.6fr) minmax(110px,.7fr) auto;gap:16px;align-items:end;background:var(--sl-canvas);border:1px solid var(--sl-hair);border-radius:12px;padding:16px 20px}
+.sl-bar > *{min-width:0}
+.sl-bar-btns{display:flex;gap:8px;flex-wrap:wrap}
+.sl-status{display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:20px;align-items:center;margin:16px 0;background:var(--sl-card);border-radius:12px;padding:16px 20px}
+.sl-status > *{min-width:0}
+.sl-st-h{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.sl-st-h b{font-size:18px;font-weight:600;color:var(--sl-ink);letter-spacing:-.02em}
+.sl-dot{width:10px;height:10px;border-radius:50%;background:var(--sl-mut2);flex:none}
+.sl-dot[data-s="run"]{background:var(--sl-blue);animation:sl-pulse 1s infinite}
+.sl-dot[data-s="optimal"]{background:var(--sl-green)}
+.sl-dot[data-s="feasible"]{background:var(--sl-ink)}
+.sl-dot[data-s="infeasible"],.sl-dot[data-s="error"]{background:var(--sl-red)}
+.sl-dot[data-s="unknown"]{background:var(--sl-amber)}
+@keyframes sl-pulse{50%{opacity:.35}}
+.sl-st-d{font-size:14px;color:var(--sl-muted);margin:6px 0 0}
+.sl-st-m{display:flex;gap:16px;flex-wrap:wrap;margin-top:10px;font-size:13px;color:var(--sl-muted)}
+.sl-st-m b{color:var(--sl-ink);font-weight:600}
+.sl-conv{width:100%;height:auto;display:block;background:var(--sl-canvas);border-radius:8px}
+
+/* ── 班表（产品界面卡片，16px 圆角） ── */
+.sl-mock{background:var(--sl-canvas);border:1px solid var(--sl-hair);border-radius:16px;box-shadow:var(--sl-sh2);overflow:hidden}
+.sl-mock-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:14px 20px;border-bottom:1px solid var(--sl-hair2)}
+.sl-mock-head h2{font-size:18px;font-weight:600;color:var(--sl-ink);margin:0;letter-spacing:-.02em}
+.sl-legend{display:flex;gap:8px;flex-wrap:wrap;margin-left:auto;align-items:center}
+.sl-lg{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--sl-muted);white-space:nowrap}
+.sl-grid-wrap{position:relative;overflow-x:auto;overflow-y:hidden}
+.sl-grid{border-collapse:separate;border-spacing:0;font-size:13px;width:max-content;min-width:100%}
+.sl-grid th,.sl-grid td{padding:0;text-align:center;white-space:nowrap}
+.sl-grid thead th{position:sticky;top:0;background:var(--sl-canvas);font-weight:500;color:var(--sl-muted);height:44px;border-bottom:1px solid var(--sl-hair)}
+.sl-dh{width:30px;min-width:30px;font-size:12px;line-height:1.15}
+.sl-dh i{display:block;font-style:normal;font-size:11px;color:var(--sl-mut2)}
+.sl-dh[data-wk="1"]{background:var(--sl-soft)!important;color:var(--sl-ink)}
+.sl-nm{position:sticky;left:0;z-index:2;background:var(--sl-canvas);text-align:left!important;padding:0 10px 0 14px!important;min-width:138px;max-width:138px;border-right:1px solid var(--sl-hair2)}
+thead .sl-nm{z-index:3}
+.sl-who{display:flex;align-items:center;gap:8px;min-width:0}
+.sl-av{width:28px;height:28px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;color:var(--sl-ink);flex:none}
+.sl-who-n{font-size:14px;font-weight:500;color:var(--sl-ink);overflow:hidden;text-overflow:ellipsis}
+.sl-who small{display:block;font-size:11px;color:var(--sl-mut2);line-height:1.2}
+.sl-c{width:30px;height:36px;border-bottom:1px solid var(--sl-hair2);position:relative;cursor:pointer;outline:none}
+.sl-c[data-wk="1"]{background:var(--sl-soft)}
+.sl-c:focus-visible{box-shadow:inset 0 0 0 2px var(--sl-ink)}
+.sl-c[aria-selected="true"]{box-shadow:inset 0 0 0 2px var(--sl-blue)}
+.sl-sh{display:inline-flex;align-items:center;justify-content:center;width:25px;height:25px;border-radius:6px;font-size:12px;font-weight:600;border-left:3px solid transparent}
+.sl-off{color:#cbd5e1;font-size:11px}
+.sl-c[data-req="leave"]{background:repeating-linear-gradient(135deg,#f3f4f6 0 4px,#e5e7eb 4px 6px)}
+.sl-mk{position:absolute;right:2px;top:2px;width:7px;height:7px;border-radius:50%;pointer-events:none}
+.sl-mk[data-k="off"]{background:var(--sl-pink)}
+.sl-mk[data-k="on"]{background:var(--sl-blue)}
+.sl-mk[data-k="lock"]{border-radius:1px;background:var(--sl-ink);width:6px;height:6px}
+.sl-mk[data-miss="1"]{box-shadow:0 0 0 2px #fff,0 0 0 3px var(--sl-red)}
+.sl-c[data-bad="1"]::after{content:"";position:absolute;inset:3px;border:2px solid var(--sl-red);border-radius:7px;pointer-events:none}
+.sl-st{min-width:40px;padding:0 4px!important;font-size:12px;color:var(--sl-body);border-bottom:1px solid var(--sl-hair2);font-variant-numeric:tabular-nums}
+thead .sl-st{font-size:12px}
+.sl-st[data-dev="1"]{color:#b45309;font-weight:600}
+.sl-st-first{border-left:1px solid var(--sl-hair)}
+.sl-cov td{height:28px;font-size:11px;color:var(--sl-mut2);font-variant-numeric:tabular-nums;border-bottom:1px solid var(--sl-hair2)}
+.sl-cov td[data-cv="short"]{color:#b91c1c;font-weight:600;background:#fef2f2}
+.sl-cov td[data-cv="over"]{color:#92400e;font-weight:600;background:#fffbeb}
+.sl-cov .sl-nm{font-size:12px;color:var(--sl-muted);font-weight:500}
+.sl-cov-first td{border-top:1px solid var(--sl-hair)}
+
+/* 班次配色：浅底 + 深字 + 左侧 3px 品牌色（Cal 的 pastel 只当点缀） */
+.sl-cl-orange{background:#fff1e6;color:#9a3412;border-left-color:var(--sl-orange)}
+.sl-cl-violet{background:#f1ebfe;color:#5b21b6;border-left-color:var(--sl-violet)}
+.sl-cl-pink{background:#fde7f3;color:#9d174d;border-left-color:var(--sl-pink)}
+.sl-cl-emerald{background:#dcfce9;color:#065f46;border-left-color:var(--sl-emerald)}
+.sl-cl-blue{background:#e6effe;color:#1e40af;border-left-color:var(--sl-blue)}
+.sl-cl-amber{background:#fef3c7;color:#92400e;border-left-color:var(--sl-amber)}
+.sl-avc-0{background:#fed7aa}.sl-avc-1{background:#fbcfe8}.sl-avc-2{background:#ddd6fe}.sl-avc-3{background:#a7f3d0}
+
+/* ── 单元格菜单 ── */
+.sl-menu{position:absolute;z-index:50;background:var(--sl-canvas);border:1px solid var(--sl-hair);border-radius:12px;box-shadow:var(--sl-sh2);padding:12px;width:268px}
+.sl-menu h4{margin:0 0 2px;font-size:14px;font-weight:600;color:var(--sl-ink)}
+.sl-menu p{margin:0 0 10px;font-size:12px;color:var(--sl-mut2)}
+.sl-menu-g{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 10px}
+.sl-menu-l{font-size:12px;font-weight:500;color:var(--sl-muted);margin-top:4px}
+.sl-mi{height:32px;min-width:52px;padding:0 10px;border-radius:6px;border:1px solid var(--sl-hair);background:var(--sl-canvas);font-size:13px;font-weight:500;cursor:pointer;color:var(--sl-ink)}
+.sl-mi[aria-pressed="true"]{background:var(--sl-ink);color:#fff;border-color:var(--sl-ink)}
+.sl-mi:focus-visible{outline:2px solid var(--sl-blue);outline-offset:1px}
+
+/* ── 下方三栏 ── */
+.sl-cols{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:24px;margin-top:24px}
+.sl-cols > *{min-width:0}
+.sl-cols-2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px}
+.sl-cols-2 > *{min-width:0}
+.sl-stack{display:grid;grid-template-columns:minmax(0,1fr);gap:24px;margin-top:24px}
+.sl-stack > *{min-width:0}
+.sl-bk{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 12px;margin:12px 0;font-size:14px}
+.sl-bk dt{color:var(--sl-body);margin:0}
+.sl-bk dd{margin:0;font-weight:600;color:var(--sl-ink);font-variant-numeric:tabular-nums;text-align:right}
+.sl-bk dd[data-z="1"]{color:var(--sl-mut2);font-weight:400}
+.sl-bar-h{height:6px;border-radius:9999px;background:var(--sl-hair);overflow:hidden;grid-column:1/-1;margin-top:-4px}
+.sl-bar-h i{display:block;height:100%;background:var(--sl-ink);border-radius:9999px}
+.sl-list{list-style:none;margin:8px 0 0;padding:0;max-height:300px;overflow:auto;position:relative}
+.sl-list li{font-size:13px;line-height:1.45;padding:8px 0;border-top:1px solid #e9e9e9;display:flex;gap:8px;align-items:baseline}
+.sl-list li b{font-variant-numeric:tabular-nums;color:var(--sl-ink);font-weight:600;flex:none;min-width:28px}
+.sl-empty{font-size:14px;color:var(--sl-mut2);margin:8px 0 0}
+.sl-exp{display:grid;gap:10px}
+.sl-exp .sl-row > *{flex:1 1 auto}
+
+/* ── 编辑表格（团队 / 需求 / 规则） ── */
+.sl-tw{position:relative;overflow-x:auto;margin:0 -4px;padding:0 4px}
+.sl-tbl{width:100%;border-collapse:collapse;font-size:14px}
+.sl-tbl th{font-size:13px;font-weight:500;color:var(--sl-muted);text-align:left;padding:8px 6px;border-bottom:1px solid var(--sl-hair);white-space:nowrap}
+.sl-tbl td{padding:6px;border-bottom:1px solid var(--sl-hair2);vertical-align:middle}
+.sl-tbl td.sl-num{font-variant-numeric:tabular-nums;color:var(--sl-ink)}
+.sl-chk{display:inline-flex;align-items:center;gap:4px;font-size:13px;margin-right:8px;white-space:nowrap;cursor:pointer}
+.sl-chk input{width:18px;height:18px;accent-color:var(--sl-ink);margin:0}
+.sl-tbl .sl-in{min-width:100px}
+.sl-w-name{min-width:120px}
+.sl-grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.sl-grid2 > *{min-width:0}
+.sl-grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.sl-grid3 > *{min-width:0}
+.sl-wt{display:grid;grid-template-columns:minmax(0,1fr) 120px;gap:4px 16px;align-items:center;padding:12px 0;border-top:1px solid var(--sl-hair2)}
+.sl-wt b{font-size:15px;font-weight:600;color:var(--sl-ink)}
+.sl-wt p{grid-column:1;margin:0;font-size:13px;color:var(--sl-muted)}
+.sl-wt .sl-in{grid-row:1/3;grid-column:2}
+.sl-fx{display:grid;gap:4px}
+.sl-fx-row{display:flex;gap:4px;align-items:center;font-size:13px}
+.sl-fx-row > span:first-child{width:56px;color:var(--sl-muted)}
+.sl-fx-c{width:44px;height:30px;display:inline-flex;align-items:center;justify-content:center;border-radius:6px;font-size:12px;font-weight:600}
+.sl-fx-c[data-f="1"]{background:#fee2e2;color:#991b1b}
+.sl-fx-c[data-f="0"]{background:var(--sl-hair2);color:var(--sl-muted)}
+
+/* ── 诊断 ── */
+.sl-mus{list-style:none;margin:12px 0 0;padding:0;counter-reset:mus}
+.sl-mus li{display:grid;grid-template-columns:28px minmax(0,1fr) auto;gap:12px;align-items:center;padding:14px 0;border-top:1px solid var(--sl-hair2)}
+.sl-mus li::before{counter-increment:mus;content:counter(mus);width:28px;height:28px;border-radius:50%;background:var(--sl-ink);color:#fff;font-size:13px;font-weight:600;display:flex;align-items:center;justify-content:center}
+.sl-mus-t{font-size:15px;color:var(--sl-ink);font-weight:500}
+.sl-mus-k{display:block;font-size:12px;color:var(--sl-mut2);margin-top:2px}
+.sl-sup-wrap{position:relative;overflow-x:auto}
+.sl-sup{border-collapse:separate;border-spacing:2px;font-size:11px}
+.sl-sup th{font-weight:500;color:var(--sl-muted);padding:2px 4px;white-space:nowrap}
+.sl-sup td{width:30px;height:26px;text-align:center;border-radius:4px;font-variant-numeric:tabular-nums}
+.sl-sup td[data-lv="0"]{background:var(--sl-hair2);color:var(--sl-muted)}
+.sl-sup td[data-lv="1"]{background:#fef3c7;color:#92400e}
+.sl-sup td[data-lv="2"]{background:#fee2e2;color:#991b1b;font-weight:600}
+.sl-sup td[data-lv="3"]{background:#ffffff;color:var(--sl-mut2);border:1px dashed var(--sl-hair)}
+
+/* ── 原理 ── */
+.sl-steps{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:24px}
+.sl-steps li{background:var(--sl-card);border-radius:12px;padding:24px;min-width:0}
+.sl-steps b{display:block;font-size:16px;color:var(--sl-ink);margin:8px 0 6px}
+.sl-steps p{margin:0;font-size:14px}
+.sl-num-c{width:28px;height:28px;border-radius:50%;background:var(--sl-ink);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:13px;font-weight:600}
+.sl-prose{font-size:15px;max-width:820px}
+.sl-prose li{margin:4px 0}
+.sl-ver{list-style:none;padding:0;margin:0;display:grid;gap:8px}
+.sl-ver li{display:flex;gap:12px;align-items:baseline;font-size:14px;border-top:1px solid var(--sl-hair2);padding-top:8px}
+.sl-ver b{min-width:132px;color:var(--sl-ink);font-variant-numeric:tabular-nums}
+
+/* ── 深色页脚（全页唯一的深色面） ── */
+.sl-foot{background:var(--sl-dark);color:var(--sl-ondk);margin-top:72px;padding:56px 0}
+.sl-foot-in{max-width:1200px;margin:0 auto;padding:0 24px;display:grid;grid-template-columns:minmax(0,1.4fr) repeat(3,minmax(0,1fr));gap:32px;font-size:14px}
+.sl-foot-in > *{min-width:0}
+.sl-foot h5{color:#fff;font-size:14px;font-weight:600;margin:0 0 10px}
+.sl-foot p{margin:0 0 6px}
+.sl-foot .sl-brand{color:#fff}
+.sl-foot .sl-logo{background:#fff}
+.sl-foot .sl-logo::after{background:var(--sl-dark)}
+
+.sl-toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--sl-ink);color:#fff;font-size:14px;padding:10px 16px;border-radius:8px;box-shadow:var(--sl-sh2);z-index:60;max-width:calc(100vw - 32px)}
+.sl-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+@media (max-width:1024px){
+  .sl-hero{grid-template-columns:minmax(0,1fr);padding:40px 0 24px}
+  .sl-bar{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .sl-bar-btns{grid-column:1/-1}
+  .sl-status{grid-template-columns:minmax(0,1fr)}
+  .sl-cols{grid-template-columns:minmax(0,1fr)}
+  .sl-steps{grid-template-columns:minmax(0,1fr)}
+  .sl-foot-in{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media (max-width:767px){
+  .sl-wrap{padding:0 16px}
+  .sl-top-in{padding:10px 16px;gap:10px}
+  .sl-pills{margin-left:0;width:100%;flex-wrap:nowrap;overflow-x:auto;position:relative;scrollbar-width:none}
+  .sl-pill{padding:6px 10px;font-size:13px;flex:none}
+  .sl-hero h1{font-size:30px}
+  .sl-bar{grid-template-columns:minmax(0,1fr)}
+  .sl-grid2,.sl-grid3,.sl-cols-2{grid-template-columns:minmax(0,1fr)}
+  .sl-kpi b{font-size:20px}
+  .sl-foot-in{grid-template-columns:minmax(0,1fr)}
+  .sl-nm{min-width:112px;max-width:112px}
+  .sl-who small{display:none}
+}
+@media print{
+  .sl-top,.sl-hero,.sl-bar,.sl-status,.sl-cols,.sl-foot,#pane-team,#pane-rules,#pane-diag,#pane-about{display:none!important}
+  .sl-mock{box-shadow:none;border:0}
+  .sl-grid-wrap{overflow:visible}
+}
+</style>
+</head>
+<body data-sl-ready="0">
+<header class="sl-top">
+  <div class="sl-top-in">
+    <a id="sl-back" class="sl-back" href="../../">← 返回工具集</a>
+    <span class="sl-brand"><span class="sl-logo" aria-hidden="true"></span>Shift Lab</span>
+    <nav class="sl-pills" role="tablist" aria-label="工作区">
+      <button class="sl-pill" role="tab" id="sl-tab-roster" aria-controls="pane-roster" aria-selected="true">排班表</button>
+      <button class="sl-pill" role="tab" id="sl-tab-team" aria-controls="pane-team" aria-selected="false" tabindex="-1">团队与需求</button>
+      <button class="sl-pill" role="tab" id="sl-tab-rules" aria-controls="pane-rules" aria-selected="false" tabindex="-1">规则与权重</button>
+      <button class="sl-pill" role="tab" id="sl-tab-diag" aria-controls="pane-diag" aria-selected="false" tabindex="-1">冲突诊断</button>
+      <button class="sl-pill" role="tab" id="sl-tab-about" aria-controls="pane-about" aria-selected="false" tabindex="-1">原理与验证</button>
+    </nav>
+  </div>
+</header>
+
+<main class="sl-wrap">
+  <section class="sl-hero" aria-labelledby="sl-h1">
+    <div>
+      <span class="sl-eyebrow">排班 · 约束求解 · 全在浏览器本地</span>
+      <h1 id="sl-h1">把规则写清楚，<br>让求解器排一张公平的班表</h1>
+      <p class="sl-lede">录入人员、班次、每天的需求、请假和心愿，引擎会排出满足全部硬规则、扣分尽量低的班表；排不出来时，它会指出是哪几条规则撞在了一起，放宽其中任意一条就能解开。</p>
+    </div>
+    <div class="sl-kpis" aria-label="当前班表概况">
+      <div class="sl-kpi"><span class="sl-kpi-k">状态</span><b id="sl-k-status">未排班</b><small id="sl-k-status2">点「自动排班」开始</small></div>
+      <div class="sl-kpi"><span class="sl-kpi-k">扣分（越低越好）</span><b id="sl-k-cost">—</b><small id="sl-k-cost2">软目标加权和</small></div>
+      <div class="sl-kpi"><span class="sl-kpi-k">需求覆盖</span><b id="sl-k-cover">—</b><small id="sl-k-cover2">每天每班的人数</small></div>
+      <div class="sl-kpi"><span class="sl-kpi-k">心愿满足</span><b id="sl-k-wish">—</b><small id="sl-k-wish2">想休 / 想上某班</small></div>
+    </div>
+  </section>
+
+  <div id="sl-panes">
+    <!-- ══════════ 排班表 ══════════ -->
+    <section id="pane-roster" class="sl-pane" role="tabpanel" aria-labelledby="sl-tab-roster">
+      <div class="sl-bar">
+        <div class="sl-field"><label for="sl-name">项目名称</label><input id="sl-name" class="sl-in" type="text" maxlength="40"></div>
+        <div class="sl-field"><label for="sl-start">开始日期</label><input id="sl-start" class="sl-in" type="date"></div>
+        <div class="sl-field"><label for="sl-days">天数</label><input id="sl-days" class="sl-in" type="number" min="1" max="62" step="1"></div>
+        <div class="sl-field"><label for="sl-budget">求解时长</label>
+          <select id="sl-budget" class="sl-sel">
+            <option value="3">3 秒</option><option value="8" selected>8 秒</option><option value="20">20 秒</option><option value="60">60 秒</option>
+          </select></div>
+        <div class="sl-bar-btns">
+          <button id="sl-solve" class="sl-btn sl-btn-pri" type="button">自动排班</button>
+          <button id="sl-more" class="sl-btn sl-btn-sec" type="button" title="以当前班表为起点继续找更低分的解">继续优化</button>
+          <button id="sl-stop" class="sl-btn sl-btn-sec" type="button" hidden>停止</button>
+        </div>
+      </div>
+
+      <div class="sl-status" id="sl-status">
+        <div>
+          <div class="sl-st-h"><span class="sl-dot" id="sl-dot" data-s="idle"></span><b id="sl-st-t">未排班</b><span class="sl-tag" id="sl-st-tag" hidden></span><button id="sl-goto-diag" class="sl-btn sl-btn-sec sl-btn-sm" type="button" hidden>查看冲突</button></div>
+          <p class="sl-st-d" id="sl-st-d" role="status" aria-live="polite">点「自动排班」：先找一张满足全部硬规则的班表，再在限定时间里不断降低扣分。</p>
+          <div class="sl-st-m" id="sl-st-m"></div>
+        </div>
+        <svg id="sl-conv" class="sl-conv" viewBox="0 0 380 132" role="img" aria-label="优化曲线：扣分随时间下降"></svg>
+      </div>
+
+      <div class="sl-mock">
+        <div class="sl-mock-head">
+          <h2 id="sl-grid-title">班表</h2>
+          <span class="sl-tag" id="sl-period"></span>
+          <div class="sl-legend" id="sl-legend"></div>
+        </div>
+        <div class="sl-grid-wrap" id="sl-grid-wrap">
+          <table class="sl-grid" id="sl-grid" role="grid" aria-labelledby="sl-grid-title" aria-describedby="sl-grid-help"></table>
+        </div>
+        <p class="sl-hint" id="sl-grid-help" style="padding:0 20px 14px">点任意格子（或用方向键移到格子上按回车）：锁定班次 / 请假 / 想休 / 想上某班。快捷键：数字键锁定对应班次，0 锁定休息，L 请假，W 想休，Delete 清除。</p>
+      </div>
+
+      <div class="sl-cols">
+        <article class="sl-card sl-card-gray" aria-labelledby="sl-by-h">
+          <h2 id="sl-by-h">扣分明细</h2>
+          <p class="sl-sub">软目标按权重扣分；硬规则不扣分，只能满足。</p>
+          <dl class="sl-bk" id="sl-by"></dl>
+          <ul class="sl-list" id="sl-items"></ul>
+        </article>
+        <article class="sl-card sl-card-gray" aria-labelledby="sl-hard-h">
+          <h2 id="sl-hard-h">合规核对</h2>
+          <p class="sl-sub">逐条核对硬规则（手动改过的格子也算在内）。</p>
+          <p class="sl-empty" id="sl-hard-ok">还没有班表。</p>
+          <ul class="sl-list" id="sl-hard"></ul>
+        </article>
+        <article class="sl-card" aria-labelledby="sl-exp-h">
+          <h2 id="sl-exp-h">导出与存档</h2>
+          <p class="sl-sub">班表与设置自动存在本机浏览器里。</p>
+          <div class="sl-exp">
+            <div class="sl-row"><button id="sl-csv" class="sl-btn sl-btn-sec" type="button">导出 CSV（Excel）</button><button id="sl-print" class="sl-btn sl-btn-sec" type="button">打印</button></div>
+            <div class="sl-row">
+              <div class="sl-field" style="flex:1 1 140px"><label for="sl-ics-who">个人日历</label><select id="sl-ics-who" class="sl-sel"></select></div>
+              <button id="sl-ics" class="sl-btn sl-btn-sec" type="button">导出 .ics</button>
+            </div>
+            <div class="sl-row"><button id="sl-json" class="sl-btn sl-btn-sec" type="button">导出项目 JSON</button>
+              <button id="sl-import-btn" class="sl-btn sl-btn-sec" type="button">导入 JSON</button>
+              <input id="sl-import" type="file" accept=".json,application/json" hidden></div>
+            <div class="sl-row"><button id="sl-demo" class="sl-link" type="button">载入示例（12 人 · 4 周）</button><button id="sl-small" class="sl-link" type="button">载入小例子（5 人 · 1 周）</button></div>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <!-- ══════════ 团队与需求 ══════════ -->
+    <section id="pane-team" class="sl-pane" role="tabpanel" aria-labelledby="sl-tab-team" hidden>
+      <article class="sl-card" aria-labelledby="sl-staff-h">
+        <div class="sl-row" style="justify-content:space-between;align-items:center"><div><h2 id="sl-staff-h">人员</h2><p class="sl-sub">FTE 是工作量系数（1 = 全职）；公平目标按「FTE × 可出勤天数」分摊总需求。班数上下限留空表示不限。</p></div>
+          <button id="sl-add-staff" class="sl-btn sl-btn-sec" type="button">＋ 添加人员</button></div>
+        <div class="sl-tw"><table class="sl-tbl" id="sl-staff-tbl"></table></div>
+      </article>
+      <div class="sl-stack">
+        <article class="sl-card" aria-labelledby="sl-shift-h">
+          <div class="sl-row" style="justify-content:space-between;align-items:center"><div><h2 id="sl-shift-h">班次</h2><p class="sl-sub">结束早于开始即跨夜（如 23:00–07:00）。勾选「夜班」的班次参与夜班相关规则。</p></div>
+            <button id="sl-add-shift" class="sl-btn sl-btn-sec" type="button">＋ 添加班次</button></div>
+          <div class="sl-tw"><table class="sl-tbl" id="sl-shift-tbl"></table></div>
+        </article>
+        <article class="sl-card" aria-labelledby="sl-dem-h">
+          <h2 id="sl-dem-h">每天需要几人</h2>
+          <p class="sl-sub">工作日与周末分两档；节假日按周末档。技能行是每班至少要有几名具备该技能的人。</p>
+          <div class="sl-tw"><table class="sl-tbl" id="sl-dem-tbl"></table></div>
+          <h3>特定日期调整</h3>
+          <div class="sl-row">
+            <div class="sl-field" style="flex:1 1 140px"><label for="sl-ov-date">日期</label><input id="sl-ov-date" class="sl-in" type="date"></div>
+            <div class="sl-field" style="flex:1 1 110px"><label for="sl-ov-shift">班次</label><select id="sl-ov-shift" class="sl-sel"></select></div>
+            <div class="sl-field" style="flex:1 1 100px"><label for="sl-ov-need">人数</label><input id="sl-ov-need" class="sl-in" type="number" min="0" max="60"></div>
+            <button id="sl-ov-add" class="sl-btn sl-btn-sec" type="button">添加</button>
+          </div>
+          <ul class="sl-list" id="sl-ov-list"></ul>
+          <h3>节假日（按周末需求）</h3>
+          <div class="sl-row">
+            <div class="sl-field" style="flex:1 1 160px"><label for="sl-hol-date">日期</label><input id="sl-hol-date" class="sl-in" type="date"></div>
+            <button id="sl-hol-add" class="sl-btn sl-btn-sec" type="button">添加</button>
+          </div>
+          <ul class="sl-list" id="sl-hol-list"></ul>
+        </article>
+      </div>
+    </section>
+
+    <!-- ══════════ 规则与权重 ══════════ -->
+    <section id="pane-rules" class="sl-pane" role="tabpanel" aria-labelledby="sl-tab-rules" hidden>
+      <div class="sl-cols-2">
+        <article class="sl-card" aria-labelledby="sl-hard-rules-h">
+          <h2 id="sl-hard-rules-h">硬规则</h2>
+          <p class="sl-sub">必须满足；满足不了就是「无解」，到「冲突诊断」看原因。</p>
+          <div class="sl-grid2">
+            <div class="sl-field"><label for="sl-r-consec">最多连续上班（天）</label><input id="sl-r-consec" class="sl-in" type="number" min="1" max="31"></div>
+            <div class="sl-field"><label for="sl-r-rest">两班最短间隔（小时）</label><input id="sl-r-rest" class="sl-in" type="number" min="0" max="24" step="1"></div>
+            <div class="sl-field"><label for="sl-r-nrun">最多连续夜班（0 = 不限）</label><input id="sl-r-nrun" class="sl-in" type="number" min="0" max="31"></div>
+            <div class="sl-field"><label for="sl-r-nmax">每人夜班上限（空 = 不限）</label><input id="sl-r-nmax" class="sl-in" type="number" min="0" max="62"></div>
+            <div class="sl-field"><label for="sl-r-over">每班允许超编（人）</label><input id="sl-r-over" class="sl-in" type="number" min="0" max="20"></div>
+          </div>
+          <h3>不能相接的班次</h3>
+          <p class="sl-sub" style="margin-bottom:8px">前一天上左边的班，第二天能不能接上面的班（按最短间隔算）。</p>
+          <div class="sl-fx" id="sl-fx"></div>
+        </article>
+        <article class="sl-card" aria-labelledby="sl-w-h">
+          <h2 id="sl-w-h">软目标权重</h2>
+          <p class="sl-sub">0 表示不考虑。数值越大越优先；偏离公平目标按「第 k 个多扣 k 倍」累进，避免把负担压在一个人身上。</p>
+          <div id="sl-weights"></div>
+        </article>
+      </div>
+      <article class="sl-card" style="margin-top:24px" aria-labelledby="sl-solver-h">
+        <h2 id="sl-solver-h">求解器</h2>
+        <p class="sl-sub">同样的项目、同样的种子与冲突预算，结果逐格相同；按时间限时则取决于机器快慢。</p>
+        <div class="sl-grid3">
+          <div class="sl-field"><label for="sl-seed">随机种子</label><input id="sl-seed" class="sl-in" type="number" min="1" max="999999" step="1"></div>
+          <div class="sl-field"><label for="sl-conf">冲突预算（0 = 只按时间）</label><input id="sl-conf" class="sl-in" type="number" min="0" max="50000000" step="1000"></div>
+          <div class="sl-field"><label for="sl-model-size">模型规模</label><input id="sl-model-size" class="sl-in" type="text" readonly></div>
+        </div>
+      </article>
+    </section>
+
+    <!-- ══════════ 冲突诊断 ══════════ -->
+    <section id="pane-diag" class="sl-pane" role="tabpanel" aria-labelledby="sl-tab-diag" hidden>
+      <article class="sl-card" aria-labelledby="sl-mus-h">
+        <div class="sl-row" style="justify-content:space-between;align-items:center"><div><h2 id="sl-mus-h">最小冲突集</h2><p class="sl-sub" id="sl-mus-sub">还没诊断过。排班结果为「无解」时会自动诊断，也可以手动点右边的按钮。</p></div>
+          <button id="sl-diag-run" class="sl-btn sl-btn-pri" type="button">诊断当前设置</button></div>
+        <ol class="sl-mus" id="sl-mus"></ol>
+      </article>
+      <article class="sl-card" style="margin-top:24px" aria-labelledby="sl-sup-h">
+        <h2 id="sl-sup-h">供需体检</h2>
+        <p class="sl-sub">每格 = 当天能上这个班的人数（扣掉请假、资格不符、锁在别的班上的人）÷ 需求。红 = 人不够，黄 = 刚好够、没有余地。不求解，只是先找明显的短板。</p>
+        <div class="sl-sup-wrap"><table class="sl-sup" id="sl-sup"></table></div>
+      </article>
+    </section>
+
+    <!-- ══════════ 原理与验证 ══════════ -->
+    <section id="pane-about" class="sl-pane" role="tabpanel" aria-labelledby="sl-tab-about" hidden>
+      <ol class="sl-steps">
+        <li><span class="sl-num-c">1</span><b>建模成布尔约束</b><p>每人每天每个班一个真假变量。需求、技能、夜班上限这类「数人头」的规则直接写成伪布尔约束 Σ ≥ k，由求解器原生传播，不展开成成千上万条子句。</p></li>
+        <li><span class="sl-num-c">2</span><b>CDCL 求解 + 大邻域搜索</b><p>手写的冲突驱动子句学习求解器先找一张合规班表，再按权重分层「尽量满足」，然后反复固定大部分格子、只放开几个人或几天交给求解器找更低分的解。</p></li>
+        <li><span class="sl-num-c">3</span><b>无解时给最小冲突集</b><p>每组硬约束挂一个开关变量。求解器在「全部开着」时报无解，会顺带给出是哪些开关导致的；再逐条试删，剩下的就是删掉任意一条都能解开的最小集合。</p></li>
+      </ol>
+      <div class="sl-cols-2" style="margin-top:24px">
+        <article class="sl-card" aria-labelledby="sl-rule-h">
+          <h2 id="sl-rule-h">计算口径</h2>
+          <ul class="sl-prose" id="sl-rules-list">
+            <li>夜班算在它开始的那一天；周末指周六、周日，加上你标记的节假日（节假日只影响需求档位和周末公平，「周末拆开」只看真正的周六日）。</li>
+            <li>两班间隔 = 后一班开始 − 前一班结束；结束不晚于开始的班次视为跨夜，结束时刻加 24 小时。</li>
+            <li>连续上班把「上期末连续上班天数」接在第 1 天之前一起算；连续夜班只知道上期最后一天，上期最后一班是夜班就算 1 个。</li>
+            <li>公平目标 T = 总需求 × 个人份额 ÷ 份额合计，份额 = FTE × 可出勤天数（请假日不算）；周末与夜班同理（夜班只在能上夜班的人之间分）。班数落在 ⌊T⌋ 到 ⌈T⌉ 之间不扣分，多出或少出的第 k 个班扣 k × 权重。</li>
+            <li>孤立班 = 前后两天都休、只上这一天；只休一天 = 前后两天都上、只休这一天；最后一天因为不知道次日安排，不参与这两项。</li>
+            <li>「已证明最优」只在求解器证明了不存在更低分的班表时出现；否则显示「已找到」——大邻域搜索在不少邻域里证明了「这一块已无法再改进」，但没有证明整张表最优。规模大时连 CP-SAT 也常常证不完，这时「继续优化」通常还能再降几分。</li>
+          </ul>
+        </article>
+        <article class="sl-card sl-card-gray" aria-labelledby="sl-ver-h">
+          <h2 id="sl-ver-h">怎么验证的</h2>
+          <p class="sl-sub">引擎是页内手写的，下列对拍用的都是与本页不共享代码的独立实现。</p>
+          <ul class="sl-ver" id="sl-ver"></ul>
+        </article>
+      </div>
+    </section>
+  </div>
+</main>
+
+<footer class="sl-foot">
+  <div class="sl-foot-in">
+    <div><span class="sl-brand"><span class="sl-logo" aria-hidden="true"></span>Shift Lab</span><p style="margin-top:12px">排班工作台 · 每日工具集</p><p>所有数据只存在这台设备的浏览器里，不上传任何服务器。</p></div>
+    <div><h5>引擎</h5><p>CDCL SAT + 伪布尔传播</p><p>分层下降 + 大邻域搜索</p><p>假设求核 + 最小冲突集</p></div>
+    <div><h5>导出</h5><p>CSV（Excel 直接打开）</p><p>iCalendar 个人日历</p><p>项目 JSON 存档</p></div>
+    <div><h5>键盘</h5><p>方向键移动 · 回车打开菜单</p><p>数字锁定 · 0 休息 · L 请假</p><p>W 想休 · Delete 清除</p></div>
+  </div>
+</footer>
+
+<div class="sl-menu" id="sl-menu" role="dialog" aria-modal="false" aria-labelledby="sl-menu-h" hidden></div>
+<div class="sl-toast" id="sl-toast" role="status" hidden></div>
+
+<script id="sl-engine">
+/* Shift Lab 排班引擎 —— 纯函数、无 DOM，浏览器主线程 / Web Worker / node:vm 三处共用同一份源码。
+ *
+ *  ① SAT 内核：CDCL（双文字监视、1UIP 学习子句 + 局部最小化、VSIDS、相位保存、Luby 重启、按活跃度清理学习子句）
+ *  ② 原生伪布尔（PB）约束：Σ cᵢ·lᵢ ≥ k 以「松弛量」计数传播，推出的文字在冲突分析时**懒生成**解释子句
+ *  ③ 增量假设求解：UNSAT 时由 analyzeFinal 给出假设子集（核）
+ *  ④ 排班模型：x[人][天][班] + w[人][天]，硬约束全部挂在「约束组」上，可整体打开/关闭
+ *  ⑤ 优化：加权 MaxSAT 线性搜索（每找到更好的解就把目标上界收紧一格，直到 UNSAT = 已证明最优）
+ *  ⑥ 诊断：无解时用选择子文字求核，再逐条删减成最小冲突集（MUS）——删掉其中任意一条，这个冲突就消失
+ */
+var SL = (function () {
+  'use strict';
+
+  // ───────────────────────── 二叉堆：按 VSIDS 活跃度取下一个决策变量 ─────────────────────────
+  function Heap(act) { this.act = act; this.h = []; this.idx = [-1]; }
+  Heap.prototype.lt = function (a, b) {
+    var x = this.act[a], y = this.act[b];
+    return x > y || (x === y && a < b);
+  };
+  Heap.prototype.up = function (i) {
+    var h = this.h, v = h[i], p;
+    while (i > 0) {
+      p = (i - 1) >> 1;
+      if (!this.lt(v, h[p])) break;
+      h[i] = h[p]; this.idx[h[i]] = i; i = p;
+    }
+    h[i] = v; this.idx[v] = i;
+  };
+  Heap.prototype.down = function (i) {
+    var h = this.h, n = h.length, v = h[i], c;
+    for (;;) {
+      c = 2 * i + 1;
+      if (c >= n) break;
+      if (c + 1 < n && this.lt(h[c + 1], h[c])) c++;
+      if (!this.lt(h[c], v)) break;
+      h[i] = h[c]; this.idx[h[i]] = i; i = c;
+    }
+    h[i] = v; this.idx[v] = i;
+  };
+  Heap.prototype.insert = function (v) {
+    if (this.idx[v] >= 0) return;
+    this.idx[v] = this.h.length; this.h.push(v); this.up(this.h.length - 1);
+  };
+  Heap.prototype.pop = function () {
+    var h = this.h, v = h[0], last = h.pop();
+    this.idx[v] = -1;
+    if (h.length) { h[0] = last; this.idx[last] = 0; this.down(0); }
+    return v;
+  };
+  Heap.prototype.update = function (v) { if (this.idx[v] >= 0) this.up(this.idx[v]); };
+
+  // 内部文字：2v（正）/ 2v+1（负）；对外一律 DIMACS 整数（±v）
+  function L(d) { return d > 0 ? d << 1 : ((-d) << 1) | 1; }
+  function D(l) { return (l & 1) ? -(l >> 1) : (l >> 1); }
+
+  function luby(y, x) {
+    var size = 1, seq = 0;
+    while (size < x + 1) { seq++; size = 2 * size + 1; }
+    while (size - 1 !== x) { size = (size - 1) >> 1; seq--; x = x % size; }
+    return Math.pow(y, seq);
+  }
+
+  // ───────────────────────── CDCL + PB 求解器 ─────────────────────────
+  function Solver() {
+    this.n = 0;
+    this.val = [0];   // 0 未赋值 / 1 真 / -1 假
+    this.lev = [0];
+    this.rsn = [-1];  // -1 无；≥0 子句号；≤-2 PB 约束（-2-pid）
+    this.tpos = [0];
+    this.act = [0];
+    this.pha = [0];   // 相位保存：1 先试真，0 先试假
+    this.seen = [0];
+    this.rc = [null]; // PB 解释子句缓存（该变量被重新赋值或撤销时作废）
+    this.heap = new Heap(this.act);
+    this.wat = [[], []];  // wat[l]：监视文字 l 的子句
+    this.occ = [[], []];  // occ[l]：含文字 l 的 PB 约束，扁平存 [pid, 下标, …]
+    this.cls = [];
+    this.pbs = [];
+    this.learnts = [];
+    this.trail = []; this.lim = []; this.qh = 0;
+    this.bt = 0;      // 回溯戳：每撤销一次赋值就加一（PB 增量扫描靠它判断「上次扫过的结论还成立吗」）
+    this.ok = true;
+    this.varInc = 1; this.claInc = 1;
+    this.maxLearnts = 4000;
+    this.stats = { conflicts: 0, decisions: 0, props: 0, restarts: 0, learnt: 0, solves: 0 };
+    this.core = null; this.model = null;
+  }
+  var SP = Solver.prototype;
+
+  SP.newVar = function () {
+    var v = ++this.n;
+    this.val.push(0); this.lev.push(0); this.rsn.push(-1); this.tpos.push(0);
+    this.act.push(0); this.pha.push(0); this.seen.push(0); this.rc.push(null);
+    this.heap.idx.push(-1); this.heap.insert(v);
+    this.wat.push([], []); this.occ.push([], []);
+    return v;
+  };
+
+  SP.enq = function (l, r) {
+    var v = l >> 1, oc = this.occ[l ^ 1], i, pb;
+    this.val[v] = (l & 1) ? -1 : 1;
+    this.lev[v] = this.lim.length;
+    this.rsn[v] = r;
+    this.tpos[v] = this.trail.length;
+    this.rc[v] = null;
+    this.trail.push(l);
+    // 文字 ¬l 变假：所有含 ¬l 的 PB 约束松弛量减去它的系数（在赋值时扣，回溯时按同一份清单加回）
+    for (i = 0; i < oc.length; i += 2) { pb = this.pbs[oc[i]]; pb.sl -= pb.c[oc[i + 1]]; }
+  };
+
+  SP.cancelUntil = function (level) {
+    if (this.lim.length <= level) return;
+    var trail = this.trail, start = this.lim[level], t, l, v, oc, i, pb;
+    if (start < trail.length) this.bt++;
+    for (t = trail.length - 1; t >= start; t--) {
+      l = trail[t]; v = l >> 1; oc = this.occ[l ^ 1];
+      for (i = 0; i < oc.length; i += 2) { pb = this.pbs[oc[i]]; pb.sl += pb.c[oc[i + 1]]; }
+      this.val[v] = 0; this.rsn[v] = -1; this.pha[v] = (l & 1) ? 0 : 1;
+      this.heap.insert(v);
+    }
+    trail.length = start; this.lim.length = level; this.qh = start;
+  };
+
+  // 返回 -1 = 无冲突；≥0 冲突子句号；≤-2 冲突 PB（-2-pid）
+  SP.propagate = function () {
+    var val = this.val, cls = this.cls, trail = this.trail, wat = this.wat, occ = this.occ, pbs = this.pbs;
+    while (this.qh < trail.length) {
+      var p = trail[this.qh++], f = p ^ 1, ws = wat[f], i = 0, j = 0, n = ws.length;
+      this.stats.props++;
+      while (i < n) {
+        var cr = ws[i++], c = cls[cr];
+        if (c.del) continue;
+        var lits = c.l;
+        if (lits[0] === f) { lits[0] = lits[1]; lits[1] = f; }
+        var l0 = lits[0], v0 = (l0 & 1) ? -val[l0 >> 1] : val[l0 >> 1];
+        if (v0 === 1) { ws[j++] = cr; continue; }
+        var found = false;
+        for (var k = 2; k < lits.length; k++) {
+          var lk = lits[k];
+          if (((lk & 1) ? -val[lk >> 1] : val[lk >> 1]) !== -1) {
+            lits[1] = lk; lits[k] = f; wat[lk].push(cr); found = true; break;
+          }
+        }
+        if (found) continue;
+        ws[j++] = cr;
+        if (v0 === -1) {
+          while (i < n) ws[j++] = ws[i++];
+          ws.length = j;
+          this.qh = trail.length;
+          return cr;
+        }
+        this.enq(l0, cr);
+      }
+      ws.length = j;
+      var oc = occ[f];
+      for (var t = 0; t < oc.length; t += 2) {
+        var pid = oc[t], pb = pbs[pid];
+        if (pb.sl < 0) { this.qh = trail.length; return -2 - pid; }
+        if (pb.sl < pb.mx) {
+          // 增量扫描：自上次扫描以来没有回溯过，则系数 > 上次松弛量的文字早已全部赋值，只需扫新跨过的那一段
+          var pl = pb.l, pc = pb.c, sl = pb.sl, q = 0;
+          if (pb.st === this.bt) { if (sl >= pb.ss) continue; q = pb.si; }
+          for (; q < pl.length && pc[q] > sl; q++) {
+            var lq = pl[q];
+            if (val[lq >> 1] === 0) this.enq(lq, -2 - pid);
+          }
+          pb.st = this.bt; pb.ss = sl; pb.si = q;
+        }
+      }
+    }
+    return -1;
+  };
+
+  // 推出文字的解释子句（被推出的文字排第 0 位，其余皆为假）。PB 的解释在这里懒生成：
+  // 取该约束里**在它之前**被赋假的文字 —— 正是传播那一刻让松弛量不够的那批。
+  SP.reasonLits = function (v) {
+    var r = this.rsn[v];
+    if (r >= 0) return this.cls[r].l;
+    if (this.rc[v]) return this.rc[v];
+    var pb = this.pbs[-2 - r], l = this.val[v] === 1 ? (v << 1) : ((v << 1) | 1), out = [l], pos = this.tpos[v];
+    for (var i = 0; i < pb.l.length; i++) {
+      var q = pb.l[i], vq = q >> 1;
+      if (this.tpos[vq] < pos && ((q & 1) ? -this.val[vq] : this.val[vq]) === -1) out.push(q);
+    }
+    this.rc[v] = out;
+    return out;
+  };
+
+  SP.conflictLits = function (code) {
+    if (code >= 0) return this.cls[code].l;
+    var pb = this.pbs[-2 - code], out = [];
+    for (var i = 0; i < pb.l.length; i++) {
+      var q = pb.l[i];
+      if (((q & 1) ? -this.val[q >> 1] : this.val[q >> 1]) === -1) out.push(q);
+    }
+    return out;
+  };
+
+  SP.bumpVar = function (v) {
+    if ((this.act[v] += this.varInc) > 1e100) {
+      for (var i = 1; i <= this.n; i++) this.act[i] *= 1e-100;
+      this.varInc *= 1e-100;
+    }
+    this.heap.update(v);
+  };
+  SP.bumpClause = function (cr) {
+    var c = this.cls[cr];
+    if ((c.act += this.claInc) > 1e20) {
+      for (var i = 0; i < this.learnts.length; i++) this.cls[this.learnts[i]].act *= 1e-20;
+      this.claInc *= 1e-20;
+    }
+  };
+
+  SP.analyze = function (code) {
+    var seen = this.seen, lev = this.lev, trail = this.trail, dl = this.lim.length;
+    var learnt = [0], pathC = 0, p = -1, idx = trail.length - 1, lits = this.conflictLits(code), start = 0, i, q, v;
+    if (code >= 0 && this.cls[code].learnt) this.bumpClause(code);
+    for (;;) {
+      for (i = start; i < lits.length; i++) {
+        q = lits[i]; v = q >> 1;
+        if (!seen[v] && lev[v] > 0) {
+          this.bumpVar(v); seen[v] = 1;
+          if (lev[v] >= dl) pathC++; else learnt.push(q);
+        }
+      }
+      while (!seen[trail[idx] >> 1]) idx--;
+      p = trail[idx--];
+      var pv = p >> 1;
+      seen[pv] = 0; pathC--;
+      if (pathC <= 0) break;
+      var r = this.rsn[pv];
+      if (r >= 0 && this.cls[r].learnt) this.bumpClause(r);
+      lits = this.reasonLits(pv); start = 1;
+    }
+    learnt[0] = p ^ 1;
+    // 局部最小化：某文字的原因子句里其余文字都已在学习子句中（或在第 0 层）⇒ 它是多余的
+    var all = learnt.slice(), j = 1;
+    for (i = 1; i < learnt.length; i++) {
+      q = learnt[i]; v = q >> 1;
+      if (this.rsn[v] === -1) { learnt[j++] = q; continue; }
+      var rl = this.reasonLits(v), keep = false;
+      for (var k = 1; k < rl.length; k++) {
+        var u = rl[k] >> 1;
+        if (!seen[u] && lev[u] > 0) { keep = true; break; }
+      }
+      if (keep) learnt[j++] = q;
+    }
+    learnt.length = j;
+    for (i = 1; i < all.length; i++) seen[all[i] >> 1] = 0;
+    var bt = 0;
+    if (learnt.length > 1) {
+      var mi = 1;
+      for (i = 2; i < learnt.length; i++) if (lev[learnt[i] >> 1] > lev[learnt[mi] >> 1]) mi = i;
+      var tmp = learnt[1]; learnt[1] = learnt[mi]; learnt[mi] = tmp;
+      bt = lev[learnt[1] >> 1];
+    }
+    return { learnt: learnt, bt: bt };
+  };
+
+  SP.addLearnt = function (lits) {
+    this.stats.learnt++;
+    if (lits.length === 1) { this.enq(lits[0], -1); return; }
+    var cr = this.cls.length;
+    this.cls.push({ l: lits, learnt: true, act: 0, del: false });
+    this.wat[lits[0]].push(cr); this.wat[lits[1]].push(cr);
+    this.learnts.push(cr);
+    this.bumpClause(cr);
+    this.enq(lits[0], cr);
+  };
+
+  // 假设 a 当前为假：回溯出是哪些假设一起把它逼假的（MiniSat analyzeFinal）
+  SP.analyzeFinal = function (a) {
+    var out = [a];
+    if (this.lim.length === 0) return out;
+    var seen = this.seen, trail = this.trail, t, v, k, rl;
+    seen[a >> 1] = 1;
+    for (t = trail.length - 1; t >= this.lim[0]; t--) {
+      v = trail[t] >> 1;
+      if (!seen[v]) continue;
+      if (this.rsn[v] === -1) { if (this.lev[v] > 0) out.push(trail[t]); } else {
+        rl = this.reasonLits(v);
+        for (k = 1; k < rl.length; k++) if (this.lev[rl[k] >> 1] > 0) seen[rl[k] >> 1] = 1;
+      }
+      seen[v] = 0;
+    }
+    seen[a >> 1] = 0;
+    return out;
+  };
+
+  SP.locked = function (cr) {
+    var l0 = this.cls[cr].l[0], v = l0 >> 1;
+    return this.rsn[v] === cr && ((l0 & 1) ? -this.val[v] : this.val[v]) === 1;
+  };
+
+  SP.reduceDB = function () {
+    var cls = this.cls, self = this;
+    var ls = this.learnts.filter(function (cr) { return !cls[cr].del; });
+    ls.sort(function (a, b) { return cls[a].act - cls[b].act || a - b; });
+    var half = ls.length >> 1, keep = [];
+    for (var i = 0; i < ls.length; i++) {
+      var cr = ls[i], c = cls[cr];
+      if (i < half && c.l.length > 2 && !self.locked(cr)) { c.del = true; c.l = null; } else keep.push(cr);
+    }
+    this.learnts = keep;
+    this.maxLearnts = Math.floor(this.maxLearnts * 1.1);
+  };
+
+  SP.pickBranch = function () {
+    var h = this.heap;
+    while (h.h.length) {
+      var v = h.pop();
+      if (this.val[v] === 0) return this.pha[v] ? (v << 1) : ((v << 1) | 1);
+    }
+    return -1;
+  };
+
+  // 子句（DIMACS 文字数组）。只能在第 0 层加。
+  SP.addClause = function (dl) {
+    if (!this.ok) return false;
+    this.cancelUntil(0);
+    var lits = [], s = {}, i, l, v;
+    for (i = 0; i < dl.length; i++) {
+      l = L(dl[i]);
+      v = (l & 1) ? -this.val[l >> 1] : this.val[l >> 1];
+      if (v === 1) return true;
+      if (v === -1) continue;
+      if (s[l]) continue;
+      if (s[l ^ 1]) return true;
+      s[l] = 1; lits.push(l);
+    }
+    if (lits.length === 0) { this.ok = false; return false; }
+    if (lits.length === 1) {
+      this.enq(lits[0], -1);
+      if (this.propagate() !== -1) this.ok = false;
+      return this.ok;
+    }
+    var cr = this.cls.length;
+    this.cls.push({ l: lits, learnt: false, act: 0, del: false });
+    this.wat[lits[0]].push(cr); this.wat[lits[1]].push(cr);
+    return true;
+  };
+
+  // Σ coefs[i]·lits[i] ≥ k（系数可为负，内部归一成正系数 + 互补文字合并 + 饱和）。返回约束号。
+  // 归一化会改右端（负系数翻转 +|c|、互补对合并 −min），差值记在 pb.off，setPBBound 收到的 k 按调用方原口径换算。
+  SP.addPB = function (dl, coefs, k) {
+    var m = {}, keys = [], i, l, c, k0 = k;
+    for (i = 0; i < dl.length; i++) {
+      c = coefs ? coefs[i] : 1;
+      if (!c) continue;
+      l = L(dl[i]);
+      if (c < 0) { l ^= 1; c = -c; k += c; }
+      if (m[l] === undefined) { m[l] = 0; keys.push(l); }
+      m[l] += c;
+    }
+    for (i = 0; i < keys.length; i++) {
+      l = keys[i];
+      if ((l & 1) === 0 && m[l ^ 1] > 0 && m[l] > 0) {
+        var mn = Math.min(m[l], m[l ^ 1]);
+        m[l] -= mn; m[l ^ 1] -= mn; k -= mn;
+      }
+    }
+    var items = [];
+    for (i = 0; i < keys.length; i++) if (m[keys[i]] > 0) items.push([keys[i], m[keys[i]]]);
+    items.sort(function (a, b) { return b[1] - a[1] || a[0] - b[0]; });
+    var pb = { l: [], c: [], oc: [], k: k, off: k - k0, sl: 0, mx: 0, st: -1, ss: 0, si: 0 };
+    for (i = 0; i < items.length; i++) { pb.l.push(items[i][0]); pb.oc.push(items[i][1]); pb.c.push(items[i][1]); }
+    var pid = this.pbs.length;
+    this.pbs.push(pb);
+    for (i = 0; i < pb.l.length; i++) this.occ[pb.l[i]].push(pid, i);
+    this.bound(pid, k);
+    return pid;
+  };
+
+  // 改 PB 约束的右端（目标上界收紧就靠它）：k 按 addPB 时的原口径给，内部加上归一化偏移。
+  SP.setPBBound = function (pid, k) { return this.bound(pid, k + this.pbs[pid].off); };
+
+  // 内部右端：回到第 0 层重算饱和系数与松弛量
+  SP.bound = function (pid, k) {
+    this.cancelUntil(0);
+    var pb = this.pbs[pid], i, l, v, sl = 0, mx = 0;
+    pb.k = k; pb.st = -1;
+    for (i = 0; i < pb.l.length; i++) {
+      pb.c[i] = k > 0 ? Math.min(pb.oc[i], k) : pb.oc[i];
+      if (pb.c[i] > mx) mx = pb.c[i];
+      l = pb.l[i]; v = (l & 1) ? -this.val[l >> 1] : this.val[l >> 1];
+      if (v !== -1) sl += pb.c[i];
+    }
+    pb.mx = mx; pb.sl = sl - k;
+    if (!this.ok) return false;
+    if (pb.sl < 0) { this.ok = false; return false; }
+    for (i = 0; i < pb.l.length && pb.c[i] > pb.sl; i++) {
+      l = pb.l[i];
+      if (this.val[l >> 1] === 0) this.enq(l, -2 - pid);
+    }
+    if (this.propagate() !== -1) this.ok = false;
+    return this.ok;
+  };
+
+  SP.setPhases = function (model) {
+    for (var v = 1; v <= this.n && v < model.length; v++) this.pha[v] = model[v] === 1 ? 1 : 0;
+  };
+
+  SP.search = function (nof, assumps, maxConf, deadline) {
+    var conflictC = 0;
+    for (;;) {
+      var confl = this.propagate();
+      if (confl !== -1) {
+        this.stats.conflicts++; conflictC++;
+        if (this.lim.length === 0) { this.ok = false; this.core = []; return 'UNSAT'; }
+        var r = this.analyze(confl);
+        this.cancelUntil(r.bt);
+        this.addLearnt(r.learnt);
+        this.varInc /= 0.95; this.claInc /= 0.999;
+      } else {
+        // 重启时保留假设层（trail reuse）：LNS 一次要固定几百个格子，每次重启都从第 0 层重新传播一遍代价很高
+        if (conflictC >= nof) { this.cancelUntil(Math.min(assumps.length, this.lim.length)); return 'RESTART'; }
+        if (this.stats.conflicts >= maxConf) return 'UNKNOWN';
+        if (deadline && Date.now() > deadline) return 'UNKNOWN';
+        if (this.learnts.length - this.trail.length >= this.maxLearnts) this.reduceDB();
+        var next = -1;
+        while (this.lim.length < assumps.length) {
+          var a = assumps[this.lim.length], va = (a & 1) ? -this.val[a >> 1] : this.val[a >> 1];
+          if (va === 1) { this.lim.push(this.trail.length); continue; }
+          if (va === -1) { this.core = this.analyzeFinal(a).map(D); return 'UNSAT'; }
+          next = a; break;
+        }
+        if (next === -1) {
+          this.stats.decisions++;
+          next = this.pickBranch();
+          if (next === -1) { this.model = this.val.slice(); return 'SAT'; }
+        }
+        this.lim.push(this.trail.length);
+        this.enq(next, -1);
+      }
+    }
+  };
+
+  // opt: { assumptions: [DIMACS], conflicts: 预算（本次调用内）, deadline: 毫秒时间戳 }
+  SP.solve = function (opt) {
+    opt = opt || {};
+    this.stats.solves++;
+    var assumps = (opt.assumptions || []).map(L);
+    var budget = opt.conflicts == null ? Infinity : opt.conflicts;
+    this.core = null; this.model = null;
+    if (!this.ok) { this.core = []; return 'UNSAT'; }
+    this.cancelUntil(0);
+    if (this.propagate() !== -1) { this.ok = false; this.core = []; return 'UNSAT'; }
+    var maxConf = this.stats.conflicts + budget, k = 0;
+    if (this.maxLearnts < this.cls.length / 3) this.maxLearnts = Math.floor(this.cls.length / 3);
+    for (;;) {
+      var st = this.search(luby(2, k++) * 64, assumps, maxConf, opt.deadline || 0);
+      if (st !== 'RESTART') { this.cancelUntil(0); return st; }
+      this.stats.restarts++;
+    }
+  };
+
+  SP.value = function (d) {
+    var m = this.model;
+    if (!m) return 0;
+    return d > 0 ? m[d] : -m[-d];
+  };
+
+  // ───────────────────────── 日期 / 时间小工具 ─────────────────────────
+  var DAY = 864e5;
+  function parseISO(s) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(s || ''));
+    if (!m) return NaN;
+    var t = Date.UTC(+m[1], +m[2] - 1, +m[3]);
+    var d = new Date(t);
+    if (d.getUTCFullYear() !== +m[1] || d.getUTCMonth() !== +m[2] - 1 || d.getUTCDate() !== +m[3]) return NaN;
+    return t;
+  }
+  function toISO(t) {
+    var d = new Date(t), mo = d.getUTCMonth() + 1, da = d.getUTCDate();
+    return d.getUTCFullYear() + '-' + (mo < 10 ? '0' : '') + mo + '-' + (da < 10 ? '0' : '') + da;
+  }
+  function parseHM(s) {
+    var m = /^(\d{1,2}):(\d{2})$/.exec(String(s || '').trim());
+    if (!m) return NaN;
+    var h = +m[1], mi = +m[2];
+    if (h > 24 || mi > 59 || (h === 24 && mi > 0)) return NaN;
+    return h * 60 + mi;
+  }
+  var WD = ['一', '二', '三', '四', '五', '六', '日'];
+  function md(iso) { var p = iso.split('-'); return (+p[1]) + '月' + (+p[2]) + '日'; }
+  function int(v, d) { v = Math.round(+v); return isFinite(v) ? v : d; }
+  function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
+
+  // ───────────────────────── 项目规范化：把编辑器里的项目变成求解/校验共用的矩阵 ─────────────────────────
+  // 口径（求解与校验共用、页面「说明」里逐条写明）：
+  //  · 夜班算在它开始的那一天；周末 = 周六、周日 + 用户标记的节假日（只影响需求取周末档与周末公平）
+  //  · 两班间隔 = 后一班开始 − 前一班结束（跨夜班的结束时刻 +24h）；小于最短间隔即禁止相接
+  //  · 连续上班 / 连续夜班把「上期末连续上班天数 / 上期最后一班」接在第 1 天之前一起算
+  //  · 公平目标按「FTE × 可出勤天数」分摊总需求；目标落在 [⌊T⌋, ⌈T⌉] 不扣分，偏离第 k 个班扣 k×权重（凸）
+  function prep(pj) {
+    var errs = [], i, d, s, p;
+    pj = pj || {};
+    var rules = pj.rules || {}, W = pj.weights || {};
+    var nD = int(pj.days, 0);
+    if (!(nD >= 1 && nD <= 62)) errs.push('排班天数要在 1–62 之间');
+    nD = clamp(nD || 1, 1, 62);
+    var t0 = parseISO(pj.start);
+    if (!isFinite(t0)) { errs.push('开始日期无效（格式 YYYY-MM-DD）'); t0 = Date.UTC(2026, 0, 5); }
+    var hol = {};
+    (pj.holidays || []).forEach(function (h) { hol[h] = 1; });
+    var dates = [], dow = [], wkend = [], realWkend = [];
+    for (d = 0; d < nD; d++) {
+      var t = t0 + d * DAY, iso = toISO(t), w = (new Date(t).getUTCDay() + 6) % 7;
+      dates.push(iso); dow.push(w); realWkend.push(w >= 5); wkend.push(w >= 5 || !!hol[iso]);
+    }
+    var shifts = (pj.shifts || []).slice(0, 6), nS = shifts.length, sIdx = {}, a = [], e = [], dur = [], night = [];
+    if (!nS) errs.push('至少要有一个班次');
+    for (s = 0; s < nS; s++) {
+      var sh = shifts[s];
+      if (sIdx[sh.id] !== undefined) errs.push('班次代号重复：' + sh.id);
+      sIdx[sh.id] = s;
+      var st = parseHM(sh.start), en = parseHM(sh.end);
+      if (!isFinite(st) || !isFinite(en)) { errs.push((sh.name || sh.id) + ' 的起止时间无效'); st = 0; en = 480; }
+      if (en <= st) en += 1440;
+      a.push(st); e.push(en); dur.push(en - st); night.push(!!sh.night);
+    }
+    var minRest = clamp(+rules.minRest || 0, 0, 24);
+    var forb = [];
+    for (s = 0; s < nS; s++) {
+      forb.push([]);
+      for (var s2 = 0; s2 < nS; s2++) forb[s].push(1440 + a[s2] - e[s] < minRest * 60);
+    }
+    var staff = (pj.staff || []).slice(0, 60), nP = staff.length, pIdx = {};
+    if (!nP) errs.push('至少要有一名员工');
+    var skills = pj.skills || [], kIdx = {};
+    skills.forEach(function (k, j) { kIdx[k.id] = j; });
+    var elig = [], has = [], fte = [], hist = [], histLast = [], minSh = [], maxSh = [];
+    for (p = 0; p < nP; p++) {
+      var sp = staff[p];
+      if (pIdx[sp.id] !== undefined) errs.push('员工编号重复：' + sp.id);
+      pIdx[sp.id] = p;
+      var el = [];
+      for (s = 0; s < nS; s++) el.push((sp.shifts || []).indexOf(shifts[s].id) >= 0);
+      elig.push(el);
+      var hk = [];
+      for (i = 0; i < skills.length; i++) hk.push((sp.skills || []).indexOf(skills[i].id) >= 0);
+      has.push(hk);
+      fte.push(clamp(+sp.fte || 0, 0, 2));
+      var h = clamp(int(sp.histConsec, 0), 0, 31);
+      hist.push(h);
+      histLast.push(h > 0 && sIdx[sp.histLast] !== undefined ? sIdx[sp.histLast] : -1);
+      minSh.push(sp.minShifts === '' || sp.minShifts == null ? null : clamp(int(sp.minShifts, 0), 0, nD));
+      maxSh.push(sp.maxShifts === '' || sp.maxShifts == null ? null : clamp(int(sp.maxShifts, nD), 0, nD));
+    }
+    // 需求矩阵（覆盖下限）与技能下限
+    var dem = pj.demand || {}, need = [], skMin = [], ov = {};
+    (pj.dayOverrides || []).forEach(function (o) { ov[o.date + '|' + o.shift] = o; });
+    for (d = 0; d < nD; d++) {
+      var row = [], krow = [];
+      for (s = 0; s < nS; s++) {
+        var base = (wkend[d] ? dem.weekend : dem.weekday) || {};
+        var o = ov[dates[d] + '|' + shifts[s].id];
+        var nv = o && o.need != null && o.need !== '' ? o.need : base[shifts[s].id];
+        row.push(clamp(int(nv, 0), 0, nP));
+        var kk = [];
+        for (i = 0; i < skills.length; i++) {
+          var kv = o && o.skill && o.skill[skills[i].id] != null ? o.skill[skills[i].id] : (skills[i].min || {})[shifts[s].id];
+          kk.push(clamp(int(kv, 0), 0, nP));
+        }
+        krow.push(kk);
+      }
+      need.push(row); skMin.push(krow);
+    }
+    // 请求：每人每天至多一条
+    var req = [];
+    for (p = 0; p < nP; p++) { req.push([]); for (d = 0; d < nD; d++) req[p].push(null); }
+    var dIdx = {};
+    dates.forEach(function (x, j) { dIdx[x] = j; });
+    (pj.requests || []).forEach(function (r) {
+      var pp = pIdx[r.staff], dd = dIdx[r.date];
+      if (pp === undefined || dd === undefined) return;
+      var ss = r.shift ? sIdx[r.shift] : -1;
+      if (r.shift && ss === undefined) return;
+      if (r.kind === 'on' && ss < 0) return;
+      if (r.kind !== 'leave' && r.kind !== 'off' && r.kind !== 'on' && r.kind !== 'lock') return;
+      req[pp][dd] = { kind: r.kind, s: ss };
+    });
+    var overstaff = clamp(int(rules.overstaff, 0), 0, nP);
+    var maxConsec = clamp(int(rules.maxConsec, 6), 1, 62);
+    var maxNightRun = clamp(int(rules.maxConsecNights, 0), 0, 62);   // 0 = 不限
+    var maxNights = rules.maxNights === '' || rules.maxNights == null ? null : clamp(int(rules.maxNights, 0), 0, 62);
+    var weights = {
+      wish: clamp(int(W.wish, 0), 0, 50), fair: clamp(int(W.fair, 0), 0, 50), weekend: clamp(int(W.weekend, 0), 0, 50),
+      night: clamp(int(W.night, 0), 0, 50), isoWork: clamp(int(W.isoWork, 0), 0, 50), isoOff: clamp(int(W.isoOff, 0), 0, 50),
+      split: clamp(int(W.split, 0), 0, 50)
+    };
+    var anyNight = night.some(function (x) { return x; });
+    // 公平目标
+    var avail = [], availWk = [];
+    for (p = 0; p < nP; p++) {
+      var av = 0, aw = 0;
+      for (d = 0; d < nD; d++) {
+        var rq = req[p][d];
+        if (rq && rq.kind === 'leave') continue;
+        av++; if (wkend[d]) aw++;
+      }
+      avail.push(av); availWk.push(aw);
+    }
+    var totNeed = 0, totWk = 0, totNight = 0;
+    for (d = 0; d < nD; d++) for (s = 0; s < nS; s++) {
+      totNeed += need[d][s];
+      if (wkend[d]) totWk += need[d][s];
+      if (night[s]) totNight += need[d][s];
+    }
+    function targets(total, shareFn) {
+      var sh = [], sum = 0, out = [];
+      for (p = 0; p < nP; p++) { var v = shareFn(p); sh.push(v); sum += v; }
+      for (p = 0; p < nP; p++) {
+        var T = sum > 0 ? total * sh[p] / sum : 0;
+        out.push({ T: T, lo: Math.floor(T + 1e-9), hi: Math.ceil(T - 1e-9) });
+      }
+      return out;
+    }
+    var tgt = targets(totNeed, function (q) { return fte[q] * avail[q]; });
+    for (p = 0; p < nP; p++) {   // 显式上下限优先
+      if (maxSh[p] != null && tgt[p].hi > maxSh[p]) { tgt[p].hi = maxSh[p]; if (tgt[p].lo > maxSh[p]) tgt[p].lo = maxSh[p]; }
+      if (minSh[p] != null && tgt[p].lo < minSh[p]) { tgt[p].lo = minSh[p]; if (tgt[p].hi < minSh[p]) tgt[p].hi = minSh[p]; }
+    }
+    var tgtWk = targets(totWk, function (q) { return fte[q] * availWk[q]; });
+    var nightOK = [];
+    for (p = 0; p < nP; p++) {
+      var ok = false;
+      for (s = 0; s < nS; s++) if (night[s] && elig[p][s]) ok = true;
+      nightOK.push(ok);
+    }
+    var tgtN = targets(totNight, function (q) { return nightOK[q] ? fte[q] * avail[q] : 0; });
+    if (minRest > 0 && nS) {
+      // 只是提醒：两班间隔规则把同一种班也禁了（如 12 小时班），基本等于不让连上
+      for (s = 0; s < nS; s++) if (forb[s][s]) errs.push('提示：' + (shifts[s].name || shifts[s].id) + ' 与自身相接不足 ' + minRest + ' 小时，同一人不能连续两天上它');
+    }
+    return {
+      errors: errs.filter(function (x) { return x.indexOf('提示') !== 0; }),
+      notes: errs.filter(function (x) { return x.indexOf('提示') === 0; }),
+      nD: nD, nS: nS, nP: nP, dates: dates, dow: dow, wkend: wkend, realWkend: realWkend,
+      shifts: shifts, staff: staff, skills: skills, a: a, e: e, dur: dur, night: night, anyNight: anyNight, forb: forb,
+      elig: elig, has: has, fte: fte, hist: hist, histLast: histLast, minSh: minSh, maxSh: maxSh,
+      need: need, skMin: skMin, req: req, overstaff: overstaff, maxConsec: maxConsec, maxNightRun: maxNightRun,
+      maxNights: maxNights, minRest: minRest, weights: weights, avail: avail, tgt: tgt, tgtWk: tgtWk, tgtN: tgtN,
+      nightOK: nightOK, totNeed: totNeed, totWk: totWk, totNight: totNight
+    };
+  }
+
+  function sname(M, s) { return M.shifts[s].name || M.shifts[s].id; }
+  function pname(M, p) { return M.staff[p].name || M.staff[p].id; }
+  function dlabel(M, d) { return md(M.dates[d]) + '（周' + WD[M.dow[d]] + '）'; }
+
+  // ───────────────────────── 建模：项目 → CNF + PB ─────────────────────────
+  function build(pj, opt) {
+    opt = opt || {};
+    var M = prep(pj);
+    if (M.errors.length) return { M: M, errors: M.errors };
+    var S = new Solver(), nP = M.nP, nD = M.nD, nS = M.nS, p, d, s, i, k;
+    var x = [], w = [], nt = [];
+    for (p = 0; p < nP; p++) {
+      x.push([]); w.push([]);
+      for (d = 0; d < nD; d++) {
+        var r = [];
+        for (s = 0; s < nS; s++) r.push(S.newVar());
+        x[p].push(r); w[p].push(S.newVar());
+      }
+    }
+    var groups = [], softs = [];
+    function grp(type, desc, info) {
+      var g = { type: type, desc: desc, info: info || {}, sel: opt.selectors ? S.newVar() : 0 };
+      g.id = groups.length; groups.push(g);
+      return g;
+    }
+    function hc(g, lits) { S.addClause(g && g.sel ? lits.concat([-g.sel]) : lits); }
+    function hpb(g, lits, coefs, kk) {
+      if (g && g.sel) { lits = lits.concat([-g.sel]); coefs = coefs.concat([Math.max(kk, 0)]); }
+      S.addPB(lits, coefs, kk);
+    }
+    function ones(n) { var o = []; for (var j = 0; j < n; j++) o.push(1); return o; }
+    function soft(lit, wt, kind, info) { if (wt > 0) softs.push({ lit: lit, w: wt, kind: kind, info: info }); }
+
+    // 结构约束（恒开）：每人每天至多一个班；w = 当天上了任一班
+    for (p = 0; p < nP; p++) for (d = 0; d < nD; d++) {
+      var xs = x[p][d], wd = w[p][d];
+      for (s = 0; s < nS; s++) {
+        S.addClause([-xs[s], wd]);
+        for (var s2 = s + 1; s2 < nS; s2++) S.addClause([-xs[s], -xs[s2]]);
+      }
+      S.addClause([-wd].concat(xs));
+    }
+    // 夜班指示：只有一种夜班时直接用它；多种时引入辅助变量
+    var nightIdx = [];
+    for (s = 0; s < nS; s++) if (M.night[s]) nightIdx.push(s);
+    for (p = 0; p < nP; p++) {
+      nt.push([]);
+      for (d = 0; d < nD; d++) {
+        if (nightIdx.length === 0) { nt[p].push(0); continue; }
+        if (nightIdx.length === 1) { nt[p].push(x[p][d][nightIdx[0]]); continue; }
+        var nv = S.newVar(), ors = [-nv];
+        for (i = 0; i < nightIdx.length; i++) { S.addClause([-x[p][d][nightIdx[i]], nv]); ors.push(x[p][d][nightIdx[i]]); }
+        S.addClause(ors);
+        nt[p].push(nv);
+      }
+    }
+    // 资格：某人不上某班
+    for (p = 0; p < nP; p++) for (s = 0; s < nS; s++) {
+      if (M.elig[p][s]) continue;
+      var ge = grp('elig', pname(M, p) + ' 不上' + sname(M, s), { p: p, s: s });
+      for (d = 0; d < nD; d++) hc(ge, [-x[p][d][s]]);
+    }
+    // 请假 / 锁定
+    for (p = 0; p < nP; p++) for (d = 0; d < nD; d++) {
+      var rq = M.req[p][d];
+      if (!rq) continue;
+      if (rq.kind === 'leave') hc(grp('leave', pname(M, p) + ' ' + dlabel(M, d) + ' 请假', { p: p, d: d }), [-w[p][d]]);
+      else if (rq.kind === 'lock') {
+        if (rq.s < 0) hc(grp('lock', pname(M, p) + ' ' + dlabel(M, d) + ' 锁定休息', { p: p, d: d }), [-w[p][d]]);
+        else hc(grp('lock', pname(M, p) + ' ' + dlabel(M, d) + ' 锁定' + sname(M, rq.s), { p: p, d: d, s: rq.s }), [x[p][d][rq.s]]);
+      }
+    }
+    // 覆盖：下限、上限（不超编）、技能
+    for (d = 0; d < nD; d++) for (s = 0; s < nS; s++) {
+      var col = [];
+      for (p = 0; p < nP; p++) col.push(x[p][d][s]);
+      var nd = M.need[d][s];
+      if (nd > 0) hpb(grp('cover', dlabel(M, d) + ' ' + sname(M, s) + '至少 ' + nd + ' 人', { d: d, s: s, n: nd }), col, ones(nP), nd);
+      var cap = nd + M.overstaff;
+      if (cap < nP) hpb(grp('coverMax', dlabel(M, d) + ' ' + sname(M, s) + '最多 ' + cap + ' 人', { d: d, s: s, n: cap }),
+        col.map(function (v) { return -v; }), ones(nP), nP - cap);
+      for (k = 0; k < M.skills.length; k++) {
+        var km = M.skMin[d][s][k];
+        if (km <= 0) continue;
+        var kl = [];
+        for (p = 0; p < nP; p++) if (M.has[p][k]) kl.push(x[p][d][s]);
+        hpb(grp('skill', dlabel(M, d) + ' ' + sname(M, s) + '至少 ' + km + ' 名' + (M.skills[k].name || M.skills[k].id), { d: d, s: s, k: k, n: km }),
+          kl, ones(kl.length), km);
+      }
+    }
+    // 两班间隔
+    var anyForb = false;
+    for (s = 0; s < nS; s++) for (var t2 = 0; t2 < nS; t2++) if (M.forb[s][t2]) anyForb = true;
+    for (p = 0; p < nP; p++) {
+      if (!anyForb) break;
+      var gr = grp('rest', pname(M, p) + ' 两班间隔 ≥ ' + M.minRest + ' 小时', { p: p });
+      for (d = 0; d + 1 < nD; d++) for (s = 0; s < nS; s++) for (var u = 0; u < nS; u++)
+        if (M.forb[s][u]) hc(gr, [-x[p][d][s], -x[p][d + 1][u]]);
+      if (M.histLast[p] >= 0) for (u = 0; u < nS; u++) if (M.forb[M.histLast[p]][u]) hc(gr, [-x[p][0][u]]);
+    }
+    // 连续上班 ≤ K（含上期末 h 天）
+    function runLimit(p, ind, K, h, g) {
+      for (var a0 = Math.max(-h, -K); a0 + K <= nD - 1; a0++) {
+        var lits = [];
+        for (var dd = Math.max(a0, 0); dd <= a0 + K; dd++) lits.push(-ind[dd]);
+        hc(g, lits);
+      }
+    }
+    for (p = 0; p < nP; p++) {
+      runLimit(p, w[p], M.maxConsec, M.hist[p],
+        grp('consec', pname(M, p) + ' 连续上班不超过 ' + M.maxConsec + ' 天' + (M.hist[p] ? '（上期末已连上 ' + M.hist[p] + ' 天）' : ''), { p: p }));
+    }
+    if (nightIdx.length && M.maxNightRun > 0) {
+      for (p = 0; p < nP; p++) {
+        if (!M.nightOK[p]) continue;
+        var hn = M.histLast[p] >= 0 && M.night[M.histLast[p]] ? 1 : 0;
+        runLimit(p, nt[p], M.maxNightRun, hn, grp('nightRun', pname(M, p) + ' 连续夜班不超过 ' + M.maxNightRun + ' 个', { p: p }));
+      }
+    }
+    if (nightIdx.length && M.maxNights != null) {
+      for (p = 0; p < nP; p++) {
+        if (!M.nightOK[p] || M.maxNights >= nD) continue;
+        hpb(grp('nights', pname(M, p) + ' 本期夜班不超过 ' + M.maxNights + ' 个', { p: p, n: M.maxNights }),
+          nt[p].map(function (v) { return -v; }), ones(nD), nD - M.maxNights);
+      }
+    }
+    for (p = 0; p < nP; p++) {
+      if (M.minSh[p] != null && M.minSh[p] > 0)
+        hpb(grp('minShifts', pname(M, p) + ' 本期至少 ' + M.minSh[p] + ' 个班', { p: p, n: M.minSh[p] }), w[p], ones(nD), M.minSh[p]);
+      if (M.maxSh[p] != null && M.maxSh[p] < nD)
+        hpb(grp('maxShifts', pname(M, p) + ' 本期最多 ' + M.maxSh[p] + ' 个班', { p: p, n: M.maxSh[p] }),
+          w[p].map(function (v) { return -v; }), ones(nD), nD - M.maxSh[p]);
+    }
+
+    // ── 软约束（违反文字为真即扣分）──
+    var Wt = M.weights;
+    for (p = 0; p < nP; p++) for (d = 0; d < nD; d++) {
+      var rr = M.req[p][d];
+      if (!rr) continue;
+      if (rr.kind === 'off') soft(w[p][d], Wt.wish, 'wish', { p: p, d: d });
+      else if (rr.kind === 'on') soft(-x[p][d][rr.s], Wt.wish, 'wish', { p: p, d: d, s: rr.s });
+    }
+    // 计数偏离（凸）：超出 hi 的第 j 个扣 j×wt，低于 lo 的第 j 个扣 j×wt
+    function deviation(p, ind, idxs, lo, hi, minPos, maxPos, wt, kind) {
+      if (wt <= 0) return;
+      var n = idxs.length, lits = idxs.map(function (dd) { return ind[dd]; }), prev = 0, kk;
+      for (kk = hi + 1; kk <= maxPos; kk++) {          // o_k ⇐ count ≥ k
+        var o = S.newVar();
+        var nl = lits.map(function (v) { return -v; }).concat([o]);
+        var co = ones(n).concat([n - kk + 1]);
+        S.addPB(nl, co, n - kk + 1);
+        if (prev) S.addClause([-o, prev]);
+        soft(o, wt * (kk - hi), kind, { p: p, k: kk, dir: 1 });
+        prev = o;
+      }
+      prev = 0;
+      for (kk = lo - 1; kk >= minPos; kk--) {          // u_k ⇐ count ≤ k
+        var uu = S.newVar();
+        S.addPB(lits.concat([uu]), ones(n).concat([kk + 1]), kk + 1);
+        if (prev) S.addClause([-uu, prev]);
+        soft(uu, wt * (lo - kk), kind, { p: p, k: kk, dir: -1 });
+        prev = uu;
+      }
+    }
+    var all = [], wkIdx = [];
+    for (d = 0; d < nD; d++) { all.push(d); if (M.wkend[d]) wkIdx.push(d); }
+    for (p = 0; p < nP; p++) {
+      var hard0 = 0, hard1 = 0, hw0 = 0, hw1 = 0;   // 可能的计数范围（请假日必休、锁定日必上）
+      for (d = 0; d < nD; d++) {
+        var q = M.req[p][d], off = q && (q.kind === 'leave' || (q.kind === 'lock' && q.s < 0)), on = q && q.kind === 'lock' && q.s >= 0;
+        if (!off) { hard1++; if (M.wkend[d]) hw1++; }
+        if (on) { hard0++; if (M.wkend[d]) hw0++; }
+      }
+      if (M.maxSh[p] != null) hard1 = Math.min(hard1, M.maxSh[p]);
+      if (M.minSh[p] != null) hard0 = Math.max(hard0, M.minSh[p]);
+      deviation(p, w[p], all, M.tgt[p].lo, M.tgt[p].hi, hard0, hard1, Wt.fair, 'fair');
+      deviation(p, w[p], wkIdx, M.tgtWk[p].lo, M.tgtWk[p].hi, hw0, Math.min(hw1, hard1), Wt.weekend, 'weekend');
+      if (nightIdx.length && M.nightOK[p]) {
+        var nmax = Math.min(hard1, M.maxNights != null ? M.maxNights : nD);
+        deviation(p, nt[p], all, M.tgtN[p].lo, M.tgtN[p].hi, 0, nmax, Wt.night, 'night');
+      }
+    }
+    // 孤立班（休-上-休）、孤立休（上-休-上）、拆开的周末
+    for (p = 0; p < nP; p++) {
+      var prevW = M.hist[p] > 0;   // 第 1 天之前那天是否上班（第 1 天的「前一天」是常量）
+      for (d = 0; d + 1 < nD; d++) {
+        var bConst = d === 0 ? prevW : null, before = d === 0 ? 0 : w[p][d - 1], after = w[p][d + 1];
+        if (Wt.isoWork > 0 && bConst !== true) {
+          var vi = S.newVar();
+          S.addClause((bConst === false ? [] : [before]).concat([-w[p][d], after, vi]));
+          soft(vi, Wt.isoWork, 'isoWork', { p: p, d: d });
+        }
+        if (Wt.isoOff > 0 && bConst !== false) {
+          var vo = S.newVar();
+          S.addClause((bConst === true ? [] : [-before]).concat([w[p][d], -after, vo]));
+          soft(vo, Wt.isoOff, 'isoOff', { p: p, d: d });
+        }
+      }
+      if (Wt.split > 0) for (d = 0; d + 1 < nD; d++) {
+        if (M.dow[d] !== 5) continue;
+        var vs = S.newVar();
+        S.addClause([-w[p][d], w[p][d + 1], vs]);
+        S.addClause([w[p][d], -w[p][d + 1], vs]);
+        soft(vs, Wt.split, 'split', { p: p, d: d });
+      }
+    }
+    return { M: M, S: S, x: x, w: w, groups: groups, softs: softs, errors: [] };
+  }
+
+  function extract(m) {
+    var M = m.M, S = m.S, R = [];
+    for (var p = 0; p < M.nP; p++) {
+      var row = [];
+      for (var d = 0; d < M.nD; d++) {
+        var v = -1;
+        for (var s = 0; s < M.nS; s++) if (S.model[m.x[p][d][s]] === 1) v = s;
+        row.push(v);
+      }
+      R.push(row);
+    }
+    return R;
+  }
+
+  // ───────────────────────── 校验：拿一张班表逐条核硬约束、算软约束分（不经求解器，口径与建模一一对应） ─────────────────────────
+  var KIND_NAME = { wish: '心愿未满足', fair: '班数偏离目标', weekend: '周末班不均', night: '夜班不均', isoWork: '孤立班', isoOff: '只休一天', split: '周末拆开' };
+  function devCost(c, lo, hi, wt) {
+    var t = 0, j;
+    if (c > hi) for (j = 1; j <= c - hi; j++) t += j * wt;
+    if (c < lo) for (j = 1; j <= lo - c; j++) t += j * wt;
+    return t;
+  }
+  function check(pj, R, Mx) {
+    var M = Mx || prep(pj), nP = M.nP, nD = M.nD, nS = M.nS, p, d, s, k;
+    var hard = [], items = [], by = {}, cost = 0, stats = [];
+    function H(type, desc, info) { hard.push({ type: type, desc: desc, info: info || {} }); }
+    function C(kind, wt, desc, info) {
+      if (wt <= 0) return;
+      cost += wt; by[kind] = (by[kind] || 0) + wt; items.push({ kind: kind, w: wt, desc: desc, info: info || {} });
+    }
+    var cell = function (p, d) { var v = R[p] && R[p][d]; return v == null ? -1 : v; };
+    var on = function (p, d) { return cell(p, d) >= 0; };
+    for (p = 0; p < nP; p++) for (d = 0; d < nD; d++) {
+      var v = cell(p, d);
+      if (v >= nS || v < -1) H('bad', pname(M, p) + ' ' + dlabel(M, d) + ' 班次无效', { p: p, d: d });
+      if (v >= 0 && !M.elig[p][v]) H('elig', pname(M, p) + ' 不上' + sname(M, v) + '，却排在 ' + dlabel(M, d), { p: p, d: d, s: v });
+      var rq = M.req[p][d];
+      if (rq && rq.kind === 'leave' && v >= 0) H('leave', pname(M, p) + ' ' + dlabel(M, d) + ' 请假却排了班', { p: p, d: d });
+      if (rq && rq.kind === 'lock' && v !== rq.s) H('lock', pname(M, p) + ' ' + dlabel(M, d) + ' 与锁定不符', { p: p, d: d });
+    }
+    var cover = [];
+    for (d = 0; d < nD; d++) {
+      var crow = [];
+      for (s = 0; s < nS; s++) {
+        var n = 0;
+        for (p = 0; p < nP; p++) if (cell(p, d) === s) n++;
+        crow.push(n);
+        if (n < M.need[d][s]) H('cover', dlabel(M, d) + ' ' + sname(M, s) + '缺 ' + (M.need[d][s] - n) + ' 人', { d: d, s: s });
+        if (n > M.need[d][s] + M.overstaff) H('coverMax', dlabel(M, d) + ' ' + sname(M, s) + '超编 ' + (n - M.need[d][s] - M.overstaff) + ' 人', { d: d, s: s });
+        for (k = 0; k < M.skills.length; k++) {
+          var nk = 0;
+          for (p = 0; p < nP; p++) if (cell(p, d) === s && M.has[p][k]) nk++;
+          if (nk < M.skMin[d][s][k]) H('skill', dlabel(M, d) + ' ' + sname(M, s) + '缺 ' + (M.skMin[d][s][k] - nk) + ' 名' + (M.skills[k].name || M.skills[k].id), { d: d, s: s, k: k });
+        }
+      }
+      cover.push(crow);
+    }
+    for (p = 0; p < nP; p++) {
+      // 两班间隔
+      if (M.histLast[p] >= 0 && on(p, 0) && M.forb[M.histLast[p]][cell(p, 0)])
+        H('rest', pname(M, p) + ' 上期最后一班' + sname(M, M.histLast[p]) + '接 ' + dlabel(M, 0) + sname(M, cell(p, 0)) + '，间隔不足', { p: p, d: 0 });
+      for (d = 0; d + 1 < nD; d++) if (on(p, d) && on(p, d + 1) && M.forb[cell(p, d)][cell(p, d + 1)])
+        H('rest', pname(M, p) + ' ' + dlabel(M, d) + sname(M, cell(p, d)) + '接次日' + sname(M, cell(p, d + 1)) + '，间隔不足 ' + M.minRest + ' 小时', { p: p, d: d + 1 });
+      // 连续上班
+      // 连上天数把上期末的 h 天接在前面；同一段超限只报一次（段内第一个越线的日子）
+      var run = M.hist[p], nrun = M.histLast[p] >= 0 && M.night[M.histLast[p]] ? 1 : 0, cnt = 0, nn = 0, wk = 0, fl1 = false, fl2 = false;
+      for (d = 0; d < nD; d++) {
+        if (on(p, d)) {
+          run++; cnt++; if (M.wkend[d]) wk++;
+          if (run > M.maxConsec && !fl1) { fl1 = true; H('consec', pname(M, p) + ' 到 ' + dlabel(M, d) + ' 已连续上班 ' + run + ' 天', { p: p, d: d }); }
+        } else { run = 0; fl1 = false; }
+        if (on(p, d) && M.night[cell(p, d)]) {
+          nrun++; nn++;
+          if (M.maxNightRun > 0 && nrun > M.maxNightRun && !fl2) { fl2 = true; H('nightRun', pname(M, p) + ' 到 ' + dlabel(M, d) + ' 已连续 ' + nrun + ' 个夜班', { p: p, d: d }); }
+        } else { nrun = 0; fl2 = false; }
+      }
+      if (M.maxNights != null && nn > M.maxNights) H('nights', pname(M, p) + ' 夜班 ' + nn + ' 个，超过上限 ' + M.maxNights, { p: p });
+      if (M.minSh[p] != null && cnt < M.minSh[p]) H('minShifts', pname(M, p) + ' 只有 ' + cnt + ' 个班，少于下限 ' + M.minSh[p], { p: p });
+      if (M.maxSh[p] != null && cnt > M.maxSh[p]) H('maxShifts', pname(M, p) + ' 有 ' + cnt + ' 个班，超过上限 ' + M.maxSh[p], { p: p });
+      var hours = 0;
+      for (d = 0; d < nD; d++) if (on(p, d)) hours += M.dur[cell(p, d)] / 60;
+      stats.push({ shifts: cnt, nights: nn, weekends: wk, hours: hours, tgt: M.tgt[p], tgtWk: M.tgtWk[p], tgtN: M.tgtN[p] });
+    }
+    // 软约束
+    var Wt = M.weights;
+    for (p = 0; p < nP; p++) {
+      for (d = 0; d < nD; d++) {
+        var r2 = M.req[p][d];
+        if (!r2) continue;
+        if (r2.kind === 'off' && on(p, d)) C('wish', Wt.wish, pname(M, p) + ' ' + dlabel(M, d) + ' 想休，排了' + sname(M, cell(p, d)), { p: p, d: d });
+        if (r2.kind === 'on' && cell(p, d) !== r2.s) C('wish', Wt.wish, pname(M, p) + ' ' + dlabel(M, d) + ' 想上' + sname(M, r2.s) + '，实际' + (on(p, d) ? sname(M, cell(p, d)) : '休息'), { p: p, d: d });
+      }
+      var st2 = stats[p];
+      C('fair', devCost(st2.shifts, M.tgt[p].lo, M.tgt[p].hi, Wt.fair), pname(M, p) + ' ' + st2.shifts + ' 个班，目标 ' + rangeTxt(M.tgt[p]), { p: p });
+      C('weekend', devCost(st2.weekends, M.tgtWk[p].lo, M.tgtWk[p].hi, Wt.weekend), pname(M, p) + ' 周末班 ' + st2.weekends + ' 个，目标 ' + rangeTxt(M.tgtWk[p]), { p: p });
+      if (M.anyNight && M.nightOK[p]) C('night', devCost(st2.nights, M.tgtN[p].lo, M.tgtN[p].hi, Wt.night), pname(M, p) + ' 夜班 ' + st2.nights + ' 个，目标 ' + rangeTxt(M.tgtN[p]), { p: p });
+      var prevW = M.hist[p] > 0;
+      for (d = 0; d + 1 < nD; d++) {
+        var bef = d === 0 ? prevW : on(p, d - 1), aft = on(p, d + 1);
+        if (!bef && on(p, d) && !aft) C('isoWork', Wt.isoWork, pname(M, p) + ' ' + dlabel(M, d) + ' 前后都休，单独上一天', { p: p, d: d });
+        if (bef && !on(p, d) && aft) C('isoOff', Wt.isoOff, pname(M, p) + ' ' + dlabel(M, d) + ' 只休一天又上班', { p: p, d: d });
+      }
+      for (d = 0; d + 1 < nD; d++) if (M.dow[d] === 5 && on(p, d) !== on(p, d + 1))
+        C('split', Wt.split, pname(M, p) + ' ' + md(M.dates[d]) + ' 那个周末只休了一天', { p: p, d: d });
+    }
+    return { hard: hard, ok: hard.length === 0, cost: cost, by: by, items: items, stats: stats, cover: cover, M: M };
+  }
+  function rangeTxt(t) { return t.lo === t.hi ? String(t.lo) : t.lo + '–' + t.hi; }
+
+  // ───────────────────────── 求解：可行解 → 分层下降 → 大邻域搜索（LNS）→ 全局证明 ─────────────────────────
+  // 线性收紧目标上界在这类排班上几乎走不动（实测示例 10 万次冲突只从 479 降到 475），
+  // 所以先按权重分层逐层「尽量满足」得到一个像样的解，再反复「固定大部分格子、只放开一块邻域」交给 SAT
+  // 去找更低分的解：邻域里 UNSAT 就是一张「这块已不可能再改进」的证明；每隔一阵再试一次不加限制的全局证明。
+  function xorshift(seed) {
+    var st = (seed >>> 0) || 0x9e3779b9;
+    return function (n) { st ^= st << 13; st >>>= 0; st ^= st >>> 17; st ^= st << 5; st >>>= 0; return st % n; };
+  }
+  // opt: { conflicts: 总冲突预算, deadline: 毫秒时间戳, seed, hint: 热启动班表, onProgress: fn(ev), perCall: 每次邻域求解预算 }
+  function optimize(pj, opt) {
+    opt = opt || {};
+    var t0 = Date.now();
+    var m = build(pj, {});
+    if (m.errors.length) return { status: 'error', errors: m.errors };
+    var S = m.S, M = m.M, budget = opt.conflicts == null ? 3e5 : opt.conflicts, trace = [], i, p, d;
+    var info = { vars: S.n, clauses: S.cls.length, pbs: S.pbs.length, softs: m.softs.length, groups: m.groups.length };
+    var rnd = xorshift(opt.seed == null ? 20261021 : opt.seed);
+    var lns = { calls: 0, improved: 0, unsat: 0, unknown: 0, proofs: 0, streak: 0 };
+    function left() { return Math.max(0, budget - S.stats.conflicts); }
+    function out() { return opt.deadline && Date.now() > opt.deadline; }
+    var best = null, bestCost = Infinity, model = null, chk = null, phase = '';
+    function consider(R, src) {
+      var c = check(pj, R, M);
+      if (!c.ok || c.cost >= bestCost) return false;
+      best = R; bestCost = c.cost; chk = c; model = S.model ? S.model.slice() : model; phase = src;
+      trace.push({ cost: bestCost, ms: Date.now() - t0, conflicts: S.stats.conflicts, phase: src });
+      if (opt.onProgress) opt.onProgress({ cost: bestCost, by: c.by, roster: best, ms: Date.now() - t0, conflicts: S.stats.conflicts, phase: src, lns: lns });
+      return true;
+    }
+    function phasesFrom(R) {
+      var mdl = [0];
+      for (var v = 1; v <= S.n; v++) mdl.push(-1);
+      for (p = 0; p < M.nP; p++) for (d = 0; d < M.nD; d++) if (R[p][d] >= 0) { mdl[m.x[p][d][R[p][d]]] = 1; mdl[m.w[p][d]] = 1; }
+      return mdl;
+    }
+    // 0. 热启动：上一轮的班表若仍满足全部硬约束，直接当起点
+    if (opt.hint && opt.hint.length === M.nP) {
+      var hc0 = check(pj, opt.hint, M);
+      if (hc0.ok) { model = phasesFrom(opt.hint); S.setPhases(model); consider(opt.hint.map(function (r) { return r.slice(); }), 'hint'); }
+    }
+    // 1. 可行性
+    if (!best) {
+      var r0 = S.solve({ conflicts: left(), deadline: opt.deadline });
+      if (r0 === 'UNSAT') return { status: 'infeasible', info: info, stats: S.stats, ms: Date.now() - t0, notes: M.notes };
+      if (r0 === 'UNKNOWN') return { status: 'unknown', info: info, stats: S.stats, ms: Date.now() - t0, notes: M.notes };
+      consider(extract(m), 'sat');
+    }
+    // 2. 分层下降：权重从高到低，逐层把「该层及以上的软约束全部满足」作为假设去求
+    var Wm = {}, keys = [];
+    for (i = 0; i < m.softs.length; i++) {
+      var a = -m.softs[i].lit;
+      if (Wm[a] === undefined) { Wm[a] = 0; keys.push(a); }
+      Wm[a] += m.softs[i].w;
+    }
+    var strata = [];
+    keys.forEach(function (k) { if (strata.indexOf(Wm[k]) < 0) strata.push(Wm[k]); });
+    strata.sort(function (x, y) { return y - x; });
+    for (i = 0; i < strata.length && bestCost > 0 && !out(); i++) {
+      var thr = strata[i], as = keys.filter(function (k) { return Wm[k] >= thr; });
+      S.setPhases(model);
+      var rs = S.solve({ assumptions: as, conflicts: Math.min(3000, left()), deadline: opt.deadline });
+      if (rs !== 'SAT') break;
+      consider(extract(m), 'strata');
+    }
+    // 3. LNS：目标上界做成一条 PB 约束，固定邻域外的格子作为假设
+    var status = bestCost === 0 ? 'optimal' : 'feasible';
+    if (bestCost > 0 && left() > 0 && !out()) {
+      var Wsum = 0, lits = [], co = [];
+      for (i = 0; i < m.softs.length; i++) { Wsum += m.softs[i].w; lits.push(-m.softs[i].lit); co.push(m.softs[i].w); }
+      var pid = S.addPB(lits, co, Wsum - bestCost + 1);
+      var per = opt.perCall || 1500, proofEvery = 40, proofBudget = 8000;
+      // 邻域类型：0 = 2–4 人整月；1 = 全员 3–7 天；2 = 4–7 人 × 7–14 天；3 = 扣分最多的人 + 搭档整月
+      var mix = opt.mix || [2, 3, 2, 2], mixSum = mix[0] + mix[1] + mix[2] + mix[3];
+      var pickType = function () { var r = rnd(mixSum), t = 0; while (r >= mix[t]) { r -= mix[t]; t++; } return t; };
+      var pickCostly = function () {     // 按个人扣分加权挑人：分数集中在谁身上就先动谁
+        var cs = [], tot = 0;
+        for (p = 0; p < M.nP; p++) cs.push(1);
+        chk.items.forEach(function (it) { if (it.info && it.info.p != null) cs[it.info.p] += it.w; });
+        for (p = 0; p < M.nP; p++) tot += cs[p];
+        var r = rnd(Math.max(1, Math.floor(tot))), acc = 0;
+        for (p = 0; p < M.nP; p++) { acc += cs[p]; if (r < acc) return p; }
+        return M.nP - 1;
+      };
+      while (S.ok && left() > 0 && !out() && bestCost > 0) {
+        if (lns.streak > 0 && lns.streak % proofEvery === 0) {
+          // 全局证明：不固定任何格子，只要求「比当前更好」
+          lns.proofs++;
+          S.setPhases(model);
+          var rg = S.solve({ conflicts: Math.min(proofBudget * lns.proofs, left()), deadline: opt.deadline });
+          if (rg === 'UNSAT') { status = 'optimal'; break; }
+          if (rg === 'SAT') { if (consider(extract(m), 'proof')) { lns.improved++; lns.streak = 0; S.setPBBound(pid, Wsum - bestCost + 1); continue; } }
+          lns.streak++;
+          continue;
+        }
+        var fp = {}, fd = {}, nfp = 0, typ = pickType(), k2, L2, s0;
+        var grow = Math.min(3, Math.floor(lns.streak / 25));   // 久攻不下就把邻域放大一点
+        if (typ === 0 || typ === 3) {
+          k2 = Math.min(M.nP, 2 + rnd(3) + grow);
+          if (typ === 3) { fp[pickCostly()] = 1; nfp = 1; }
+          while (nfp < k2) { var pp = rnd(M.nP); if (!fp[pp]) { fp[pp] = 1; nfp++; } }
+          for (d = 0; d < M.nD; d++) fd[d] = 1;
+        } else if (typ === 1) {
+          L2 = Math.min(M.nD, 3 + rnd(5) + grow); s0 = rnd(M.nD - L2 + 1);
+          for (d = s0; d < s0 + L2; d++) fd[d] = 1;
+          for (p = 0; p < M.nP; p++) fp[p] = 1;
+        } else {
+          k2 = Math.min(M.nP, 4 + rnd(4) + grow);
+          while (nfp < k2) { var p2 = rnd(M.nP); if (!fp[p2]) { fp[p2] = 1; nfp++; } }
+          L2 = Math.min(M.nD, 7 + rnd(8) + 2 * grow); s0 = rnd(M.nD - L2 + 1);
+          for (d = s0; d < s0 + L2; d++) fd[d] = 1;
+        }
+        var fix = [];
+        for (p = 0; p < M.nP; p++) for (d = 0; d < M.nD; d++) {
+          if (fp[p] && fd[d]) continue;
+          var v = best[p][d];
+          fix.push(v >= 0 ? m.x[p][d][v] : -m.w[p][d]);
+        }
+        S.setPhases(model);
+        lns.calls++;
+        var rl = S.solve({ assumptions: fix, conflicts: Math.min(per, left()), deadline: opt.deadline });
+        if (rl === 'SAT' && consider(extract(m), 'lns')) { lns.improved++; lns.streak = 0; S.setPBBound(pid, Wsum - bestCost + 1); continue; }
+        if (rl === 'UNSAT') { lns.unsat++; if (!S.ok) { status = 'optimal'; break; } } else if (rl === 'UNKNOWN') lns.unknown++;
+        lns.streak++;
+        if (opt.onTick) opt.onTick({ cost: bestCost, ms: Date.now() - t0, conflicts: S.stats.conflicts, lns: lns });
+      }
+      if (!S.ok) status = 'optimal';
+    }
+    return {
+      status: status, roster: best, cost: bestCost, by: chk.by, trace: trace, info: info, lns: lns, phase: phase,
+      stats: { conflicts: S.stats.conflicts, decisions: S.stats.decisions, props: S.stats.props, restarts: S.stats.restarts, solves: S.stats.solves },
+      ms: Date.now() - t0, notes: M.notes, hardOK: chk.ok
+    };
+  }
+
+  // ───────────────────────── 诊断：无解时给出最小冲突约束集（MUS） ─────────────────────────
+  function diagnose(pj, opt) {
+    opt = opt || {};
+    var m = build(pj, { selectors: true });
+    if (m.errors.length) return { status: 'error', errors: m.errors };
+    var S = m.S, bySel = {}, i;
+    m.groups.forEach(function (g) { bySel[g.sel] = g; });
+    var per = opt.perCall == null ? 20000 : opt.perCall;
+    var sels = m.groups.map(function (g) { return g.sel; });
+    var r = S.solve({ assumptions: sels, conflicts: opt.conflicts == null ? 200000 : opt.conflicts, deadline: opt.deadline });
+    if (r === 'SAT') return { status: 'feasible' };
+    if (r === 'UNKNOWN') return { status: 'unknown' };
+    var cand = (S.core || []).filter(function (v) { return bySel[v]; }), crit = [], exact = true, tests = 0;
+    // 把「事实型」约束（请假、锁定、资格）排在后面删：先试着删规则与需求，留下的解释更像「这些规则撞上了这些事实」
+    var pri = { leave: 0, lock: 0, elig: 1 };
+    cand.sort(function (a, b) { return (pri[bySel[b].type] == null ? 2 : pri[bySel[b].type]) - (pri[bySel[a].type] == null ? 2 : pri[bySel[a].type]) || a - b; });
+    while (cand.length) {
+      var g = cand.shift(), test = crit.concat(cand);
+      tests++;
+      r = S.solve({ assumptions: test, conflicts: per, deadline: opt.deadline });
+      if (r === 'UNSAT') {
+        var keep = {};
+        (S.core || []).forEach(function (v) { keep[v] = 1; });
+        cand = cand.filter(function (v) { return keep[v]; });
+      } else {
+        if (r === 'UNKNOWN') exact = false;
+        crit.push(g);
+      }
+    }
+    var mus = crit.map(function (v) { var g = bySel[v]; return { type: g.type, desc: g.desc, info: g.info }; });
+    return { status: 'infeasible', mus: mus, minimal: exact, tests: tests, groups: m.groups.length };
+  }
+
+  // 供需体检（不求解）：每天每班「能上的人」够不够
+  function supply(pj) {
+    var M = prep(pj), out = [];
+    for (var d = 0; d < M.nD; d++) {
+      var row = [];
+      for (var s = 0; s < M.nS; s++) {
+        var n = 0;
+        for (var p = 0; p < M.nP; p++) {
+          var rq = M.req[p][d];
+          if (!M.elig[p][s]) continue;
+          if (rq && (rq.kind === 'leave' || (rq.kind === 'lock' && rq.s !== s))) continue;
+          n++;
+        }
+        row.push({ avail: n, need: M.need[d][s] });
+      }
+      out.push(row);
+    }
+    return { M: M, cells: out };
+  }
+
+  return {
+    Solver: Solver, prep: prep, build: build, check: check, optimize: optimize, diagnose: diagnose, supply: supply,
+    extract: extract, devCost: devCost, KIND_NAME: KIND_NAME, md: md, WD: WD, parseISO: parseISO, toISO: toISO, parseHM: parseHM, luby: luby
+  };
+})();
+if (typeof module !== 'undefined' && module.exports) module.exports = SL;
+
+/* Web Worker 入口：页面把本 <script> 的源码拼成 Blob 启动 Worker，求解与诊断都在这里跑，主线程不卡。
+ * 主线程里 / node:vm 里没有 WorkerGlobalScope，这段不生效。 */
+if (typeof WorkerGlobalScope !== 'undefined' && typeof self !== 'undefined' && self instanceof WorkerGlobalScope) {
+  self.onmessage = function (e) {
+    var m = e.data, last = 0;
+    if (m.cmd === 'optimize') {
+      var o = m.opt || {};
+      var opt = { conflicts: o.conflicts, seed: o.seed, hint: o.hint, deadline: o.ms ? Date.now() + o.ms : 0 };
+      opt.onProgress = function (ev) {
+        var now = Date.now();
+        if (now - last < 90) return;
+        last = now;
+        self.postMessage({ type: 'progress', id: m.id, ev: { cost: ev.cost, by: ev.by, roster: ev.roster, ms: ev.ms, conflicts: ev.conflicts, phase: ev.phase } });
+      };
+      opt.onTick = function (ev) {
+        var now = Date.now();
+        if (now - last < 250) return;
+        last = now;
+        self.postMessage({ type: 'tick', id: m.id, ev: { cost: ev.cost, ms: ev.ms, conflicts: ev.conflicts, lns: ev.lns } });
+      };
+      var r = SL.optimize(m.pj, opt);
+      self.postMessage({ type: 'done', id: m.id, res: r });
+    } else if (m.cmd === 'diagnose') {
+      var d = SL.diagnose(m.pj, { conflicts: m.opt && m.opt.conflicts, perCall: m.opt && m.opt.perCall, deadline: m.opt && m.opt.ms ? Date.now() + m.opt.ms : 0 });
+      self.postMessage({ type: 'diag', id: m.id, res: d });
+    }
+  };
+}
+
+/* 示例项目：社区医院内科护理组 2026 年 11 月四周班表（12 人 · 早/中/夜三班）。
+ * 与引擎同一个 <script> 内联，测试与离线对拍都从这里取同一份数据。 */
+var SL_DEMO = function () {
+  function req(staff, date, kind, shift) { return { staff: staff, date: date, kind: kind, shift: shift || '' }; }
+  var all = ['D', 'E', 'N'], day = ['D', 'E'];
+  return {
+    v: 1,
+    name: '仁和社区医院 · 内科护理组',
+    start: '2026-11-02',
+    days: 28,
+    shifts: [
+      { id: 'D', name: '早班', short: '早', start: '07:00', end: '15:00', color: 'orange', night: false },
+      { id: 'E', name: '中班', short: '中', start: '15:00', end: '23:00', color: 'violet', night: false },
+      { id: 'N', name: '夜班', short: '夜', start: '23:00', end: '07:00', color: 'pink', night: true }
+    ],
+    demand: { weekday: { D: 4, E: 3, N: 2 }, weekend: { D: 3, E: 2, N: 2 } },
+    dayOverrides: [],
+    holidays: [],
+    skills: [{ id: 'sr', name: '资深', min: { D: 1, E: 1, N: 1 } }],
+    staff: [
+      { id: 'p01', name: '王芳', fte: 1, skills: ['sr'], shifts: all, minShifts: null, maxShifts: null, histConsec: 0, histLast: '' },
+      { id: 'p02', name: '李娜', fte: 1, skills: ['sr'], shifts: all, minShifts: null, maxShifts: null, histConsec: 2, histLast: 'D' },
+      { id: 'p03', name: '张敏', fte: 1, skills: ['sr'], shifts: all, minShifts: null, maxShifts: null, histConsec: 4, histLast: 'N' },
+      { id: 'p04', name: '刘洋', fte: 1, skills: ['sr'], shifts: all, minShifts: null, maxShifts: null, histConsec: 0, histLast: '' },
+      { id: 'p05', name: '黄丽', fte: 1, skills: ['sr'], shifts: all, minShifts: null, maxShifts: null, histConsec: 1, histLast: 'E' },
+      { id: 'p06', name: '陈静', fte: 1, skills: [], shifts: all, minShifts: null, maxShifts: null, histConsec: 3, histLast: 'E' },
+      { id: 'p07', name: '杨帆', fte: 1, skills: [], shifts: all, minShifts: null, maxShifts: null, histConsec: 0, histLast: '' },
+      { id: 'p08', name: '赵磊', fte: 1, skills: [], shifts: all, minShifts: null, maxShifts: null, histConsec: 5, histLast: 'D' },
+      { id: 'p09', name: '周婷', fte: 1, skills: [], shifts: day, minShifts: null, maxShifts: null, histConsec: 0, histLast: '' },
+      { id: 'p10', name: '吴昊', fte: 1, skills: [], shifts: all, minShifts: null, maxShifts: null, histConsec: 2, histLast: 'N' },
+      { id: 'p11', name: '孙悦', fte: 0.5, skills: [], shifts: day, minShifts: null, maxShifts: 11, histConsec: 0, histLast: '' },
+      { id: 'p12', name: '郑凯', fte: 1, skills: [], shifts: all, minShifts: null, maxShifts: null, histConsec: 1, histLast: 'D' }
+    ],
+    requests: [
+      req('p02', '2026-11-16', 'leave'), req('p02', '2026-11-17', 'leave'), req('p02', '2026-11-18', 'leave'),
+      req('p02', '2026-11-19', 'leave'), req('p02', '2026-11-20', 'leave'),
+      req('p06', '2026-11-09', 'leave'),
+      req('p07', '2026-11-03', 'on', 'D'), req('p07', '2026-11-04', 'on', 'D'),
+      req('p08', '2026-11-25', 'off'), req('p08', '2026-11-26', 'off'),
+      req('p10', '2026-11-14', 'off'), req('p10', '2026-11-15', 'off'),
+      req('p01', '2026-11-21', 'off'), req('p12', '2026-11-11', 'on', 'E'),
+      req('p09', '2026-11-28', 'off'), req('p09', '2026-11-29', 'off')
+    ],
+    rules: { maxConsec: 6, minRest: 11, maxConsecNights: 3, maxNights: 8, overstaff: 0 },
+    weights: { wish: 5, fair: 3, weekend: 2, night: 2, isoWork: 1, isoOff: 1, split: 1 }
+  };
+};
+if (typeof module !== 'undefined' && module.exports) module.exports.SL_DEMO = SL_DEMO;
+
+/* 小例子：咖啡馆 5 人 · 1 周 · 早/晚两班。规模小到求解器能当场证明最优。 */
+var SL_SMALL = function () {
+  function req(staff, date, kind, shift) { return { staff: staff, date: date, kind: kind, shift: shift || '' }; }
+  var both = ['A', 'B'];
+  return {
+    v: 1,
+    name: '街角咖啡 · 门店',
+    start: '2026-11-02',
+    days: 7,
+    shifts: [
+      { id: 'A', name: '早班', short: '早', start: '07:00', end: '14:00', color: 'orange', night: false },
+      { id: 'B', name: '晚班', short: '晚', start: '14:00', end: '21:00', color: 'blue', night: false }
+    ],
+    demand: { weekday: { A: 1, B: 1 }, weekend: { A: 2, B: 2 } },
+    dayOverrides: [],
+    holidays: [],
+    skills: [{ id: 'key', name: '店长', min: { A: 1, B: 0 } }],
+    staff: [
+      { id: 'c1', name: '林可', fte: 1, skills: ['key'], shifts: both, minShifts: null, maxShifts: null, histConsec: 0, histLast: '' },
+      { id: 'c2', name: '许嘉', fte: 1, skills: ['key'], shifts: both, minShifts: null, maxShifts: null, histConsec: 3, histLast: 'B' },
+      { id: 'c3', name: '何雨', fte: 0.6, skills: [], shifts: both, minShifts: null, maxShifts: null, histConsec: 0, histLast: '' },
+      { id: 'c4', name: '马骁', fte: 0.6, skills: [], shifts: ['B'], minShifts: null, maxShifts: null, histConsec: 0, histLast: '' },
+      { id: 'c5', name: '宋晴', fte: 0.8, skills: [], shifts: both, minShifts: null, maxShifts: null, histConsec: 1, histLast: 'A' }
+    ],
+    requests: [
+      req('c1', '2026-11-07', 'off'), req('c1', '2026-11-08', 'off'),
+      req('c3', '2026-11-04', 'leave'), req('c5', '2026-11-03', 'on', 'B'),
+      req('c2', '2026-11-05', 'off')
+    ],
+    rules: { maxConsec: 5, minRest: 11, maxConsecNights: 0, maxNights: null, overstaff: 0 },
+    weights: { wish: 5, fair: 3, weekend: 2, night: 2, isoWork: 1, isoOff: 1, split: 1 }
+  };
+};
+if (typeof module !== 'undefined' && module.exports) module.exports.SL_SMALL = SL_SMALL;
+
+</script>
+<script id="sl-app">
+/* 本站通用的 SVG 绘图骨架：Frame（坐标框 + 刻度 + 裁剪）+ Placer（文字避让器）。
+ *
+ * 固化背景：09-14 journal 明写「这套 Placer 每期都在重写，值得连同保守盒 + 退让位一起抽进
+ * 公共脚手架」，09-15（SVG 机器人图）与 09-16（12 张图）又各重写一遍。本文件 = 09-16 版，
+ * 已经把历次踩过的坑都焊进去了：
+ *   ① 每一段文字（**含坐标轴刻度**）都走 Placer，撞了就按退让位挪、全撞就丢（07-28…08-11 共 7 次事故）；
+ *   ② 退让位第一顺位要落在数据的空侧，带 plate 的标注会擦掉底下的曲线（08-07）；
+ *   ③ 刻度档位按「刻度个数最接近目标」挑，不是「第一个 ≥ raw 的步长」（08-27 y 轴塌成 2 根）；
+ *   ④ setDomain **允许上下界倒置**（俯视图要 y 向下）—— 强行要求 ymax > ymin 会把整张图画空（09-16）；
+ *   ⑤ 曲线一律 clip 到绘图矩形，越界分支不许糊到坐标轴外（09-16）。
+ *
+ * 用法（作为 app 的第一个源文件内联进页面即可）：
+ *   node tools/build-inline.mjs --template page.template.html --out index.html \
+ *     --inline '/*APP*\/=<本文件>,app_part1.js,…'
+ *   var F = new AEPlot.Frame('fig-id', { pad: { l: 56, r: 18, t: 16, b: 38 } });
+ *   F.setDomain(x0, x1, y0, y1);
+ *   F.axes({ xlabel: '…', ylabel: '…', xfmt: fn, yfmt: fn });
+ *   F.path(pts, { stroke: '#da291c' }); F.dot(x, y); F.vline(x); F.hline(y);
+ *   F.P.text(px, py, '标注', { size: 10, fill: '#fff', plate: true, offsets: [[0,0],[0,-13],[0,20]] });
+ * 需要宿主提供一个 fmt(v, d) 数字格式函数：new Frame(id, { fmt: myFmt })，默认用内置的。
+ */
+var AEPlot = (function () {
+  'use strict';
+  var SVGNS = 'http://www.w3.org/2000/svg';
+  /* 主题色。09-16 抽出来时把 Ferrari 的深色写死在 axes/Placer 里，浅色设计系统（Expo）
+   * 用起来刻度与网格几乎看不见 —— 2026-09-17 改成可覆盖，默认值与旧版逐字相同。
+   * 用法：AEPlot.theme({ grid:'#f0f0f3', axis:'#dcdee0', tick:'#60646c', label:'#999' }); */
+  var TH = { grid: '#282828', axis: '#303030', tick: '#8f8f8f', label: '#666',
+             text: '#969696', plate: '#181818', series: '#da291c' };
+  function theme(o) { for (var k in o) if (o[k] != null) TH[k] = o[k]; return TH; }
+  function $(id) { return document.getElementById(id); }
+  function fmt(v, d) {
+    if (v == null || !isFinite(v)) return '—';
+    var x = +v;
+    if (Math.abs(x) >= 1e6 || (Math.abs(x) < 1e-4 && x !== 0)) return x.toExponential(d == null ? 3 : d);
+    var s = x.toFixed(d == null ? 3 : d);
+    if (/^-0\.?0*$/.test(s)) s = s.slice(1);
+    return s;
+  }
+  // ── SVG 基础 ──
+  function el(tag, attrs, parent) {
+    var n = document.createElementNS(SVGNS, tag), k;
+    for (k in attrs) if (attrs[k] != null) n.setAttribute(k, attrs[k]);
+    if (parent) parent.appendChild(n);
+    return n;
+  }
+  function clear(node) { while (node.firstChild) node.removeChild(node.firstChild); }
+
+  /* 文字避让器：**这张图上的每一段文字**都必须经过它（含坐标轴刻度）。
+   * 教训来源：07-28/07-29/07-30/08-05/08-07/08-08/08-11 连撞 7 次标签重叠，
+   * 全部逃过 DOM 断言，只有人工看图才发现。 */
+  function Placer(svg, w, h) {
+    this.svg = svg; this.w = w; this.h = h; this.boxes = []; this.drawn = 0; this.dropped = 0;
+  }
+  Placer.prototype.measure = function (text, size) {
+    var n = 0, i, c;
+    for (i = 0; i < text.length; i++) {
+      c = text.charCodeAt(i);
+      n += (c > 0x2e80 && c < 0xa000) || (c >= 0xff00 && c <= 0xffef) ? 1 : 0.6;
+    }
+    return n * size;
+  };
+  Placer.prototype.hit = function (b) {
+    if (b.x < -1 || b.y < -1 || b.x + b.w > this.w + 1 || b.y + b.h > this.h + 1) return true;  // 出画布
+    for (var i = 0; i < this.boxes.length; i++) {
+      var o = this.boxes[i];
+      if (b.x < o.x + o.w && o.x < b.x + b.w && b.y < o.y + o.h && o.y < b.y + b.h) return true;
+    }
+    return false;
+  };
+  Placer.prototype.reserve = function (x, y, w, h) { this.boxes.push({ x: x, y: y, w: w, h: h }); };
+  /* opts: {size, fill, anchor, weight, offsets:[[dx,dy]…], plate:bool} */
+  Placer.prototype.text = function (x, y, str, opts) {
+    var o = opts || {}, size = o.size || 11, anchor = o.anchor || 'middle';
+    var tw = this.measure(str, size) + 3, th = size + 3;
+    var offs = o.offsets || [[0, 0]], i, dx, dy, bx, by, box = null, ox = 0, oy = 0;
+    for (i = 0; i < offs.length; i++) {
+      dx = offs[i][0]; dy = offs[i][1];
+      bx = x + dx - (anchor === 'middle' ? tw / 2 : anchor === 'end' ? tw : 0);
+      by = y + dy - th + 2;
+      if (!this.hit({ x: bx, y: by, w: tw, h: th })) { box = { x: bx, y: by, w: tw, h: th }; ox = dx; oy = dy; break; }
+    }
+    if (!box) { this.dropped++; return null; }
+    this.boxes.push(box); this.drawn++;
+    if (o.plate) el('rect', { x: box.x, y: box.y, width: box.w, height: box.h, fill: o.plate === true ? TH.plate : o.plate, opacity: 0.88 }, this.svg);
+    var t = el('text', { x: x + ox, y: y + oy, 'text-anchor': anchor, 'font-size': size, fill: o.fill || TH.text,
+      'font-weight': o.weight || 400, 'font-family': 'inherit' }, this.svg);
+    t.textContent = str;
+    return t;
+  };
+
+  /* 直角坐标绘图框 */
+  function Frame(svgId, opt) {
+    var svg = $(svgId), o = opt || {};
+    clear(svg);
+    var vb = svg.getAttribute('viewBox').split(/\s+/).map(Number);
+    /* opt.fitWidth（2026-10-10 收进来，10-06 reno-lab / 10-07 bike-lab 两期各手写过一遍）：
+     * viewBox 宽 = 容器实际渲染宽，窄屏上字号不被等比缩成蚂蚁字。默认关，旧页零影响。
+     * 首次画时记下设计宽高（data-ae-w/h）；隐藏页签里 clientWidth=0 ⇒ 按设计宽画，
+     * 调用方须在切页签 / resize 时重画。窄于 560 时高度按 opt.narrowH（默认 0.8）缩。 */
+    if (o.fitWidth) {
+      if (!svg.getAttribute('data-ae-w')) { svg.setAttribute('data-ae-w', vb[2]); svg.setAttribute('data-ae-h', vb[3]); }
+      var dw = +svg.getAttribute('data-ae-w'), dh = +svg.getAttribute('data-ae-h');
+      var cw = Math.round(svg.getBoundingClientRect().width);
+      var fw = cw > 0 ? Math.max(300, cw) : dw;
+      var fh = Math.round(fw < 560 ? dh * (o.narrowH || 0.8) : dh);
+      svg.setAttribute('viewBox', '0 0 ' + fw + ' ' + fh);
+      vb = [0, 0, fw, fh];
+    }
+    this.svg = svg; this.W = vb[2]; this.H = vb[3];
+    // 宿主传进来的 fmt 以前只存不用：axes() 里写死了模块自带的 fmt，
+    // 于是 `new Frame(id, { fmt: myFmt })` 会被**静默忽略**（2026-09-18 实撞，
+    // 「各节点排队人数」那张图的 x 轴因此打出了 3 位小数）。这里收起来，下面用它。
+    this.fmt = o.fmt || fmt;
+    this.pad = o.pad || { l: 56, r: 18, t: 16, b: 38 };
+    this.x0 = this.pad.l; this.x1 = this.W - this.pad.r;
+    this.y0 = this.H - this.pad.b; this.y1 = this.pad.t;
+    this.P = new Placer(svg, this.W, this.H);
+    // 裁剪：曲线一律夹在绘图矩形内（否则超出量程的分支会画到坐标轴外、糊到图例上）
+    this.clipId = 'ae-clip-' + svgId + '-' + Math.random().toString(36).slice(2, 8);
+    var defs = el('defs', {}, svg);
+    var cp = el('clipPath', { id: this.clipId }, defs);
+    el('rect', { x: this.pad.l, y: this.pad.t, width: this.W - this.pad.l - this.pad.r,
+      height: this.H - this.pad.t - this.pad.b }, cp);
+    this.setDomain(o.xmin == null ? 0 : o.xmin, o.xmax == null ? 1 : o.xmax, o.ymin == null ? 0 : o.ymin, o.ymax == null ? 1 : o.ymax);
+  }
+  Frame.prototype.setDomain = function (xmin, xmax, ymin, ymax) {
+    // 只修「退化」（上下界相等/非数），**不能**强行要求 ymax > ymin ——
+    // 俯视图要把 y 轴倒过来画（2026-09-16 实撞：平面形状图整张空白，
+    // 因为这里把倒置域改写成了 [ymin, ymin+1]，机翼落在域外）。
+    if (!isFinite(xmin) || !isFinite(xmax) || xmax === xmin) { xmin = xmin || 0; xmax = xmin + 1; }
+    if (!isFinite(ymin) || !isFinite(ymax) || ymax === ymin) { ymin = ymin || 0; ymax = ymin + 1; }
+    this.xmin = xmin; this.xmax = xmax; this.ymin = ymin; this.ymax = ymax;
+  };
+  Frame.prototype.sx = function (x) { return this.x0 + (x - this.xmin) / (this.xmax - this.xmin) * (this.x1 - this.x0); };
+  Frame.prototype.sy = function (y) { return this.y0 + (y - this.ymin) / (this.ymax - this.ymin) * (this.y1 - this.y0); };
+  /* 刻度档位：按「刻度个数最接近目标」挑，而不是「第一个 ≥ raw 的步长」
+   * （2026-08-27 教训：后者会把 y 轴塌成 2 根刻度）。 */
+  Frame.prototype.ticks = function (min, max, target) {
+    var span = max - min, best = null, mag, s, i, cand, cnt;
+    if (!(span > 0)) return [min];
+    for (mag = Math.floor(Math.log10(span)) - 1; mag <= Math.floor(Math.log10(span)) + 1; mag++) {
+      var base = Math.pow(10, mag);
+      var steps = [1, 2, 2.5, 5, 10];
+      for (i = 0; i < steps.length; i++) {
+        s = steps[i] * base;
+        cnt = Math.floor(max / s) - Math.ceil(min / s) + 1;
+        if (cnt < 2 || cnt > 24) continue;
+        cand = Math.abs(cnt - (target || 6));
+        if (best === null || cand < best.score) best = { step: s, score: cand };
+      }
+    }
+    if (!best) return [min, max];
+    var out = [], v0 = Math.ceil(min / best.step) * best.step;
+    for (var v = v0; v <= max + best.step * 1e-6; v += best.step) out.push(Math.abs(v) < best.step * 1e-9 ? 0 : v);
+    return out;
+  };
+  Frame.prototype.axes = function (o) {
+    var op = o || {}, i, t, px, py;
+    // 域可以是**倒置**的（阿贝图 x 轴从大到小、俯视图 y 轴向下），取刻度前先排序，
+    // 否则 ticks() 拿到负 span 直接 return [min]，整条轴只剩一个刻度
+    // （2026-09-17 实撞：阿贝图 x 轴只画出一个孤零零的「89」）。
+    var xt = op.xticks || this.ticks(Math.min(this.xmin, this.xmax), Math.max(this.xmin, this.xmax), 6);
+    var yt = op.yticks || this.ticks(Math.min(this.ymin, this.ymax), Math.max(this.ymin, this.ymax), 6);
+    el('rect', { x: this.x0, y: this.y1, width: this.x1 - this.x0, height: this.y0 - this.y1, fill: 'none', stroke: TH.axis }, this.svg);
+    for (i = 0; i < yt.length; i++) {
+      py = this.sy(yt[i]);
+      if (py < this.y1 - 0.5 || py > this.y0 + 0.5) continue;
+      el('line', { x1: this.x0, y1: py, x2: this.x1, y2: py, stroke: TH.grid }, this.svg);
+      this.P.text(this.x0 - 6, py + 4, (op.yfmt || this.fmt)(yt[i]), { anchor: 'end', size: 10, fill: TH.tick,
+        offsets: [[0, 0], [0, -9], [0, 9]] });
+    }
+    for (i = 0; i < xt.length; i++) {
+      px = this.sx(xt[i]);
+      if (px < this.x0 - 0.5 || px > this.x1 + 0.5) continue;
+      el('line', { x1: px, y1: this.y0, x2: px, y2: this.y1, stroke: TH.grid }, this.svg);
+      this.P.text(px, this.y0 + 16, (op.xfmt || this.fmt)(xt[i]), { anchor: 'middle', size: 10, fill: TH.tick });
+    }
+    if (op.xlabel) this.P.text((this.x0 + this.x1) / 2, this.H - 6, op.xlabel, { size: 11, fill: TH.label });
+    if (op.ylabel) {
+      var t2 = el('text', { x: 12, y: (this.y0 + this.y1) / 2, 'font-size': 11, fill: TH.label, 'text-anchor': 'middle',
+        transform: 'rotate(-90 12 ' + ((this.y0 + this.y1) / 2) + ')' }, this.svg);
+      t2.textContent = op.ylabel;
+      this.P.reserve(4, this.y1, 16, this.y0 - this.y1);
+    }
+  };
+  Frame.prototype.path = function (pts, o) {
+    var op = o || {}, d = '', i, px, py, started = false;
+    for (i = 0; i < pts.length; i++) {
+      if (pts[i] == null || !isFinite(pts[i][0]) || !isFinite(pts[i][1])) { started = false; continue; }
+      px = this.sx(pts[i][0]); py = this.sy(pts[i][1]);
+      d += (started ? 'L' : 'M') + px.toFixed(2) + ' ' + py.toFixed(2) + ' ';
+      started = true;
+    }
+    if (!d) return null;
+    return el('path', { d: d, fill: op.fill || 'none', stroke: op.stroke || TH.series, 'stroke-width': op.width || 1.6,
+      'stroke-dasharray': op.dash, opacity: op.opacity, 'stroke-linejoin': 'round', 'stroke-linecap': 'round',
+      'clip-path': op.noclip ? null : 'url(#' + this.clipId + ')' }, this.svg);
+  };
+  Frame.prototype.dot = function (x, y, o) {
+    var op = o || {};
+    return el('circle', { cx: this.sx(x), cy: this.sy(y), r: op.r || 3.2, fill: op.fill || TH.series,
+      stroke: op.stroke, 'stroke-width': op.width }, this.svg);
+  };
+  Frame.prototype.vline = function (x, o) {
+    var op = o || {};
+    return el('line', { x1: this.sx(x), y1: this.y0, x2: this.sx(x), y2: this.y1, stroke: op.stroke || '#5a5a5a',
+      'stroke-width': op.width || 1, 'stroke-dasharray': op.dash || '4 4' }, this.svg);
+  };
+  Frame.prototype.hline = function (y, o) {
+    var op = o || {};
+    return el('line', { x1: this.x0, y1: this.sy(y), x2: this.x1, y2: this.sy(y), stroke: op.stroke || '#5a5a5a',
+      'stroke-width': op.width || 1, 'stroke-dasharray': op.dash || '4 4' }, this.svg);
+  };
+
+
+  /* 对数轴刻度：在 [lo, hi]（以 10 为底的指数）区间里挑 1/2/5 × 10^k 这些档，
+   * 返回**真值**数组（调用方自己取 log 当域坐标、并用 yfmt 把它换算回来显示）。
+   * 2026-09-18 抽出：等待时间 / 成本 / 误差这类跨几个数量级的量，线性轴会把
+   * 关心的那一段全压在零线附近（实撞：16 席要 2.2 分钟、19 席只要 11 秒）。
+   * ⚠️ 配套的一条硬规矩：域要**夹**在关注点附近若干个数量级内 —— 只要有一个
+   * 病态点（比如 ρ=1-1e-16 解出 1e17）就能把量程撑到刻度全被避让器丢光。 */
+  function logTicks(lo, hi) {
+    var out = [], k, m, v, lg;
+    for (k = Math.floor(lo); k <= Math.ceil(hi); k++) {
+      for (m = 0; m < 3; m++) {
+        v = [1, 2, 5][m] * Math.pow(10, k);
+        lg = Math.log(v) / Math.LN10;
+        if (lg >= lo - 1e-9 && lg <= hi + 1e-9) out.push(v);
+      }
+    }
+    return out;
+  }
+
+  return { Frame: Frame, Placer: Placer, el: el, clear: clear, fmt: fmt, theme: theme, TH: TH,
+           logTicks: logTicks };
+})();
+
+/* 对拍数字（由 uitruth/make_verify.mjs 根据 oracle/summary.json 生成，勿手改） */
+var SL_VERIFY = [
+ {
+  "k": "sat",
+  "n": "3000 / 3000",
+  "t": "SAT 内核对 CaDiCaL 1.5.3（纯子句）与 OR-Tools CP-SAT（含伪布尔）：1268 个可满足、1732 个不可满足；每个模型逐条复核，每个假设核都再证一次不可满足。"
+ },
+ {
+  "k": "inc",
+  "n": "6000 / 6000",
+  "t": "增量求解：同一个求解器反复加约束、收紧右端（含互补文字与负系数 404 次）后再解，CP-SAT 按累计公式重放核对。"
+ },
+ {
+  "k": "maxsat",
+  "n": "800 / 800",
+  "t": "加权 MaxSAT 最优值：与 RC2（pysat）、CP-SAT 两个独立实现逐个相同（收紧上界共 8519 次）。"
+ },
+ {
+  "k": "roster",
+  "n": "408 / 408",
+  "t": "随机排班项目对 CP-SAT 独立建模：225 个无解判定一致；183 张班表经 Python 独立校验 0 违规、分数一致；72 个中等规模实例最优值全部相同。"
+ },
+ {
+  "k": "mus",
+  "n": "225 / 225",
+  "t": "最小冲突集：CP-SAT 证明每组都无解，且删去任意一条后都有解（共 666 次）。"
+ },
+ {
+  "k": "checker",
+  "n": "3200 / 3200",
+  "t": "任意班表（含故意改坏的）上本页校验器与 Python 校验器：总分、7 个分项、每一处违规逐项相同。"
+ },
+ {
+  "k": "props",
+  "n": "1553 / 1553",
+  "t": "性质：换员工顺序最优值不变、加心愿不降、放宽规则不升、权重全零得 0 分。"
+ }
+];
+
+/* Shift Lab 界面公共层：工具函数、状态与本地存档、求解引擎（Web Worker）管理。 */
+var U = (function () {
+  'use strict';
+  function $(id) { return document.getElementById(id); }
+  function el(tag, attrs, kids) {
+    var n = document.createElement(tag), k;
+    if (attrs) for (k in attrs) {
+      if (attrs[k] == null || attrs[k] === false) continue;
+      if (k === 'text') n.textContent = attrs[k];
+      else if (k === 'cls') n.className = attrs[k];
+      else n.setAttribute(k, attrs[k] === true ? '' : attrs[k]);
+    }
+    if (kids) kids.forEach(function (c) { if (c != null) n.appendChild(typeof c === 'string' ? document.createTextNode(c) : c); });
+    return n;
+  }
+  function clear(n) { while (n.firstChild) n.removeChild(n.firstChild); }
+  function download(text, name, type) {
+    var a = el('a', { href: URL.createObjectURL(new Blob([text], { type: type || 'text/plain' })), download: name });
+    document.body.appendChild(a); a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 0);
+  }
+  var toastT = 0;
+  function toast(msg) {
+    var t = $('sl-toast');
+    t.textContent = msg; t.hidden = false;
+    clearTimeout(toastT);
+    toastT = setTimeout(function () { t.hidden = true; }, 2600);
+  }
+  function int(v, d) { var x = Math.round(+v); return isFinite(x) ? x : d; }
+  function clone(o) { return JSON.parse(JSON.stringify(o)); }
+  function secs(ms) { return ms < 1000 ? ms + ' 毫秒' : (ms / 1000).toFixed(ms < 10000 ? 1 : 0) + ' 秒'; }
+  function num(n) { return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
+  return { $: $, el: el, clear: clear, download: download, toast: toast, int: int, clone: clone, secs: secs, num: num };
+})();
+
+/* ── 状态：项目（pj）+ 班表（cells：staffId → { 日期 → 班次 id }）+ 最近一次求解结果 ── */
+var ST = {
+  pj: null, cells: {}, res: null, diag: null, tab: 'roster', sel: { p: 0, d: 0 },
+  busy: false, trace: [], live: null, seed: 1, conflicts: 0, revision: 0
+};
+var KEY = 'sl-shift-lab-v1';
+
+var Store = (function () {
+  'use strict';
+  function save() {
+    try {
+      localStorage.setItem(KEY, JSON.stringify({ pj: ST.pj, cells: ST.cells, res: ST.res ? { status: ST.res.status, cost: ST.res.cost, ms: ST.res.ms, at: ST.res.at, conflicts: ST.res.conflicts, lns: ST.res.lns, info: ST.res.info } : null, trace: ST.trace, seed: ST.seed, conflicts: ST.conflicts }));
+    } catch (e) { /* 存储满了或被禁用：照常运行，只是不存档 */ }
+  }
+  function load() {
+    try {
+      var o = JSON.parse(localStorage.getItem(KEY) || 'null');
+      if (o && o.pj && o.pj.staff && o.pj.shifts) {
+        ST.pj = o.pj; ST.cells = o.cells || {}; ST.res = o.res || null; ST.trace = o.trace || [];
+        ST.seed = o.seed || 1; ST.conflicts = o.conflicts || 0;
+        return true;
+      }
+    } catch (e) { /* 存档坏了就当没有 */ }
+    return false;
+  }
+  return { save: save, load: load };
+})();
+
+/* 班表格式互转：界面按「人 id + 日期」存，引擎按下标 */
+var RT = (function () {
+  'use strict';
+  function toIdx(pj, cells) {
+    var M = SL.prep(pj), sIdx = {}, R = [];
+    M.shifts.forEach(function (s, i) { sIdx[s.id] = i; });
+    for (var p = 0; p < M.nP; p++) {
+      var row = [], c = cells[M.staff[p].id] || {};
+      for (var d = 0; d < M.nD; d++) { var v = c[M.dates[d]]; row.push(v != null && sIdx[v] !== undefined ? sIdx[v] : -1); }
+      R.push(row);
+    }
+    return R;
+  }
+  function fromIdx(pj, R) {
+    var M = SL.prep(pj), out = {};
+    for (var p = 0; p < M.nP; p++) {
+      var o = {};
+      for (var d = 0; d < M.nD; d++) if (R[p] && R[p][d] >= 0) o[M.dates[d]] = M.shifts[R[p][d]].id;
+      out[M.staff[p].id] = o;
+    }
+    return out;
+  }
+  function hasAny(pj, cells) {
+    var M = SL.prep(pj);
+    for (var p = 0; p < M.nP; p++) {
+      var c = cells[M.staff[p].id];
+      if (!c) continue;
+      for (var d = 0; d < M.nD; d++) if (c[M.dates[d]]) return true;
+    }
+    return false;
+  }
+  return { toIdx: toIdx, fromIdx: fromIdx, hasAny: hasAny };
+})();
+
+/* ── 求解引擎：Web Worker（拿不到就退回主线程同步跑） ── */
+var Engine = (function () {
+  'use strict';
+  var worker = null, mode = 'none', seq = 0, pending = {};
+  function src() { return document.getElementById('sl-engine').textContent; }
+  function boot() {
+    if (worker) return;
+    try {
+      var url = URL.createObjectURL(new Blob([src()], { type: 'text/javascript' }));
+      worker = new Worker(url);
+      worker.onmessage = function (e) {
+        var m = e.data, h = pending[m.id];
+        if (!h) return;
+        if (m.type === 'progress' && h.onProgress) h.onProgress(m.ev);
+        else if (m.type === 'tick' && h.onTick) h.onTick(m.ev);
+        else if (m.type === 'done' || m.type === 'diag') { delete pending[m.id]; h.resolve(m.res); }
+      };
+      worker.onerror = function (e) {
+        e.preventDefault();
+        var ids = Object.keys(pending);
+        ids.forEach(function (id) { pending[id].resolve({ status: 'error', errors: ['求解线程出错：' + (e.message || '未知错误')] }); delete pending[id]; });
+        worker = null; mode = 'main';
+      };
+      mode = 'worker';
+    } catch (e) { worker = null; mode = 'main'; }
+  }
+  function run(cmd, pj, opt, onProgress, onTick) {
+    boot();
+    var id = ++seq;
+    return new Promise(function (resolve) {
+      if (worker) {
+        pending[id] = { resolve: resolve, onProgress: onProgress, onTick: onTick };
+        worker.postMessage({ cmd: cmd, id: id, pj: pj, opt: opt });
+        return;
+      }
+      // 主线程兜底：同步跑（界面会卡住一会儿）
+      setTimeout(function () {
+        if (cmd === 'optimize') {
+          var o = { conflicts: opt.conflicts, seed: opt.seed, hint: opt.hint, deadline: opt.ms ? Date.now() + opt.ms : 0, onProgress: onProgress };
+          resolve(SL.optimize(pj, o));
+        } else resolve(SL.diagnose(pj, { conflicts: opt.conflicts, perCall: opt.perCall, deadline: opt.ms ? Date.now() + opt.ms : 0 }));
+      }, 20);
+    });
+  }
+  function stop() {
+    if (!worker) return;
+    worker.terminate(); worker = null;
+    var ids = Object.keys(pending);
+    ids.forEach(function (id) { pending[id].resolve({ status: 'stopped' }); delete pending[id]; });
+  }
+  return {
+    optimize: function (pj, opt, onProgress, onTick) { return run('optimize', pj, opt, onProgress, onTick); },
+    diagnose: function (pj, opt) { return run('diagnose', pj, opt); },
+    stop: stop, mode: function () { boot(); return mode; }
+  };
+})();
+
+/* Shift Lab 排班表页：班表网格、单元格菜单与键盘、状态与概况、扣分明细、合规核对、优化曲线、导出。 */
+var View = (function () {
+  'use strict';
+  var $ = U.$, el = U.el;
+  var COLORS = ['orange', 'violet', 'pink', 'emerald', 'blue', 'amber'];
+  var STATUS = {
+    idle: ['未排班', '点「自动排班」开始'], run: ['排班中…', '正在求解'], optimal: ['已证明最优', '不存在扣分更低的班表'],
+    feasible: ['已找到', '未证明最优，可继续优化'], infeasible: ['无解', '硬规则互相冲突'], unknown: ['未找到', '时间内没找到合规班表'],
+    stopped: ['已停止', '保留了目前最好的班表'], manual: ['已手动修改', '与求解结果不同'], error: ['设置有误', '请先修正设置'],
+    imported: ['已导入', '合规与扣分已按当前设置重算']
+  };
+  var lastChk = null;
+
+  function M() { return SL.prep(ST.pj); }
+  function colorOf(sh) { return COLORS.indexOf(sh.color) >= 0 ? sh.color : 'orange'; }
+  function dlab(Mx, d) { return SL.md(Mx.dates[d]) + '（周' + SL.WD[Mx.dow[d]] + '）'; }
+  function reqOf(staffId, date) {
+    var rs = ST.pj.requests || [];
+    for (var i = 0; i < rs.length; i++) if (rs[i].staff === staffId && rs[i].date === date) return rs[i];
+    return null;
+  }
+
+  function currentCheck() {
+    var Mx = M();
+    if (Mx.errors.length) return null;
+    return SL.check(ST.pj, RT.toIdx(ST.pj, ST.cells), Mx);
+  }
+
+  // ── 状态条 + 首屏概况 ──
+  function setStatus(kind, detail, tag) {
+    var s = STATUS[kind] || STATUS.idle;
+    $('sl-dot').setAttribute('data-s', kind);
+    $('sl-st-t').textContent = s[0];
+    $('sl-st-d').textContent = detail || s[1];
+    var tg = $('sl-st-tag');
+    if (tag) { tg.textContent = tag; tg.hidden = false; } else tg.hidden = true;
+    $('sl-goto-diag').hidden = kind !== 'infeasible';
+    $('sl-k-status').textContent = s[0];
+    $('sl-k-status2').textContent = detail ? detail.split('。')[0] : s[1];
+    document.body.setAttribute('data-sl-status', kind);
+  }
+  function metrics(res, live) {
+    var box = $('sl-st-m');
+    U.clear(box);
+    var r = live || res;
+    if (!r) return;
+    function m(k, v) { box.appendChild(el('span', null, [k + ' ', el('b', { text: v })])); }
+    if (r.ms != null) m('用时', U.secs(r.ms));
+    if (r.conflicts != null) m('冲突', U.num(r.conflicts));
+    if (r.lns) m('邻域求解', r.lns.calls + ' 次（改进 ' + r.lns.improved + '，证明无改进 ' + r.lns.unsat + '）');
+    if (r.info) m('模型', U.num(r.info.vars) + ' 变量 · ' + U.num(r.info.clauses) + ' 子句 · ' + U.num(r.info.pbs) + ' 条 PB');
+  }
+
+  function kpis(chk) {
+    var Mx = M();
+    if (!chk || !RT.hasAny(ST.pj, ST.cells)) {
+      $('sl-k-cost').textContent = '—'; $('sl-k-cover').textContent = '—'; $('sl-k-wish').textContent = '—';
+      $('sl-k-cost2').textContent = '软目标加权和'; $('sl-k-cover2').textContent = '每天每班的人数'; $('sl-k-wish2').textContent = '想休 / 想上某班';
+      return;
+    }
+    $('sl-k-cost').textContent = String(chk.cost);
+    $('sl-k-cost2').textContent = ST.res && ST.res.status === 'optimal' && ST.res.cost === chk.cost ? '已证明是最低分' : (chk.ok ? '全部硬规则已满足' : chk.hard.length + ' 处违反硬规则');
+    var need = 0, got = 0, short = 0, over = 0;
+    for (var d = 0; d < Mx.nD; d++) for (var s = 0; s < Mx.nS; s++) {
+      var n = chk.cover[d][s], q = Mx.need[d][s];
+      need += q; got += Math.min(n, q);
+      if (n < q) short += q - n;
+      if (n > q + Mx.overstaff) over += n - q - Mx.overstaff;
+    }
+    $('sl-k-cover').textContent = got + ' / ' + need;
+    $('sl-k-cover2').textContent = short || over ? '缺 ' + short + ' 人次 · 超编 ' + over + ' 人次' : '每天每班都正好排满';
+    var wish = 0, ok = 0, R = RT.toIdx(ST.pj, ST.cells);
+    for (var p = 0; p < Mx.nP; p++) for (d = 0; d < Mx.nD; d++) {
+      var r = Mx.req[p][d];
+      if (!r || (r.kind !== 'off' && r.kind !== 'on')) continue;
+      wish++;
+      var v = R[p][d];
+      if ((r.kind === 'off' && v < 0) || (r.kind === 'on' && v === r.s)) ok++;
+    }
+    $('sl-k-wish').textContent = wish ? ok + ' / ' + wish : '—';
+    $('sl-k-wish2').textContent = wish ? (wish - ok ? (wish - ok) + ' 条没满足' : '全部满足') : '没有心愿';
+  }
+
+  // ── 班表网格 ──
+  function legend(Mx) {
+    var lg = $('sl-legend');
+    U.clear(lg);
+    Mx.shifts.forEach(function (sh) {
+      lg.appendChild(el('span', { cls: 'sl-lg' }, [el('span', { cls: 'sl-sh sl-cl-' + colorOf(sh), text: sh.short || sh.id, 'aria-hidden': 'true' }),
+        (sh.name || sh.id) + ' ' + sh.start + '–' + sh.end]));
+    });
+    lg.appendChild(el('span', { cls: 'sl-lg' }, [el('i', { cls: 'sl-mk', 'data-k': 'lock', style: 'position:static' }), '锁定']));
+    lg.appendChild(el('span', { cls: 'sl-lg' }, [el('i', { cls: 'sl-mk', 'data-k': 'off', style: 'position:static' }), '想休']));
+    lg.appendChild(el('span', { cls: 'sl-lg' }, [el('i', { cls: 'sl-mk', 'data-k': 'on', style: 'position:static' }), '想上某班']));
+  }
+
+  function renderGrid(chk) {
+    var Mx = M(), g = $('sl-grid');
+    U.clear(g);
+    if (Mx.errors.length) {
+      g.appendChild(el('tbody', null, [el('tr', null, [el('td', { cls: 'sl-st', text: '设置有误：' + Mx.errors.join('；'), style: 'padding:24px!important;text-align:left' })])]));
+      return;
+    }
+    var R = RT.toIdx(ST.pj, ST.cells), has = RT.hasAny(ST.pj, ST.cells);
+    var badCell = {};
+    if (chk && has) chk.hard.forEach(function (h) { if (h.info && h.info.p != null && h.info.d != null) badCell[h.info.p + '|' + h.info.d] = 1; });
+    var stats = chk ? chk.stats : null;
+    // 表头
+    var hr = el('tr');
+    hr.appendChild(el('th', { cls: 'sl-nm', scope: 'col', text: '成员' }));
+    for (var d = 0; d < Mx.nD; d++) {
+      var dd = Mx.dates[d].split('-');
+      hr.appendChild(el('th', { cls: 'sl-dh', scope: 'col', 'data-wk': Mx.wkend[d] ? '1' : '0', title: Mx.dates[d] + (Mx.wkend[d] && !Mx.realWkend[d] ? '（节假日）' : '') },
+        [String(+dd[2]), el('i', { text: SL.WD[Mx.dow[d]] })]));
+    }
+    ['班数', '夜班', '周末', '工时'].forEach(function (h, i) { hr.appendChild(el('th', { cls: 'sl-st' + (i === 0 ? ' sl-st-first' : ''), scope: 'col', text: h })); });
+    g.appendChild(el('thead', null, [hr]));
+    // 每人一行
+    var tb = el('tbody');
+    for (var p = 0; p < Mx.nP; p++) {
+      var sp = Mx.staff[p], tr = el('tr');
+      var tags = [];
+      Mx.skills.forEach(function (k, ki) { if (Mx.has[p][ki]) tags.push(k.name || k.id); });
+      tags.push('FTE ' + (+Mx.fte[p]).toFixed(1));
+      tr.appendChild(el('th', { cls: 'sl-nm', scope: 'row' }, [el('div', { cls: 'sl-who' }, [
+        el('span', { cls: 'sl-av sl-avc-' + (p % 4), text: (sp.name || sp.id).slice(0, 1), 'aria-hidden': 'true' }),
+        el('div', { style: 'min-width:0' }, [el('span', { cls: 'sl-who-n', text: sp.name || sp.id }), el('small', { text: tags.join(' · ') })])])]));
+      for (d = 0; d < Mx.nD; d++) {
+        var v = R[p][d], rq = Mx.req[p][d], kids = [], lab = (sp.name || sp.id) + ' ' + dlab(Mx, d) + '：' + (v >= 0 ? (Mx.shifts[v].name || Mx.shifts[v].id) : '休息');
+        if (v >= 0) kids.push(el('span', { cls: 'sl-sh sl-cl-' + colorOf(Mx.shifts[v]), text: Mx.shifts[v].short || Mx.shifts[v].id }));
+        else if (rq && rq.kind === 'leave') kids.push(el('span', { cls: 'sl-off', text: '假' }));
+        var reqKind = rq ? rq.kind : '';
+        if (rq) {
+          if (rq.kind === 'leave') lab += '，请假';
+          else if (rq.kind === 'lock') { kids.push(el('i', { cls: 'sl-mk', 'data-k': 'lock' })); lab += '，锁定为' + (rq.s >= 0 ? (Mx.shifts[rq.s].name || Mx.shifts[rq.s].id) : '休息'); }
+          else if (rq.kind === 'off') { var miss = has && v >= 0; kids.push(el('i', { cls: 'sl-mk', 'data-k': 'off', 'data-miss': miss ? '1' : '0' })); lab += '，想休' + (miss ? '（未满足）' : ''); }
+          else if (rq.kind === 'on') { var miss2 = has && v !== rq.s; kids.push(el('i', { cls: 'sl-mk', 'data-k': 'on', 'data-miss': miss2 ? '1' : '0' })); lab += '，想上' + (Mx.shifts[rq.s].name || Mx.shifts[rq.s].id) + (miss2 ? '（未满足）' : ''); }
+        }
+        var bad = badCell[p + '|' + d];
+        if (bad) lab += '，违反硬规则';
+        var sel = ST.sel.p === p && ST.sel.d === d;
+        tr.appendChild(el('td', { cls: 'sl-c', role: 'gridcell', tabindex: sel ? '0' : '-1', 'aria-selected': sel ? 'true' : 'false',
+          'data-p': p, 'data-d': d, 'data-wk': Mx.wkend[d] ? '1' : '0', 'data-req': reqKind || null, 'data-bad': bad ? '1' : null,
+          'data-v': v >= 0 ? Mx.shifts[v].id : '', 'aria-label': lab }, kids));
+      }
+      var st = stats ? stats[p] : null;
+      function sc(val, t, first, title) {
+        var dev = st && has && t && (val < t.lo || val > t.hi);
+        return el('td', { cls: 'sl-st' + (first ? ' sl-st-first' : ''), 'data-dev': dev ? '1' : '0', title: title }, [st && has ? String(val) : '—']);
+      }
+      tr.appendChild(sc(st ? st.shifts : 0, Mx.tgt[p], true, '目标 ' + rng(Mx.tgt[p]) + ' 个班'));
+      tr.appendChild(sc(st ? st.nights : 0, Mx.anyNight && Mx.nightOK[p] ? Mx.tgtN[p] : null, false, Mx.anyNight && Mx.nightOK[p] ? '目标 ' + rng(Mx.tgtN[p]) + ' 个夜班' : '不上夜班'));
+      tr.appendChild(sc(st ? st.weekends : 0, Mx.tgtWk[p], false, '目标 ' + rng(Mx.tgtWk[p]) + ' 个周末班'));
+      tr.appendChild(el('td', { cls: 'sl-st' }, [st && has ? String(Math.round(st.hours * 10) / 10) : '—']));
+      tb.appendChild(tr);
+    }
+    g.appendChild(tb);
+    // 覆盖行
+    var tf = el('tfoot', { cls: 'sl-cov' });
+    for (var s = 0; s < Mx.nS; s++) {
+      var fr = el('tr', s === 0 ? { cls: 'sl-cov-first' } : null);
+      fr.appendChild(el('th', { cls: 'sl-nm', scope: 'row', text: (Mx.shifts[s].name || Mx.shifts[s].id) + ' 人数' }));
+      for (d = 0; d < Mx.nD; d++) {
+        var n = chk ? chk.cover[d][s] : 0, q = Mx.need[d][s];
+        var cv = !has ? 'none' : n < q ? 'short' : n > q + Mx.overstaff ? 'over' : 'ok';
+        fr.appendChild(el('td', { 'data-cv': cv, 'data-d': d, 'data-s': s, title: SL.md(Mx.dates[d]) + ' ' + (Mx.shifts[s].name || Mx.shifts[s].id) + '：排了 ' + n + ' 人，需求 ' + q,
+          'aria-label': SL.md(Mx.dates[d]) + ' ' + (Mx.shifts[s].name || Mx.shifts[s].id) + ' 排了 ' + n + ' 人，需求 ' + q }, [has ? String(n) : String(q)]));
+      }
+      fr.appendChild(el('td', { colspan: '4' }));
+      tf.appendChild(fr);
+    }
+    g.appendChild(tf);
+  }
+  function rng(t) { return t.lo === t.hi ? String(t.lo) : t.lo + '–' + t.hi; }
+
+  // ── 扣分明细 / 合规核对 ──
+  function breakdown(chk) {
+    var by = $('sl-by'), items = $('sl-items');
+    U.clear(by); U.clear(items);
+    if (!chk || !RT.hasAny(ST.pj, ST.cells)) { items.appendChild(el('li', { text: '还没有班表。' })); return; }
+    var kinds = ['wish', 'fair', 'weekend', 'night', 'isoWork', 'isoOff', 'split'], mx = 1;
+    kinds.forEach(function (k) { mx = Math.max(mx, chk.by[k] || 0); });
+    kinds.forEach(function (k) {
+      var v = chk.by[k] || 0;
+      by.appendChild(el('dt', { text: SL.KIND_NAME[k] + '（权重 ' + ST.pj.weights[k] + '）' }));
+      by.appendChild(el('dd', { 'data-z': v ? '0' : '1', 'data-kind': k, text: String(v) }));
+      by.appendChild(el('div', { cls: 'sl-bar-h', 'aria-hidden': 'true' }, [el('i', { style: 'width:' + Math.round(v / mx * 100) + '%' })]));
+    });
+    by.appendChild(el('dt', { text: '合计', style: 'font-weight:600;color:#111' }));
+    by.appendChild(el('dd', { id: 'sl-by-total', text: String(chk.cost) }));
+    var sorted = chk.items.slice().sort(function (a, b) { return b.w - a.w; });
+    sorted.slice(0, 60).forEach(function (it) { items.appendChild(el('li', null, [el('b', { text: '−' + it.w }), el('span', { text: it.desc })])); });
+    if (!sorted.length) items.appendChild(el('li', { text: '没有任何扣分：所有软目标都满足了。' }));
+    if (sorted.length > 60) items.appendChild(el('li', { text: '…另有 ' + (sorted.length - 60) + ' 项' }));
+  }
+  function hardList(chk) {
+    var ul = $('sl-hard'), okp = $('sl-hard-ok');
+    U.clear(ul);
+    if (!chk || !RT.hasAny(ST.pj, ST.cells)) { okp.textContent = '还没有班表。'; okp.hidden = false; return; }
+    if (chk.ok) { okp.textContent = '全部硬规则都满足：覆盖、技能、请假、锁定、间隔、连续上班、夜班与班数上下限。'; okp.hidden = false; return; }
+    okp.hidden = true;
+    chk.hard.slice(0, 80).forEach(function (h) { ul.appendChild(el('li', { 'data-type': h.type }, [el('span', { cls: 'sl-tag sl-tag-bad', text: TYPE_NAME[h.type] || h.type }), el('span', { text: h.desc })])); });
+    if (chk.hard.length > 80) ul.appendChild(el('li', { text: '…另有 ' + (chk.hard.length - 80) + ' 处' }));
+  }
+  var TYPE_NAME = { cover: '缺人', coverMax: '超编', skill: '技能', leave: '请假', lock: '锁定', elig: '资格', rest: '间隔', consec: '连上', nightRun: '连夜', nights: '夜班数', minShifts: '班数下限', maxShifts: '班数上限', bad: '无效' };
+
+  // ── 优化曲线 ──
+  function chart() {
+    AEPlot.theme({ grid: '#f3f4f6', axis: '#e5e7eb', tick: '#6b7280', label: '#898989', text: '#374151', plate: '#ffffff', series: '#111111' });
+    var tr = ST.trace || [];
+    var F = new AEPlot.Frame('sl-conv', { pad: { l: 40, r: 16, t: 14, b: 26 }, fmt: function (v) { return String(Math.round(v * 10) / 10); } });
+    if (!tr.length) {
+      F.setDomain(0, 8, 0, 100);
+      F.axes({ xfmt: function (v) { return v + 's'; }, yfmt: function (v) { return String(v); } });
+      F.P.text((F.x0 + F.x1) / 2, (F.y0 + F.y1) / 2 + 4, '排班后显示扣分随时间下降的曲线', { size: 11, fill: '#898989' });
+      return;
+    }
+    var t1 = Math.max(tr[tr.length - 1].ms, ST.live && ST.live.ms || 0, 1) / 1000, c0 = tr[0].cost, c1 = tr[tr.length - 1].cost;
+    var ymax = c0 * 1.05 + 1, ymin = Math.max(0, c1 - (c0 - c1) * 0.08 - 1);
+    F.setDomain(0, t1, ymin, ymax);
+    F.axes({ xfmt: function (v) { return (Math.round(v * 10) / 10) + 's'; }, yfmt: function (v) { return String(Math.round(v)); } });
+    var pts = [];
+    tr.forEach(function (q, i) { if (i) pts.push([q.ms / 1000, tr[i - 1].cost]); pts.push([q.ms / 1000, q.cost]); });
+    pts.push([t1, c1]);
+    F.path(pts, { stroke: '#111111', width: 1.8 });
+    F.dot(tr[tr.length - 1].ms / 1000, c1, { r: 3.5, fill: '#111111' });
+    $('sl-conv').setAttribute('data-points', String(tr.length));
+    $('sl-conv').setAttribute('aria-label', '优化曲线：' + tr.length + ' 次改进，扣分从 ' + c0 + ' 降到 ' + c1);
+  }
+
+  // ── 单元格菜单 ──
+  var menuAt = null;
+  function openMenu(p, d) {
+    var Mx = M(), menu = $('sl-menu');
+    if (Mx.errors.length || p >= Mx.nP || d >= Mx.nD) return;
+    menuAt = { p: p, d: d };
+    var sp = Mx.staff[p], rq = reqOf(sp.id, Mx.dates[d]), cur = (ST.cells[sp.id] || {})[Mx.dates[d]] || '';
+    U.clear(menu);
+    menu.appendChild(el('h4', { id: 'sl-menu-h', text: (sp.name || sp.id) + ' · ' + dlab(Mx, d) }));
+    var curName = cur ? (Mx.shifts.filter(function (s) { return s.id === cur; })[0] || {}).name || cur : '休息';
+    menu.appendChild(el('p', { text: '当前：' + curName + (rq ? '；' + reqText(Mx, rq) : '') }));
+    function btn(label, act, on, title) {
+      return el('button', { cls: 'sl-mi', type: 'button', 'data-act': act, 'aria-pressed': on ? 'true' : 'false', title: title || null, text: label });
+    }
+    menu.appendChild(el('div', { cls: 'sl-menu-l', text: '锁定为（硬规则）' }));
+    var g1 = el('div', { cls: 'sl-menu-g' });
+    Mx.shifts.forEach(function (sh, i) { g1.appendChild(btn((i + 1) + ' · ' + (sh.short || sh.id), 'lock:' + sh.id, rq && rq.kind === 'lock' && rq.shift === sh.id, '锁定为' + (sh.name || sh.id))); });
+    g1.appendChild(btn('0 · 休', 'lock:', rq && rq.kind === 'lock' && !rq.shift, '锁定休息'));
+    menu.appendChild(g1);
+    menu.appendChild(el('div', { cls: 'sl-menu-l', text: '心愿（软目标，满足不了按权重扣分）' }));
+    var g2 = el('div', { cls: 'sl-menu-g' });
+    g2.appendChild(btn('W · 想休', 'off', rq && rq.kind === 'off'));
+    Mx.shifts.forEach(function (sh) { g2.appendChild(btn('想上' + (sh.short || sh.id), 'on:' + sh.id, rq && rq.kind === 'on' && rq.shift === sh.id, '想上' + (sh.name || sh.id))); });
+    menu.appendChild(g2);
+    var g3 = el('div', { cls: 'sl-menu-g' });
+    g3.appendChild(btn('L · 请假', 'leave', rq && rq.kind === 'leave', '请假（硬规则：这天不排班）'));
+    g3.appendChild(btn('清除', 'clear', false, '去掉这一格的锁定 / 请假 / 心愿'));
+    g3.appendChild(btn('关闭', 'close', false));
+    menu.appendChild(g3);
+    menu.hidden = false;
+    var cell = cellEl(p, d), r = cell.getBoundingClientRect(), mw = menu.offsetWidth, mh = menu.offsetHeight;
+    var x = r.left + window.scrollX, y = r.bottom + window.scrollY + 6;
+    if (x + mw > window.scrollX + document.documentElement.clientWidth - 8) x = window.scrollX + document.documentElement.clientWidth - mw - 8;
+    if (x < window.scrollX + 8) x = window.scrollX + 8;
+    if (r.bottom + mh + 12 > window.innerHeight && r.top - mh - 6 > 0) y = r.top + window.scrollY - mh - 6;
+    menu.style.left = Math.round(x) + 'px'; menu.style.top = Math.round(y) + 'px';
+    var first = menu.querySelector('.sl-mi[aria-pressed="true"]') || menu.querySelector('.sl-mi');
+    if (first) first.focus();
+  }
+  function closeMenu(refocus) {
+    var menu = $('sl-menu');
+    if (menu.hidden) return;
+    menu.hidden = true;
+    if (refocus && menuAt) { var c = cellEl(menuAt.p, menuAt.d); if (c) c.focus(); }
+    menuAt = null;
+  }
+  function reqText(Mx, rq) {
+    var sh = rq.shift ? (Mx.shifts.filter(function (s) { return s.id === rq.shift; })[0] || {}) : null;
+    if (rq.kind === 'leave') return '请假';
+    if (rq.kind === 'off') return '想休';
+    if (rq.kind === 'on') return '想上' + (sh && sh.name || rq.shift);
+    if (rq.kind === 'lock') return '锁定为' + (sh ? sh.name || rq.shift : '休息');
+    return '';
+  }
+  // 改一格：动作 = lock:<班次id 或空> / off / on:<班次id> / leave / clear
+  function apply(p, d, act) {
+    var Mx = M();
+    if (Mx.errors.length) return;
+    var sid = Mx.staff[p].id, date = Mx.dates[d];
+    ST.pj.requests = (ST.pj.requests || []).filter(function (r) { return !(r.staff === sid && r.date === date); });
+    var cells = ST.cells[sid] || (ST.cells[sid] = {});
+    if (act.indexOf('lock:') === 0) {
+      var s = act.slice(5);
+      ST.pj.requests.push({ staff: sid, date: date, kind: 'lock', shift: s });
+      if (s) cells[date] = s; else delete cells[date];
+    } else if (act === 'off') ST.pj.requests.push({ staff: sid, date: date, kind: 'off', shift: '' });
+    else if (act.indexOf('on:') === 0) ST.pj.requests.push({ staff: sid, date: date, kind: 'on', shift: act.slice(3) });
+    else if (act === 'leave') { ST.pj.requests.push({ staff: sid, date: date, kind: 'leave', shift: '' }); delete cells[date]; }
+    App.changed('cell');
+  }
+  function cellEl(p, d) { return document.querySelector('#sl-grid td.sl-c[data-p="' + p + '"][data-d="' + d + '"]'); }
+  function select(p, d, focus) {
+    var Mx = M();
+    p = Math.max(0, Math.min(Mx.nP - 1, p)); d = Math.max(0, Math.min(Mx.nD - 1, d));
+    var old = cellEl(ST.sel.p, ST.sel.d);
+    if (old) { old.setAttribute('tabindex', '-1'); old.setAttribute('aria-selected', 'false'); }
+    ST.sel = { p: p, d: d };
+    var c = cellEl(p, d);
+    if (c) { c.setAttribute('tabindex', '0'); c.setAttribute('aria-selected', 'true'); if (focus) { c.focus(); c.scrollIntoView({ block: 'nearest', inline: 'nearest' }); } }
+  }
+  function wireGrid() {
+    var g = $('sl-grid');
+    g.addEventListener('click', function (e) {
+      var td = e.target.closest('td.sl-c');
+      if (!td) return;
+      var p = +td.getAttribute('data-p'), d = +td.getAttribute('data-d');
+      select(p, d, false);
+      openMenu(p, d);
+    });
+    g.addEventListener('keydown', function (e) {
+      var td = e.target.closest('td.sl-c');
+      if (!td) return;
+      var p = +td.getAttribute('data-p'), d = +td.getAttribute('data-d'), Mx = M(), k = e.key;
+      var mv = { ArrowLeft: [0, -1], ArrowRight: [0, 1], ArrowUp: [-1, 0], ArrowDown: [1, 0] }[k];
+      if (mv) { e.preventDefault(); select(p + mv[0], d + mv[1], true); return; }
+      if (k === 'Home') { e.preventDefault(); select(p, 0, true); return; }
+      if (k === 'End') { e.preventDefault(); select(p, Mx.nD - 1, true); return; }
+      if (k === 'Enter' || k === ' ') { e.preventDefault(); openMenu(p, d); return; }
+      var act = null;
+      if (/^[1-9]$/.test(k) && +k <= Mx.nS) act = 'lock:' + Mx.shifts[+k - 1].id;
+      else if (k === '0') act = 'lock:';
+      else if (k === 'l' || k === 'L') act = 'leave';
+      else if (k === 'w' || k === 'W') act = 'off';
+      else if (k === 'Delete' || k === 'Backspace') act = 'clear';
+      if (act) { e.preventDefault(); apply(p, d, act); select(p, d, true); }
+    });
+    var menu = $('sl-menu');
+    menu.addEventListener('click', function (e) {
+      var b = e.target.closest('.sl-mi');
+      if (!b || !menuAt) return;
+      var act = b.getAttribute('data-act'), at = menuAt;
+      if (act === 'close') { closeMenu(true); return; }
+      closeMenu(false);
+      apply(at.p, at.d, act);
+      select(at.p, at.d, true);
+    });
+    menu.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') { e.preventDefault(); closeMenu(true); }
+    });
+    document.addEventListener('mousedown', function (e) {
+      if (!menu.hidden && !menu.contains(e.target) && !e.target.closest('td.sl-c')) closeMenu(false);
+    });
+  }
+
+  // ── 导出 ──
+  function csv() {
+    var Mx = M(), R = RT.toIdx(ST.pj, ST.cells), chk = SL.check(ST.pj, R, Mx);
+    var head = ['姓名'];
+    for (var d = 0; d < Mx.nD; d++) head.push(SL.md(Mx.dates[d]) + ' 周' + SL.WD[Mx.dow[d]]);
+    head.push('班数', '夜班', '周末班', '工时');
+    var rows = [head];
+    for (var p = 0; p < Mx.nP; p++) {
+      var row = [Mx.staff[p].name || Mx.staff[p].id];
+      for (d = 0; d < Mx.nD; d++) {
+        var v = R[p][d], rq = Mx.req[p][d];
+        row.push(v >= 0 ? (Mx.shifts[v].name || Mx.shifts[v].id) : rq && rq.kind === 'leave' ? '请假' : '休');
+      }
+      var st = chk.stats[p];
+      row.push(st.shifts, st.nights, st.weekends, Math.round(st.hours * 10) / 10);
+      rows.push(row);
+    }
+    var text = String.fromCharCode(0xfeff) + rows.map(function (r) {
+      return r.map(function (c) { c = String(c); return /[",\n]/.test(c) ? '"' + c.replace(/"/g, '""') + '"' : c; }).join(',');
+    }).join('\r\n') + '\r\n';
+    U.download(text, (ST.pj.name || '班表').replace(/[\\/:*?"<>|\s]+/g, '_') + '.csv', 'text/csv;charset=utf-8');
+    return text;
+  }
+  function icsEsc(s) { return String(s).replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\n/g, '\\n'); }
+  function ics(p) {
+    var Mx = M(), R = RT.toIdx(ST.pj, ST.cells);
+    if (p == null || p < 0 || p >= Mx.nP) return '';
+    var sp = Mx.staff[p], now = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z');
+    var L = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Shift Lab//daily-tools//ZH', 'CALSCALE:GREGORIAN', 'X-WR-CALNAME:' + icsEsc((sp.name || sp.id) + ' 的班表')];
+    function stamp(t, mins) {
+      var d = new Date(t + mins * 60000);
+      function z(n) { return (n < 10 ? '0' : '') + n; }
+      return d.getUTCFullYear() + z(d.getUTCMonth() + 1) + z(d.getUTCDate()) + 'T' + z(d.getUTCHours()) + z(d.getUTCMinutes()) + '00';
+    }
+    for (var d = 0; d < Mx.nD; d++) {
+      var v = R[p][d];
+      if (v < 0) continue;
+      var t = SL.parseISO(Mx.dates[d]), sh = Mx.shifts[v];
+      L.push('BEGIN:VEVENT', 'UID:' + Mx.dates[d] + '-' + icsEsc(sp.id) + '-' + icsEsc(sh.id) + '@shift-lab', 'DTSTAMP:' + now,
+        'DTSTART:' + stamp(t, Mx.a[v]), 'DTEND:' + stamp(t, Mx.e[v]), 'SUMMARY:' + icsEsc((sh.name || sh.id) + ' · ' + (ST.pj.name || '排班')), 'END:VEVENT');
+    }
+    L.push('END:VCALENDAR');
+    var text = L.join('\r\n') + '\r\n';
+    U.download(text, (sp.name || sp.id) + '-班表.ics', 'text/calendar;charset=utf-8');
+    return text;
+  }
+
+  function render() {
+    var Mx = M();
+    var chk = currentCheck();
+    lastChk = chk;
+    $('sl-period').textContent = Mx.errors.length ? '设置有误' : SL.md(Mx.dates[0]) + ' – ' + SL.md(Mx.dates[Mx.nD - 1]) + ' · ' + Mx.nD + ' 天 · ' + Mx.nP + ' 人';
+    if (!Mx.errors.length) legend(Mx);
+    renderGrid(chk);
+    kpis(chk);
+    breakdown(chk);
+    hardList(chk);
+    chart();
+    var sel = $('sl-ics-who'), keep = sel.value;
+    U.clear(sel);
+    if (!Mx.errors.length) Mx.staff.forEach(function (sp, i) { sel.appendChild(el('option', { value: String(i), text: sp.name || sp.id })); });
+    if (keep && +keep < Mx.nP) sel.value = keep;
+    document.body.setAttribute('data-sl-rev', String(++ST.revision));
+  }
+
+  return {
+    render: render, setStatus: setStatus, metrics: metrics, chart: chart, wireGrid: wireGrid, openMenu: openMenu, closeMenu: closeMenu,
+    apply: apply, select: select, csv: csv, ics: ics, lastCheck: function () { return lastChk; }, STATUS: STATUS, TYPE_NAME: TYPE_NAME, COLORS: COLORS
+  };
+})();
+
+/* Shift Lab 编辑页：人员 / 班次 / 需求 / 特定日期 / 节假日；硬规则 / 软目标权重 / 求解器设置。
+ * 字段改动只改数据不重画表格（否则 Tab 到下一个输入框时焦点会丢）；增删行才重画。 */
+var Edit = (function () {
+  'use strict';
+  var $ = U.$, el = U.el;
+  var WEIGHTS = [
+    ['wish', '心愿', '想休 / 想上某班没满足，每条扣一次。'],
+    ['fair', '班数公平', '每人班数偏离目标（按 FTE 与出勤天数分摊）时累进扣分。'],
+    ['weekend', '周末公平', '周末班数偏离目标时累进扣分。'],
+    ['night', '夜班公平', '夜班数偏离目标时累进扣分（只在能上夜班的人之间分）。'],
+    ['isoWork', '孤立班', '前后都休、只上一天。'],
+    ['isoOff', '只休一天', '前后都上、中间只休一天。'],
+    ['split', '周末拆开', '周六、周日只上其中一天。']
+  ];
+  var COLOR_NAME = { orange: '橙', violet: '紫', pink: '粉', emerald: '绿', blue: '蓝', amber: '琥珀' };
+
+  function num(v, lo, hi, dflt) { var x = +v; if (!isFinite(x)) return dflt; return Math.max(lo, Math.min(hi, x)); }
+  function optInt(v) { if (v === '' || v == null) return null; var x = Math.round(+v); return isFinite(x) ? Math.max(0, x) : null; }
+
+  // ── 人员 ──
+  function staffTable() {
+    var pj = ST.pj, t = $('sl-staff-tbl');
+    U.clear(t);
+    var hr = el('tr', null, [el('th', { text: '姓名' }), el('th', { text: 'FTE' }), el('th', { text: '技能' }), el('th', { text: '可上班次' }),
+      el('th', { text: '班数下限' }), el('th', { text: '班数上限' }), el('th', { text: '上期末连上（天）' }), el('th', { text: '上期最后一班' }), el('th', { text: '' })]);
+    t.appendChild(el('thead', null, [hr]));
+    var tb = el('tbody');
+    pj.staff.forEach(function (sp, p) {
+      var tr = el('tr', { 'data-p': p });
+      tr.appendChild(el('td', null, [el('input', { cls: 'sl-in sl-in-sm sl-w-name', type: 'text', value: sp.name, 'data-f': 'name', 'aria-label': '第 ' + (p + 1) + ' 位的姓名', maxlength: '20' })]));
+      tr.appendChild(el('td', null, [el('input', { cls: 'sl-in sl-in-sm', type: 'number', min: '0', max: '2', step: '0.1', value: sp.fte, 'data-f': 'fte', 'aria-label': (sp.name || sp.id) + ' 的 FTE' })]));
+      var sk = el('td');
+      pj.skills.forEach(function (k) {
+        sk.appendChild(el('label', { cls: 'sl-chk' }, [el('input', { type: 'checkbox', 'data-f': 'skill', 'data-k': k.id, checked: (sp.skills || []).indexOf(k.id) >= 0 }), k.name || k.id]));
+      });
+      tr.appendChild(sk);
+      var sh = el('td');
+      pj.shifts.forEach(function (s) {
+        sh.appendChild(el('label', { cls: 'sl-chk' }, [el('input', { type: 'checkbox', 'data-f': 'shift', 'data-s': s.id, checked: (sp.shifts || []).indexOf(s.id) >= 0 }), s.short || s.id]));
+      });
+      tr.appendChild(sh);
+      tr.appendChild(el('td', null, [el('input', { cls: 'sl-in sl-in-sm', type: 'number', min: '0', max: '62', step: '1', value: sp.minShifts == null ? '' : sp.minShifts, placeholder: '不限', 'data-f': 'minShifts', 'aria-label': (sp.name || sp.id) + ' 的班数下限' })]));
+      tr.appendChild(el('td', null, [el('input', { cls: 'sl-in sl-in-sm', type: 'number', min: '0', max: '62', step: '1', value: sp.maxShifts == null ? '' : sp.maxShifts, placeholder: '不限', 'data-f': 'maxShifts', 'aria-label': (sp.name || sp.id) + ' 的班数上限' })]));
+      tr.appendChild(el('td', null, [el('input', { cls: 'sl-in sl-in-sm', type: 'number', min: '0', max: '31', step: '1', value: sp.histConsec || 0, 'data-f': 'histConsec', 'aria-label': (sp.name || sp.id) + ' 上期末连续上班天数' })]));
+      var hs = el('select', { cls: 'sl-sel sl-in-sm', 'data-f': 'histLast', 'aria-label': (sp.name || sp.id) + ' 上期最后一班' }, [el('option', { value: '', text: '休息' })]);
+      pj.shifts.forEach(function (s) { hs.appendChild(el('option', { value: s.id, text: s.name || s.id })); });
+      hs.value = sp.histLast || '';
+      tr.appendChild(el('td', null, [hs]));
+      tr.appendChild(el('td', null, [el('button', { cls: 'sl-btn sl-btn-sec sl-btn-sm', type: 'button', 'data-act': 'del-staff', text: '删除', disabled: pj.staff.length <= 1, 'aria-label': '删除 ' + (sp.name || sp.id) })]));
+      tb.appendChild(tr);
+    });
+    t.appendChild(tb);
+  }
+  function onStaff(e) {
+    var tr = e.target.closest('tr[data-p]');
+    if (!tr) return;
+    var p = +tr.getAttribute('data-p'), sp = ST.pj.staff[p], f = e.target.getAttribute('data-f');
+    if (!sp || !f) return;
+    var v = e.target.value;
+    if (f === 'name') sp.name = v.trim() || sp.id;
+    else if (f === 'fte') sp.fte = num(v, 0, 2, 1);
+    else if (f === 'minShifts' || f === 'maxShifts') sp[f] = optInt(v);
+    else if (f === 'histConsec') sp.histConsec = Math.round(num(v, 0, 31, 0));
+    else if (f === 'histLast') sp.histLast = v;
+    else if (f === 'skill' || f === 'shift') {
+      var key = f === 'skill' ? 'skills' : 'shifts', id = e.target.getAttribute(f === 'skill' ? 'data-k' : 'data-s');
+      var arr = (sp[key] || []).filter(function (x) { return x !== id; });
+      if (e.target.checked) arr.push(id);
+      if (key === 'shifts') arr.sort(function (a, b) { return idxOfShift(a) - idxOfShift(b); });
+      sp[key] = arr;
+    }
+    App.changed('field');
+  }
+  function idxOfShift(id) { for (var i = 0; i < ST.pj.shifts.length; i++) if (ST.pj.shifts[i].id === id) return i; return 99; }
+  function addStaff() {
+    var n = 1, ids = {};
+    ST.pj.staff.forEach(function (s) { ids[s.id] = 1; });
+    while (ids['s' + n]) n++;
+    ST.pj.staff.push({ id: 's' + n, name: '新成员 ' + n, fte: 1, skills: [], shifts: ST.pj.shifts.map(function (s) { return s.id; }), minShifts: null, maxShifts: null, histConsec: 0, histLast: '' });
+    App.changed('struct');
+  }
+  function delStaff(p) {
+    var sp = ST.pj.staff[p];
+    if (!sp || ST.pj.staff.length <= 1) return;
+    ST.pj.staff.splice(p, 1);
+    ST.pj.requests = (ST.pj.requests || []).filter(function (r) { return r.staff !== sp.id; });
+    delete ST.cells[sp.id];
+    App.changed('struct');
+  }
+
+  // ── 班次 ──
+  function shiftTable() {
+    var pj = ST.pj, t = $('sl-shift-tbl');
+    U.clear(t);
+    t.appendChild(el('thead', null, [el('tr', null, [el('th', { text: '名称' }), el('th', { text: '简称' }), el('th', { text: '开始' }), el('th', { text: '结束' }), el('th', { text: '夜班' }), el('th', { text: '颜色' }), el('th', { text: '' })])]));
+    var tb = el('tbody');
+    pj.shifts.forEach(function (s, i) {
+      var tr = el('tr', { 'data-s': i });
+      tr.appendChild(el('td', null, [el('input', { cls: 'sl-in sl-in-sm', type: 'text', value: s.name, 'data-f': 'name', maxlength: '8', 'aria-label': '班次 ' + s.id + ' 名称' })]));
+      tr.appendChild(el('td', null, [el('input', { cls: 'sl-in sl-in-sm', type: 'text', value: s.short, 'data-f': 'short', maxlength: '2', 'aria-label': '班次 ' + s.id + ' 简称' })]));
+      tr.appendChild(el('td', null, [el('input', { cls: 'sl-in sl-in-sm', type: 'time', value: s.start, 'data-f': 'start', 'aria-label': '班次 ' + s.id + ' 开始' })]));
+      tr.appendChild(el('td', null, [el('input', { cls: 'sl-in sl-in-sm', type: 'time', value: s.end, 'data-f': 'end', 'aria-label': '班次 ' + s.id + ' 结束' })]));
+      tr.appendChild(el('td', null, [el('label', { cls: 'sl-chk' }, [el('input', { type: 'checkbox', 'data-f': 'night', checked: !!s.night, 'aria-label': '班次 ' + s.id + ' 是夜班' }), '是'])]));
+      var cs = el('select', { cls: 'sl-sel sl-in-sm', 'data-f': 'color', 'aria-label': '班次 ' + s.id + ' 颜色' });
+      View.COLORS.forEach(function (c) { cs.appendChild(el('option', { value: c, text: COLOR_NAME[c] })); });
+      cs.value = s.color || 'orange';
+      tr.appendChild(el('td', null, [cs]));
+      tr.appendChild(el('td', null, [el('button', { cls: 'sl-btn sl-btn-sec sl-btn-sm', type: 'button', 'data-act': 'del-shift', text: '删除', disabled: pj.shifts.length <= 1, 'aria-label': '删除' + (s.name || s.id) })]));
+      tb.appendChild(tr);
+    });
+    t.appendChild(tb);
+    $('sl-add-shift').disabled = pj.shifts.length >= 6;
+  }
+  function onShift(e) {
+    var tr = e.target.closest('tr[data-s]');
+    if (!tr) return;
+    var s = ST.pj.shifts[+tr.getAttribute('data-s')], f = e.target.getAttribute('data-f');
+    if (!s || !f) return;
+    if (f === 'night') s.night = e.target.checked;
+    else if (f === 'start' || f === 'end') { if (isFinite(SL.parseHM(e.target.value))) s[f] = e.target.value; else { e.target.value = s[f]; U.toast('时间格式应为 时:分'); return; } }
+    else if (f === 'name') s.name = e.target.value.trim() || s.id;
+    else if (f === 'short') s.short = e.target.value.trim().slice(0, 2) || s.id;
+    else if (f === 'color') s.color = e.target.value;
+    App.changed(f === 'name' || f === 'short' ? 'shiftLabel' : 'field');
+  }
+  function addShift() {
+    if (ST.pj.shifts.length >= 6) return;
+    var used = {}, c = 0, letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', id = 'S';
+    ST.pj.shifts.forEach(function (s) { used[s.id] = 1; });
+    while (c < letters.length && used[letters[c]]) c++;
+    id = letters[c] || ('S' + ST.pj.shifts.length);
+    var col = View.COLORS.filter(function (x) { return !ST.pj.shifts.some(function (s) { return s.color === x; }); })[0] || 'blue';
+    ST.pj.shifts.push({ id: id, name: '新班次', short: '新', start: '09:00', end: '17:00', color: col, night: false });
+    ['weekday', 'weekend'].forEach(function (k) { ST.pj.demand[k][id] = 0; });
+    App.changed('struct');
+  }
+  function delShift(i) {
+    var s = ST.pj.shifts[i];
+    if (!s || ST.pj.shifts.length <= 1) return;
+    ST.pj.shifts.splice(i, 1);
+    ST.pj.staff.forEach(function (sp) { sp.shifts = (sp.shifts || []).filter(function (x) { return x !== s.id; }); if (sp.histLast === s.id) sp.histLast = ''; });
+    ['weekday', 'weekend'].forEach(function (k) { delete ST.pj.demand[k][s.id]; });
+    ST.pj.skills.forEach(function (k) { if (k.min) delete k.min[s.id]; });
+    ST.pj.requests = (ST.pj.requests || []).filter(function (r) { return r.shift !== s.id; });
+    ST.pj.dayOverrides = (ST.pj.dayOverrides || []).filter(function (o) { return o.shift !== s.id; });
+    Object.keys(ST.cells).forEach(function (k) { var c = ST.cells[k]; Object.keys(c).forEach(function (d) { if (c[d] === s.id) delete c[d]; }); });
+    App.changed('struct');
+  }
+
+  // ── 需求 ──
+  function demandTable() {
+    var pj = ST.pj, t = $('sl-dem-tbl');
+    U.clear(t);
+    var hr = el('tr', null, [el('th', { text: '' })]);
+    pj.shifts.forEach(function (s) { hr.appendChild(el('th', { text: s.name || s.id })); });
+    hr.appendChild(el('th', { text: '' }));
+    t.appendChild(el('thead', null, [hr]));
+    var tb = el('tbody');
+    [['weekday', '工作日'], ['weekend', '周末 / 节假日']].forEach(function (row) {
+      var tr = el('tr', { 'data-row': row[0] }, [el('th', { scope: 'row', text: row[1] })]);
+      pj.shifts.forEach(function (s) {
+        tr.appendChild(el('td', null, [el('input', { cls: 'sl-in sl-in-sm', type: 'number', min: '0', max: '60', step: '1', value: (pj.demand[row[0]] || {})[s.id] || 0, 'data-s': s.id, 'aria-label': row[1] + (s.name || s.id) + '需要人数' })]));
+      });
+      tr.appendChild(el('td'));
+      tb.appendChild(tr);
+    });
+    pj.skills.forEach(function (k, ki) {
+      var tr = el('tr', { 'data-skill': ki }, [el('th', { scope: 'row' }, [el('input', { cls: 'sl-in sl-in-sm', type: 'text', value: k.name, 'data-f': 'skname', maxlength: '8', 'aria-label': '技能名称' })])]);
+      pj.shifts.forEach(function (s) {
+        tr.appendChild(el('td', null, [el('input', { cls: 'sl-in sl-in-sm', type: 'number', min: '0', max: '60', step: '1', value: (k.min || {})[s.id] || 0, 'data-s': s.id, 'aria-label': (k.name || k.id) + ' 在' + (s.name || s.id) + '至少几人' })]));
+      });
+      tr.appendChild(el('td', null, [el('button', { cls: 'sl-btn sl-btn-sec sl-btn-sm', type: 'button', 'data-act': 'del-skill', text: '删除', 'aria-label': '删除技能 ' + (k.name || k.id) })]));
+      tb.appendChild(tr);
+    });
+    var tr2 = el('tr', null, [el('td', { colspan: String(pj.shifts.length + 2) }, [el('button', { id: 'sl-add-skill', cls: 'sl-btn sl-btn-sec sl-btn-sm', type: 'button', 'data-act': 'add-skill', text: '＋ 添加技能要求', disabled: pj.skills.length >= 3 })])]);
+    tb.appendChild(tr2);
+    t.appendChild(tb);
+    // 特定日期 / 节假日
+    var os = $('sl-ov-shift');
+    U.clear(os);
+    pj.shifts.forEach(function (s) { os.appendChild(el('option', { value: s.id, text: s.name || s.id })); });
+    var ol = $('sl-ov-list');
+    U.clear(ol);
+    (pj.dayOverrides || []).forEach(function (o, i) {
+      var sh = pj.shifts.filter(function (s) { return s.id === o.shift; })[0];
+      var parts = [];
+      if (o.need != null && o.need !== '') parts.push('需要 ' + o.need + ' 人');
+      if (o.skill) Object.keys(o.skill).forEach(function (kid) { var k = pj.skills.filter(function (x) { return x.id === kid; })[0]; parts.push((k ? k.name : kid) + ' 至少 ' + o.skill[kid]); });
+      ol.appendChild(el('li', null, [el('span', { style: 'flex:1', text: SL.md(o.date) + ' ' + (sh ? sh.name : o.shift) + '：' + parts.join('，') }),
+        el('button', { cls: 'sl-btn sl-btn-sec sl-btn-sm', type: 'button', 'data-act': 'del-ov', 'data-i': i, text: '删除' })]));
+    });
+    if (!(pj.dayOverrides || []).length) ol.appendChild(el('li', { cls: 'sl-empty', text: '没有特定日期调整。' }));
+    var hl = $('sl-hol-list');
+    U.clear(hl);
+    (pj.holidays || []).forEach(function (h, i) {
+      hl.appendChild(el('li', null, [el('span', { style: 'flex:1', text: SL.md(h) + '（' + h + '）' }), el('button', { cls: 'sl-btn sl-btn-sec sl-btn-sm', type: 'button', 'data-act': 'del-hol', 'data-i': i, text: '删除' })]));
+    });
+    if (!(pj.holidays || []).length) hl.appendChild(el('li', { cls: 'sl-empty', text: '没有节假日。' }));
+  }
+  function onDemand(e) {
+    var t = e.target, tr = t.closest('tr');
+    if (!tr) return;
+    if (tr.hasAttribute('data-row')) {
+      ST.pj.demand[tr.getAttribute('data-row')][t.getAttribute('data-s')] = Math.round(num(t.value, 0, 60, 0));
+    } else if (tr.hasAttribute('data-skill')) {
+      var k = ST.pj.skills[+tr.getAttribute('data-skill')];
+      if (!k) return;
+      if (t.getAttribute('data-f') === 'skname') { k.name = t.value.trim() || k.id; App.changed('struct'); return; }
+      k.min = k.min || {};
+      k.min[t.getAttribute('data-s')] = Math.round(num(t.value, 0, 60, 0));
+    } else return;
+    App.changed('field');
+  }
+  function onDemandClick(e) {
+    var b = e.target.closest('button[data-act]');
+    if (!b) return;
+    var act = b.getAttribute('data-act');
+    if (act === 'add-skill') {
+      if (ST.pj.skills.length >= 3) return;
+      var n = 1, ids = {};
+      ST.pj.skills.forEach(function (k) { ids[k.id] = 1; });
+      while (ids['k' + n]) n++;
+      ST.pj.skills.push({ id: 'k' + n, name: '技能' + n, min: {} });
+      App.changed('struct');
+    } else if (act === 'del-skill') {
+      var ki = +b.closest('tr').getAttribute('data-skill'), k = ST.pj.skills[ki];
+      ST.pj.skills.splice(ki, 1);
+      ST.pj.staff.forEach(function (sp) { sp.skills = (sp.skills || []).filter(function (x) { return x !== k.id; }); });
+      (ST.pj.dayOverrides || []).forEach(function (o) { if (o.skill) delete o.skill[k.id]; });
+      App.changed('struct');
+    }
+  }
+
+  // ── 规则 / 权重 / 求解器 ──
+  var RULE_FIELDS = [['sl-r-consec', 'maxConsec', 1, 31], ['sl-r-rest', 'minRest', 0, 24], ['sl-r-nrun', 'maxConsecNights', 0, 31], ['sl-r-nmax', 'maxNights', 0, 62], ['sl-r-over', 'overstaff', 0, 20]];
+  function rulesForm() {
+    var r = ST.pj.rules;
+    RULE_FIELDS.forEach(function (f) { $(f[0]).value = r[f[1]] == null ? '' : r[f[1]]; });
+    var box = $('sl-weights');
+    U.clear(box);
+    WEIGHTS.forEach(function (w) {
+      box.appendChild(el('div', { cls: 'sl-wt' }, [el('b', { text: w[1] }), el('p', { text: w[2] }),
+        el('input', { cls: 'sl-in', type: 'number', min: '0', max: '20', step: '1', id: 'sl-w-' + w[0], value: ST.pj.weights[w[0]] || 0, 'data-w': w[0], 'aria-label': w[1] + ' 权重' })]));
+    });
+    $('sl-seed').value = ST.seed;
+    $('sl-conf').value = ST.conflicts || 0;
+    forbMatrix();
+    modelSize();
+  }
+  function forbMatrix() {
+    var Mx = SL.prep(ST.pj), box = $('sl-fx');
+    U.clear(box);
+    if (Mx.errors.length) return;
+    var head = el('div', { cls: 'sl-fx-row' }, [el('span', { text: '前 ＼ 后' })]);
+    Mx.shifts.forEach(function (s) { head.appendChild(el('span', { cls: 'sl-fx-c', text: s.short || s.id, style: 'color:#6b7280' })); });
+    box.appendChild(head);
+    Mx.shifts.forEach(function (s, i) {
+      var row = el('div', { cls: 'sl-fx-row', 'data-from': s.id }, [el('span', { text: s.name || s.id })]);
+      Mx.shifts.forEach(function (t, j) {
+        var f = Mx.forb[i][j], gap = (1440 + Mx.a[j] - Mx.e[i]) / 60;
+        row.appendChild(el('span', { cls: 'sl-fx-c', 'data-f': f ? '1' : '0', 'data-to': t.id, title: (s.name || s.id) + ' 接次日 ' + (t.name || t.id) + '：间隔 ' + gap + ' 小时', text: f ? '禁' : '可' }));
+      });
+      box.appendChild(row);
+    });
+  }
+  function modelSize() {
+    var m = SL.build(ST.pj, {});
+    $('sl-model-size').value = m.errors.length ? '设置有误' : U.num(m.S.n) + ' 变量 · ' + U.num(m.S.cls.length) + ' 子句 · ' + U.num(m.S.pbs.length) + ' PB';
+  }
+  function onRules(e) {
+    var t = e.target, id = t.id;
+    var f = RULE_FIELDS.filter(function (x) { return x[0] === id; })[0];
+    if (f) {
+      if (f[1] === 'maxNights' && t.value === '') ST.pj.rules.maxNights = null;
+      else ST.pj.rules[f[1]] = Math.round(num(t.value, f[2], f[3], f[2]));
+      t.value = ST.pj.rules[f[1]] == null ? '' : ST.pj.rules[f[1]];
+      forbMatrix();
+    } else if (t.hasAttribute('data-w')) {
+      ST.pj.weights[t.getAttribute('data-w')] = Math.round(num(t.value, 0, 20, 0));
+      t.value = ST.pj.weights[t.getAttribute('data-w')];
+    } else if (id === 'sl-seed') { ST.seed = Math.max(1, Math.round(num(t.value, 1, 999999, 1))); t.value = ST.seed; }
+    else if (id === 'sl-conf') { ST.conflicts = Math.max(0, Math.round(num(t.value, 0, 5e7, 0))); t.value = ST.conflicts; }
+    else return;
+    App.changed('field');
+    modelSize();
+  }
+
+  function render() { staffTable(); shiftTable(); demandTable(); rulesForm(); }
+
+  function wire() {
+    $('sl-staff-tbl').addEventListener('change', onStaff);
+    $('sl-staff-tbl').addEventListener('click', function (e) {
+      var b = e.target.closest('button[data-act="del-staff"]');
+      if (b) delStaff(+b.closest('tr').getAttribute('data-p'));
+    });
+    $('sl-add-staff').addEventListener('click', addStaff);
+    $('sl-shift-tbl').addEventListener('change', onShift);
+    $('sl-shift-tbl').addEventListener('click', function (e) {
+      var b = e.target.closest('button[data-act="del-shift"]');
+      if (b) delShift(+b.closest('tr').getAttribute('data-s'));
+    });
+    $('sl-add-shift').addEventListener('click', addShift);
+    $('sl-dem-tbl').addEventListener('change', onDemand);
+    $('sl-dem-tbl').addEventListener('click', onDemandClick);
+    $('sl-ov-add').addEventListener('click', function () {
+      var date = $('sl-ov-date').value, sh = $('sl-ov-shift').value, n = $('sl-ov-need').value;
+      if (!isFinite(SL.parseISO(date)) || !sh || n === '') { U.toast('请填日期、班次和人数'); return; }
+      ST.pj.dayOverrides = (ST.pj.dayOverrides || []).filter(function (o) { return !(o.date === date && o.shift === sh); });
+      ST.pj.dayOverrides.push({ date: date, shift: sh, need: Math.round(num(n, 0, 60, 0)) });
+      App.changed('struct');
+    });
+    $('sl-ov-list').addEventListener('click', function (e) {
+      var b = e.target.closest('button[data-act="del-ov"]');
+      if (b) { ST.pj.dayOverrides.splice(+b.getAttribute('data-i'), 1); App.changed('struct'); }
+    });
+    $('sl-hol-add').addEventListener('click', function () {
+      var date = $('sl-hol-date').value;
+      if (!isFinite(SL.parseISO(date))) { U.toast('请选一个日期'); return; }
+      ST.pj.holidays = (ST.pj.holidays || []).filter(function (h) { return h !== date; }).concat([date]).sort();
+      App.changed('struct');
+    });
+    $('sl-hol-list').addEventListener('click', function (e) {
+      var b = e.target.closest('button[data-act="del-hol"]');
+      if (b) { ST.pj.holidays.splice(+b.getAttribute('data-i'), 1); App.changed('struct'); }
+    });
+    $('pane-rules').addEventListener('change', onRules);
+  }
+
+  return { render: render, wire: wire, forbMatrix: forbMatrix, staffTable: staffTable, demandTable: demandTable, WEIGHTS: WEIGHTS };
+})();
+
+/* Shift Lab 诊断页：最小冲突集（每条带「放宽」按钮）+ 供需体检。 */
+var Diag = (function () {
+  'use strict';
+  var $ = U.$, el = U.el;
+  var KIND = { cover: '需求', coverMax: '不超编', skill: '技能', leave: '请假', lock: '锁定', elig: '资格', rest: '间隔', consec: '连续上班', nightRun: '连续夜班', nights: '夜班上限', minShifts: '班数下限', maxShifts: '班数上限' };
+
+  // 每种约束「放宽一格」怎么做；返回按钮文字与动作（没有合理放宽方式的返回 null）
+  function relaxOf(it) {
+    var pj = ST.pj, Mx = SL.prep(pj), i = it.info || {};
+    var sp = i.p != null ? pj.staff[i.p] : null, date = i.d != null ? Mx.dates[i.d] : null, sh = i.s != null ? pj.shifts[i.s] : null;
+    function ov(fn) {
+      var o = (pj.dayOverrides || []).filter(function (x) { return x.date === date && x.shift === sh.id; })[0];
+      if (!o) { o = { date: date, shift: sh.id }; pj.dayOverrides = (pj.dayOverrides || []).concat([o]); }
+      fn(o);
+    }
+    switch (it.type) {
+      case 'cover': return { label: '这天这班少要 1 人', run: function () { ov(function (o) { o.need = Math.max(0, i.n - 1); }); } };
+      case 'skill': return { label: '技能要求减 1', run: function () { var k = pj.skills[i.k]; ov(function (o) { o.skill = o.skill || {}; o.skill[k.id] = Math.max(0, i.n - 1); }); } };
+      case 'coverMax': return { label: '允许超编 1 人', run: function () { pj.rules.overstaff = (pj.rules.overstaff || 0) + 1; } };
+      case 'leave': return { label: '改成「想休」', run: function () { pj.requests.forEach(function (r) { if (r.staff === sp.id && r.date === date && r.kind === 'leave') r.kind = 'off'; }); } };
+      case 'lock': return { label: '取消锁定', run: function () { pj.requests = pj.requests.filter(function (r) { return !(r.staff === sp.id && r.date === date && r.kind === 'lock'); }); } };
+      case 'elig': return { label: '允许上' + (sh.name || sh.id), run: function () { sp.shifts = (sp.shifts || []).concat([sh.id]); } };
+      case 'rest': return pj.rules.minRest > 0 ? { label: '间隔少 1 小时', run: function () { pj.rules.minRest = Math.max(0, pj.rules.minRest - 1); } } : null;
+      case 'consec': return { label: '连上上限 +1 天', run: function () { pj.rules.maxConsec = pj.rules.maxConsec + 1; } };
+      case 'nightRun': return { label: '连续夜班上限 +1', run: function () { pj.rules.maxConsecNights = pj.rules.maxConsecNights + 1; } };
+      case 'nights': return { label: '夜班上限 +1', run: function () { pj.rules.maxNights = (pj.rules.maxNights || 0) + 1; } };
+      case 'minShifts': return { label: '下限 −1', run: function () { sp.minShifts = i.n - 1 > 0 ? i.n - 1 : null; } };
+      case 'maxShifts': return { label: '上限 +1', run: function () { sp.maxShifts = i.n + 1; } };
+    }
+    return null;
+  }
+
+  function renderMus() {
+    var ol = $('sl-mus'), sub = $('sl-mus-sub'), d = ST.diag;
+    U.clear(ol);
+    var tab = $('sl-tab-diag');
+    tab.textContent = d && d.status === 'infeasible' ? '冲突诊断 · ' + d.mus.length : '冲突诊断';
+    if (!d) { sub.textContent = '还没诊断过。排班结果为「无解」时会自动诊断，也可以手动点右边的按钮。'; return; }
+    if (d.status === 'running') { sub.textContent = '正在找冲突……'; return; }
+    if (d.status === 'feasible') { sub.textContent = '当前设置没有冲突：存在满足全部硬规则的班表，回到「排班表」点「自动排班」即可。'; return; }
+    if (d.status === 'unknown') { sub.textContent = '诊断在时限内没跑完（约束太多）。可以先看下面的供需体检找明显短板。'; return; }
+    if (d.status === 'error') { sub.textContent = '设置有误：' + (d.errors || []).join('；'); return; }
+    sub.textContent = '下面 ' + d.mus.length + ' 条硬规则不能同时成立' + (d.minimal ? '，而且是最小的一组：放宽其中任意一条，这个冲突就解开了（之后若还有别的冲突会再报）。' : '（诊断时限内未能逐条证明最小，可能还能再精简）。') + '共试解 ' + d.tests + ' 次。';
+    d.mus.forEach(function (it, j) {
+      var rx = relaxOf(it);
+      var li = el('li', { 'data-type': it.type }, [
+        el('div', null, [el('span', { cls: 'sl-mus-t', text: it.desc }), el('span', { cls: 'sl-mus-k', text: KIND[it.type] || it.type })]),
+        rx ? el('button', { cls: 'sl-btn sl-btn-sec sl-btn-sm', type: 'button', 'data-relax': j, text: rx.label }) : el('span', { cls: 'sl-tag', text: '无法放宽' })
+      ]);
+      ol.appendChild(li);
+    });
+  }
+
+  function supply() {
+    var t = $('sl-sup'), r = SL.supply(ST.pj), Mx = r.M;
+    U.clear(t);
+    if (Mx.errors.length) return;
+    var hr = el('tr', null, [el('th', { text: '' })]);
+    for (var d = 0; d < Mx.nD; d++) hr.appendChild(el('th', { text: String(+Mx.dates[d].slice(8)), title: Mx.dates[d] }));
+    t.appendChild(el('thead', null, [hr]));
+    var tb = el('tbody');
+    var worst = 0;
+    for (var s = 0; s < Mx.nS; s++) {
+      var tr = el('tr', null, [el('th', { scope: 'row', text: Mx.shifts[s].name || Mx.shifts[s].id })]);
+      for (d = 0; d < Mx.nD; d++) {
+        var c = r.cells[d][s], lv = c.need === 0 ? 3 : c.avail < c.need ? 2 : c.avail === c.need ? 1 : 0;
+        if (lv === 2) worst++;
+        tr.appendChild(el('td', { 'data-lv': String(lv), 'data-d': d, 'data-s': s, title: SL.md(Mx.dates[d]) + ' ' + (Mx.shifts[s].name || Mx.shifts[s].id) + '：能上 ' + c.avail + ' 人，需要 ' + c.need,
+          text: c.need === 0 ? '—' : c.avail + '/' + c.need }));
+      }
+      tb.appendChild(tr);
+    }
+    t.appendChild(tb);
+    t.setAttribute('data-short', String(worst));
+  }
+
+  function run() {
+    ST.diag = { status: 'running' };
+    renderMus();
+    $('sl-diag-run').disabled = true;
+    return Engine.diagnose(U.clone(ST.pj), { conflicts: 400000, perCall: 30000, ms: 30000 }).then(function (d) {
+      $('sl-diag-run').disabled = false;
+      if (d.status === 'stopped') { ST.diag = null; renderMus(); return; }
+      ST.diag = d;
+      renderMus();
+      document.body.setAttribute('data-sl-diag', d.status);
+      return d;
+    });
+  }
+
+  function wire() {
+    $('sl-diag-run').addEventListener('click', function () { run(); });
+    $('sl-mus').addEventListener('click', function (e) {
+      var b = e.target.closest('button[data-relax]');
+      if (!b || !ST.diag || !ST.diag.mus) return;
+      var it = ST.diag.mus[+b.getAttribute('data-relax')], rx = relaxOf(it);
+      if (!rx) return;
+      rx.run();
+      U.toast('已放宽：' + it.desc + ' → ' + rx.label);
+      App.changed('struct');
+      run();
+    });
+  }
+
+  return { run: run, render: function () { renderMus(); supply(); }, renderMus: renderMus, supply: supply, wire: wire, relaxOf: relaxOf };
+})();
+
+/* Shift Lab 主控：页签、求解流程、改动分发、导入导出、示例、测试钩子。 */
+var App = (function () {
+  'use strict';
+  var $ = U.$;
+  var TABS = ['roster', 'team', 'rules', 'diag', 'about'];
+  var contN = 0, renderT = 0;
+
+  function showTab(t, focus) {
+    if (TABS.indexOf(t) < 0) t = 'roster';
+    ST.tab = t;
+    TABS.forEach(function (x) {
+      var b = $('sl-tab-' + x), on = x === t;
+      b.setAttribute('aria-selected', on ? 'true' : 'false');
+      b.setAttribute('tabindex', on ? '0' : '-1');
+      $('pane-' + x).hidden = !on;
+    });
+    View.closeMenu(false);
+    if (t === 'diag') Diag.render();
+    if (t === 'rules') Edit.forbMatrix();
+    if (focus) $('sl-tab-' + t).focus();
+    document.body.setAttribute('data-sl-tab', t);
+  }
+
+  function busyUI(on) {
+    $('sl-solve').disabled = on; $('sl-more').disabled = on; $('sl-stop').hidden = !on;
+    document.body.setAttribute('data-sl-busy', on ? '1' : '0');
+  }
+
+  function solve(cont) {
+    if (ST.busy) return Promise.resolve(null);
+    var Mx = SL.prep(ST.pj);
+    View.closeMenu(false);
+    if (Mx.errors.length) { View.setStatus('error', '设置有误：' + Mx.errors.join('；')); return Promise.resolve(null); }
+    var hint = null;
+    if (cont) {
+      var R = RT.toIdx(ST.pj, ST.cells), c = SL.check(ST.pj, R, Mx);
+      if (c.ok && RT.hasAny(ST.pj, ST.cells)) hint = R;
+      else U.toast('当前班表不满足全部硬规则，改为重新排班');
+    }
+    ST.busy = true; ST.trace = []; ST.live = { ms: 0, conflicts: 0 };
+    busyUI(true);
+    View.setStatus('run', hint ? '从当前班表出发继续找更低分的解…' : '先找一张满足全部硬规则的班表，再不断降低扣分…');
+    View.metrics(null, null);
+    var secs = +$('sl-budget').value || 8;
+    var seed = hint ? ST.seed + (++contN) : ST.seed;
+    var pj = U.clone(ST.pj);
+    function progress(ev) {
+      ST.cells = RT.fromIdx(pj, ev.roster);
+      ST.trace.push({ cost: ev.cost, ms: ev.ms, phase: ev.phase });
+      ST.live = ev;
+      View.setStatus('run', '已找到扣分 ' + ev.cost + ' 的班表，继续优化中…');
+      View.metrics(null, ev);
+      if (!renderT) renderT = setTimeout(function () { renderT = 0; if (ST.busy) View.render(); }, 160);
+    }
+    function tick(ev) {
+      ST.live = { ms: ev.ms, conflicts: ev.conflicts, lns: ev.lns, cost: ev.cost };
+      View.metrics(null, ST.live);
+    }
+    return Engine.optimize(pj, { ms: secs * 1000, conflicts: ST.conflicts || undefined, seed: seed, hint: hint }, progress, tick).then(function (res) {
+      ST.busy = false; busyUI(false);
+      clearTimeout(renderT); renderT = 0;
+      var st = res.status;
+      if (st === 'stopped') {
+        ST.res = { status: 'stopped', at: Date.now() };
+        View.setStatus('stopped', RT.hasAny(ST.pj, ST.cells) ? '已停止，保留目前最好的班表。' : '已停止，还没找到合规班表。');
+      } else if (st === 'optimal' || st === 'feasible') {
+        ST.cells = RT.fromIdx(pj, res.roster);
+        ST.trace = res.trace.map(function (q) { return { cost: q.cost, ms: q.ms, phase: q.phase }; });
+        ST.res = { status: st, cost: res.cost, ms: res.ms, conflicts: res.stats.conflicts, lns: res.lns, info: res.info, at: Date.now() };
+        View.setStatus(st, st === 'optimal'
+          ? '扣分 ' + res.cost + ' 已是最低：求解器证明了不存在扣分更低的班表（用时 ' + U.secs(res.ms) + '）。'
+          : '找到扣分 ' + res.cost + ' 的班表（用时 ' + U.secs(res.ms) + '）；整体最优性没有证明，可以「继续优化」。', st === 'optimal' ? '已证明' : '可继续');
+        View.metrics(ST.res, null);
+      } else if (st === 'infeasible') {
+        ST.res = { status: 'infeasible', ms: res.ms, at: Date.now(), info: res.info };
+        View.setStatus('infeasible', '这些硬规则不能同时满足：最小冲突集在「冲突诊断」里，放宽其中任意一条即可。');
+        Diag.run();
+      } else if (st === 'unknown') {
+        ST.res = { status: 'unknown', ms: res.ms, at: Date.now() };
+        View.setStatus('unknown', '时限内没找到合规班表，也没能证明无解。试试加长求解时长，或到「冲突诊断」看供需体检。');
+      } else {
+        ST.res = null;
+        View.setStatus('error', (res.errors || ['求解出错']).join('；'));
+      }
+      Store.save();
+      View.render();
+      document.body.setAttribute('data-sl-done', String(Date.now()));
+      return res;
+    });
+  }
+  function stop() { if (ST.busy) Engine.stop(); }
+
+  // 改动分发：cell = 改了格子；field = 改了字段；shiftLabel = 改了班次名；struct = 增删行 / 换项目
+  function changed(kind) {
+    if (ST.busy) { Engine.stop(); }
+    if (ST.res && ST.res.status !== 'infeasible' && ST.res.status !== 'imported') { ST.res.stale = true; View.setStatus('manual', kind === 'cell' ? '格子改过了：合规与扣分已按当前班表重算；点「继续优化」让求解器在此基础上修正。' : '设置改过了：合规与扣分已按新设置重算；重新排班后生效。'); }
+    if (kind === 'struct') { Edit.render(); syncBar(); }
+    else if (kind === 'shiftLabel') { Edit.staffTable(); Edit.demandTable(); Edit.forbMatrix(); }
+    View.render();
+    if (ST.tab === 'diag') Diag.supply();
+    Store.save();
+  }
+
+  function syncBar() {
+    $('sl-name').value = ST.pj.name || '';
+    $('sl-start').value = ST.pj.start;
+    $('sl-days').value = ST.pj.days;
+  }
+
+  function loadProject(pj, cells, label) {
+    if (ST.busy) Engine.stop();
+    ST.pj = pj; ST.cells = cells || {}; ST.res = null; ST.trace = []; ST.diag = null; ST.sel = { p: 0, d: 0 };
+    var has = RT.hasAny(pj, ST.cells);
+    if (has) ST.res = { status: 'imported', at: Date.now() };
+    Edit.render(); syncBar(); View.render(); Diag.renderMus();
+    if (ST.tab === 'diag') Diag.supply();
+    if (has) View.setStatus('imported', '已导入「' + (label || '项目') + '」及其班表：合规与扣分已按当前设置重算，可「继续优化」。');
+    else View.setStatus('idle', label ? '已载入「' + label + '」，点「自动排班」开始。' : null);
+    View.metrics(null, null);
+    Store.save();
+  }
+
+  function importJSON(text) {
+    var o;
+    try { o = JSON.parse(text); } catch (e) { U.toast('不是有效的 JSON'); return false; }
+    var pj = o && o.pj ? o.pj : o;
+    if (!pj || !Array.isArray(pj.staff) || !Array.isArray(pj.shifts) || !pj.start || !pj.days) { U.toast('JSON 里没有排班项目（需要 staff / shifts / start / days）'); return false; }
+    pj.requests = pj.requests || []; pj.dayOverrides = pj.dayOverrides || []; pj.holidays = pj.holidays || []; pj.skills = pj.skills || [];
+    pj.demand = pj.demand || { weekday: {}, weekend: {} }; pj.rules = pj.rules || {}; pj.weights = pj.weights || {};
+    loadProject(pj, o.cells || {}, pj.name || '导入的项目');
+    U.toast('已导入');
+    return true;
+  }
+
+  function wire() {
+    TABS.forEach(function (t) { $('sl-tab-' + t).addEventListener('click', function () { showTab(t, false); }); });
+    document.querySelector('.sl-pills').addEventListener('keydown', function (e) {
+      var i = TABS.indexOf(ST.tab), n = null;
+      if (e.key === 'ArrowRight') n = TABS[(i + 1) % TABS.length];
+      else if (e.key === 'ArrowLeft') n = TABS[(i + TABS.length - 1) % TABS.length];
+      else if (e.key === 'Home') n = TABS[0];
+      else if (e.key === 'End') n = TABS[TABS.length - 1];
+      if (n) { e.preventDefault(); showTab(n, true); }
+    });
+    $('sl-solve').addEventListener('click', function () { solve(false); });
+    $('sl-more').addEventListener('click', function () { solve(true); });
+    $('sl-stop').addEventListener('click', stop);
+    $('sl-goto-diag').addEventListener('click', function () { showTab('diag', true); });
+    $('sl-name').addEventListener('change', function (e) { ST.pj.name = e.target.value.trim(); Store.save(); });
+    $('sl-start').addEventListener('change', function (e) {
+      if (!isFinite(SL.parseISO(e.target.value))) { e.target.value = ST.pj.start; U.toast('日期无效'); return; }
+      ST.pj.start = e.target.value; changed('struct');
+    });
+    $('sl-days').addEventListener('change', function (e) {
+      var v = Math.round(+e.target.value);
+      if (!(v >= 1 && v <= 62)) { e.target.value = ST.pj.days; U.toast('天数要在 1–62 之间'); return; }
+      ST.pj.days = v; changed('struct');
+    });
+    $('sl-csv').addEventListener('click', function () { View.csv(); });
+    $('sl-ics').addEventListener('click', function () { View.ics(+$('sl-ics-who').value); });
+    $('sl-print').addEventListener('click', function () { window.print(); });
+    $('sl-json').addEventListener('click', function () {
+      U.download(JSON.stringify({ format: 'shift-lab', v: 1, pj: ST.pj, cells: ST.cells }, null, 1), (ST.pj.name || 'shift-lab').replace(/[\\/:*?"<>|\s]+/g, '_') + '.json', 'application/json');
+    });
+    $('sl-import-btn').addEventListener('click', function () { $('sl-import').click(); });
+    $('sl-import').addEventListener('change', function (e) {
+      var f = e.target.files && e.target.files[0];
+      if (!f) return;
+      f.text().then(function (t) { importJSON(t); e.target.value = ''; });
+    });
+    $('sl-demo').addEventListener('click', function () { loadProject(SL_DEMO(), {}, '社区医院内科护理组 · 12 人 4 周'); });
+    $('sl-small').addEventListener('click', function () { loadProject(SL_SMALL(), {}, '街角咖啡 · 5 人 1 周'); });
+    View.wireGrid(); Edit.wire(); Diag.wire();
+  }
+
+  function verifyList() {
+    var ul = $('sl-ver');
+    U.clear(ul);
+    (typeof SL_VERIFY !== 'undefined' ? SL_VERIFY : []).forEach(function (v) { ul.appendChild(U.el('li', { 'data-k': v.k }, [U.el('b', { text: v.n }), U.el('span', { text: v.t })])); });
+  }
+
+  function init() {
+    verifyList();
+    if (!Store.load()) { ST.pj = SL_DEMO(); ST.cells = {}; }
+    wire();
+    Edit.render(); syncBar();
+    View.render();
+    var r = ST.res;
+    if (r && r.status === 'imported' && RT.hasAny(ST.pj, ST.cells)) View.setStatus('imported', '上次导入的班表：合规与扣分已按当前设置重算。');
+    else if (r && (r.status === 'optimal' || r.status === 'feasible') && RT.hasAny(ST.pj, ST.cells)) {
+      View.setStatus(r.stale ? 'manual' : r.status, r.stale ? '上次的班表（之后改过设置）。' : '上次的结果：扣分 ' + r.cost + '（' + (r.status === 'optimal' ? '已证明最优' : '未证明最优') + '）。');
+      View.metrics(r, null);
+    } else View.setStatus('idle');
+    showTab('roster', false);
+    document.body.setAttribute('data-sl-ready', '1');
+  }
+
+  return { init: init, solve: solve, stop: stop, changed: changed, showTab: showTab, importJSON: importJSON, loadProject: loadProject, TABS: TABS };
+})();
+
+/* 测试钩子：只读查询 + 少量驱动入口（界面上都有对应按钮） */
+window.SLAPP = {
+  state: function () { return JSON.parse(JSON.stringify({ pj: ST.pj, cells: ST.cells, res: ST.res, diag: ST.diag, seed: ST.seed, conflicts: ST.conflicts })); },
+  roster: function () { return RT.toIdx(ST.pj, ST.cells); },
+  check: function () { var c = SL.check(ST.pj, RT.toIdx(ST.pj, ST.cells)); return { ok: c.ok, cost: c.cost, by: c.by, hard: c.hard.map(function (h) { return h.type; }), stats: c.stats }; },
+  busy: function () { return ST.busy; }, tab: function () { return ST.tab; }, rev: function () { return ST.revision; },
+  trace: function () { return ST.trace.slice(); }, engineMode: function () { return Engine.mode(); },
+  csv: function () { return View.csv(); }, ics: function (p) { return View.ics(p); }
+};
+
+document.addEventListener('DOMContentLoaded', App.init);
+
+</script>
+</body>
+</html>
