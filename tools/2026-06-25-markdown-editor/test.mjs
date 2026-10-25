@@ -140,8 +140,15 @@ export default async function ({ page, toolURL, screenshot, assert }) {
   await page.waitForTimeout(560); // let the debounced autosave flush
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.waitForSelector('#md-input');
-  await page.waitForTimeout(120);
+  await page.waitForFunction((u) => document.querySelector('#md-input').value === u, unique, { timeout: 10000 });
   assert((await page.inputValue('#md-input')) === unique, 'content restored from localStorage after reload');
+  // 输入后立刻刷新（防抖还没到期）：离页补写要把这次修改存下来
+  const quick = '# Saved on pagehide 2026-10-25';
+  await setMd(quick);
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('#md-input');
+  await page.waitForFunction(() => document.querySelector('#md-input').value !== '', null, { timeout: 10000 });
+  assert((await page.inputValue('#md-input')) === quick, 'edit made just before reload is flushed on pagehide');
 
   // ---- settle a pretty state for the card thumbnail ----
   await page.click('#act-sample');
