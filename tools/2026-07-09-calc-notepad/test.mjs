@@ -122,6 +122,12 @@ export default async function ({ page, toolURL, screenshot, assert }) {
   }, null, { timeout: 4000 });
   assert((await lineText(1)).includes('42'), 'persisted document recomputes correctly after reload');
 
+  // ---- edit then reload immediately: the debounced save must be flushed on pagehide ----
+  await fill('# flush-check\n2 * 21');
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('#editor');
+  assert((await page.locator('#editor').inputValue()).includes('flush-check'), 'edit made right before reload is flushed on pagehide');
+
   // ---- settle on a nice populated state for the card thumbnail ----
   await page.click('#btn-example');
   await page.waitForFunction(() => {
