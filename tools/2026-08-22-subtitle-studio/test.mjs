@@ -336,6 +336,13 @@ export default async function ({ page, toolURL, screenshot, assert }) {
   const afterReload = await page.evaluate(() => window.ssApp.doc.cues.map((c) => c.start + ':' + c.end).join('|'));
   eq(afterReload, beforeReload, 'the edit survives a page reload via localStorage');
 
+  /* ---------- 13b. a cue text typed right before leaving survives (debounced save is flushed on pagehide) ---------- */
+  await page.locator('.ss-row').first().locator('.ss-cue-text').fill('离页前最后一改');
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => window.ssApp.doc && window.ssApp.doc.cues.length > 0, { timeout: 10000 });
+  eq(await page.evaluate(() => window.ssApp.doc.cues.some((c) => c.text === '离页前最后一改')), true,
+    'a cue text edited and reloaded immediately (before the 220 ms debounce) is still saved');
+
   /* ---------- 14. structural guards ---------- */
   // [hidden] really hides — author CSS must not out-specify the UA rule
   await page.click('.ss-tab[data-tab="sync"]');
