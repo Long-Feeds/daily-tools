@@ -350,4 +350,13 @@ export default async function ({ page, toolURL, screenshot, assert }) {
   await page.evaluate(() => { const c = document.getElementById('ll-fig-networth').closest('.ll-card'); window.scrollTo(0, c.getBoundingClientRect().top + window.scrollY - 104); });
   await page.waitForTimeout(200);
   await screenshot('thumb.png');
+
+  // ---------- 13. 改完立刻刷新：防抖还没到点也不能丢（pagehide 补写，2026-10-28 回填）----------
+  await showTab('ledger');
+  const marker = '; 立刻刷新也要留下的这一行 ' + Date.now();
+  const before = await page.locator('#ll-source').inputValue();
+  await page.locator('#ll-source').fill(before + '\n' + marker);
+  await page.reload();
+  const after = await page.locator('#ll-source').inputValue();
+  assert(after.includes(marker), '改完账本立刻刷新，最后一次编辑应已写盘（pagehide 补写）');
 }
