@@ -1,0 +1,3266 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>动图工坊 · GIF Studio</title>
+<meta name="description" content="视频、录屏、图片序列或现有动图，在本机浏览器里做成 GIF / APNG / 动画 WebP：裁剪截取变速倒放、Wu 量化与抖动、帧间差分优化、按平台体积上限自动求解。">
+<style>
+[hidden]{display:none!important}
+:root{
+  --gs-black:#000;--gs-deep:#030303;--gs-surface:#1a1a1a;--gs-raise:#111113;--gs-border:#27272a;--gs-border2:#3a3a3f;
+  --gs-white:#fff;--gs-near:#fefefe;--gs-slate:#767d88;--gs-mid:#7d848e;--gs-muted:#a7a7a7;--gs-silver:#c9ccd1;
+  --gs-cloud:#e9ecf2;--gs-charcoal:#404040;--gs-ink:#0c0c0c;
+  --gs-font:Inter,"DM Sans",-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans SC",sans-serif;
+  --gs-mono:"SF Mono",ui-monospace,Menlo,Consolas,"PingFang SC",monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--gs-black);color:var(--gs-white)}
+body{font-family:var(--gs-font);font-size:14px;line-height:1.4;letter-spacing:-0.16px;-webkit-font-smoothing:antialiased;min-height:100vh}
+a{color:inherit}
+button,input,select,textarea{font:inherit;letter-spacing:inherit;color:inherit}
+:focus-visible{outline:1px solid var(--gs-white);outline-offset:2px}
+
+/* —— 导航 —— */
+.gs-nav{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:24px;padding:14px 32px;background:var(--gs-black);border-bottom:1px solid var(--gs-border)}
+.gs-back{font-size:14px;color:var(--gs-slate);text-decoration:none;white-space:nowrap}
+.gs-back:hover{color:var(--gs-white)}
+.gs-brand{font-size:11px;font-weight:450;letter-spacing:.35px;text-transform:uppercase;color:var(--gs-white);white-space:nowrap}
+.gs-tabs{display:flex;gap:4px;margin-left:auto;overflow-x:auto}
+.gs-tab{background:none;border:0;border-radius:4px;padding:6px 12px;font-size:14px;font-weight:500;color:var(--gs-slate);cursor:pointer;white-space:nowrap;min-width:52px}
+.gs-tab:hover{color:var(--gs-white)}
+.gs-tab[aria-selected="true"]{color:var(--gs-black);background:var(--gs-white)}
+
+/* —— 版式 —— */
+.gs-wrap{max-width:1600px;margin:0 auto;padding:0 32px}
+.gs-hero{padding:48px 0 28px;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,420px);gap:32px;align-items:end}
+.gs-kicker{font-size:11px;font-weight:450;letter-spacing:.35px;text-transform:uppercase;color:var(--gs-slate);margin:0 0 14px}
+.gs-h1{font-size:48px;line-height:1;letter-spacing:-1.2px;font-weight:400;margin:0}
+.gs-lede{font-size:16px;line-height:1.45;color:var(--gs-slate);margin:0}
+.gs-lede b{color:var(--gs-white);font-weight:500}
+.gs-work{display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:24px;align-items:start;padding-bottom:64px}
+.gs-work > *{min-width:0}
+
+/* —— 舞台 —— */
+.gs-stage{position:relative;background:var(--gs-deep);border:1px solid var(--gs-border);border-radius:8px;aspect-ratio:16/9;overflow:hidden;display:flex;align-items:center;justify-content:center}
+.gs-stage canvas,.gs-stage img{width:100%;height:100%;object-fit:contain;display:block}
+.gs-checker{background-color:#0d0d0f;background-image:linear-gradient(45deg,#18181b 25%,transparent 25%,transparent 75%,#18181b 75%),linear-gradient(45deg,#18181b 25%,transparent 25%,transparent 75%,#18181b 75%);background-size:16px 16px;background-position:0 0,8px 8px}
+.gs-drop{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:24px;text-align:center}
+.gs-drop-title{font-size:36px;line-height:1;letter-spacing:-.9px;font-weight:400;margin:0}
+.gs-drop-sub{color:var(--gs-slate);font-size:14px;margin:0;max-width:520px}
+.gs-drop-row{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+.gs-stage.gs-dragover{border-color:var(--gs-white)}
+.gs-cropbox{position:absolute;border:1px solid var(--gs-white);box-shadow:0 0 0 9999px rgba(0,0,0,.55);cursor:move;touch-action:none}
+.gs-cropbox:focus-visible{outline:1px dashed var(--gs-white);outline-offset:3px}
+.gs-handle{position:absolute;width:12px;height:12px;background:var(--gs-white);border-radius:2px;touch-action:none}
+/* 把手内嵌在框角里：裁剪框贴着舞台边时，跨在边上的把手会被 overflow:hidden 裁掉一半、抓不到 */
+.gs-h-nw{left:-1px;top:-1px;cursor:nwse-resize}.gs-h-ne{right:-1px;top:-1px;cursor:nesw-resize}
+.gs-h-sw{left:-1px;bottom:-1px;cursor:nesw-resize}.gs-h-se{right:-1px;bottom:-1px;cursor:nwse-resize}
+.gs-cropdim{position:absolute;left:18px;top:6px;font-size:11px;line-height:1;padding:3px 5px;border-radius:2px;background:rgba(0,0,0,.72);color:var(--gs-white);font-variant-numeric:tabular-nums;white-space:nowrap;pointer-events:none}
+.gs-stagebar{display:flex;align-items:center;gap:12px;margin-top:12px;flex-wrap:wrap}
+.gs-seg{display:inline-flex;border:1px solid var(--gs-border);border-radius:6px;padding:2px;gap:2px}
+.gs-seg button{background:none;border:0;border-radius:4px;padding:5px 12px;color:var(--gs-slate);cursor:pointer;font-size:13px;min-width:56px}
+.gs-seg button[aria-pressed="true"]{background:var(--gs-surface);color:var(--gs-white)}
+.gs-seg button:disabled{opacity:.35;cursor:default}
+.gs-scrubwrap{display:flex;align-items:center;gap:10px;flex:1;min-width:220px}
+.gs-scrubwrap input[type=range]{flex:1;min-width:120px}
+.gs-time{font-variant-numeric:tabular-nums;color:var(--gs-muted);font-size:13px;white-space:nowrap}
+.gs-strip{display:flex;gap:4px;overflow-x:auto;margin-top:12px;padding-bottom:6px;min-height:0;position:relative}
+.gs-strip canvas{flex:0 0 auto;height:44px;border-radius:2px;border:1px solid transparent;cursor:pointer;background:#0d0d0f}
+.gs-strip canvas.gs-on{border-color:var(--gs-white)}
+.gs-stripnote{font-size:12px;color:var(--gs-slate);margin-top:6px}
+
+/* —— 侧栏 —— */
+.gs-side{display:flex;flex-direction:column;gap:12px}
+.gs-sec{border:1px solid var(--gs-border);border-radius:8px;padding:16px;background:var(--gs-black)}
+.gs-sec-h{display:flex;align-items:baseline;gap:10px;margin:0 0 12px}
+.gs-sec-no{font-size:11px;font-weight:450;letter-spacing:.35px;color:var(--gs-slate);font-variant-numeric:tabular-nums}
+.gs-sec-t{font-size:20px;line-height:1;font-weight:400;margin:0}
+.gs-grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px 12px}
+.gs-grid2 > *{min-width:0}
+.gs-field{display:flex;flex-direction:column;gap:5px;min-width:0}
+.gs-field > label,.gs-lab{font-size:12px;color:var(--gs-slate)}
+.gs-full{grid-column:1/-1}
+.gs-in,.gs-sel{width:100%;min-width:100px;height:32px;background:var(--gs-surface);border:1px solid var(--gs-border);border-radius:4px;padding:0 10px;color:var(--gs-white);font-variant-numeric:tabular-nums}
+.gs-sel{appearance:none;-webkit-appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--gs-slate) 50%),linear-gradient(135deg,var(--gs-slate) 50%,transparent 50%);background-position:calc(100% - 15px) 14px,calc(100% - 10px) 14px;background-size:5px 5px;background-repeat:no-repeat;padding-right:26px}
+.gs-in:focus,.gs-sel:focus{border-color:var(--gs-white);outline:none}
+.gs-in[type=color]{padding:2px 4px;height:32px}
+.gs-check{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--gs-silver);cursor:pointer}
+.gs-check input{width:18px;height:18px;accent-color:var(--gs-white);margin:0}
+.gs-range{width:100%;min-width:100px;height:22px;margin:0;accent-color:var(--gs-white)}
+.gs-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.gs-hint{font-size:12px;color:var(--gs-slate);margin:6px 0 0;line-height:1.4}
+.gs-hint b{color:var(--gs-silver);font-weight:500}
+.gs-dl{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;margin:0;font-size:13px}
+.gs-dl dt{color:var(--gs-slate)}
+.gs-dl dd{margin:0;color:var(--gs-white);font-variant-numeric:tabular-nums;min-width:0;overflow-wrap:anywhere}
+
+/* —— 按钮 —— */
+.gs-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:34px;min-width:56px;padding:0 14px;border-radius:4px;border:1px solid var(--gs-border);background:transparent;color:var(--gs-white);font-size:14px;font-weight:600;cursor:pointer;white-space:nowrap;text-decoration:none}
+.gs-btn:hover{border-color:var(--gs-border2);background:var(--gs-raise)}
+.gs-btn:disabled{opacity:.4;cursor:default}
+.gs-btn-primary{background:var(--gs-white);border-color:var(--gs-white);color:var(--gs-black)}
+.gs-btn-primary:hover{background:var(--gs-cloud);border-color:var(--gs-cloud)}
+.gs-btn-sm{height:28px;padding:0 10px;font-size:13px;font-weight:500}
+.gs-go{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.gs-go .gs-btn{height:44px;font-size:15px}
+.gs-progress{grid-column:1/-1;height:2px;background:var(--gs-border);border-radius:1px;overflow:hidden}
+.gs-progress i{display:block;height:100%;width:0;background:var(--gs-white)}
+.gs-status{grid-column:1/-1;font-size:13px;color:var(--gs-muted);min-height:18px;margin:0}
+.gs-status.gs-bad{color:#ffb4b4}
+
+/* —— 结果 —— */
+.gs-result{margin-top:20px;border-top:1px solid var(--gs-border);padding-top:20px}
+.gs-res-top{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:16px;align-items:end}
+.gs-big{font-size:48px;line-height:1;letter-spacing:-1.2px;font-weight:400;font-variant-numeric:tabular-nums;margin:0}
+.gs-big-sub{color:var(--gs-slate);font-size:14px;margin:8px 0 0}
+.gs-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1px;background:var(--gs-border);border:1px solid var(--gs-border);border-radius:8px;overflow:hidden;margin-top:18px}
+.gs-metric{background:var(--gs-black);padding:12px 14px;min-width:0}
+.gs-metric-k{font-size:12px;color:var(--gs-slate);margin:0 0 6px}
+.gs-metric-v{font-size:20px;line-height:1;font-weight:400;font-variant-numeric:tabular-nums;margin:0;overflow-wrap:anywhere}
+.gs-chartbox{margin-top:16px;border:1px solid var(--gs-border);border-radius:8px;padding:8px 8px 4px;position:relative}
+.gs-chart{display:block;width:100%;height:auto}
+.gs-notes{list-style:none;margin:14px 0 0;padding:0;display:flex;flex-direction:column;gap:6px}
+.gs-notes li{font-size:13px;color:var(--gs-silver);padding-left:14px;position:relative}
+.gs-notes li::before{content:"";position:absolute;left:0;top:8px;width:6px;height:1px;background:var(--gs-slate)}
+.gs-notes li.gs-n-bad{color:#ffb4b4}
+.gs-cmp{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:16px}
+.gs-cmp figure{margin:0;min-width:0}
+.gs-cmp canvas{width:100%;height:auto;border-radius:4px;display:block;background:#0d0d0f}
+.gs-cmp figcaption{font-size:12px;color:var(--gs-slate);margin-top:6px;font-variant-numeric:tabular-nums}
+.gs-cmpbar{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:12px}
+
+/* —— 表格 —— */
+.gs-tablewrap{overflow:auto;border:1px solid var(--gs-border);border-radius:8px;position:relative;max-height:520px}
+.gs-table{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums}
+.gs-table th{position:sticky;top:0;background:var(--gs-raise);text-align:left;font-weight:500;color:var(--gs-slate);font-size:12px;padding:8px 10px;border-bottom:1px solid var(--gs-border);white-space:nowrap}
+.gs-table td{padding:7px 10px;border-bottom:1px solid var(--gs-border);color:var(--gs-silver);white-space:nowrap}
+.gs-table tr:last-child td{border-bottom:0}
+.gs-table td.gs-num,.gs-table th.gs-num{text-align:right}
+.gs-table tr.gs-best td{color:var(--gs-white)}
+.gs-mark-ok{color:var(--gs-white)}
+.gs-mark-no{color:var(--gs-slate)}
+
+/* —— 体检 —— */
+.gs-two{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:24px;align-items:start}
+.gs-two > *{min-width:0}
+.gs-panel{border:1px solid var(--gs-border);border-radius:8px;padding:16px;min-width:0}
+.gs-panel h3{font-size:20px;line-height:1;font-weight:400;margin:0 0 14px}
+.gs-insp-drop{border:1px dashed var(--gs-border2);border-radius:8px;padding:28px 16px;text-align:center;color:var(--gs-slate)}
+.gs-insp-drop.gs-dragover{border-color:var(--gs-white);color:var(--gs-white)}
+.gs-insp-prev{display:flex;align-items:center;justify-content:center;min-height:160px;border-radius:8px;overflow:hidden;margin-top:14px}
+.gs-insp-prev img{max-width:100%;max-height:320px;display:block}
+.gs-warns{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.gs-warns li{border:1px solid var(--gs-border);border-radius:16px;padding:10px 14px;font-size:13px;color:var(--gs-silver)}
+.gs-warns li.gs-w-bad{border-color:#6b2a2a;color:#ffd0d0}
+.gs-warns li.gs-w-warn{border-color:var(--gs-border2);color:var(--gs-white)}
+.gs-swatches{display:grid;grid-template-columns:repeat(32,minmax(0,1fr));gap:2px;margin-top:10px}
+.gs-swatches i{display:block;aspect-ratio:1;border-radius:1px}
+.gs-sub-h{font-size:12px;color:var(--gs-slate);margin:18px 0 8px}
+
+/* —— 说明（浅色段）—— */
+.gs-light{background:var(--gs-cloud);color:var(--gs-ink);border-radius:8px;padding:48px;margin:32px 0 64px}
+.gs-light .gs-kicker{color:#6b7280}
+.gs-light h2{font-size:40px;line-height:1.05;letter-spacing:-1px;font-weight:400;margin:0 0 24px}
+.gs-light h3{font-size:20px;line-height:1.1;font-weight:400;margin:28px 0 10px}
+.gs-light p,.gs-light li{font-size:15px;line-height:1.5;color:var(--gs-charcoal)}
+.gs-light ul{padding-left:18px;margin:8px 0}
+.gs-light .gs-tablewrap{border-color:var(--gs-silver);background:var(--gs-near)}
+.gs-light .gs-table th{background:#f3f4f7;color:#6b7280;border-color:var(--gs-silver)}
+.gs-light .gs-table td{color:var(--gs-charcoal);border-color:#dfe2e8;white-space:normal}
+.gs-light code{font-family:var(--gs-mono);font-size:13px;background:#dde1e8;border-radius:4px;padding:1px 5px}
+.gs-cols{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px 48px}
+.gs-cols > *{min-width:0}
+
+/* —— 页签面板 —— */
+.gs-pane{display:block}
+.gs-panepad{padding-top:40px;padding-bottom:64px}
+.gs-pane-h{font-size:40px;line-height:1.05;letter-spacing:-1px;font-weight:400;margin:0 0 8px}
+.gs-pane-sub{color:var(--gs-slate);margin:0 0 28px;font-size:15px}
+.gs-empty{color:var(--gs-slate);font-size:14px;padding:18px 0}
+.gs-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+@media (max-width:1100px){
+  .gs-work{grid-template-columns:minmax(0,1fr)}
+  .gs-hero{grid-template-columns:minmax(0,1fr)}
+}
+@media (max-width:760px){
+  .gs-nav{padding:12px 16px;gap:12px;flex-wrap:wrap}
+  .gs-tabs{margin-left:0;width:100%}
+  .gs-wrap{padding:0 16px}
+  .gs-h1{font-size:36px;letter-spacing:-.9px}
+  .gs-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .gs-two,.gs-cols{grid-template-columns:minmax(0,1fr)}
+  .gs-cmp{grid-template-columns:minmax(0,1fr)}
+  .gs-light{padding:28px 20px}
+  .gs-light h2,.gs-pane-h{font-size:30px}
+  .gs-big{font-size:40px}
+  .gs-drop-title{font-size:28px}
+  .gs-res-top{grid-template-columns:minmax(0,1fr)}
+}
+</style>
+</head>
+<body>
+<header class="gs-nav">
+  <a class="gs-back" href="../../">← 返回工具集</a>
+  <span class="gs-brand">GIF Studio</span>
+  <nav class="gs-tabs" role="tablist" aria-label="工作区">
+    <button class="gs-tab" role="tab" id="tab-make" aria-controls="pane-make" aria-selected="true">制作</button>
+    <button class="gs-tab" role="tab" id="tab-inspect" aria-controls="pane-inspect" aria-selected="false" tabindex="-1">体检</button>
+    <button class="gs-tab" role="tab" id="tab-history" aria-controls="pane-history" aria-selected="false" tabindex="-1">记录</button>
+    <button class="gs-tab" role="tab" id="tab-notes" aria-controls="pane-notes" aria-selected="false" tabindex="-1">说明</button>
+  </nav>
+</header>
+
+<main id="gs-panes">
+<section class="gs-pane" id="pane-make" role="tabpanel" aria-labelledby="tab-make">
+  <div class="gs-wrap">
+    <div class="gs-hero">
+      <div>
+        <p class="gs-kicker">Video · Screen · Frames → Motion</p>
+        <h1 class="gs-h1">动图工坊</h1>
+      </div>
+      <p class="gs-lede">把视频、录屏、图片序列或现有动图做成 <b>GIF / APNG / 动画 WebP</b>：裁剪、截取、变速、倒放，Wu 量化 + 抖动，只重画变化的像素，按平台体积上限自动求解。全程在本机浏览器里完成，文件不上传。</p>
+    </div>
+
+    <div class="gs-work">
+      <div class="gs-stagecol">
+        <div class="gs-stage gs-checker" id="gs-stage">
+          <div class="gs-drop" id="gs-drop">
+            <p class="gs-drop-title">拖进素材</p>
+            <p class="gs-drop-sub">视频（MP4 / WebM / MOV）、GIF / APNG / WebP 动图、多张图片（按文件名排序成序列），或直接录屏。</p>
+            <div class="gs-drop-row">
+              <button class="gs-btn gs-btn-primary" id="gs-pick" type="button">选择文件</button>
+              <button class="gs-btn" id="gs-rec" type="button">录屏</button>
+              <button class="gs-btn" id="gs-demo-dusk" type="button">示例：黄昏山谷</button>
+              <button class="gs-btn" id="gs-demo-ui" type="button">示例：界面演示</button>
+            </div>
+          </div>
+          <canvas id="gs-src-canvas" hidden></canvas>
+          <div class="gs-cropbox" id="gs-cropbox" tabindex="0" role="slider" aria-label="裁剪框：方向键移动，Shift + 方向键调整大小" aria-valuetext="" hidden>
+            <span class="gs-cropdim" id="gs-cropdim"></span>
+            <span class="gs-handle gs-h-nw" data-h="nw"></span><span class="gs-handle gs-h-ne" data-h="ne"></span>
+            <span class="gs-handle gs-h-sw" data-h="sw"></span><span class="gs-handle gs-h-se" data-h="se"></span>
+          </div>
+          <img id="gs-out-img" alt="输出动图预览" hidden>
+        </div>
+        <input type="file" id="gs-file" accept="video/*,image/*,.gif,.apng,.webp,.mp4,.webm,.mov,.mkv" multiple hidden>
+
+        <div class="gs-stagebar">
+          <div class="gs-seg" role="group" aria-label="舞台显示">
+            <button type="button" id="gs-view-src" aria-pressed="true">源</button>
+            <button type="button" id="gs-view-out" aria-pressed="false" disabled>输出</button>
+            <button type="button" id="gs-view-cmp" aria-pressed="false" disabled>对比</button>
+          </div>
+          <div class="gs-scrubwrap" id="gs-scrubwrap" hidden>
+            <label class="gs-sr" for="gs-scrub">源时间</label>
+            <input type="range" id="gs-scrub" min="0" max="1" step="0.01" value="0" class="gs-range">
+            <span class="gs-time" id="gs-scrub-t">0.00 s</span>
+            <button type="button" class="gs-btn gs-btn-sm" id="gs-set-in">设为起点</button>
+            <button type="button" class="gs-btn gs-btn-sm" id="gs-set-out">设为终点</button>
+          </div>
+        </div>
+        <div class="gs-strip" id="gs-strip" aria-label="输出帧缩略图"></div>
+        <p class="gs-stripnote" id="gs-stripnote" hidden></p>
+
+        <div class="gs-result" id="gs-result" hidden>
+          <div class="gs-res-top">
+            <div>
+              <p class="gs-kicker">Output</p>
+              <p class="gs-big" id="gs-res-size">—</p>
+              <p class="gs-big-sub" id="gs-res-sub"></p>
+            </div>
+            <div class="gs-row">
+              <a class="gs-btn gs-btn-primary" id="gs-download" href="#" download="animation.gif">下载</a>
+              <button type="button" class="gs-btn" id="gs-to-inspect">送去体检</button>
+            </div>
+          </div>
+          <div class="gs-metrics" id="gs-metrics"></div>
+          <div class="gs-chartbox">
+            <svg class="gs-chart" id="gs-res-chart" viewBox="0 0 760 200" role="img" aria-label="每个输出帧的字节数"></svg>
+          </div>
+          <ul class="gs-notes" id="gs-res-notes"></ul>
+          <div id="gs-cmpwrap" hidden>
+            <div class="gs-cmpbar">
+              <label class="gs-lab" for="gs-cmp-frame">对比第</label>
+              <input type="range" id="gs-cmp-frame" class="gs-range" min="0" max="0" step="1" value="0" style="flex:1">
+              <span class="gs-time" id="gs-cmp-t">1 / 1</span>
+              <label class="gs-lab" for="gs-cmp-gain">差异放大</label>
+              <select id="gs-cmp-gain" class="gs-sel" style="width:110px"><option value="1">× 1</option><option value="4" selected>× 4</option><option value="16">× 16</option></select>
+            </div>
+            <div class="gs-cmp">
+              <figure><canvas id="gs-cmp-src"></canvas><figcaption id="gs-cmp-cap-src">原始</figcaption></figure>
+              <figure><canvas id="gs-cmp-out"></canvas><figcaption id="gs-cmp-cap-out">输出（浏览器解码）</figcaption></figure>
+              <figure><canvas id="gs-cmp-diff"></canvas><figcaption id="gs-cmp-cap-diff">差异</figcaption></figure>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <aside class="gs-side" aria-label="参数">
+        <section class="gs-sec" aria-labelledby="gs-s1">
+          <div class="gs-sec-h"><span class="gs-sec-no">01</span><h2 class="gs-sec-t" id="gs-s1">素材</h2></div>
+          <dl class="gs-dl" id="gs-src-info"><dt>状态</dt><dd>还没有素材</dd></dl>
+          <div class="gs-row" style="margin-top:12px">
+            <button type="button" class="gs-btn gs-btn-sm" id="gs-pick2">换文件</button>
+            <button type="button" class="gs-btn gs-btn-sm" id="gs-rec2">录屏</button>
+            <button type="button" class="gs-btn gs-btn-sm" id="gs-rec-stop" hidden>停止录制</button>
+            <button type="button" class="gs-btn gs-btn-sm" id="gs-demo-dusk2">示例：山谷</button>
+            <button type="button" class="gs-btn gs-btn-sm" id="gs-demo-ui2">示例：界面</button>
+          </div>
+        </section>
+
+        <section class="gs-sec" aria-labelledby="gs-s2">
+          <div class="gs-sec-h"><span class="gs-sec-no">02</span><h2 class="gs-sec-t" id="gs-s2">剪辑</h2></div>
+          <div class="gs-grid2">
+            <div class="gs-field"><label for="gs-t0">起点（秒）</label><input class="gs-in" id="gs-t0" type="number" min="0" step="0.05" value="0"></div>
+            <div class="gs-field"><label for="gs-t1">终点（秒）</label><input class="gs-in" id="gs-t1" type="number" min="0" step="0.05" value="0"></div>
+            <div class="gs-field"><label for="gs-fps">帧率</label>
+              <select class="gs-sel" id="gs-fps">
+                <option value="src">保持源帧</option><option value="5">5 fps</option><option value="8">8 fps</option><option value="10">10 fps</option>
+                <option value="12">12 fps</option><option value="15">15 fps</option><option value="20">20 fps</option><option value="24">24 fps</option>
+                <option value="25">25 fps</option><option value="30">30 fps</option><option value="50">50 fps</option>
+              </select></div>
+            <div class="gs-field"><label for="gs-speed">速度</label>
+              <select class="gs-sel" id="gs-speed">
+                <option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="0.75">0.75×</option><option value="1" selected>1×</option>
+                <option value="1.25">1.25×</option><option value="1.5">1.5×</option><option value="2">2×</option><option value="3">3×</option><option value="4">4×</option>
+              </select></div>
+            <div class="gs-field"><label for="gs-dir">方向</label>
+              <select class="gs-sel" id="gs-dir"><option value="forward">正放</option><option value="reverse">倒放</option><option value="pingpong">往返（回旋）</option></select></div>
+            <div class="gs-field"><label for="gs-ratio">裁剪比例</label>
+              <select class="gs-sel" id="gs-ratio"><option value="free">自由</option><option value="1">1 : 1</option><option value="1.3333333">4 : 3</option><option value="0.75">3 : 4</option><option value="1.7777778">16 : 9</option><option value="0.5625">9 : 16</option></select></div>
+            <div class="gs-field"><label for="gs-cx">裁剪 X</label><input class="gs-in" id="gs-cx" type="number" min="0" step="1" value="0"></div>
+            <div class="gs-field"><label for="gs-cy">裁剪 Y</label><input class="gs-in" id="gs-cy" type="number" min="0" step="1" value="0"></div>
+            <div class="gs-field"><label for="gs-cw">裁剪宽</label><input class="gs-in" id="gs-cw" type="number" min="1" step="1" value="1"></div>
+            <div class="gs-field"><label for="gs-ch">裁剪高</label><input class="gs-in" id="gs-ch" type="number" min="1" step="1" value="1"></div>
+            <div class="gs-field"><label for="gs-width">输出宽（像素）</label><input class="gs-in" id="gs-width" type="number" min="8" max="1920" step="1" value="480"></div>
+            <div class="gs-field"><label for="gs-size-preset">尺寸预设</label>
+              <select class="gs-sel" id="gs-size-preset"><option value="">—</option><option value="src">裁剪原尺寸</option><option value="128">最长边 128</option><option value="240">最长边 240</option><option value="320">最长边 320</option><option value="480">最长边 480</option><option value="640">最长边 640</option><option value="800">最长边 800</option></select></div>
+            <p class="gs-hint gs-full" id="gs-outdim">输出 —</p>
+            <div class="gs-field gs-full"><label for="gs-cap">字幕（可空）</label><input class="gs-in" id="gs-cap" type="text" maxlength="60" placeholder="例如：上线啦"></div>
+            <div class="gs-field"><label for="gs-cap-pos">字幕位置</label><select class="gs-sel" id="gs-cap-pos"><option value="bottom">底部</option><option value="top">顶部</option></select></div>
+            <div class="gs-field"><label for="gs-cap-size">字号（画面高 %）</label><input class="gs-in" id="gs-cap-size" type="number" min="4" max="30" step="1" value="12"></div>
+            <div class="gs-row gs-full"><button type="button" class="gs-btn gs-btn-sm" id="gs-crop-reset">重置裁剪</button></div>
+          </div>
+        </section>
+
+        <section class="gs-sec" aria-labelledby="gs-s3">
+          <div class="gs-sec-h"><span class="gs-sec-no">03</span><h2 class="gs-sec-t" id="gs-s3">编码</h2></div>
+          <div class="gs-grid2">
+            <div class="gs-field gs-full"><span class="gs-lab" id="gs-fmt-lab">格式</span>
+              <div class="gs-seg" role="group" aria-labelledby="gs-fmt-lab" id="gs-fmt">
+                <button type="button" data-fmt="gif" aria-pressed="true">GIF</button>
+                <button type="button" data-fmt="apng" aria-pressed="false">APNG</button>
+                <button type="button" data-fmt="webp" aria-pressed="false">WebP</button>
+              </div></div>
+            <div class="gs-field" data-for="indexed"><label for="gs-colors">颜色数</label><input class="gs-in" id="gs-colors" type="number" min="2" max="256" step="1" value="256"></div>
+            <div class="gs-field" data-for="indexed"><label for="gs-quant">量化算法</label>
+              <select class="gs-sel" id="gs-quant"><option value="wu">Wu 方差最小</option><option value="median">中位切分</option><option value="octree">八叉树</option></select></div>
+            <div class="gs-field" data-for="indexed"><label for="gs-dither">抖动</label>
+              <select class="gs-sel" id="gs-dither"><option value="none">不抖动</option><option value="bayer">Bayer 8×8 有序</option><option value="fs">Floyd–Steinberg</option><option value="atkinson">Atkinson</option></select></div>
+            <div class="gs-field" data-for="indexed"><label for="gs-strength">抖动强度 %</label><input class="gs-in" id="gs-strength" type="number" min="0" max="100" step="5" value="75"></div>
+            <div class="gs-field" data-for="indexed"><label for="gs-palette">调色板</label>
+              <select class="gs-sel" id="gs-palette"><option value="global">全局（全片一套）</option><option value="local">逐帧（每帧一套）</option></select></div>
+            <div class="gs-field" data-for="indexed"><label for="gs-kmeans">k-means 精修</label>
+              <select class="gs-sel" id="gs-kmeans"><option value="0">不精修</option><option value="1">1 轮</option><option value="2">2 轮</option><option value="4">4 轮</option></select></div>
+            <div class="gs-field" data-for="apng"><label for="gs-apng-mode">APNG 色彩</label>
+              <select class="gs-sel" id="gs-apng-mode"><option value="indexed">调色板 8 位</option><option value="rgba">真彩 RGBA（无损）</option></select></div>
+            <div class="gs-field" data-for="webp"><label for="gs-webp-q">WebP 质量（100 = 无损）</label><input class="gs-in" id="gs-webp-q" type="number" min="1" max="100" step="1" value="82"></div>
+            <div class="gs-field"><label for="gs-fuzz">帧间容差</label><input class="gs-in" id="gs-fuzz" type="number" min="0" max="48" step="1" value="3"></div>
+            <div class="gs-field"><label for="gs-loop">循环</label>
+              <select class="gs-sel" id="gs-loop"><option value="0">无限循环</option><option value="1">播放 1 次</option><option value="2">播放 2 次</option><option value="3">播放 3 次</option><option value="5">播放 5 次</option></select></div>
+            <div class="gs-field" data-for="gif"><label for="gs-matte">半透明边缘衬底</label><input class="gs-in" id="gs-matte" type="color" value="#ffffff"></div>
+            <label class="gs-check gs-full"><input type="checkbox" id="gs-optimize" checked> 帧间优化：只重画变化框，未变像素写透明</label>
+            <label class="gs-check gs-full"><input type="checkbox" id="gs-dedupe" checked> 合并完全相同的相邻帧</label>
+            <p class="gs-hint gs-full" id="gs-enc-hint"></p>
+          </div>
+        </section>
+
+        <section class="gs-sec" aria-labelledby="gs-s4">
+          <div class="gs-sec-h"><span class="gs-sec-no">04</span><h2 class="gs-sec-t" id="gs-s4">体积预算</h2></div>
+          <div class="gs-grid2">
+            <div class="gs-field gs-full"><label for="gs-budget-preset">平台</label>
+              <select class="gs-sel" id="gs-budget-preset">
+                <option value="github">GitHub 评论附件 · 10 MB</option>
+                <option value="wechat">微信动态表情 · 500 KB</option>
+                <option value="discord">Discord 表情 · 256 KB</option>
+                <option value="slack">Slack 表情 · 128 KB</option>
+                <option value="custom">自定义</option>
+              </select></div>
+            <div class="gs-field"><label for="gs-budget-kb">上限（KB）</label><input class="gs-in" id="gs-budget-kb" type="number" min="4" max="10000000" step="1" value="10000"></div>
+            <p class="gs-hint" style="align-self:end" id="gs-budget-bytes"></p>
+            <p class="gs-hint gs-full" id="gs-budget-src"></p>
+            <span class="gs-lab gs-full">求解时允许调整</span>
+            <label class="gs-check"><input type="checkbox" id="gs-allow-size" checked> 尺寸</label>
+            <label class="gs-check"><input type="checkbox" id="gs-allow-fps" checked> 帧率</label>
+            <label class="gs-check"><input type="checkbox" id="gs-allow-colors" checked> 颜色数</label>
+            <label class="gs-check"><input type="checkbox" id="gs-allow-fuzz" checked> 帧间容差</label>
+          </div>
+          <div class="gs-tablewrap" id="gs-solve-wrap" style="margin-top:12px" hidden>
+            <table class="gs-table" id="gs-solve-log"><thead><tr><th class="gs-num">#</th><th class="gs-num">压缩档 λ</th><th>尺寸</th><th class="gs-num">帧率</th><th class="gs-num">色数</th><th class="gs-num">体积</th><th>结果</th></tr></thead><tbody></tbody></table>
+          </div>
+        </section>
+
+        <div class="gs-go">
+          <button type="button" class="gs-btn gs-btn-primary" id="gs-encode" disabled>生成动图</button>
+          <button type="button" class="gs-btn" id="gs-solve" disabled>按预算求解</button>
+          <div class="gs-progress" role="progressbar" aria-label="进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="gs-progress"><i id="gs-progress-bar"></i></div>
+          <p class="gs-status" id="gs-status" role="status" aria-live="polite">先放一个素材进来。</p>
+          <button type="button" class="gs-btn gs-btn-sm" id="gs-cancel" hidden>取消</button>
+        </div>
+      </aside>
+    </div>
+  </div>
+</section>
+
+<section class="gs-pane" id="pane-inspect" role="tabpanel" aria-labelledby="tab-inspect" hidden>
+  <div class="gs-wrap gs-panepad">
+    <p class="gs-kicker">Inspect</p>
+    <h2 class="gs-pane-h">动图体检</h2>
+    <p class="gs-pane-sub">拆开任意 GIF / APNG / WebP：每一帧的矩形、处置方式、延迟（文件里写的 vs 浏览器实际播的）、调色板、循环设置，以及还能省多少。</p>
+    <div class="gs-two">
+      <div class="gs-panel">
+        <h3>文件</h3>
+        <div class="gs-insp-drop" id="gs-insp-drop">把动图拖到这里，或
+          <div class="gs-row" style="justify-content:center;margin-top:12px">
+            <button type="button" class="gs-btn gs-btn-sm" id="gs-insp-pick">选择文件</button>
+            <button type="button" class="gs-btn gs-btn-sm" id="gs-insp-last" disabled>检查刚生成的</button>
+          </div>
+        </div>
+        <input type="file" id="gs-insp-file" accept=".gif,.png,.apng,.webp,image/gif,image/png,image/webp" hidden>
+        <div class="gs-insp-prev gs-checker" id="gs-insp-prevwrap" hidden><img id="gs-insp-img" alt="体检中的动图"></div>
+        <p class="gs-sub-h">概况</p>
+        <dl class="gs-dl" id="gs-insp-sum"><dt>状态</dt><dd>还没有文件</dd></dl>
+        <div class="gs-row" style="margin-top:14px"><button type="button" class="gs-btn gs-btn-sm" id="gs-insp-send" disabled>送去制作（重编码 / 转格式）</button></div>
+        <div id="gs-insp-palwrap" hidden><p class="gs-sub-h" id="gs-insp-palcap">全局调色板</p><div class="gs-swatches" id="gs-insp-pal"></div></div>
+      </div>
+      <div class="gs-panel">
+        <h3>发现</h3>
+        <ul class="gs-warns" id="gs-insp-warn"><li>拖入文件后在这里列出问题与可优化之处。</li></ul>
+      </div>
+    </div>
+    <p class="gs-sub-h">逐帧</p>
+    <div class="gs-tablewrap"><table class="gs-table" id="gs-insp-frames"><thead><tr><th class="gs-num">#</th><th>矩形</th><th>处置 / 混合</th><th class="gs-num">延迟（文件）</th><th class="gs-num">延迟（浏览器）</th><th class="gs-num">透明下标</th><th class="gs-num">局部色</th><th>隔行</th><th class="gs-num">数据字节</th></tr></thead><tbody></tbody></table></div>
+    <p class="gs-sub-h">块结构</p>
+    <div class="gs-tablewrap"><table class="gs-table" id="gs-insp-blocks"><thead><tr><th class="gs-num">偏移</th><th class="gs-num">长度</th><th>块</th><th>说明</th></tr></thead><tbody></tbody></table></div>
+  </div>
+</section>
+
+<section class="gs-pane" id="pane-history" role="tabpanel" aria-labelledby="tab-history" hidden>
+  <div class="gs-wrap gs-panepad">
+    <p class="gs-kicker">History</p>
+    <h2 class="gs-pane-h">记录与预设</h2>
+    <p class="gs-pane-sub">每次生成都记下参数和结果（只存设置，不存文件），一键套回；常用设置可以存成预设。都保存在本机浏览器里。</p>
+    <div class="gs-two">
+      <div class="gs-panel">
+        <h3>预设</h3>
+        <div class="gs-row">
+          <label class="gs-sr" for="gs-preset-name">预设名称</label>
+          <input class="gs-in" id="gs-preset-name" type="text" maxlength="30" placeholder="例如：README 演示" style="flex:1">
+          <button type="button" class="gs-btn gs-btn-sm" id="gs-preset-save">存当前设置</button>
+        </div>
+        <ul class="gs-warns" id="gs-preset-list" style="margin-top:14px"></ul>
+      </div>
+      <div class="gs-panel">
+        <h3>统计</h3>
+        <dl class="gs-dl" id="gs-hist-sum"><dt>记录</dt><dd>0 条</dd></dl>
+        <div class="gs-row" style="margin-top:14px"><button type="button" class="gs-btn gs-btn-sm" id="gs-hist-clear">清空记录</button></div>
+      </div>
+    </div>
+    <p class="gs-sub-h">生成记录</p>
+    <div class="gs-tablewrap"><table class="gs-table" id="gs-hist-table"><thead><tr><th>时间</th><th>素材</th><th>格式</th><th>尺寸</th><th class="gs-num">帧</th><th class="gs-num">时长</th><th class="gs-num">体积</th><th>参数</th><th>操作</th></tr></thead><tbody></tbody></table></div>
+  </div>
+</section>
+
+<section class="gs-pane" id="pane-notes" role="tabpanel" aria-labelledby="tab-notes" hidden>
+  <div class="gs-wrap">
+    <div class="gs-light">
+      <p class="gs-kicker">Notes</p>
+      <h2>它在做什么</h2>
+      <div class="gs-cols">
+        <div>
+          <h3>流水线</h3>
+          <ul>
+            <li><b>抽帧</b>：视频按「源时刻 = 起点 + k × 速度 / 帧率」逐帧定位后画到画布；动图按每帧延迟排出时间轴再取帧。裁剪、缩放、字幕在这一步完成。</li>
+            <li><b>量化</b>：统计全片（或每帧）颜色。不同颜色不超过上限时直接用原色，<b>无损</b>；否则用 Wu 方差最小切分（默认）、Heckbert 中位切分或八叉树，可再跑几轮 k-means。</li>
+            <li><b>抖动</b>：Floyd–Steinberg 蛇形扫描、Atkinson 误差扩散，或 Bayer 8×8 有序抖动。误差扩散每帧噪点不同，会拖累帧间优化；有序抖动随坐标固定，更适合动画。</li>
+            <li><b>帧间优化</b>：每个像素和「上次编码它时的源色」比，差距在容差内就算没变（不会慢慢漂移）。只编码变化框，框内没变的像素写透明下标，LZW 遇到成片透明压得极狠；整帧没变就并进上一帧的延迟。</li>
+            <li><b>封装</b>：GIF 用自写的变长 LZW（2–12 位，满表发清除码）；APNG 用浏览器自带的 deflate；动画 WebP 每帧交给浏览器的 WebP 编码器，再由本页按 RIFF 规范拼成 ANMF 帧。</li>
+          </ul>
+        </div>
+        <div>
+          <h3>浏览器怎么播</h3>
+          <ul>
+            <li>GIF 延迟以 1/100 秒计。<b>延迟 ≤ 1（10 ms）的帧，Chrome / Firefox / Safari 都按 100 ms 播放</b>，所以本页最短写 2（每秒 50 帧），并用误差扩散取整保住总时长。</li>
+            <li>GIF 的循环靠 NETSCAPE2.0 扩展：没有它只播一遍；字段值是「额外重复次数」，0 表示无限。APNG 的 num_plays、WebP 的 loop count 则是「总播放次数」。本页的「播放 N 次」已按各格式换算。</li>
+            <li>处置方式 2 在浏览器里是「清成透明」，不是背景色。</li>
+            <li>结果卡里的 PSNR 是拿<b>浏览器自己解出来的帧</b>（WebCodecs ImageDecoder）和原始帧比的；没有这个接口的浏览器改用本页的 GIF 解码器。</li>
+          </ul>
+        </div>
+      </div>
+      <h3>平台体积上限</h3>
+      <div class="gs-tablewrap"><table class="gs-table" id="gs-limits">
+        <thead><tr><th>平台</th><th>上限</th><th>其他要求</th><th>依据</th></tr></thead>
+        <tbody>
+          <tr><td>GitHub 议题 / PR 评论附件</td><td>图片与 GIF 每个 10 MB</td><td>视频另计（免费 10 MB / 付费 100 MB）</td><td>官方文档 docs.github.com「Attaching files」</td></tr>
+          <tr><td>Slack 自定义表情</td><td>128 KB 以下效果最好</td><td>GIF 最多 50 帧；正方形、透明背景最佳</td><td>官方帮助 slack.com/help「Add custom emoji」</td></tr>
+          <tr><td>Discord 表情</td><td>256 KB</td><td>动图表情为 GIF</td><td>第三方汇总（官方页面拒绝抓取，未能直接核对）</td></tr>
+          <tr><td>微信表情开放平台 · 动态表情主图</td><td>500 KB</td><td>GIF，240 × 240 像素</td><td>第三方教程一致（官方规范需登录后台查看）</td></tr>
+        </tbody>
+      </table></div>
+      <h3>隐私</h3>
+      <p>素材只在当前标签页的内存里处理，不会上传。记录与预设存在本机浏览器的 localStorage，清空记录或清浏览器数据即删除。</p>
+    </div>
+  </div>
+</section>
+</main>
+
+<script id="gs-engine">/* 动图工坊 · 引擎（纯函数，无 DOM）
+ * 浏览器主线程与 node:vm 离线套件共用同一份源码；顶层只用 var，vm 上下文才拿得到 GS。
+ * 组成：颜色统计 → 量化（Wu / 中位切分 / 八叉树 + k-means 精修）→ 最近色查找 → 抖动
+ *      → 帧间差分（变化框裁剪 + 未变像素透明 + 容差）→ GIF（自写 LZW）/ APNG / 动画 WebP 封装
+ *      → GIF 解码与体检、APNG / WebP 结构解析 → 时间轴重采样、延迟取整、体积预算求解。
+ */
+var GS = (function () {
+  'use strict';
+
+  // ════════ 小工具 ════════
+  function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
+  function bitsFor(n) { var b = 0; while ((1 << b) < n) b++; return b; }
+
+  function Bytes(cap) { this.buf = new Uint8Array(cap || 65536); this.n = 0; }
+  Bytes.prototype.need = function (k) {
+    if (this.n + k <= this.buf.length) return;
+    var nb = new Uint8Array(Math.max(this.buf.length * 2, this.n + k + 1024));
+    nb.set(this.buf.subarray(0, this.n));
+    this.buf = nb;
+  };
+  Bytes.prototype.u8 = function (v) { this.need(1); this.buf[this.n++] = v & 255; };
+  Bytes.prototype.u16le = function (v) { this.need(2); this.buf[this.n++] = v & 255; this.buf[this.n++] = (v >>> 8) & 255; };
+  Bytes.prototype.u24le = function (v) { this.need(3); this.buf[this.n++] = v & 255; this.buf[this.n++] = (v >>> 8) & 255; this.buf[this.n++] = (v >>> 16) & 255; };
+  Bytes.prototype.u32le = function (v) { this.need(4); for (var i = 0; i < 4; i++) this.buf[this.n++] = (v >>> (8 * i)) & 255; };
+  Bytes.prototype.u32be = function (v) { this.need(4); for (var i = 3; i >= 0; i--) this.buf[this.n++] = (v >>> (8 * i)) & 255; };
+  Bytes.prototype.u16be = function (v) { this.need(2); this.buf[this.n++] = (v >>> 8) & 255; this.buf[this.n++] = v & 255; };
+  Bytes.prototype.str = function (s) { this.need(s.length); for (var i = 0; i < s.length; i++) this.buf[this.n++] = s.charCodeAt(i) & 255; };
+  Bytes.prototype.put = function (a) { this.need(a.length); this.buf.set(a, this.n); this.n += a.length; };
+  Bytes.prototype.out = function () { return this.buf.slice(0, this.n); };
+
+  var CRC_T = (function () {
+    var t = new Int32Array(256), c, n, k;
+    for (n = 0; n < 256; n++) { c = n; for (k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c; }
+    return t;
+  })();
+  function crc32(a, s, e) {
+    var c = -1, i;
+    for (i = s || 0; i < (e == null ? a.length : e); i++) c = CRC_T[(c ^ a[i]) & 255] ^ (c >>> 8);
+    return (c ^ -1) >>> 0;
+  }
+
+  // ════════ 颜色统计 ════════
+  // Wu 的 33³ 矩（5 位/通道，下标 0 是零填充）+ 精确颜色表（不同颜色超过 cap 个就放弃精确，退回 5 位格均值）
+  var HB = 33, HB2 = 1089, HN = 35937, HSIZE = 1 << 18;
+  function Hist(cap) {
+    this.wt = new Float64Array(HN); this.mr = new Float64Array(HN); this.mg = new Float64Array(HN);
+    this.mb = new Float64Array(HN); this.m2 = new Float64Array(HN);
+    this.keys = new Int32Array(HSIZE).fill(-1); this.cnt = new Float64Array(HSIZE);
+    this.uniq = 0; this.exact = true; this.cap = cap || 65536; this.total = 0;
+  }
+  Hist.prototype.add = function (r, g, b, w) {
+    var i = ((r >> 3) + 1) * HB2 + ((g >> 3) + 1) * HB + (b >> 3) + 1;
+    this.wt[i] += w; this.mr[i] += r * w; this.mg[i] += g * w; this.mb[i] += b * w;
+    this.m2[i] += (r * r + g * g + b * b) * w;
+    this.total += w;
+    if (!this.exact) return;
+    var key = (r << 16) | (g << 8) | b, h = Math.imul(key, 0x9E3779B1) >>> 14, k;
+    for (;;) {
+      k = this.keys[h];
+      if (k === key) { this.cnt[h] += w; return; }
+      if (k === -1) {
+        if (this.uniq >= this.cap) { this.exact = false; return; }
+        this.keys[h] = key; this.cnt[h] = w; this.uniq++; return;
+      }
+      h = (h + 1) & (HSIZE - 1);
+    }
+  };
+  // 点集：精确时是每个不同颜色；否则是每个非空 5 位格的加权均值色
+  Hist.prototype.points = function () {
+    var R = [], G = [], B = [], W = [], i, k;
+    if (this.exact) {
+      for (i = 0; i < HSIZE; i++) {
+        k = this.keys[i];
+        if (k < 0) continue;
+        R.push((k >> 16) & 255); G.push((k >> 8) & 255); B.push(k & 255); W.push(this.cnt[i]);
+      }
+    } else {
+      for (i = 0; i < HN; i++) {
+        if (!(this.wt[i] > 0)) continue;
+        R.push(this.mr[i] / this.wt[i]); G.push(this.mg[i] / this.wt[i]); B.push(this.mb[i] / this.wt[i]); W.push(this.wt[i]);
+      }
+    }
+    return { n: R.length, r: Float64Array.from(R), g: Float64Array.from(G), b: Float64Array.from(B), w: Float64Array.from(W), exact: this.exact };
+  };
+
+  // ════════ 量化 ════════
+  // —— Wu（Xiaolin Wu 1991，Graphics Gems II「Efficient Statistical Computations for Optimal Color Quantization」）——
+  function wuQuant(hist, K) {
+    var wt = hist.wt.slice(), mr = hist.mr.slice(), mg = hist.mg.slice(), mb = hist.mb.slice(), m2 = hist.m2.slice();
+    var r, g, b, i, ind1, ind2;
+    var aw = new Float64Array(HB), ar = new Float64Array(HB), ag = new Float64Array(HB), ab = new Float64Array(HB), a2 = new Float64Array(HB);
+    for (r = 1; r <= 32; r++) {
+      aw.fill(0); ar.fill(0); ag.fill(0); ab.fill(0); a2.fill(0);
+      for (g = 1; g <= 32; g++) {
+        var lw = 0, lr = 0, lg = 0, lb = 0, l2 = 0;
+        for (b = 1; b <= 32; b++) {
+          ind1 = r * HB2 + g * HB + b;
+          lw += wt[ind1]; lr += mr[ind1]; lg += mg[ind1]; lb += mb[ind1]; l2 += m2[ind1];
+          aw[b] += lw; ar[b] += lr; ag[b] += lg; ab[b] += lb; a2[b] += l2;
+          ind2 = ind1 - HB2;
+          wt[ind1] = wt[ind2] + aw[b]; mr[ind1] = mr[ind2] + ar[b]; mg[ind1] = mg[ind2] + ag[b];
+          mb[ind1] = mb[ind2] + ab[b]; m2[ind1] = m2[ind2] + a2[b];
+        }
+      }
+    }
+    function vol(c, M) {
+      return M[c.r1 * HB2 + c.g1 * HB + c.b1] - M[c.r1 * HB2 + c.g1 * HB + c.b0] - M[c.r1 * HB2 + c.g0 * HB + c.b1] + M[c.r1 * HB2 + c.g0 * HB + c.b0]
+        - M[c.r0 * HB2 + c.g1 * HB + c.b1] + M[c.r0 * HB2 + c.g1 * HB + c.b0] + M[c.r0 * HB2 + c.g0 * HB + c.b1] - M[c.r0 * HB2 + c.g0 * HB + c.b0];
+    }
+    function bottom(c, dir, M) {
+      if (dir === 0) return -M[c.r0 * HB2 + c.g1 * HB + c.b1] + M[c.r0 * HB2 + c.g1 * HB + c.b0] + M[c.r0 * HB2 + c.g0 * HB + c.b1] - M[c.r0 * HB2 + c.g0 * HB + c.b0];
+      if (dir === 1) return -M[c.r1 * HB2 + c.g0 * HB + c.b1] + M[c.r1 * HB2 + c.g0 * HB + c.b0] + M[c.r0 * HB2 + c.g0 * HB + c.b1] - M[c.r0 * HB2 + c.g0 * HB + c.b0];
+      return -M[c.r1 * HB2 + c.g1 * HB + c.b0] + M[c.r1 * HB2 + c.g0 * HB + c.b0] + M[c.r0 * HB2 + c.g1 * HB + c.b0] - M[c.r0 * HB2 + c.g0 * HB + c.b0];
+    }
+    function top(c, dir, pos, M) {
+      if (dir === 0) return M[pos * HB2 + c.g1 * HB + c.b1] - M[pos * HB2 + c.g1 * HB + c.b0] - M[pos * HB2 + c.g0 * HB + c.b1] + M[pos * HB2 + c.g0 * HB + c.b0];
+      if (dir === 1) return M[c.r1 * HB2 + pos * HB + c.b1] - M[c.r1 * HB2 + pos * HB + c.b0] - M[c.r0 * HB2 + pos * HB + c.b1] + M[c.r0 * HB2 + pos * HB + c.b0];
+      return M[c.r1 * HB2 + c.g1 * HB + pos] - M[c.r1 * HB2 + c.g0 * HB + pos] - M[c.r0 * HB2 + c.g1 * HB + pos] + M[c.r0 * HB2 + c.g0 * HB + pos];
+    }
+    function variance(c) {
+      var dr = vol(c, mr), dg = vol(c, mg), db = vol(c, mb), w = vol(c, wt);
+      return w > 0 ? vol(c, m2) - (dr * dr + dg * dg + db * db) / w : 0;
+    }
+    function maximize(c, dir, first, last, whole) {
+      var br = bottom(c, dir, mr), bg = bottom(c, dir, mg), bb = bottom(c, dir, mb), bw = bottom(c, dir, wt);
+      var best = 0, cut = -1, p, hr, hg, hb, hw, t;
+      for (p = first; p < last; p++) {
+        hr = br + top(c, dir, p, mr); hg = bg + top(c, dir, p, mg); hb = bb + top(c, dir, p, mb); hw = bw + top(c, dir, p, wt);
+        if (hw === 0) continue;
+        t = (hr * hr + hg * hg + hb * hb) / hw;
+        hr = whole[0] - hr; hg = whole[1] - hg; hb = whole[2] - hb; hw = whole[3] - hw;
+        if (hw === 0) continue;
+        t += (hr * hr + hg * hg + hb * hb) / hw;
+        if (t > best) { best = t; cut = p; }
+      }
+      return [best, cut];
+    }
+    function cutBox(s1, s2) {
+      var whole = [vol(s1, mr), vol(s1, mg), vol(s1, mb), vol(s1, wt)];
+      var R = maximize(s1, 0, s1.r0 + 1, s1.r1, whole), G = maximize(s1, 1, s1.g0 + 1, s1.g1, whole), B = maximize(s1, 2, s1.b0 + 1, s1.b1, whole);
+      var dir;
+      if (R[0] >= G[0] && R[0] >= B[0]) { dir = 0; if (R[1] < 0) return false; }
+      else if (G[0] >= R[0] && G[0] >= B[0]) dir = 1;
+      else dir = 2;
+      s2.r1 = s1.r1; s2.g1 = s1.g1; s2.b1 = s1.b1;
+      if (dir === 0) { s2.r0 = s1.r1 = R[1]; s2.g0 = s1.g0; s2.b0 = s1.b0; }
+      else if (dir === 1) { s2.g0 = s1.g1 = G[1]; s2.r0 = s1.r0; s2.b0 = s1.b0; }
+      else { s2.b0 = s1.b1 = B[1]; s2.r0 = s1.r0; s2.g0 = s1.g0; }
+      s1.vol = (s1.r1 - s1.r0) * (s1.g1 - s1.g0) * (s1.b1 - s1.b0);
+      s2.vol = (s2.r1 - s2.r0) * (s2.g1 - s2.g0) * (s2.b1 - s2.b0);
+      return true;
+    }
+    var cubes = [{ r0: 0, r1: 32, g0: 0, g1: 32, b0: 0, b1: 32, vol: 32768 }], vv = [0], next = 0, n = 1;
+    for (i = 1; i < K; i++) {
+      var c2 = { r0: 0, r1: 0, g0: 0, g1: 0, b0: 0, b1: 0, vol: 0 };
+      if (cutBox(cubes[next], c2)) {
+        cubes.push(c2); n++;
+        vv[next] = cubes[next].vol > 1 ? variance(cubes[next]) : 0;
+        vv[i] = c2.vol > 1 ? variance(c2) : 0;
+      } else {
+        vv[next] = 0; i--;
+      }
+      next = 0; var tmp = vv[0];
+      for (var k = 1; k <= i; k++) if (vv[k] > tmp) { tmp = vv[k]; next = k; }
+      if (tmp <= 0) break;
+    }
+    var out = [];
+    for (i = 0; i < n; i++) {
+      var w = vol(cubes[i], wt);
+      if (w > 0) out.push(Math.round(vol(cubes[i], mr) / w), Math.round(vol(cubes[i], mg) / w), Math.round(vol(cubes[i], mb) / w));
+    }
+    return out;
+  }
+
+  // —— 中位切分（Heckbert 1982）：挑「权重 × 最长轴跨度²」最大的箱，沿最长轴在加权中位数处切 ——
+  function medianCut(P, K) {
+    var n = P.n, idx = [], i;
+    for (i = 0; i < n; i++) idx.push(i);
+    var CH = [P.r, P.g, P.b];
+    function stats(lo, hi) {
+      var mn = [1e9, 1e9, 1e9], mx = [-1, -1, -1], w = 0, j, c, v;
+      for (j = lo; j < hi; j++) {
+        var p = idx[j];
+        w += P.w[p];
+        for (c = 0; c < 3; c++) { v = CH[c][p]; if (v < mn[c]) mn[c] = v; if (v > mx[c]) mx[c] = v; }
+      }
+      var ax = 0, rg = mx[0] - mn[0];
+      if (mx[1] - mn[1] > rg) { ax = 1; rg = mx[1] - mn[1]; }
+      if (mx[2] - mn[2] > rg) { ax = 2; rg = mx[2] - mn[2]; }
+      return { lo: lo, hi: hi, w: w, ax: ax, rg: rg, score: hi - lo > 1 && rg > 0 ? w * rg * rg : -1 };
+    }
+    var boxes = [stats(0, n)];
+    while (boxes.length < K) {
+      var bi = -1, best = 0;
+      for (i = 0; i < boxes.length; i++) if (boxes[i].score > best) { best = boxes[i].score; bi = i; }
+      if (bi < 0) break;
+      var bx = boxes[bi], ch = CH[bx.ax];
+      var part = idx.slice(bx.lo, bx.hi).sort(function (a, b) { return ch[a] - ch[b] || a - b; });
+      for (i = 0; i < part.length; i++) idx[bx.lo + i] = part[i];
+      var half = bx.w / 2, acc = 0, m = bx.lo;
+      for (i = bx.lo; i < bx.hi - 1; i++) { acc += P.w[idx[i]]; m = i + 1; if (acc >= half) break; }
+      // 别把同值切开：中位点落在一串相同取值中间时，往跨度更均衡的一侧挪
+      while (m < bx.hi - 1 && m > bx.lo && ch[idx[m]] === ch[idx[m - 1]]) m++;
+      if (m >= bx.hi) m = bx.hi - 1;
+      if (m <= bx.lo) m = bx.lo + 1;
+      boxes.splice(bi, 1, stats(bx.lo, m), stats(m, bx.hi));
+    }
+    var out = [];
+    for (i = 0; i < boxes.length; i++) {
+      var b = boxes[i], sw = 0, sr = 0, sg = 0, sb = 0;
+      for (var j = b.lo; j < b.hi; j++) { var p = idx[j], w = P.w[p]; sw += w; sr += P.r[p] * w; sg += P.g[p] * w; sb += P.b[p] * w; }
+      if (sw > 0) out.push(Math.round(sr / sw), Math.round(sg / sw), Math.round(sb / sw));
+    }
+    return out;
+  }
+
+  // —— 八叉树（Gervautz & Purgathofer 1988）：建满 8 层，从最深层起按子树权重从小到大合并，直到叶子 ≤ K ——
+  function octreeQuant(P, K) {
+    var root = { ch: null, leaf: false, w: 0, r: 0, g: 0, b: 0 }, levels = [[], [], [], [], [], [], [], []];
+    var leaves = 0, i, L, node, bit, ci, R, G, B;
+    root.ch = [null, null, null, null, null, null, null, null];
+    levels[0].push(root);
+    for (i = 0; i < P.n; i++) {
+      var w = P.w[i], r = P.r[i], g = P.g[i], b = P.b[i];
+      R = clamp(Math.round(r), 0, 255); G = clamp(Math.round(g), 0, 255); B = clamp(Math.round(b), 0, 255);
+      node = root;
+      node.w += w; node.r += r * w; node.g += g * w; node.b += b * w;
+      for (L = 0; L < 8; L++) {
+        bit = 7 - L;
+        ci = (((R >> bit) & 1) << 2) | (((G >> bit) & 1) << 1) | ((B >> bit) & 1);
+        var nx = node.ch[ci];
+        if (!nx) {
+          nx = { ch: L < 7 ? [null, null, null, null, null, null, null, null] : null, leaf: L === 7, w: 0, r: 0, g: 0, b: 0 };
+          node.ch[ci] = nx;
+          if (L < 7) levels[L + 1].push(nx); else leaves++;
+        }
+        node = nx;
+        node.w += w; node.r += r * w; node.g += g * w; node.b += b * w;
+      }
+    }
+    for (L = 7; L >= 0 && leaves > K; L--) {
+      var lv = levels[L].slice().sort(function (a, b) { return a.w - b.w; });
+      for (i = 0; i < lv.length && leaves > K; i++) {
+        node = lv[i];
+        if (node.leaf) continue;
+        var c = 0;
+        for (var j = 0; j < 8; j++) if (node.ch[j]) c++;
+        node.leaf = true; node.ch = null;
+        leaves -= c - 1;
+      }
+    }
+    var out = [];
+    (function walk(nd) {
+      if (nd.leaf) { if (nd.w > 0) out.push(Math.round(nd.r / nd.w), Math.round(nd.g / nd.w), Math.round(nd.b / nd.w)); return; }
+      for (var j = 0; j < 8; j++) if (nd.ch[j]) walk(nd.ch[j]);
+    })(root);
+    return out;
+  }
+
+  // —— k-means 精修（Lloyd）：每个点归到最近色，再把每个色换成所属点的加权均值 ——
+  function kmeans(P, pal, iters) {
+    var n = pal.length / 3, it, i, j;
+    pal = pal.slice();
+    for (it = 0; it < iters; it++) {
+      var s = new Float64Array(n * 4);
+      for (i = 0; i < P.n; i++) {
+        var r = P.r[i], g = P.g[i], b = P.b[i], best = Infinity, bi = 0;
+        for (j = 0; j < n; j++) {
+          var dr = r - pal[3 * j], dg = g - pal[3 * j + 1], db = b - pal[3 * j + 2], d = dr * dr + dg * dg + db * db;
+          if (d < best) { best = d; bi = j; }
+        }
+        var w = P.w[i];
+        s[4 * bi] += w; s[4 * bi + 1] += r * w; s[4 * bi + 2] += g * w; s[4 * bi + 3] += b * w;
+      }
+      var moved = 0;
+      for (j = 0; j < n; j++) {
+        if (!(s[4 * j] > 0)) continue;
+        var nr = Math.round(s[4 * j + 1] / s[4 * j]), ng = Math.round(s[4 * j + 2] / s[4 * j]), nb = Math.round(s[4 * j + 3] / s[4 * j]);
+        if (nr !== pal[3 * j] || ng !== pal[3 * j + 1] || nb !== pal[3 * j + 2]) moved++;
+        pal[3 * j] = nr; pal[3 * j + 1] = ng; pal[3 * j + 2] = nb;
+      }
+      if (!moved) break;
+    }
+    return pal;
+  }
+
+  function dedupePal(arr) {
+    var seen = {}, out = [], i, k;
+    for (i = 0; i + 2 < arr.length; i += 3) {
+      k = (arr[i] << 16) | (arr[i + 1] << 8) | arr[i + 2];
+      if (seen[k]) continue;
+      seen[k] = 1; out.push(arr[i], arr[i + 1], arr[i + 2]);
+    }
+    return out;
+  }
+
+  /* 量化入口：不同颜色 ≤ K 时直接用原色（无损）；否则按所选算法，再可选 k-means 精修。
+   * 返回 Uint8Array(3n)。 */
+  function quantize(hist, K, method, iters) {
+    K = clamp(K | 0, 1, 256);
+    var P = hist.points(), pal, i;
+    if (P.n === 0) return new Uint8Array([0, 0, 0]);
+    if (P.exact && P.n <= K) {
+      pal = [];
+      for (i = 0; i < P.n; i++) pal.push(P.r[i], P.g[i], P.b[i]);
+      return Uint8Array.from(pal);
+    }
+    if (method === 'median') pal = medianCut(P, K);
+    else if (method === 'octree') pal = octreeQuant(P, K);
+    else pal = wuQuant(hist, K);
+    if (iters > 0) pal = kmeans(P, pal, iters);
+    pal = dedupePal(pal);
+    if (!pal.length) pal = [0, 0, 0];
+    return Uint8Array.from(pal.map(function (v) { return clamp(v, 0, 255); }));
+  }
+
+  // ════════ 最近色查找 ════════
+  // 按绿色分量排序后从插入点向两侧扩张，|Δg|² 已不小于当前最优就停；结果带 18 位哈希缓存（精确，不是近似桶）。
+  var MC = 1 << 18;
+  function Matcher(pal) {
+    var n = pal.length / 3, ord = [], i;
+    for (i = 0; i < n; i++) ord.push(i);
+    ord.sort(function (a, b) { return pal[3 * a + 1] - pal[3 * b + 1] || a - b; });
+    this.n = n; this.pal = pal;
+    this.sr = new Int32Array(n); this.sg = new Int32Array(n); this.sb = new Int32Array(n); this.si = new Int32Array(n);
+    for (i = 0; i < n; i++) { var p = ord[i]; this.si[i] = p; this.sr[i] = pal[3 * p]; this.sg[i] = pal[3 * p + 1]; this.sb[i] = pal[3 * p + 2]; }
+    this.ck = new Int32Array(MC).fill(-1); this.cv = new Uint8Array(MC); this.used = 0;
+  }
+  Matcher.prototype.find = function (r, g, b) {
+    var key = (r << 16) | (g << 8) | b, h = Math.imul(key, 0x9E3779B1) >>> 14, k;
+    for (;;) {
+      k = this.ck[h];
+      if (k === key) return this.cv[h];
+      if (k === -1) break;
+      h = (h + 1) & (MC - 1);
+    }
+    var n = this.n, sg = this.sg, sr = this.sr, sb = this.sb, lo = 0, hi = n;
+    while (lo < hi) { var mid = (lo + hi) >> 1; if (sg[mid] < g) lo = mid + 1; else hi = mid; }
+    var up = lo, dn = lo - 1, best = 1e9, bi = 0, d, dg, dr, db;
+    while (up < n || dn >= 0) {
+      if (up < n) {
+        dg = sg[up] - g;
+        if (dg * dg >= best) up = n;
+        else { dr = sr[up] - r; db = sb[up] - b; d = dr * dr + dg * dg + db * db; if (d < best || (d === best && this.si[up] < this.si[bi])) { best = d; bi = up; } up++; }
+      }
+      if (dn >= 0) {
+        dg = g - sg[dn];
+        if (dg * dg >= best) dn = -1;
+        else { dr = sr[dn] - r; db = sb[dn] - b; d = dr * dr + dg * dg + db * db; if (d < best || (d === best && this.si[dn] < this.si[bi])) { best = d; bi = dn; } dn--; }
+      }
+    }
+    var res = this.si[bi];
+    if (this.used > MC * 0.6) { this.ck.fill(-1); this.used = 0; h = Math.imul(key, 0x9E3779B1) >>> 14; while (this.ck[h] !== -1) h = (h + 1) & (MC - 1); }
+    this.ck[h] = key; this.cv[h] = res; this.used++;
+    return res;
+  };
+  function nearestBrute(pal, r, g, b) {
+    var best = 1e9, bi = 0, j, d, dr, dg, db;
+    for (j = 0; j < pal.length / 3; j++) {
+      dr = pal[3 * j] - r; dg = pal[3 * j + 1] - g; db = pal[3 * j + 2] - b; d = dr * dr + dg * dg + db * db;
+      if (d < best) { best = d; bi = j; }
+    }
+    return bi;
+  }
+
+  // ════════ 抖动 ════════
+  var BAYER8 = (function () {
+    var m = [[0]], n, i, j;
+    for (n = 1; n < 8; n *= 2) {
+      var nm = [];
+      for (i = 0; i < 2 * n; i++) { nm.push([]); for (j = 0; j < 2 * n; j++) nm[i].push(0); }
+      for (i = 0; i < n; i++) for (j = 0; j < n; j++) {
+        var v = 4 * m[i][j];
+        nm[i][j] = v; nm[i][j + n] = v + 2; nm[i + n][j] = v + 3; nm[i + n][j + n] = v + 1;
+      }
+      m = nm;
+    }
+    var out = new Float32Array(64);
+    for (i = 0; i < 8; i++) for (j = 0; j < 8; j++) out[i * 8 + j] = (m[i][j] + 0.5) / 64 - 0.5;
+    return out;
+  })();
+  // 有序抖动的振幅：调色板里「每个色到最近另一色」距离的中位数
+  function paletteSpacing(pal) {
+    var n = pal.length / 3, ds = [], i, j;
+    if (n < 2) return 0;
+    for (i = 0; i < n; i++) {
+      var best = 1e9;
+      for (j = 0; j < n; j++) {
+        if (i === j) continue;
+        var dr = pal[3 * i] - pal[3 * j], dg = pal[3 * i + 1] - pal[3 * j + 1], db = pal[3 * i + 2] - pal[3 * j + 2], d = dr * dr + dg * dg + db * db;
+        if (d < best) best = d;
+      }
+      ds.push(Math.sqrt(best));
+    }
+    ds.sort(function (a, b) { return a - b; });
+    return ds[ds.length >> 1];
+  }
+
+  /* 把矩形 [x0,x0+w)×[y0,y0+h) 内的像素映射成调色板下标。
+   *   col: Uint8Array(N*3) 每像素要编码的颜色；vis: Uint8Array(N) 1=可见；
+   *   code: Uint8Array(N) 1=本帧要编码（0 的像素输出 T，误差也不经过它）；code 为 null 时全编码。
+   * 误差扩散只在要编码的像素之间传递。 */
+  function mapRect(col, vis, code, W, x0, y0, w, h, M, T, dither, strength, out) {
+    var x, y, p, q, i, r, g, b, k, pal = M.pal;
+    var s = strength == null ? 1 : strength;
+    if (dither === 'fs' || dither === 'atkinson') {
+      var rows = dither === 'fs' ? 2 : 3, ew = w + 4;
+      var E = [];
+      for (i = 0; i < rows; i++) E.push(new Float32Array(ew * 3));
+      for (y = 0; y < h; y++) {
+        var rtl = dither === 'fs' && (y & 1) === 1;
+        for (var xi = 0; xi < w; xi++) {
+          x = rtl ? w - 1 - xi : xi;
+          p = (y0 + y) * W + x0 + x; q = y * w + x;
+          var e0 = E[0], ei = (x + 2) * 3;
+          if (!vis[p] || (code && !code[p])) { out[q] = T; continue; }
+          r = col[3 * p] + e0[ei]; g = col[3 * p + 1] + e0[ei + 1]; b = col[3 * p + 2] + e0[ei + 2];
+          r = r < 0 ? 0 : r > 255 ? 255 : Math.round(r); g = g < 0 ? 0 : g > 255 ? 255 : Math.round(g); b = b < 0 ? 0 : b > 255 ? 255 : Math.round(b);
+          k = M.find(r, g, b); out[q] = k;
+          var er = (r - pal[3 * k]) * s, eg = (g - pal[3 * k + 1]) * s, eb = (b - pal[3 * k + 2]) * s;
+          if (dither === 'fs') {
+            var dx = rtl ? -1 : 1, e1 = E[1];
+            addErr(e0, ei + 3 * dx, er, eg, eb, 7 / 16);
+            addErr(e1, ei - 3 * dx, er, eg, eb, 3 / 16);
+            addErr(e1, ei, er, eg, eb, 5 / 16);
+            addErr(e1, ei + 3 * dx, er, eg, eb, 1 / 16);
+          } else {
+            addErr(e0, ei + 3, er, eg, eb, 1 / 8); addErr(e0, ei + 6, er, eg, eb, 1 / 8);
+            addErr(E[1], ei - 3, er, eg, eb, 1 / 8); addErr(E[1], ei, er, eg, eb, 1 / 8); addErr(E[1], ei + 3, er, eg, eb, 1 / 8);
+            addErr(E[2], ei, er, eg, eb, 1 / 8);
+          }
+        }
+        var first = E.shift(); first.fill(0); E.push(first);
+      }
+      return;
+    }
+    var amp = dither === 'bayer' ? paletteSpacing(pal) * s : 0;
+    for (y = 0; y < h; y++) {
+      for (x = 0; x < w; x++) {
+        p = (y0 + y) * W + x0 + x; q = y * w + x;
+        if (!vis[p] || (code && !code[p])) { out[q] = T; continue; }
+        r = col[3 * p]; g = col[3 * p + 1]; b = col[3 * p + 2];
+        if (amp > 0) {
+          var t = BAYER8[((y0 + y) & 7) * 8 + ((x0 + x) & 7)] * amp;
+          r = clamp(Math.round(r + t), 0, 255); g = clamp(Math.round(g + t), 0, 255); b = clamp(Math.round(b + t), 0, 255);
+        }
+        out[q] = M.find(r, g, b);
+      }
+    }
+  }
+  function addErr(e, i, r, g, b, f) { e[i] += r * f; e[i + 1] += g * f; e[i + 2] += b * f; }
+
+  // ════════ 编码参数 ════════
+  function normOpt(o) {
+    o = o || {};
+    return {
+      colors: clamp((o.colors | 0) || 256, 2, 256),
+      quant: o.quant || 'wu',
+      kmeans: clamp(o.kmeans | 0, 0, 8),
+      dither: o.dither || 'none',
+      strength: o.strength == null ? 1 : clamp(+o.strength, 0, 1),
+      palette: o.palette === 'local' ? 'local' : 'global',
+      optimize: o.optimize !== false,
+      fuzz: clamp(+o.fuzz || 0, 0, 255),
+      dedupe: o.dedupe !== false,
+      thr: o.alphaThreshold == null ? 128 : clamp(o.alphaThreshold | 0, 1, 255),
+      matte: o.matte || [255, 255, 255],
+      keep: !!o.keepIntended,
+      target: o.target || 'gif',
+      even: !!o.even,
+      loop: o.loop == null ? 0 : clamp(o.loop | 0, 0, 65535)   // 0 = 无限；n ≥ 1 = 一共播放 n 次
+    };
+  }
+
+  function frameHasAlpha(d, thr) { for (var i = 3; i < d.length; i += 4) if (d[i] < thr) return true; return false; }
+  function histFrame(h, d, o, code) {
+    var thr = o.thr, mr = o.matte[0], mg = o.matte[1], mb = o.matte[2], i, p, a, r, g, b;
+    for (p = 0, i = 0; i < d.length; i += 4, p++) {
+      a = d[i + 3];
+      if (a < thr || (code && !code[p])) continue;
+      r = d[i]; g = d[i + 1]; b = d[i + 2];
+      if (a < 255) { r = (r * a + mr * (255 - a) + 127) / 255 | 0; g = (g * a + mg * (255 - a) + 127) / 255 | 0; b = (b * a + mb * (255 - a) + 127) / 255 | 0; }
+      h.add(r, g, b, 1);
+    }
+  }
+
+  /* ════════ 索引色流水线（GIF / 调色板 APNG 共用）════════
+   * 每帧：判定变化像素（与「上次编码时的源色」比，容差 fuzz，避免慢变化累积漂移）→ 选矩形 → 建/取调色板 → 映射 + 抖动。
+   *   不透明素材 + 帧间优化：矩形 = 变化框，未变像素写透明下标 T（GIF 处置 1 / APNG OVER 混合），
+   *   带透明的素材：GIF 每帧处置 2（清回透明）并重画可见内容；APNG 用 SOURCE 混合整块替换。
+   *   完全没变的帧并进上一帧的延迟（dedupe）。 */
+  function IndexedJob(frames, W, H, opt) {
+    var o = normOpt(opt), N = W * H, k;
+    if (o.target === 'apng') o.palette = 'global';
+    this.kind = 'indexed'; this.frames = frames; this.W = W; this.H = H; this.o = o; this.k = 0; this.out = []; this.intended = [];
+    var alpha = false;
+    for (k = 0; k < frames.length && !alpha; k++) alpha = frameHasAlpha(frames[k].data, o.thr);
+    this.alpha = alpha;
+    this.useT = alpha || o.optimize;
+    this.Kc = Math.max(1, o.colors - (this.useT ? 1 : 0));
+    this.col = new Uint8Array(N * 3); this.vis = new Uint8Array(N); this.code = new Uint8Array(N);
+    this.ref = new Uint8Array(N * 3); this.refV = new Uint8Array(N);
+    this.shown = new Uint8ClampedArray(N * 4); this.shownIdx = new Int16Array(N).fill(-1);
+    this.gpal = null;
+    if (o.palette === 'global') {
+      var h = new Hist();
+      for (k = 0; k < frames.length; k++) histFrame(h, frames[k].data, o, null);
+      this.gpal = quantize(h, this.Kc, o.quant, o.kmeans);
+      this.gM = new Matcher(this.gpal);
+      this.uniqueColors = h.exact ? h.uniq : -1;
+    }
+    this.done = frames.length === 0;
+  }
+  IndexedJob.prototype.step = function () {
+    var k = this.k, fr = this.frames[k], d = fr.data, W = this.W, H = this.H, N = W * H, o = this.o;
+    var col = this.col, vis = this.vis, code = this.code, ref = this.ref, refV = this.refV;
+    var thr = o.thr, fz2 = o.fuzz * o.fuzz, mr = o.matte[0], mg = o.matte[1], mb = o.matte[2];
+    var x0 = W, y0 = H, x1 = -1, y1 = -1, vx0 = W, vy0 = H, vx1 = -1, vy1 = -1, nch = 0, p, x, y, i;
+    var apng = o.target === 'apng', alpha = this.alpha;
+    for (y = 0, p = 0; y < H; y++) for (x = 0; x < W; x++, p++) {
+      i = 4 * p;
+      var a = d[i + 3], r = d[i], g = d[i + 1], b = d[i + 2], v = a >= thr ? 1 : 0, ch;
+      if (v && a < 255) { r = (r * a + mr * (255 - a) + 127) / 255 | 0; g = (g * a + mg * (255 - a) + 127) / 255 | 0; b = (b * a + mb * (255 - a) + 127) / 255 | 0; }
+      if (k === 0 || v !== refV[p]) ch = 1;
+      else if (!v) ch = 0;
+      else { var dr = r - ref[3 * p], dg = g - ref[3 * p + 1], db = b - ref[3 * p + 2]; ch = dr * dr + dg * dg + db * db > fz2 ? 1 : 0; }
+      code[p] = ch;
+      if (ch) {
+        nch++;
+        if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+        vis[p] = v;
+        if (v) { col[3 * p] = r; col[3 * p + 1] = g; col[3 * p + 2] = b; } else { col[3 * p] = col[3 * p + 1] = col[3 * p + 2] = 0; }
+      } else {
+        vis[p] = refV[p];
+        col[3 * p] = ref[3 * p]; col[3 * p + 1] = ref[3 * p + 1]; col[3 * p + 2] = ref[3 * p + 2];
+      }
+      if (vis[p]) { if (x < vx0) vx0 = x; if (x > vx1) vx1 = x; if (y < vy0) vy0 = y; if (y > vy1) vy1 = y; }
+    }
+    if (k > 0 && nch === 0 && o.dedupe && this.out.length) {
+      this.out[this.out.length - 1].delay += fr.delay;
+      this.k++; this.done = this.k >= this.frames.length;
+      return this.done;
+    }
+    // —— 矩形与编码集 ——
+    var rx, ry, rw, rh, codeSet, blend = 1, disposal = 1, mode;
+    if (alpha && !apng) {            // GIF 带透明：处置 2，每帧重画可见内容
+      mode = 'redraw'; disposal = 2; codeSet = null;
+      if (vx1 < 0) { rx = 0; ry = 0; rw = 1; rh = 1; } else { rx = vx0; ry = vy0; rw = vx1 - vx0 + 1; rh = vy1 - vy0 + 1; }
+    } else if (!o.optimize) {
+      mode = 'full'; codeSet = null; rx = 0; ry = 0; rw = W; rh = H; blend = 0;
+    } else if (alpha) {              // APNG 带透明：SOURCE 混合替换变化框
+      mode = 'source'; blend = 0; codeSet = code;
+      if (k === 0) { rx = 0; ry = 0; rw = W; rh = H; }
+      else if (x1 < 0) { rx = 0; ry = 0; rw = 1; rh = 1; }
+      else { rx = x0; ry = y0; rw = x1 - x0 + 1; rh = y1 - y0 + 1; }
+    } else {                         // 不透明 + 帧间优化：变化框 + 未变像素透明
+      mode = 'over'; codeSet = code; blend = 1;
+      if (k === 0) { rx = 0; ry = 0; rw = W; rh = H; }
+      else if (x1 < 0) { rx = 0; ry = 0; rw = 1; rh = 1; }
+      else { rx = x0; ry = y0; rw = x1 - x0 + 1; rh = y1 - y0 + 1; }
+    }
+    if (k === 0 && mode !== 'redraw') blend = 0;
+    // —— 调色板 ——
+    var pal, M;
+    if (this.gpal) { pal = this.gpal; M = this.gM; }
+    else {
+      var hh = new Hist();
+      for (y = ry; y < ry + rh; y++) for (x = rx; x < rx + rw; x++) {
+        p = y * W + x;
+        if (!vis[p] || (codeSet && !codeSet[p])) continue;
+        hh.add(col[3 * p], col[3 * p + 1], col[3 * p + 2], 1);
+      }
+      pal = quantize(hh, this.Kc, o.quant, o.kmeans);
+      M = new Matcher(pal);
+    }
+    var palN = pal.length / 3, T = this.useT ? palN : 0;
+    var idx = new Uint8Array(rw * rh);
+    mapRect(col, vis, codeSet, W, rx, ry, rw, rh, M, T, o.dither, o.strength, idx);
+    var shown = this.shown, sIdx = this.shownIdx, q;
+    if (mode === 'source') {          // 未变像素沿用正在显示的下标（不重新抖动，免得闪）
+      for (y = 0; y < rh; y++) for (x = 0; x < rw; x++) {
+        p = (ry + y) * W + rx + x; q = y * rw + x;
+        if (!code[p]) idx[q] = sIdx[p] >= 0 ? sIdx[p] : T;
+      }
+    }
+    // —— 更新「正在显示」与参考色 ——
+    if (mode === 'redraw') { shown.fill(0); sIdx.fill(-1); }
+    for (y = 0; y < rh; y++) for (x = 0; x < rw; x++) {
+      p = (ry + y) * W + rx + x; q = y * rw + x;
+      var t = idx[q];
+      if (mode === 'over' && !code[p]) continue;
+      if (this.useT && t === T) {
+        if (mode !== 'over') { shown[4 * p] = shown[4 * p + 1] = shown[4 * p + 2] = shown[4 * p + 3] = 0; sIdx[p] = -1; }
+      } else {
+        shown[4 * p] = pal[3 * t]; shown[4 * p + 1] = pal[3 * t + 1]; shown[4 * p + 2] = pal[3 * t + 2]; shown[4 * p + 3] = 255; sIdx[p] = t;
+      }
+    }
+    if (mode === 'redraw' || mode === 'full') {
+      for (p = 0; p < N; p++) { refV[p] = vis[p]; ref[3 * p] = col[3 * p]; ref[3 * p + 1] = col[3 * p + 1]; ref[3 * p + 2] = col[3 * p + 2]; }
+    } else {
+      for (p = 0; p < N; p++) if (code[p]) { refV[p] = vis[p]; ref[3 * p] = col[3 * p]; ref[3 * p + 1] = col[3 * p + 1]; ref[3 * p + 2] = col[3 * p + 2]; }
+    }
+    var rec = { x: rx, y: ry, w: rw, h: rh, idx: idx, pal: this.gpal ? null : pal, palN: palN, T: this.useT ? T : -1,
+      delay: fr.delay, disposal: disposal, blend: blend, mode: mode, changed: nch, src: k };
+    if (o.target === 'gif') {
+      var tb = Math.max(1, bitsFor((this.gpal ? this.gpal.length / 3 : palN) + (this.useT ? 1 : 0)));
+      rec.tableBits = tb;
+      rec.lzw = lzwEncode(idx, Math.max(2, tb));
+    }
+    this.out.push(rec);
+    if (o.keep) this.intended.push(shown.slice());
+    this.k++; this.done = this.k >= this.frames.length;
+    return this.done;
+  };
+
+  /* ════════ 真彩流水线（RGBA APNG / 动画 WebP）════════
+   * 变化框 + 未变像素写全透明，配 OVER 混合；变化像素里只要有一个不是完全不透明就改用 SOURCE（整块替换，未变像素写当前显示值）。
+   * even=true 时（WebP）矩形左上角取偶数坐标。 */
+  function TrueJob(frames, W, H, opt) {
+    var o = normOpt(opt), N = W * H;
+    this.kind = 'true'; this.frames = frames; this.W = W; this.H = H; this.o = o; this.k = 0; this.out = []; this.intended = [];
+    this.ref = new Uint8ClampedArray(N * 4); this.code = new Uint8Array(N);
+    this.done = frames.length === 0;
+  }
+  TrueJob.prototype.step = function () {
+    var k = this.k, fr = this.frames[k], d = fr.data, W = this.W, H = this.H, N = W * H, o = this.o, ref = this.ref, code = this.code;
+    var fz = o.fuzz, fz2 = fz * fz, x0 = W, y0 = H, x1 = -1, y1 = -1, nch = 0, allOpaque = true, p, x, y, i;
+    for (y = 0, p = 0; y < H; y++) for (x = 0; x < W; x++, p++) {
+      i = 4 * p;
+      var ch;
+      if (k === 0) ch = 1;
+      else {
+        var a = d[i + 3], ra = ref[i + 3];
+        if (a === 0 && ra === 0) ch = 0;
+        else if (Math.abs(a - ra) > fz) ch = 1;
+        else { var dr = d[i] - ref[i], dg = d[i + 1] - ref[i + 1], db = d[i + 2] - ref[i + 2]; ch = dr * dr + dg * dg + db * db > fz2 ? 1 : 0; }
+      }
+      code[p] = ch;
+      if (ch) {
+        nch++;
+        if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+        if (d[i + 3] < 255) allOpaque = false;
+      }
+    }
+    if (k > 0 && nch === 0 && o.dedupe && this.out.length) {
+      this.out[this.out.length - 1].delay += fr.delay;
+      this.k++; this.done = this.k >= this.frames.length;
+      return this.done;
+    }
+    var rx, ry, rw, rh, blend;
+    if (k === 0 || !o.optimize) { rx = 0; ry = 0; rw = W; rh = H; blend = 0; }
+    else if (x1 < 0) { rx = 0; ry = 0; rw = 1; rh = 1; blend = 1; }
+    else { rx = x0; ry = y0; rw = x1 - x0 + 1; rh = y1 - y0 + 1; blend = allOpaque ? 1 : 0; }
+    if (o.even && (rx & 1 || ry & 1)) {
+      var ex = rx & ~1, ey = ry & ~1;
+      rw += rx - ex; rh += ry - ey; rx = ex; ry = ey;
+    }
+    var px = new Uint8ClampedArray(rw * rh * 4), q;
+    for (y = 0; y < rh; y++) for (x = 0; x < rw; x++) {
+      p = (ry + y) * W + rx + x; q = 4 * (y * rw + x); i = 4 * p;
+      if (code[p]) { px[q] = d[i]; px[q + 1] = d[i + 1]; px[q + 2] = d[i + 2]; px[q + 3] = d[i + 3]; }
+      else if (!blend) { px[q] = ref[i]; px[q + 1] = ref[i + 1]; px[q + 2] = ref[i + 2]; px[q + 3] = ref[i + 3]; }
+    }
+    for (p = 0; p < N; p++) if (code[p]) { i = 4 * p; ref[i] = d[i]; ref[i + 1] = d[i + 1]; ref[i + 2] = d[i + 2]; ref[i + 3] = d[i + 3]; }
+    this.out.push({ x: rx, y: ry, w: rw, h: rh, rgba: px, delay: fr.delay, blend: blend, changed: nch, src: k });
+    if (o.keep) this.intended.push(ref.slice());
+    this.k++; this.done = this.k >= this.frames.length;
+    return this.done;
+  };
+  function runJob(job) { while (!job.done) job.step(); return job; }
+
+  // ════════ LZW（GIF 变长码，最长 12 位）════════
+  var LZ_STAMP = null, LZ_VAL = null, LZ_GEN = 0;
+  function lzwEncode(idx, minCode) {
+    if (!LZ_STAMP) { LZ_STAMP = new Int32Array(1 << 20); LZ_VAL = new Int16Array(1 << 20); }
+    var out = new Bytes(Math.max(1024, idx.length >> 1)), clear = 1 << minCode, eoi = clear + 1;
+    var cs = minCode + 1, next = eoi + 1, acc = 0, nb = 0, blk = new Uint8Array(256), bl = 0, n = idx.length;
+    out.u8(minCode);
+    function emit(c) {
+      acc |= c << nb; nb += cs;
+      while (nb >= 8) {
+        blk[bl++] = acc & 255; acc >>>= 8; nb -= 8;
+        if (bl === 255) { out.u8(255); out.put(blk.subarray(0, 255)); bl = 0; }
+      }
+    }
+    LZ_GEN++;
+    emit(clear);
+    if (n > 0) {
+      var prefix = idx[0], i, kk, key;
+      for (i = 1; i < n; i++) {
+        kk = idx[i]; key = (prefix << 8) | kk;
+        if (LZ_STAMP[key] === LZ_GEN) { prefix = LZ_VAL[key]; continue; }
+        emit(prefix);
+        if (next < 4096) {
+          LZ_STAMP[key] = LZ_GEN; LZ_VAL[key] = next; next++;
+          if (next > (1 << cs) && cs < 12) cs++;
+        } else {
+          emit(clear); LZ_GEN++; cs = minCode + 1; next = eoi + 1;
+        }
+        prefix = kk;
+      }
+      emit(prefix);
+      // 解码端读完最后一个码还会补一条表项；若因此到了 2^cs，它会用 cs+1 位去读 EOI —— 这里跟着升位
+      if (next >= (1 << cs) && cs < 12) cs++;
+    }
+    emit(eoi);
+    if (nb > 0) { blk[bl++] = acc & 255; }
+    if (bl) { out.u8(bl); out.put(blk.subarray(0, bl)); }
+    out.u8(0);
+    return out.out();
+  }
+  /* 解码：data = 去掉子块长度字节后的码流。返回实际写出的像素数（不足 npix ⇒ 截断/损坏）。
+   * 传 info 时再严格一步：像素读满后，下一个码按规范应当就是结束码 EOI（允许先来一个清除码）；
+   * info.end = 'eoi' | 'extra'（后面还有别的码）| 'data'（码流先没了）| 'bad'（非法码）。
+   * 宽松的解码器（浏览器、Pillow）读满像素就停，所以「收尾错了」只有这一步看得出来。 */
+  function lzwDecode(data, minCode, out, info) {
+    var npix = out.length, clear = 1 << minCode, eoi = clear + 1;
+    var pre = new Int16Array(4096), suf = new Uint8Array(4096), fst = new Uint8Array(4096), len = new Uint16Array(4096);
+    for (var c0 = 0; c0 < clear; c0++) { pre[c0] = -1; suf[c0] = c0; fst[c0] = c0; len[c0] = 1; }
+    var cs = minCode + 1, next = eoi + 1, prev = -1, op = 0, acc = 0, nb = 0, pos = 0, dl = data.length, ended = '';
+    while (op < npix) {
+      while (nb < cs && pos < dl) { acc |= data[pos++] << nb; nb += 8; }
+      if (nb < cs) { ended = 'data'; break; }
+      var code = acc & ((1 << cs) - 1); acc >>>= cs; nb -= cs;
+      if (code === clear) { cs = minCode + 1; next = eoi + 1; prev = -1; continue; }
+      if (code === eoi) { ended = 'eoi'; break; }
+      var str;
+      if (prev === -1) {
+        if (code >= clear) { ended = 'bad'; break; }
+        out[op++] = code; prev = code; continue;
+      }
+      if (code < next) str = code;
+      else if (code === next && next < 4096) str = -1;
+      else { ended = 'bad'; break; }
+      if (next < 4096) {
+        pre[next] = prev; suf[next] = str >= 0 ? fst[str] : fst[prev]; fst[next] = fst[prev]; len[next] = len[prev] + 1;
+        if (str < 0) str = next;
+        next++;
+        if (next === (1 << cs) && cs < 12) cs++;
+      }
+      var L = len[str], e = op + L, w = Math.min(e, npix) - 1, cc = str;
+      for (var j = e - 1; j >= op; j--) { if (j <= w) out[j] = suf[cc]; cc = pre[cc]; }
+      op = Math.min(e, npix);
+      prev = code;
+    }
+    if (info) {
+      if (op >= npix && !ended) {
+        for (var tries = 0; ;) {
+          while (nb < cs && pos < dl) { acc |= data[pos++] << nb; nb += 8; }
+          if (nb < cs) { ended = 'data'; break; }
+          var c2 = acc & ((1 << cs) - 1); acc >>>= cs; nb -= cs;
+          if (c2 === clear && tries++ < 1) { cs = minCode + 1; continue; }
+          ended = c2 === eoi ? 'eoi' : 'extra'; break;
+        }
+      }
+      info.pixels = op; info.end = ended; info.trailingBytes = dl - pos;
+    }
+    return op;
+  }
+
+  // GIF 延迟以 1/100 秒计：误差扩散取整，保住总时长；最短 2（浏览器把 ≤1 的延迟当 10 播放）
+  function centis(ms) {
+    var out = [], acc = 0, i, t, c;
+    for (i = 0; i < ms.length; i++) {
+      t = ms[i] / 10 + acc; c = Math.max(2, Math.round(t)); if (c > 65535) c = 65535;
+      acc = Math.max(-2, t - c); out.push(c);
+    }
+    return out;
+  }
+  function effDelayCs(cs) { return cs <= 1 ? 10 : cs; }
+
+  function writeGIF(job) {
+    var o = job.o, W = job.W, H = job.H, B = new Bytes(1 << 16), i, j, f;
+    B.str('GIF89a'); B.u16le(W); B.u16le(H);
+    var g = job.gpal, gBits = 0;
+    if (g) { gBits = Math.max(1, bitsFor(g.length / 3 + (job.useT ? 1 : 0))); B.u8(0xF0 | (gBits - 1)); }
+    else B.u8(0x70);
+    B.u8(0); B.u8(0);
+    if (g) for (i = 0; i < (1 << gBits); i++) { B.u8(3 * i < g.length ? g[3 * i] : 0); B.u8(3 * i < g.length ? g[3 * i + 1] : 0); B.u8(3 * i < g.length ? g[3 * i + 2] : 0); }
+    if (o.loop !== 1) { B.u8(0x21); B.u8(0xFF); B.u8(11); B.str('NETSCAPE2.0'); B.u8(3); B.u8(1); B.u16le(o.loop === 0 ? 0 : o.loop - 1); B.u8(0); }
+    var cs = centis(job.out.map(function (r) { return r.delay; }));
+    for (j = 0; j < job.out.length; j++) {
+      f = job.out[j];
+      B.u8(0x21); B.u8(0xF9); B.u8(4); B.u8((f.disposal << 2) | (f.T >= 0 ? 1 : 0)); B.u16le(cs[j]); B.u8(f.T >= 0 ? f.T : 0); B.u8(0);
+      B.u8(0x2C); B.u16le(f.x); B.u16le(f.y); B.u16le(f.w); B.u16le(f.h);
+      if (f.pal) {
+        var lb = f.tableBits;
+        B.u8(0x80 | (lb - 1));
+        for (i = 0; i < (1 << lb); i++) { B.u8(3 * i < f.pal.length ? f.pal[3 * i] : 0); B.u8(3 * i < f.pal.length ? f.pal[3 * i + 1] : 0); B.u8(3 * i < f.pal.length ? f.pal[3 * i + 2] : 0); }
+      } else B.u8(0);
+      B.put(f.lzw);
+    }
+    B.u8(0x3B);
+    return B.out();
+  }
+
+  // ════════ PNG / APNG ════════
+  function pngChunk(B, type, data) {
+    B.u32be(data.length);
+    var s = B.n;
+    B.str(type); B.put(data);
+    B.u32be(crc32(B.buf, s, B.n));
+  }
+  function be32(v) { return [(v >>> 24) & 255, (v >>> 16) & 255, (v >>> 8) & 255, v & 255]; }
+  function be16(v) { return [(v >>> 8) & 255, v & 255]; }
+  // 逐行滤波：调色板图一律 None（PNG 规范建议）；RGBA 按「有符号绝对值和最小」在 5 种滤波里挑
+  function filterRows(px, w, h, bpp) {
+    var stride = w * bpp, out = new Uint8Array(h * (stride + 1)), y, x, t;
+    if (bpp === 1) {
+      for (y = 0; y < h; y++) { out[y * (stride + 1)] = 0; out.set(px.subarray(y * stride, y * stride + stride), y * (stride + 1) + 1); }
+      return out;
+    }
+    var cand = [new Uint8Array(stride), new Uint8Array(stride), new Uint8Array(stride), new Uint8Array(stride), new Uint8Array(stride)];
+    for (y = 0; y < h; y++) {
+      var row = y * stride, up = y > 0 ? row - stride : -1, best = -1, bestSum = Infinity;
+      for (t = 0; t < 5; t++) {
+        var c = cand[t], sum = 0;
+        for (x = 0; x < stride; x++) {
+          var cur = px[row + x], a = x >= bpp ? px[row + x - bpp] : 0, b = up >= 0 ? px[up + x] : 0, cc = (x >= bpp && up >= 0) ? px[up + x - bpp] : 0, v;
+          if (t === 0) v = cur;
+          else if (t === 1) v = cur - a;
+          else if (t === 2) v = cur - b;
+          else if (t === 3) v = cur - ((a + b) >> 1);
+          else {
+            var pp = a + b - cc, pa = Math.abs(pp - a), pb = Math.abs(pp - b), pc = Math.abs(pp - cc);
+            v = cur - (pa <= pb && pa <= pc ? a : pb <= pc ? b : cc);
+          }
+          v &= 255; c[x] = v; sum += v < 128 ? v : 256 - v;
+          if (sum >= bestSum) break;
+        }
+        if (sum < bestSum) { bestSum = sum; best = t; }
+      }
+      // 重算选中的那一种（上面可能提前 break 没写满）
+      var cb = cand[best];
+      for (x = 0; x < stride; x++) {
+        var cur2 = px[row + x], a2 = x >= bpp ? px[row + x - bpp] : 0, b2 = up >= 0 ? px[up + x] : 0, c2 = (x >= bpp && up >= 0) ? px[up + x - bpp] : 0, v2;
+        if (best === 0) v2 = cur2;
+        else if (best === 1) v2 = cur2 - a2;
+        else if (best === 2) v2 = cur2 - b2;
+        else if (best === 3) v2 = cur2 - ((a2 + b2) >> 1);
+        else { var p2 = a2 + b2 - c2, qa = Math.abs(p2 - a2), qb = Math.abs(p2 - b2), qc = Math.abs(p2 - c2); v2 = cur2 - (qa <= qb && qa <= qc ? a2 : qb <= qc ? b2 : c2); }
+        cb[x] = v2 & 255;
+      }
+      out[y * (stride + 1)] = best;
+      out.set(cb, y * (stride + 1) + 1);
+    }
+    return out;
+  }
+  async function deflateDefault(u8) {
+    if (typeof CompressionStream === 'undefined') throw new Error('此环境没有 CompressionStream，无法压缩 PNG 数据');
+    var cs = new CompressionStream('deflate'), wr = cs.writable.getWriter();
+    wr.write(u8); wr.close();
+    var rd = cs.readable.getReader(), parts = [], n = 0, r;
+    for (;;) { r = await rd.read(); if (r.done) break; parts.push(r.value); n += r.value.length; }
+    var out = new Uint8Array(n), o = 0;
+    for (var i = 0; i < parts.length; i++) { out.set(parts[i], o); o += parts[i].length; }
+    return out;
+  }
+  function apngDelay(ms) {
+    var n = Math.round(ms);
+    if (n <= 65535) return [n, 1000];
+    n = Math.round(ms / 10); if (n <= 65535) return [n, 100];
+    return [Math.min(65535, Math.round(ms / 1000)), 1];
+  }
+  async function writeAPNG(job, deflate, onProgress) {
+    deflate = deflate || deflateDefault;
+    var o = job.o, W = job.W, H = job.H, rgba = job.kind === 'true', B = new Bytes(1 << 16), seq = 0, j, i;
+    B.put([137, 80, 78, 71, 13, 10, 26, 10]);
+    pngChunk(B, 'IHDR', [].concat(be32(W), be32(H), [8, rgba ? 6 : 3, 0, 0, 0]));
+    if (!rgba) {
+      var g = job.gpal, n = g.length / 3 + (job.useT ? 1 : 0), pl = [];
+      for (i = 0; i < n; i++) pl.push(3 * i < g.length ? g[3 * i] : 0, 3 * i < g.length ? g[3 * i + 1] : 0, 3 * i < g.length ? g[3 * i + 2] : 0);
+      pngChunk(B, 'PLTE', pl);
+      if (job.useT) { var tr = []; for (i = 0; i < n; i++) tr.push(i === n - 1 ? 0 : 255); pngChunk(B, 'tRNS', tr); }
+    }
+    pngChunk(B, 'acTL', [].concat(be32(job.out.length), be32(o.loop)));
+    for (j = 0; j < job.out.length; j++) {
+      var f = job.out[j], dl = apngDelay(f.delay);
+      pngChunk(B, 'fcTL', [].concat(be32(seq++), be32(f.w), be32(f.h), be32(f.x), be32(f.y), be16(dl[0]), be16(dl[1]), [0, f.blend ? 1 : 0]));
+      var raw = rgba ? filterRows(f.rgba, f.w, f.h, 4) : filterRows(f.idx, f.w, f.h, 1);
+      var z = await deflate(raw);
+      f.bytes = z.length + 38;
+      if (j === 0) pngChunk(B, 'IDAT', z);
+      else { var fd = new Uint8Array(4 + z.length); fd.set(be32(seq++), 0); fd.set(z, 4); pngChunk(B, 'fdAT', fd); }
+      if (onProgress) await onProgress(j + 1, job.out.length);
+    }
+    pngChunk(B, 'IEND', []);
+    return B.out();
+  }
+
+  // ════════ WebP（RIFF）════════
+  function fourcc(u8, p) { return String.fromCharCode(u8[p], u8[p + 1], u8[p + 2], u8[p + 3]); }
+  function u32le(u8, p) { return (u8[p] | (u8[p + 1] << 8) | (u8[p + 2] << 16) | (u8[p + 3] << 24)) >>> 0; }
+  function u24le(u8, p) { return u8[p] | (u8[p + 1] << 8) | (u8[p + 2] << 16); }
+  function u16le(u8, p) { return u8[p] | (u8[p + 1] << 8); }
+  function u32be(u8, p) { return ((u8[p] << 24) | (u8[p + 1] << 16) | (u8[p + 2] << 8) | u8[p + 3]) >>> 0; }
+  function riffChunks(u8, start, end) {
+    var out = [], p = start == null ? 12 : start, e = end == null ? u8.length : end;
+    while (p + 8 <= e) {
+      var id = fourcc(u8, p), sz = u32le(u8, p + 4);
+      out.push({ id: id, off: p, size: sz, data: u8.subarray(p + 8, Math.min(e, p + 8 + sz)) });
+      p += 8 + sz + (sz & 1);
+    }
+    return out;
+  }
+  // 静态 WebP（canvas.toBlob 产出）→ 只留位流块：ALPH + VP8，或 VP8L（丢掉 VP8X / ICCP / EXIF）
+  function webpBitstream(u8) {
+    if (fourcc(u8, 0) !== 'RIFF' || fourcc(u8, 8) !== 'WEBP') throw new Error('不是 WebP 数据');
+    var ch = riffChunks(u8), keep = [];
+    for (var i = 0; i < ch.length; i++) if (ch[i].id === 'ALPH' || ch[i].id === 'VP8 ' || ch[i].id === 'VP8L') keep.push(ch[i]);
+    if (!keep.some(function (c) { return c.id === 'VP8 ' || c.id === 'VP8L'; })) throw new Error('WebP 里没有 VP8/VP8L 位流');
+    return keep.map(function (c) { return { id: c.id, data: c.data }; });
+  }
+  function bitstreamHasAlpha(bits) {
+    for (var i = 0; i < bits.length; i++) {
+      if (bits[i].id === 'ALPH') return true;
+      if (bits[i].id === 'VP8L' && bits[i].data.length >= 5) { var v = u32le(bits[i].data, 1); if ((v >>> 28) & 1) return true; }
+    }
+    return false;
+  }
+  /* frames: [{x,y,w,h,delay,blend(0=SOURCE/不混合,1=OVER),bits:[{id,data}]}]；loop = 一共播放次数，0 = 无限 */
+  function muxWebP(W, H, frames, loop) {
+    var B = new Bytes(1 << 16), alpha = false, i, j;
+    for (i = 0; i < frames.length; i++) if (frames[i].blend || bitstreamHasAlpha(frames[i].bits)) alpha = true;
+    B.str('RIFF'); B.u32le(0); B.str('WEBP');
+    B.str('VP8X'); B.u32le(10); B.u8(0x02 | (alpha ? 0x10 : 0)); B.u8(0); B.u8(0); B.u8(0); B.u24le(W - 1); B.u24le(H - 1);
+    B.str('ANIM'); B.u32le(6); B.u32le(0); B.u16le(loop | 0);
+    for (i = 0; i < frames.length; i++) {
+      var f = frames[i], sz = 16;
+      for (j = 0; j < f.bits.length; j++) sz += 8 + f.bits[j].data.length + (f.bits[j].data.length & 1);
+      B.str('ANMF'); B.u32le(sz);
+      B.u24le(f.x >> 1); B.u24le(f.y >> 1); B.u24le(f.w - 1); B.u24le(f.h - 1);
+      B.u24le(clamp(Math.round(f.delay), 0, 0xFFFFFF)); B.u8(f.blend ? 0 : 2);
+      for (j = 0; j < f.bits.length; j++) {
+        var c = f.bits[j];
+        B.str(c.id); B.u32le(c.data.length); B.put(c.data); if (c.data.length & 1) B.u8(0);
+      }
+    }
+    var out = B.out(), sz2 = out.length - 8;
+    out[4] = sz2 & 255; out[5] = (sz2 >>> 8) & 255; out[6] = (sz2 >>> 16) & 255; out[7] = (sz2 >>> 24) & 255;
+    return out;
+  }
+
+  // ════════ GIF 解析 / 解码 / 体检 ════════
+  function readSub(u8, p) {
+    var q = p, total = 0, count = 0, trunc = false;
+    while (q < u8.length) { var n = u8[q]; if (n === 0) break; if (q + 1 + n > u8.length) { trunc = true; total += u8.length - q - 1; q = u8.length; break; } total += n; count++; q += 1 + n; }
+    if (q >= u8.length) trunc = true;
+    var data = new Uint8Array(total), o = 0, r = p;
+    while (r < q) { var m = u8[r]; if (m === 0) break; var take = Math.min(m, u8.length - r - 1); data.set(u8.subarray(r + 1, r + 1 + take), o); o += take; r += 1 + m; }
+    return { data: data, end: trunc ? u8.length : q + 1, count: count, trunc: trunc };
+  }
+  function parseGIF(u8) {
+    var r = { ok: false, error: '', blocks: [], frames: [], warnings: [], comments: [], apps: [], loop: null, trailer: false };
+    if (!u8 || u8.length < 13) { r.error = '文件太短，不是完整的 GIF'; return r; }
+    var sig = String.fromCharCode.apply(null, u8.subarray(0, 6));
+    if (sig !== 'GIF89a' && sig !== 'GIF87a') { var shown = ''; for (var si = 0; si < 6; si++) shown += u8[si] >= 32 && u8[si] < 127 ? String.fromCharCode(u8[si]) : '?';
+      r.error = '不是 GIF（文件头是「' + shown + '」）'; return r; }
+    r.version = sig.slice(3); r.width = u16le(u8, 6); r.height = u16le(u8, 8);
+    var pk = u8[10];
+    r.gctFlag = !!(pk & 0x80); r.colorRes = ((pk >> 4) & 7) + 1; r.sorted = !!(pk & 8); r.gctSize = r.gctFlag ? 2 << (pk & 7) : 0;
+    r.bg = u8[11]; r.aspect = u8[12];
+    r.blocks.push({ kind: '文件头 + 逻辑屏幕描述', off: 0, len: 13 });
+    var p = 13, gce = null;
+    if (r.gctFlag) {
+      if (p + 3 * r.gctSize > u8.length) { r.error = '全局调色板被截断'; return r; }
+      r.gct = u8.subarray(p, p + 3 * r.gctSize);
+      r.blocks.push({ kind: '全局调色板', off: p, len: 3 * r.gctSize, note: r.gctSize + ' 色' });
+      p += 3 * r.gctSize;
+    }
+    while (p < u8.length) {
+      var b = u8[p], start = p, s;
+      if (b === 0x3B) { r.blocks.push({ kind: '结尾', off: p, len: 1 }); r.trailer = true; p++; break; }
+      if (b === 0x21) {
+        if (p + 2 > u8.length) break;
+        var label = u8[p + 1];
+        s = readSub(u8, p + 2);
+        if (label === 0xF9) {
+          var g = s.data;
+          if (g.length >= 4) gce = { disposal: (g[0] >> 2) & 7, user: !!(g[0] & 2), tflag: !!(g[0] & 1), delay: g[1] | (g[2] << 8), ti: g[3], off: start };
+          r.blocks.push({ kind: '图形控制扩展', off: start, len: s.end - start, note: gce ? '处置 ' + gce.disposal + ' · 延迟 ' + gce.delay + ' cs' + (gce.tflag ? ' · 透明 ' + gce.ti : '') : '长度异常' });
+        } else if (label === 0xFF) {
+          var raw = u8.subarray(p + 2, s.end), ident = '';
+          if (u8[p + 2] === 11) ident = String.fromCharCode.apply(null, u8.subarray(p + 3, p + 14));
+          var app = { id: ident, off: start, len: s.end - start };
+          if ((ident === 'NETSCAPE2.0' || ident === 'ANIMEXTS1.0') && s.data.length >= 14 && s.data[11] === 1) { app.loop = s.data[12] | (s.data[13] << 8); r.loop = app.loop; }
+          r.apps.push(app);
+          r.blocks.push({ kind: '应用扩展', off: start, len: s.end - start, note: ident + (app.loop != null ? ' · 循环字段 ' + app.loop : '') });
+          void raw;
+        } else if (label === 0xFE) {
+          var txt = '';
+          for (var ci = 0; ci < Math.min(s.data.length, 400); ci++) txt += s.data[ci] >= 32 && s.data[ci] < 127 ? String.fromCharCode(s.data[ci]) : '·';
+          r.comments.push(txt);
+          r.blocks.push({ kind: '注释扩展', off: start, len: s.end - start, note: txt.slice(0, 40) });
+        } else {
+          r.blocks.push({ kind: label === 0x01 ? '纯文本扩展' : '未知扩展 0x' + label.toString(16), off: start, len: s.end - start });
+          if (label === 0x01) gce = null;
+        }
+        if (s.trunc) { r.warnings.push({ level: 'bad', text: '扩展块在偏移 ' + start + ' 处被截断' }); p = u8.length; break; }
+        p = s.end; continue;
+      }
+      if (b === 0x2C) {
+        if (p + 10 > u8.length) { r.warnings.push({ level: 'bad', text: '图像描述符被截断' }); break; }
+        var fx = u16le(u8, p + 1), fy = u16le(u8, p + 3), fw = u16le(u8, p + 5), fh = u16le(u8, p + 7), fp = u8[p + 9];
+        var f = { x: fx, y: fy, w: fw, h: fh, interlace: !!(fp & 0x40), lctSize: fp & 0x80 ? 2 << (fp & 7) : 0, lct: null, off: start,
+          disposal: gce ? gce.disposal : 0, delay: gce ? gce.delay : 0, trans: gce && gce.tflag ? gce.ti : -1, user: gce ? gce.user : false, hasGce: !!gce };
+        p += 10;
+        if (f.lctSize) {
+          if (p + 3 * f.lctSize > u8.length) { r.warnings.push({ level: 'bad', text: '局部调色板被截断' }); break; }
+          f.lct = u8.subarray(p, p + 3 * f.lctSize); p += 3 * f.lctSize;
+        }
+        if (p >= u8.length) { r.warnings.push({ level: 'bad', text: '第 ' + (r.frames.length + 1) + ' 帧缺图像数据' }); break; }
+        f.minCode = u8[p++];
+        s = readSub(u8, p);
+        f.data = s.data; f.subBlocks = s.count; f.len = s.end - start; f.dataLen = s.data.length;
+        gce = null;
+        r.frames.push(f);
+        r.blocks.push({ kind: '图像 #' + r.frames.length, off: start, len: s.end - start, note: fw + '×' + fh + ' @ ' + fx + ',' + fy + (f.lctSize ? ' · 局部 ' + f.lctSize + ' 色' : '') + (f.interlace ? ' · 隔行' : '') });
+        if (s.trunc) { r.warnings.push({ level: 'bad', text: '第 ' + r.frames.length + ' 帧的图像数据被截断' }); p = u8.length; break; }
+        p = s.end; continue;
+      }
+      r.warnings.push({ level: 'bad', text: '偏移 ' + p + ' 处出现无法识别的字节 0x' + b.toString(16) + '，后面的内容被忽略' });
+      break;
+    }
+    if (!r.trailer) r.warnings.push({ level: 'warn', text: '缺少结尾标记 0x3B（文件可能被截断）' });
+    r.size = u8.length;
+    r.ok = r.frames.length > 0;
+    if (!r.ok && !r.error) r.error = '没有找到任何图像帧';
+    return r;
+  }
+  function deinterlace(idx, w, h) {
+    var out = new Uint8Array(idx.length), row = 0, passes = [[0, 8], [4, 8], [2, 4], [1, 2]], i, y;
+    for (i = 0; i < 4; i++) for (y = passes[i][0]; y < h; y += passes[i][1]) { out.set(idx.subarray(row * w, row * w + w), y * w); row++; }
+    return out;
+  }
+  /* 合成成整帧（与浏览器一致）：画布初始全透明；处置 2 清成透明（不是背景色），处置 3 还原到本帧画之前。 */
+  function decodeGIF(u8, opt) {
+    var g = parseGIF(u8), o = opt || {};
+    if (!g.ok) return g;
+    var W = g.width, H = g.height, cv = new Uint8ClampedArray(W * H * 4), frames = [], j, x, y;
+    var maxF = o.maxFrames || 100000;
+    for (j = 0; j < g.frames.length && j < maxF; j++) {
+      var f = g.frames[j], pal = f.lct || g.gct, palN = pal ? pal.length / 3 : 0;
+      var idx = new Uint8Array(f.w * f.h), li = {};
+      var got = f.minCode >= 1 && f.minCode <= 11 ? lzwDecode(f.data, Math.max(1, f.minCode), idx, li) : 0;
+      f.decoded = got; f.lzwEnd = li.end || 'bad'; f.trailing = li.trailingBytes || 0;
+      if (got < idx.length) g.warnings.push({ level: 'warn', text: '第 ' + (j + 1) + ' 帧只解出 ' + got + ' / ' + idx.length + ' 个像素' });
+      var order = f.interlace ? deinterlace(idx, f.w, f.h) : idx;
+      var valid = f.interlace ? null : got;
+      var prev = f.disposal === 3 ? cv.slice() : null;
+      for (y = 0; y < f.h; y++) {
+        var Y = f.y + y; if (Y >= H) break;
+        for (x = 0; x < f.w; x++) {
+          var X = f.x + x; if (X >= W) break;
+          var q = y * f.w + x;
+          if (valid !== null && q >= valid) continue;
+          var ci = order[q];
+          if (ci === f.trans || ci >= palN) continue;
+          var o4 = 4 * (Y * W + X);
+          cv[o4] = pal[3 * ci]; cv[o4 + 1] = pal[3 * ci + 1]; cv[o4 + 2] = pal[3 * ci + 2]; cv[o4 + 3] = 255;
+        }
+      }
+      frames.push({ data: cv.slice(), delay: effDelayCs(f.delay) * 10, rawDelay: f.delay });
+      if (f.disposal === 2) {
+        for (y = f.y; y < Math.min(H, f.y + f.h); y++) for (x = f.x; x < Math.min(W, f.x + f.w); x++) { var o5 = 4 * (y * W + x); cv[o5] = cv[o5 + 1] = cv[o5 + 2] = cv[o5 + 3] = 0; }
+      } else if (f.disposal === 3 && prev) cv = prev;
+    }
+    g.decodedFrames = frames;
+    return g;
+  }
+  /* 体检：结构 + 浏览器会怎么播 + 能省多少（与「只重画变化框」相比） */
+  function inspectGIF(u8) {
+    var g = decodeGIF(u8);
+    if (!g.ok) return g;
+    var fr = g.decodedFrames, W = g.width, H = g.height, i, tot = 0, eff = 0, low = 0, full = 0, canCrop = 0;
+    for (i = 0; i < g.frames.length; i++) {
+      var f = g.frames[i];
+      tot += f.delay; eff += effDelayCs(f.delay);
+      if (f.delay <= 1) low++;
+      if (i > 0 && f.w === W && f.h === H && f.x === 0 && f.y === 0) full++;
+    }
+    for (i = 1; i < fr.length; i++) {
+      var a = fr[i - 1].data, b = fr[i].data, x0 = W, x1 = -1, y0 = H, y1 = -1, p, x, y;
+      for (y = 0, p = 0; y < H; y++) for (x = 0; x < W; x++, p += 4) {
+        if (a[p] !== b[p] || a[p + 1] !== b[p + 1] || a[p + 2] !== b[p + 2] || a[p + 3] !== b[p + 3]) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+      }
+      var f2 = g.frames[i], cover = f2.w * f2.h, need = x1 < 0 ? 0 : (x1 - x0 + 1) * (y1 - y0 + 1);
+      if (cover > need * 1.25 + 64) canCrop++;
+    }
+    g.duration = tot * 10; g.effDuration = eff * 10; g.lowDelayFrames = low;
+    if (g.frames.length > 1 && g.loop == null) g.warnings.push({ level: 'warn', text: '没有 NETSCAPE2.0 循环扩展：浏览器只播放一遍' });
+    if (low && g.frames.length > 1) g.warnings.push({ level: 'warn', text: low + ' 帧的延迟 ≤ 1 cs（10 ms）：Chrome / Firefox / Safari 都会按 10 cs（100 ms）播放，实际比文件里写的慢 ' + (eff / Math.max(1, tot)).toFixed(1) + ' 倍' });
+    if (canCrop) g.warnings.push({ level: 'info', text: canCrop + ' 帧的图像矩形明显大于它真正变化的区域，按变化框重编码可以变小' });
+    if (g.frames.length > 50) g.warnings.push({ level: 'info', text: '共 ' + g.frames.length + ' 帧：超过 Slack 自定义表情的 50 帧上限' });
+    if (g.comments.length) g.warnings.push({ level: 'info', text: '含 ' + g.comments.length + ' 段注释扩展（可删掉省字节）' });
+    var noEoi = g.frames.filter(function (f) { return f.decoded === f.w * f.h && f.lzwEnd !== 'eoi'; }).length;
+    if (noEoi) g.warnings.push({ level: 'warn', text: noEoi + ' 帧的 LZW 码流没有以结束码（EOI）收尾：浏览器读满像素就停、照样能播，严格的解码器会报错' });
+    g.eoiFrames = g.frames.length - noEoi;
+    var lct = g.frames.filter(function (f) { return f.lctSize; }).length;
+    g.localPalettes = lct;
+    g.fullFrames = full;
+    return g;
+  }
+
+  // ════════ APNG / WebP 结构 ════════
+  function parsePNG(u8) {
+    var r = { ok: false, chunks: [], frames: [], warnings: [] };
+    var sig = [137, 80, 78, 71, 13, 10, 26, 10];
+    for (var i = 0; i < 8; i++) if (u8[i] !== sig[i]) { r.error = '不是 PNG'; return r; }
+    var p = 8, seq = -1;
+    while (p + 12 <= u8.length) {
+      var len = u32be(u8, p), type = fourcc(u8, p + 4), d = u8.subarray(p + 8, p + 8 + len);
+      var crcOk = p + 12 + len <= u8.length && crc32(u8, p + 4, p + 8 + len) === u32be(u8, p + 8 + len);
+      r.chunks.push({ type: type, off: p, len: len, crcOk: crcOk });
+      if (!crcOk) r.warnings.push({ level: 'bad', text: type + ' 块 CRC 不对' });
+      if (type === 'IHDR') { r.width = u32be(d, 0); r.height = u32be(d, 4); r.depth = d[8]; r.colorType = d[9]; }
+      else if (type === 'acTL') { r.numFrames = u32be(d, 0); r.numPlays = u32be(d, 4); }
+      else if (type === 'fcTL') {
+        var sq = u32be(d, 0);
+        if (sq !== seq + 1) r.warnings.push({ level: 'bad', text: 'fcTL 序号不连续（' + sq + '）' });
+        seq = sq;
+        r.frames.push({ seq: sq, w: u32be(d, 4), h: u32be(d, 8), x: u32be(d, 12), y: u32be(d, 16), dnum: (d[20] << 8) | d[21], dden: (d[22] << 8) | d[23], dispose: d[24], blend: d[25], bytes: 0 });
+      } else if (type === 'fdAT') {
+        var s2 = u32be(d, 0);
+        if (s2 !== seq + 1) r.warnings.push({ level: 'bad', text: 'fdAT 序号不连续（' + s2 + '）' });
+        seq = s2;
+        if (r.frames.length) r.frames[r.frames.length - 1].bytes += len - 4;
+      } else if (type === 'IDAT') { if (r.frames.length) r.frames[r.frames.length - 1].bytes += len; }
+      p += 12 + len;
+      if (type === 'IEND') break;
+    }
+    r.animated = r.numFrames != null;
+    for (var j = 0; j < r.frames.length; j++) { var f = r.frames[j]; f.ms = (f.dden || 100) ? f.dnum * 1000 / (f.dden || 100) : 0; }
+    if (r.animated && r.numFrames !== r.frames.length) r.warnings.push({ level: 'bad', text: 'acTL 说有 ' + r.numFrames + ' 帧，实际 ' + r.frames.length + ' 个 fcTL' });
+    r.size = u8.length;
+    r.ok = !!r.width;
+    return r;
+  }
+  function parseWebP(u8) {
+    var r = { ok: false, chunks: [], frames: [], warnings: [] };
+    if (u8.length < 16 || fourcc(u8, 0) !== 'RIFF' || fourcc(u8, 8) !== 'WEBP') { r.error = '不是 WebP'; return r; }
+    var ch = riffChunks(u8), i, j;
+    for (i = 0; i < ch.length; i++) {
+      var c = ch[i], d = c.data;
+      r.chunks.push({ type: c.id, off: c.off, len: c.size });
+      if (c.id === 'VP8X') { r.flags = d[0]; r.width = u24le(d, 4) + 1; r.height = u24le(d, 7) + 1; r.animated = !!(d[0] & 2); r.alpha = !!(d[0] & 0x10); }
+      else if (c.id === 'ANIM') { r.bg = u32le(d, 0); r.loop = u16le(d, 4); }
+      else if (c.id === 'ANMF') {
+        var f = { x: u24le(d, 0) * 2, y: u24le(d, 3) * 2, w: u24le(d, 6) + 1, h: u24le(d, 9) + 1, ms: u24le(d, 12), blend: (d[15] & 2) ? 0 : 1, dispose: d[15] & 1, bytes: c.size, inner: [] };
+        var sub = riffChunks(d, 16, d.length);
+        for (j = 0; j < sub.length; j++) f.inner.push(sub[j].id.trim());
+        if (f.x + f.w > (r.width || 1e9) || f.y + f.h > (r.height || 1e9)) r.warnings.push({ level: 'bad', text: '第 ' + (r.frames.length + 1) + ' 帧越出画布' });
+        r.frames.push(f);
+      } else if (c.id === 'VP8 ' || c.id === 'VP8L') { if (!r.width && c.id === 'VP8L') { var v = u32le(d, 1); r.width = (v & 0x3FFF) + 1; r.height = ((v >>> 14) & 0x3FFF) + 1; } }
+    }
+    r.size = u8.length;
+    r.ok = r.chunks.length > 0;
+    return r;
+  }
+  function sniff(u8) {
+    if (!u8 || u8.length < 12) return 'unknown';
+    if (u8[0] === 0x47 && u8[1] === 0x49 && u8[2] === 0x46 && u8[3] === 0x38) return 'gif';
+    if (u8[0] === 0x89 && u8[1] === 0x50 && u8[2] === 0x4E && u8[3] === 0x47) {
+      for (var p = 8; p + 8 <= u8.length && p < 1 << 20;) { var len = u32be(u8, p), t = fourcc(u8, p + 4); if (t === 'acTL') return 'apng'; if (t === 'IDAT') return 'png'; p += 12 + len; }
+      return 'png';
+    }
+    if (fourcc(u8, 0) === 'RIFF' && fourcc(u8, 8) === 'WEBP') return fourcc(u8, 12) === 'VP8X' && (u8[20] & 2) ? 'webp-anim' : 'webp';
+    if (u8[0] === 0xFF && u8[1] === 0xD8) return 'jpeg';
+    if (u8[0] === 0x1A && u8[1] === 0x45 && u8[2] === 0xDF && u8[3] === 0xA3) return 'webm';
+    if (fourcc(u8, 4) === 'ftyp') return 'mp4';
+    if (u8[0] === 0x42 && u8[1] === 0x4D) return 'bmp';
+    return 'unknown';
+  }
+
+  // ════════ 时间轴 ════════
+  // 输出第 k 帧取源时刻 t0 + k·speed/fps；帧数 = ⌊(t1−t0)·fps/speed⌋（至少 1）
+  function sampleTimes(t0, t1, fps, speed) {
+    var n = Math.max(1, Math.floor((t1 - t0) * fps / speed + 1e-6)), out = [];
+    for (var k = 0; k < n; k++) out.push(t0 + k * speed / fps);
+    return out;
+  }
+  function frameAt(starts, t) {
+    var lo = 0, hi = starts.length - 1;
+    if (t <= starts[0]) return 0;
+    while (lo < hi) { var m = (lo + hi + 1) >> 1; if (starts[m] <= t + 1e-9) lo = m; else hi = m - 1; }
+    return lo;
+  }
+  function direction(list, dir) {
+    if (dir === 'reverse') return list.slice().reverse();
+    if (dir === 'pingpong') { if (list.length < 3) return list.concat(list.slice().reverse()); return list.concat(list.slice(1, -1).reverse()); }
+    return list.slice();
+  }
+  // 按新帧率重取帧（体积预算用）：总时长不变，相邻取到同一帧就合并延迟
+  function retime(frames, fps) {
+    var D = 0, starts = [], i;
+    for (i = 0; i < frames.length; i++) { starts.push(D); D += frames[i].delay; }
+    var n = Math.max(1, Math.round(D * fps / 1000)), out = [], last = -1;
+    for (var k = 0; k < n; k++) {
+      var t = k * D / n, j = frameAt(starts, t);
+      if (j === last) out[out.length - 1].delay += D / n;
+      else { out.push({ data: frames[j].data, delay: D / n, src: j }); last = j; }
+    }
+    return out;
+  }
+  // 面积平均缩放（预乘 alpha）：只用于缩小
+  function resizeRGBA(src, sw, sh, dw, dh) {
+    if (sw === dw && sh === dh) return src.slice();
+    function weights(sn, dn) {
+      var out = [], sc = sn / dn;
+      for (var d = 0; d < dn; d++) {
+        var a = d * sc, b = (d + 1) * sc, list = [];
+        if (sc <= 1) { var c = (d + 0.5) * sc - 0.5, i0 = Math.floor(c), f = c - i0; list.push([clamp(i0, 0, sn - 1), 1 - f], [clamp(i0 + 1, 0, sn - 1), f]); }
+        else for (var s = Math.floor(a); s < Math.ceil(b) && s < sn; s++) { var w = Math.min(b, s + 1) - Math.max(a, s); if (w > 1e-9) list.push([s, w]); }
+        out.push(list);
+      }
+      return out;
+    }
+    var wx = weights(sw, dw), wy = weights(sh, dh), tmp = new Float32Array(dw * sh * 4), x, y, k;
+    for (y = 0; y < sh; y++) for (x = 0; x < dw; x++) {
+      var L = wx[x], r = 0, g = 0, b = 0, a = 0, ws = 0;
+      for (k = 0; k < L.length; k++) { var o = 4 * (y * sw + L[k][0]), w = L[k][1], al = src[o + 3] * w; r += src[o] * al; g += src[o + 1] * al; b += src[o + 2] * al; a += al; ws += w; }
+      var t = 4 * (y * dw + x);
+      if (ws > 0) { tmp[t] = r / ws; tmp[t + 1] = g / ws; tmp[t + 2] = b / ws; tmp[t + 3] = a / ws; }
+    }
+    var out = new Uint8ClampedArray(dw * dh * 4);
+    for (y = 0; y < dh; y++) for (x = 0; x < dw; x++) {
+      var L2 = wy[y], R = 0, G = 0, B2 = 0, A = 0, W2 = 0;
+      for (k = 0; k < L2.length; k++) { var o2 = 4 * (L2[k][0] * dw + x), w2 = L2[k][1]; R += tmp[o2] * w2; G += tmp[o2 + 1] * w2; B2 += tmp[o2 + 2] * w2; A += tmp[o2 + 3] * w2; W2 += w2; }
+      var q = 4 * (y * dw + x);
+      if (A > 0) { out[q] = Math.round(R / A); out[q + 1] = Math.round(G / A); out[q + 2] = Math.round(B2 / A); }
+      out[q + 3] = Math.round(A / W2);
+    }
+    return out;
+  }
+
+  // ════════ 体积预算 ════════
+  // λ ∈ [0,1] 把「允许动的那几项」从用户设置一路压到最狠：尺寸到 30%、帧率到 45%（不低于 5）、颜色到 ¼（不低于 16）、容差 +10
+  function budgetParams(base, lam, allow) {
+    var A = allow || {}, s = A.size ? 1 - 0.7 * lam : 1;
+    var w = Math.max(16, Math.round(base.width * s)), h = Math.max(16, Math.round(base.height * w / base.width));
+    var fps = A.fps ? Math.max(Math.min(base.fps, 5), base.fps * (1 - 0.55 * lam)) : base.fps;
+    var colors = A.colors ? Math.max(Math.min(base.colors, 16), Math.round(base.colors * Math.pow(2, -2 * lam))) : base.colors;
+    var fuzz = A.fuzz ? base.fuzz + 10 * lam : base.fuzz;
+    return { width: w, height: h, fps: Math.round(fps * 100) / 100, colors: colors, fuzz: Math.round(fuzz * 10) / 10 };
+  }
+  /* encodeAt(λ) → Promise<{bytes, …}>。先试 λ=0（不压），超了再试 λ=1（最狠），都行就用 Illinois 试位法找
+   * 「刚好塞进预算」的最小 λ；体积落进 [accept·T, T] 或区间 < 0.01 即停。 */
+  async function solveBudget(encodeAt, target, opt) {
+    var o = opt || {}, log = [], maxIt = o.maxIter || 7, accept = o.accept || 0.9;
+    async function at(lam) { var r = await encodeAt(lam); log.push({ lam: lam, bytes: r.bytes, ok: r.bytes <= target, params: r.params }); return r; }
+    var r0 = await at(0);
+    if (r0.bytes <= target) return { ok: true, lam: 0, best: r0, log: log };
+    var r1 = await at(1);
+    if (r1.bytes > target) return { ok: false, lam: 1, best: r1, log: log };
+    var lo = 0, hi = 1, flo = Math.log(r0.bytes / target), fhi = Math.log(r1.bytes / target), best = r1, side = 0;
+    for (var it = 0; it < maxIt; it++) {
+      if (best.bytes >= target * accept || hi - lo < 0.01) break;
+      var lam = (lo * fhi - hi * flo) / (fhi - flo);
+      if (!isFinite(lam)) lam = (lo + hi) / 2;
+      lam = clamp(lam, lo + 0.1 * (hi - lo), hi - 0.1 * (hi - lo));
+      var r = await at(lam), f = Math.log(r.bytes / target);
+      if (r.bytes <= target) { hi = lam; fhi = f; best = r; if (side === 1) flo /= 2; side = 1; }
+      else { lo = lam; flo = f; if (side === -1) fhi /= 2; side = -1; }
+    }
+    return { ok: true, lam: hi, best: best, log: log };
+  }
+
+  // ════════ 指标 ════════
+  // PSNR：预乘 alpha 的 RGB + alpha 四个通道一起算均方误差
+  function mse(a, b) {
+    var s = 0, n = a.length / 4, i;
+    for (i = 0; i < a.length; i += 4) {
+      var aa = a[i + 3], ba = b[i + 3];
+      var dr = (a[i] * aa - b[i] * ba) / 255, dg = (a[i + 1] * aa - b[i + 1] * ba) / 255, db = (a[i + 2] * aa - b[i + 2] * ba) / 255, da = aa - ba;
+      s += dr * dr + dg * dg + db * db + da * da;
+    }
+    return s / (n * 4);
+  }
+  function psnr(a, b) { var m = mse(a, b); return m === 0 ? Infinity : 10 * Math.log10(65025 / m); }
+  // 体积一律按十进制：1 KB = 1000 字节（与 macOS 访达、各平台上限的写法一致，也更保守）
+  function fmtBytes(n) {
+    if (!(n >= 0)) return '—';
+    if (n < 1000) return n + ' B';
+    if (n < 1e6) return (n / 1000).toFixed(n < 1e4 ? 2 : 1) + ' KB';
+    return (n / 1e6).toFixed(2) + ' MB';
+  }
+
+  return {
+    version: '2026-10-28',
+    Hist: Hist, quantize: quantize, wuQuant: wuQuant, medianCut: medianCut, octreeQuant: octreeQuant, kmeans: kmeans,
+    Matcher: Matcher, nearestBrute: nearestBrute, mapRect: mapRect, BAYER8: BAYER8, paletteSpacing: paletteSpacing,
+    IndexedJob: IndexedJob, TrueJob: TrueJob, runJob: runJob, normOpt: normOpt,
+    lzwEncode: lzwEncode, lzwDecode: lzwDecode, centis: centis, effDelayCs: effDelayCs,
+    writeGIF: writeGIF, writeAPNG: writeAPNG, filterRows: filterRows, deflateDefault: deflateDefault, apngDelay: apngDelay,
+    riffChunks: riffChunks, webpBitstream: webpBitstream, muxWebP: muxWebP, bitstreamHasAlpha: bitstreamHasAlpha,
+    parseGIF: parseGIF, decodeGIF: decodeGIF, inspectGIF: inspectGIF, deinterlace: deinterlace, parsePNG: parsePNG, parseWebP: parseWebP, sniff: sniff,
+    sampleTimes: sampleTimes, frameAt: frameAt, direction: direction, retime: retime, resizeRGBA: resizeRGBA,
+    budgetParams: budgetParams, solveBudget: solveBudget, mse: mse, psnr: psnr, fmtBytes: fmtBytes, crc32: crc32, Bytes: Bytes
+  };
+
+
+})();
+</script>
+<script id="gs-app">/* 本站通用的 SVG 绘图骨架：Frame（坐标框 + 刻度 + 裁剪）+ Placer（文字避让器）。
+ *
+ * 固化背景：09-14 journal 明写「这套 Placer 每期都在重写，值得连同保守盒 + 退让位一起抽进
+ * 公共脚手架」，09-15（SVG 机器人图）与 09-16（12 张图）又各重写一遍。本文件 = 09-16 版，
+ * 已经把历次踩过的坑都焊进去了：
+ *   ① 每一段文字（**含坐标轴刻度**）都走 Placer，撞了就按退让位挪、全撞就丢（07-28…08-11 共 7 次事故）；
+ *   ② 退让位第一顺位要落在数据的空侧，带 plate 的标注会擦掉底下的曲线（08-07）；
+ *   ③ 刻度档位按「刻度个数最接近目标」挑，不是「第一个 ≥ raw 的步长」（08-27 y 轴塌成 2 根）；
+ *   ④ setDomain **允许上下界倒置**（俯视图要 y 向下）—— 强行要求 ymax > ymin 会把整张图画空（09-16）；
+ *   ⑤ 曲线一律 clip 到绘图矩形，越界分支不许糊到坐标轴外（09-16）。
+ *
+ * 用法（作为 app 的第一个源文件内联进页面即可）：
+ *   node tools/build-inline.mjs --template page.template.html --out index.html \
+ *     --inline '/*APP*\/=<本文件>,app_part1.js,…'
+ *   var F = new AEPlot.Frame('fig-id', { pad: { l: 56, r: 18, t: 16, b: 38 } });
+ *   F.setDomain(x0, x1, y0, y1);
+ *   F.axes({ xlabel: '…', ylabel: '…', xfmt: fn, yfmt: fn });
+ *   F.path(pts, { stroke: '#da291c' }); F.dot(x, y); F.vline(x); F.hline(y);
+ *   F.P.text(px, py, '标注', { size: 10, fill: '#fff', plate: true, offsets: [[0,0],[0,-13],[0,20]] });
+ * 需要宿主提供一个 fmt(v, d) 数字格式函数：new Frame(id, { fmt: myFmt })，默认用内置的。
+ */
+var AEPlot = (function () {
+  'use strict';
+  var SVGNS = 'http://www.w3.org/2000/svg';
+  /* 主题色。09-16 抽出来时把 Ferrari 的深色写死在 axes/Placer 里，浅色设计系统（Expo）
+   * 用起来刻度与网格几乎看不见 —— 2026-09-17 改成可覆盖，默认值与旧版逐字相同。
+   * 用法：AEPlot.theme({ grid:'#f0f0f3', axis:'#dcdee0', tick:'#60646c', label:'#999' }); */
+  var TH = { grid: '#282828', axis: '#303030', tick: '#8f8f8f', label: '#666',
+             text: '#969696', plate: '#181818', series: '#da291c' };
+  function theme(o) { for (var k in o) if (o[k] != null) TH[k] = o[k]; return TH; }
+  function $(id) { return document.getElementById(id); }
+  function fmt(v, d) {
+    if (v == null || !isFinite(v)) return '—';
+    var x = +v;
+    if (Math.abs(x) >= 1e6 || (Math.abs(x) < 1e-4 && x !== 0)) return x.toExponential(d == null ? 3 : d);
+    var s = x.toFixed(d == null ? 3 : d);
+    if (/^-0\.?0*$/.test(s)) s = s.slice(1);
+    return s;
+  }
+  // ── SVG 基础 ──
+  function el(tag, attrs, parent) {
+    var n = document.createElementNS(SVGNS, tag), k;
+    for (k in attrs) if (attrs[k] != null) n.setAttribute(k, attrs[k]);
+    if (parent) parent.appendChild(n);
+    return n;
+  }
+  function clear(node) { while (node.firstChild) node.removeChild(node.firstChild); }
+
+  /* 文字避让器：**这张图上的每一段文字**都必须经过它（含坐标轴刻度）。
+   * 教训来源：07-28/07-29/07-30/08-05/08-07/08-08/08-11 连撞 7 次标签重叠，
+   * 全部逃过 DOM 断言，只有人工看图才发现。 */
+  function Placer(svg, w, h) {
+    this.svg = svg; this.w = w; this.h = h; this.boxes = []; this.drawn = 0; this.dropped = 0;
+  }
+  Placer.prototype.measure = function (text, size) {
+    var n = 0, i, c;
+    for (i = 0; i < text.length; i++) {
+      c = text.charCodeAt(i);
+      n += (c > 0x2e80 && c < 0xa000) || (c >= 0xff00 && c <= 0xffef) ? 1 : 0.6;
+    }
+    return n * size;
+  };
+  Placer.prototype.hit = function (b) {
+    if (b.x < -1 || b.y < -1 || b.x + b.w > this.w + 1 || b.y + b.h > this.h + 1) return true;  // 出画布
+    for (var i = 0; i < this.boxes.length; i++) {
+      var o = this.boxes[i];
+      if (b.x < o.x + o.w && o.x < b.x + b.w && b.y < o.y + o.h && o.y < b.y + b.h) return true;
+    }
+    return false;
+  };
+  Placer.prototype.reserve = function (x, y, w, h) { this.boxes.push({ x: x, y: y, w: w, h: h }); };
+  /* opts: {size, fill, anchor, weight, offsets:[[dx,dy]…], plate:bool} */
+  Placer.prototype.text = function (x, y, str, opts) {
+    var o = opts || {}, size = o.size || 11, anchor = o.anchor || 'middle';
+    var tw = this.measure(str, size) + 3, th = size + 3;
+    var offs = o.offsets || [[0, 0]], i, dx, dy, bx, by, box = null, ox = 0, oy = 0;
+    for (i = 0; i < offs.length; i++) {
+      dx = offs[i][0]; dy = offs[i][1];
+      bx = x + dx - (anchor === 'middle' ? tw / 2 : anchor === 'end' ? tw : 0);
+      by = y + dy - th + 2;
+      if (!this.hit({ x: bx, y: by, w: tw, h: th })) { box = { x: bx, y: by, w: tw, h: th }; ox = dx; oy = dy; break; }
+    }
+    if (!box) { this.dropped++; return null; }
+    this.boxes.push(box); this.drawn++;
+    if (o.plate) el('rect', { x: box.x, y: box.y, width: box.w, height: box.h, fill: o.plate === true ? TH.plate : o.plate, opacity: 0.88 }, this.svg);
+    var t = el('text', { x: x + ox, y: y + oy, 'text-anchor': anchor, 'font-size': size, fill: o.fill || TH.text,
+      'font-weight': o.weight || 400, 'font-family': 'inherit' }, this.svg);
+    t.textContent = str;
+    return t;
+  };
+
+  /* 直角坐标绘图框 */
+  function Frame(svgId, opt) {
+    var svg = $(svgId), o = opt || {};
+    clear(svg);
+    var vb = svg.getAttribute('viewBox').split(/\s+/).map(Number);
+    /* opt.fitWidth（2026-10-10 收进来，10-06 reno-lab / 10-07 bike-lab 两期各手写过一遍）：
+     * viewBox 宽 = 容器实际渲染宽，窄屏上字号不被等比缩成蚂蚁字。默认关，旧页零影响。
+     * 首次画时记下设计宽高（data-ae-w/h）；隐藏页签里 clientWidth=0 ⇒ 按设计宽画，
+     * 调用方须在切页签 / resize 时重画。窄于 560 时高度按 opt.narrowH（默认 0.8）缩。 */
+    if (o.fitWidth) {
+      if (!svg.getAttribute('data-ae-w')) { svg.setAttribute('data-ae-w', vb[2]); svg.setAttribute('data-ae-h', vb[3]); }
+      var dw = +svg.getAttribute('data-ae-w'), dh = +svg.getAttribute('data-ae-h');
+      var cw = Math.round(svg.getBoundingClientRect().width);
+      var fw = cw > 0 ? Math.max(300, cw) : dw;
+      var fh = Math.round(fw < 560 ? dh * (o.narrowH || 0.8) : dh);
+      svg.setAttribute('viewBox', '0 0 ' + fw + ' ' + fh);
+      vb = [0, 0, fw, fh];
+    }
+    this.svg = svg; this.W = vb[2]; this.H = vb[3];
+    // 宿主传进来的 fmt 以前只存不用：axes() 里写死了模块自带的 fmt，
+    // 于是 `new Frame(id, { fmt: myFmt })` 会被**静默忽略**（2026-09-18 实撞，
+    // 「各节点排队人数」那张图的 x 轴因此打出了 3 位小数）。这里收起来，下面用它。
+    this.fmt = o.fmt || fmt;
+    this.pad = o.pad || { l: 56, r: 18, t: 16, b: 38 };
+    this.x0 = this.pad.l; this.x1 = this.W - this.pad.r;
+    this.y0 = this.H - this.pad.b; this.y1 = this.pad.t;
+    this.P = new Placer(svg, this.W, this.H);
+    // 裁剪：曲线一律夹在绘图矩形内（否则超出量程的分支会画到坐标轴外、糊到图例上）
+    this.clipId = 'ae-clip-' + svgId + '-' + Math.random().toString(36).slice(2, 8);
+    var defs = el('defs', {}, svg);
+    var cp = el('clipPath', { id: this.clipId }, defs);
+    el('rect', { x: this.pad.l, y: this.pad.t, width: this.W - this.pad.l - this.pad.r,
+      height: this.H - this.pad.t - this.pad.b }, cp);
+    this.setDomain(o.xmin == null ? 0 : o.xmin, o.xmax == null ? 1 : o.xmax, o.ymin == null ? 0 : o.ymin, o.ymax == null ? 1 : o.ymax);
+  }
+  Frame.prototype.setDomain = function (xmin, xmax, ymin, ymax) {
+    // 只修「退化」（上下界相等/非数），**不能**强行要求 ymax > ymin ——
+    // 俯视图要把 y 轴倒过来画（2026-09-16 实撞：平面形状图整张空白，
+    // 因为这里把倒置域改写成了 [ymin, ymin+1]，机翼落在域外）。
+    if (!isFinite(xmin) || !isFinite(xmax) || xmax === xmin) { xmin = xmin || 0; xmax = xmin + 1; }
+    if (!isFinite(ymin) || !isFinite(ymax) || ymax === ymin) { ymin = ymin || 0; ymax = ymin + 1; }
+    this.xmin = xmin; this.xmax = xmax; this.ymin = ymin; this.ymax = ymax;
+  };
+  Frame.prototype.sx = function (x) { return this.x0 + (x - this.xmin) / (this.xmax - this.xmin) * (this.x1 - this.x0); };
+  Frame.prototype.sy = function (y) { return this.y0 + (y - this.ymin) / (this.ymax - this.ymin) * (this.y1 - this.y0); };
+  /* 刻度档位：按「刻度个数最接近目标」挑，而不是「第一个 ≥ raw 的步长」
+   * （2026-08-27 教训：后者会把 y 轴塌成 2 根刻度）。 */
+  Frame.prototype.ticks = function (min, max, target) {
+    var span = max - min, best = null, mag, s, i, cand, cnt;
+    if (!(span > 0)) return [min];
+    for (mag = Math.floor(Math.log10(span)) - 1; mag <= Math.floor(Math.log10(span)) + 1; mag++) {
+      var base = Math.pow(10, mag);
+      var steps = [1, 2, 2.5, 5, 10];
+      for (i = 0; i < steps.length; i++) {
+        s = steps[i] * base;
+        cnt = Math.floor(max / s) - Math.ceil(min / s) + 1;
+        if (cnt < 2 || cnt > 24) continue;
+        cand = Math.abs(cnt - (target || 6));
+        if (best === null || cand < best.score) best = { step: s, score: cand };
+      }
+    }
+    if (!best) return [min, max];
+    var out = [], v0 = Math.ceil(min / best.step) * best.step;
+    for (var v = v0; v <= max + best.step * 1e-6; v += best.step) out.push(Math.abs(v) < best.step * 1e-9 ? 0 : v);
+    return out;
+  };
+  Frame.prototype.axes = function (o) {
+    var op = o || {}, i, t, px, py;
+    // 域可以是**倒置**的（阿贝图 x 轴从大到小、俯视图 y 轴向下），取刻度前先排序，
+    // 否则 ticks() 拿到负 span 直接 return [min]，整条轴只剩一个刻度
+    // （2026-09-17 实撞：阿贝图 x 轴只画出一个孤零零的「89」）。
+    var xt = op.xticks || this.ticks(Math.min(this.xmin, this.xmax), Math.max(this.xmin, this.xmax), 6);
+    var yt = op.yticks || this.ticks(Math.min(this.ymin, this.ymax), Math.max(this.ymin, this.ymax), 6);
+    el('rect', { x: this.x0, y: this.y1, width: this.x1 - this.x0, height: this.y0 - this.y1, fill: 'none', stroke: TH.axis }, this.svg);
+    for (i = 0; i < yt.length; i++) {
+      py = this.sy(yt[i]);
+      if (py < this.y1 - 0.5 || py > this.y0 + 0.5) continue;
+      el('line', { x1: this.x0, y1: py, x2: this.x1, y2: py, stroke: TH.grid }, this.svg);
+      this.P.text(this.x0 - 6, py + 4, (op.yfmt || this.fmt)(yt[i]), { anchor: 'end', size: 10, fill: TH.tick,
+        offsets: [[0, 0], [0, -9], [0, 9]] });
+    }
+    for (i = 0; i < xt.length; i++) {
+      px = this.sx(xt[i]);
+      if (px < this.x0 - 0.5 || px > this.x1 + 0.5) continue;
+      el('line', { x1: px, y1: this.y0, x2: px, y2: this.y1, stroke: TH.grid }, this.svg);
+      this.P.text(px, this.y0 + 16, (op.xfmt || this.fmt)(xt[i]), { anchor: 'middle', size: 10, fill: TH.tick });
+    }
+    if (op.xlabel) this.P.text((this.x0 + this.x1) / 2, this.H - 6, op.xlabel, { size: 11, fill: TH.label });
+    if (op.ylabel) {
+      var t2 = el('text', { x: 12, y: (this.y0 + this.y1) / 2, 'font-size': 11, fill: TH.label, 'text-anchor': 'middle',
+        transform: 'rotate(-90 12 ' + ((this.y0 + this.y1) / 2) + ')' }, this.svg);
+      t2.textContent = op.ylabel;
+      this.P.reserve(4, this.y1, 16, this.y0 - this.y1);
+    }
+  };
+  Frame.prototype.path = function (pts, o) {
+    var op = o || {}, d = '', i, px, py, started = false;
+    for (i = 0; i < pts.length; i++) {
+      if (pts[i] == null || !isFinite(pts[i][0]) || !isFinite(pts[i][1])) { started = false; continue; }
+      px = this.sx(pts[i][0]); py = this.sy(pts[i][1]);
+      d += (started ? 'L' : 'M') + px.toFixed(2) + ' ' + py.toFixed(2) + ' ';
+      started = true;
+    }
+    if (!d) return null;
+    return el('path', { d: d, fill: op.fill || 'none', stroke: op.stroke || TH.series, 'stroke-width': op.width || 1.6,
+      'stroke-dasharray': op.dash, opacity: op.opacity, 'stroke-linejoin': 'round', 'stroke-linecap': 'round',
+      'clip-path': op.noclip ? null : 'url(#' + this.clipId + ')' }, this.svg);
+  };
+  Frame.prototype.dot = function (x, y, o) {
+    var op = o || {};
+    return el('circle', { cx: this.sx(x), cy: this.sy(y), r: op.r || 3.2, fill: op.fill || TH.series,
+      stroke: op.stroke, 'stroke-width': op.width }, this.svg);
+  };
+  Frame.prototype.vline = function (x, o) {
+    var op = o || {};
+    return el('line', { x1: this.sx(x), y1: this.y0, x2: this.sx(x), y2: this.y1, stroke: op.stroke || '#5a5a5a',
+      'stroke-width': op.width || 1, 'stroke-dasharray': op.dash || '4 4' }, this.svg);
+  };
+  Frame.prototype.hline = function (y, o) {
+    var op = o || {};
+    return el('line', { x1: this.x0, y1: this.sy(y), x2: this.x1, y2: this.sy(y), stroke: op.stroke || '#5a5a5a',
+      'stroke-width': op.width || 1, 'stroke-dasharray': op.dash || '4 4' }, this.svg);
+  };
+
+
+  /* 对数轴刻度：在 [lo, hi]（以 10 为底的指数）区间里挑 1/2/5 × 10^k 这些档，
+   * 返回**真值**数组（调用方自己取 log 当域坐标、并用 yfmt 把它换算回来显示）。
+   * 2026-09-18 抽出：等待时间 / 成本 / 误差这类跨几个数量级的量，线性轴会把
+   * 关心的那一段全压在零线附近（实撞：16 席要 2.2 分钟、19 席只要 11 秒）。
+   * ⚠️ 配套的一条硬规矩：域要**夹**在关注点附近若干个数量级内 —— 只要有一个
+   * 病态点（比如 ρ=1-1e-16 解出 1e17）就能把量程撑到刻度全被避让器丢光。 */
+  function logTicks(lo, hi) {
+    var out = [], k, m, v, lg;
+    for (k = Math.floor(lo); k <= Math.ceil(hi); k++) {
+      for (m = 0; m < 3; m++) {
+        v = [1, 2, 5][m] * Math.pow(10, k);
+        lg = Math.log(v) / Math.LN10;
+        if (lg >= lo - 1e-9 && lg <= hi + 1e-9) out.push(v);
+      }
+    }
+    return out;
+  }
+
+  return { Frame: Frame, Placer: Placer, el: el, clear: clear, fmt: fmt, theme: theme, TH: TH,
+           logTicks: logTicks };
+})();
+
+/* 动图工坊 · 界面层
+ * 素材（视频 / 动图 / 图片序列 / 录屏 / 示例）→ 抽帧（裁剪、缩放、字幕、变速、方向）→ 引擎编码 → 浏览器解码回来算 PSNR 与对比；
+ * 体检页拆结构；记录页存参数与预设（localStorage）。
+ */
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+  var LS_SET = 'gs.settings.v1', LS_HIST = 'gs.history.v1', LS_PRE = 'gs.presets.v1';
+  var FONT = 'Inter, "DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", sans-serif';
+
+  var DEF = {
+    fps: '12', speed: '1', dir: 'forward', ratio: 'free', width: 480, cap: '', capPos: 'bottom', capSize: 12,
+    format: 'gif', colors: 256, quant: 'wu', dither: 'fs', strength: 80, palette: 'global', kmeans: 0,
+    apngMode: 'indexed', webpQ: 82, fuzz: 3, loop: 0, matte: '#ffffff', optimize: true, dedupe: true,
+    budget: 'github', budgetKB: 10000, allowSize: true, allowFps: true, allowColors: true, allowFuzz: true
+  };
+  // [元素 id, 设置键, 类型, 下限, 上限]
+  var BIND = [
+    ['gs-fps', 'fps', 's'], ['gs-speed', 'speed', 's'], ['gs-dir', 'dir', 's'], ['gs-ratio', 'ratio', 's'],
+    ['gs-width', 'width', 'i', 8, 1920], ['gs-cap', 'cap', 's'], ['gs-cap-pos', 'capPos', 's'], ['gs-cap-size', 'capSize', 'n', 4, 30],
+    ['gs-colors', 'colors', 'i', 2, 256], ['gs-quant', 'quant', 's'], ['gs-dither', 'dither', 's'], ['gs-strength', 'strength', 'n', 0, 100],
+    ['gs-palette', 'palette', 's'], ['gs-kmeans', 'kmeans', 'i', 0, 8], ['gs-apng-mode', 'apngMode', 's'], ['gs-webp-q', 'webpQ', 'i', 1, 100],
+    ['gs-fuzz', 'fuzz', 'n', 0, 48], ['gs-loop', 'loop', 'i', 0, 65535], ['gs-matte', 'matte', 's'],
+    ['gs-optimize', 'optimize', 'b'], ['gs-dedupe', 'dedupe', 'b'], ['gs-budget-preset', 'budget', 's'], ['gs-budget-kb', 'budgetKB', 'n', 4, 1e7],
+    ['gs-allow-size', 'allowSize', 'b'], ['gs-allow-fps', 'allowFps', 'b'], ['gs-allow-colors', 'allowColors', 'b'], ['gs-allow-fuzz', 'allowFuzz', 'b']
+  ];
+  var BUDGETS = {
+    github: { bytes: 10000000, note: '官方文档：议题 / PR 评论里的图片与 GIF 每个 10 MB（docs.github.com「Attaching files」）。' },
+    wechat: { bytes: 500000, side: 240, note: '第三方教程一致：动态表情主图 GIF、240 × 240、500 KB 以内（官方规范在登录后的后台，未能直接核对）。' },
+    discord: { bytes: 256000, side: 128, note: '第三方汇总：表情 256 KB（Discord 官方页面拒绝抓取，未能直接核对）。' },
+    slack: { bytes: 128000, side: 128, maxFrames: 50, note: '官方帮助：128 KB 以下效果最好，GIF 最多 50 帧（slack.com/help「Add custom emoji」）。' },
+    custom: { bytes: null, note: '自己填上限；按 1 KB = 1000 字节计算。' }
+  };
+
+  function loadJSON(k, d) { try { var v = JSON.parse(localStorage.getItem(k)); return v == null ? d : v; } catch (e) { return d; } }
+  function saveJSON(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { return false; } }
+  var S = Object.assign({}, DEF, loadJSON(LS_SET, {}));
+  var saveTimer = 0;
+  function flushSave() { if (saveTimer) { clearTimeout(saveTimer); saveTimer = 0; } saveJSON(LS_SET, S); }
+  function saveSoon() { if (saveTimer) clearTimeout(saveTimer); saveTimer = setTimeout(flushSave, 250); }
+  window.addEventListener('pagehide', flushSave);
+
+  var SRC = null, SRCSEQ = 0, CROP = { x: 0, y: 0, w: 1, h: 1 }, BASE = null, LAST = null, DECODED = null, BUSY = null;
+  var VIEW = 'src', SRC_T = 0, OUT_URL = null, INSPECTED = null, REC = null, WEBP_OK = null;
+
+  function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
+  function fmtS(s) { return (Math.round(s * 100) / 100).toFixed(2) + ' s'; }
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function yieldUI() { return new Promise(function (r) { var ch = new MessageChannel(); ch.port1.onmessage = function () { r(); }; ch.port2.postMessage(0); }); }
+  function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+  function setStatus(t, bad) { var el = $('gs-status'); el.textContent = t; el.classList.toggle('gs-bad', !!bad); }
+  function setProgress(f) {
+    var v = clamp(Math.round(f * 100), 0, 100);
+    $('gs-progress-bar').style.width = v + '%';
+    $('gs-progress').setAttribute('aria-valuenow', String(v));
+  }
+  function natCmp(a, b) { return a.localeCompare(b, 'zh-CN', { numeric: true, sensitivity: 'base' }); }
+  function mk(tag, cls, txt) { var e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; }
+  function canvas2d(w, h) {
+    var c = document.createElement('canvas'); c.width = w; c.height = h;
+    return { c: c, g: c.getContext('2d', { willReadFrequently: true }) };
+  }
+
+  // ════════ 设置 ↔ 控件 ════════
+  function readCtl(b) {
+    var el = $(b[0]);
+    if (b[2] === 'b') return el.checked;
+    if (b[2] === 's') return el.value;
+    var v = b[2] === 'i' ? parseInt(el.value, 10) : parseFloat(el.value);
+    return isFinite(v) ? clamp(v, b[3], b[4]) : null;
+  }
+  function writeCtl(b) {
+    var el = $(b[0]), v = S[b[1]];
+    if (b[2] === 'b') el.checked = !!v; else el.value = String(v);
+  }
+  function syncAll() { BIND.forEach(writeCtl); syncFormat(); syncBudget(); updateOutDim(); }
+  BIND.forEach(function (b) {
+    $(b[0]).addEventListener('change', function () {
+      var v = readCtl(b);
+      if (v === null) { writeCtl(b); setStatus('「' + labelOf(b[0]) + '」需要一个数字，已恢复为 ' + S[b[1]] + '。', true); return; }
+      S[b[1]] = v; writeCtl(b);
+      if (b[1] === 'apngMode') syncFormat();
+      if (b[1] === 'budget') applyBudgetPreset();
+      if (b[1] === 'budgetKB') {
+        var pr = BUDGETS[S.budget];
+        if (S.budget !== 'custom' && (!pr || !pr.bytes || Math.round(pr.bytes / 1000) !== v)) { S.budget = 'custom'; writeCtl(bindOf('budget')); }
+        syncBudget();
+      }
+      if (b[1] === 'ratio') applyRatio();
+      if (b[1] === 'width') updateOutDim();
+      saveSoon();
+    });
+  });
+  function labelOf(id) { var l = document.querySelector('label[for="' + id + '"]'); return l ? l.textContent.trim() : id; }
+
+  // —— 格式分段按钮 ——
+  Array.prototype.forEach.call(document.querySelectorAll('#gs-fmt button'), function (bt) {
+    bt.addEventListener('click', function () {
+      if (bt.disabled) return;
+      S.format = bt.getAttribute('data-fmt'); syncFormat(); saveSoon();
+    });
+  });
+  function syncFormat() {
+    Array.prototype.forEach.call(document.querySelectorAll('#gs-fmt button'), function (bt) { bt.setAttribute('aria-pressed', String(bt.getAttribute('data-fmt') === S.format)); });
+    var indexed = S.format === 'gif' || (S.format === 'apng' && S.apngMode === 'indexed');
+    Array.prototype.forEach.call(document.querySelectorAll('[data-for]'), function (el) {
+      var f = el.getAttribute('data-for');
+      el.hidden = !(f === 'indexed' ? indexed : f === S.format);
+    });
+    var h = {
+      gif: 'GIF 最多 256 色；帧间优化或素材带透明时会留 1 个下标给透明。体积主要看尺寸 × 帧数 × 画面变化量。',
+      apng: S.apngMode === 'rgba' ? '真彩 APNG 逐像素无损（含半透明），体积通常比 GIF 大；所有现代浏览器都能播。' : '调色板 APNG 全片一套调色板（PNG 只有一个 PLTE），压缩用 deflate，常比同参数 GIF 小。',
+      webp: '每帧交给浏览器自带的 WebP 编码器，再按 RIFF 规范拼成动画；质量 100 = 无损 VP8L，常比 GIF 小数倍。'
+    };
+    $('gs-enc-hint').textContent = h[S.format];
+  }
+  function budgetBytes() { return Math.round(S.budgetKB * 1000); }
+  function applyBudgetPreset() {
+    var p = BUDGETS[S.budget];
+    if (p && p.bytes) { S.budgetKB = Math.round(p.bytes / 1000); writeCtl(bindOf('budgetKB')); }
+    syncBudget();
+  }
+  function syncBudget() {
+    var p = BUDGETS[S.budget] || BUDGETS.custom, el = $('gs-budget-src');
+    $('gs-budget-bytes').textContent = '= ' + budgetBytes().toLocaleString('en-US') + ' 字节';
+    el.textContent = p.note + ' ';
+    if (p.side) {
+      var bt = mk('button', 'gs-btn gs-btn-sm', '套用建议 ' + p.side + ' × ' + p.side);
+      bt.type = 'button'; bt.id = 'gs-budget-side';
+      bt.addEventListener('click', function () {
+        S.ratio = '1'; writeCtl(bindOf('ratio')); applyRatio();
+        S.width = p.side; writeCtl(bindOf('width')); updateOutDim(); saveSoon();
+        setStatus('已改成 1 : 1 裁剪、输出 ' + p.side + ' × ' + p.side + '。');
+      });
+      el.appendChild(bt);
+    }
+  }
+
+  // ════════ 页签 ════════
+  var TABS = ['make', 'inspect', 'history', 'notes'];
+  function showTab(t, focus) {
+    TABS.forEach(function (k) {
+      var on = k === t, tb = $('tab-' + k);
+      tb.setAttribute('aria-selected', String(on)); tb.tabIndex = on ? 0 : -1;
+      $('pane-' + k).hidden = !on;
+    });
+    if (focus) $('tab-' + t).focus();
+    if (t === 'history') renderHistory();
+    if (t === 'make') requestAnimationFrame(placeCrop);
+    if (t === 'make' && LAST) drawChart();
+  }
+  TABS.forEach(function (k, i) {
+    var tb = $('tab-' + k);
+    tb.addEventListener('click', function () { showTab(k); });
+    tb.addEventListener('keydown', function (e) {
+      var d = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+      if (e.key === 'Home') { e.preventDefault(); showTab(TABS[0], true); }
+      else if (e.key === 'End') { e.preventDefault(); showTab(TABS[TABS.length - 1], true); }
+      else if (d) { e.preventDefault(); showTab(TABS[(i + d + TABS.length) % TABS.length], true); }
+    });
+  });
+
+  // ════════ 素材 ════════
+  $('gs-pick').addEventListener('click', function () { $('gs-file').click(); });
+  $('gs-pick2').addEventListener('click', function () { $('gs-file').click(); });
+  $('gs-file').addEventListener('change', function () { var f = this.files; if (f && f.length) loadFiles(f); this.value = ''; });
+  ['dragenter', 'dragover'].forEach(function (ev) { $('gs-stage').addEventListener(ev, function (e) { e.preventDefault(); $('gs-stage').classList.add('gs-dragover'); }); });
+  ['dragleave', 'drop'].forEach(function (ev) { $('gs-stage').addEventListener(ev, function () { $('gs-stage').classList.remove('gs-dragover'); }); });
+  $('gs-stage').addEventListener('drop', function (e) { e.preventDefault(); if (e.dataTransfer.files.length) loadFiles(e.dataTransfer.files); });
+
+  function guardBusy() { if (BUSY) { setStatus('正在处理，先等这一步做完或点「取消」。', true); return true; } return false; }
+
+  async function loadFiles(list) {
+    if (guardBusy()) return;
+    var files = Array.prototype.slice.call(list);
+    try {
+      if (files.length > 1) {
+        var imgs = files.filter(function (f) { return /^image\//.test(f.type) || /\.(png|jpe?g|webp|bmp|gif)$/i.test(f.name); });
+        if (!imgs.length) throw new Error('多选时只接受图片（会按文件名排成序列）');
+        imgs.sort(function (a, b) { return natCmp(a.name, b.name); });
+        await loadSequence(imgs);
+        return;
+      }
+      var f = files[0], head = new Uint8Array(await f.slice(0, 4096).arrayBuffer()), kind = GS.sniff(head);
+      if (kind === 'gif' || kind === 'apng' || kind === 'webp-anim') await loadAnimated(new Uint8Array(await f.arrayBuffer()), f.name, kind);
+      else if (kind === 'png' || kind === 'jpeg' || kind === 'webp' || kind === 'bmp') await loadSequence([f]);
+      else if (kind === 'mp4' || kind === 'webm' || /^video\//.test(f.type) || /\.(mov|mkv|m4v|ogv)$/i.test(f.name)) await loadVideo(f, f.name);
+      else throw new Error('认不出这个文件的格式（' + (f.type || '未知类型') + '）');
+    } catch (e) {
+      setStatus('载入失败：' + (e.message || e), true);
+    }
+  }
+  function resetForSource() {
+    BASE = null; LAST = null; DECODED = null;
+    $('gs-result').hidden = true; $('gs-solve-wrap').hidden = true;
+    $('gs-view-out').disabled = true; $('gs-view-cmp').disabled = true;
+    if (OUT_URL) { URL.revokeObjectURL(OUT_URL); OUT_URL = null; }
+    $('gs-strip').textContent = ''; $('gs-stripnote').hidden = true;
+  }
+  function onSourceReady(info) {
+    resetForSource();
+    SRC = info; SRC.id = ++SRCSEQ;
+    CROP = { x: 0, y: 0, w: SRC.w, h: SRC.h };
+    S.t0 = 0; S.t1 = SRC.kind === 'video' ? Math.min(SRC.duration, 6) : SRC.duration;
+    if (SRC.kind === 'frames' && SRC.frames.length > 1 && SRC.anim) S.fps = 'src';
+    else if (S.fps === 'src' && SRC.kind === 'video') S.fps = '12';
+    if (SRC.kind === 'frames' && !SRC.anim && SRC.frames.length > 1 && S.fps === 'src') S.fps = '5';
+    S.width = Math.min(SRC.w, S.width > 0 ? Math.max(S.width, 8) : 480, 1920);
+    if (SRC.w <= 480) S.width = SRC.w;
+    if (S.ratio !== 'free') applyRatio(true);
+    $('gs-t0').value = '0'; $('gs-t1').value = (Math.round(S.t1 * 100) / 100).toString();
+    $('gs-t0').max = $('gs-t1').max = String(Math.round(SRC.duration * 100) / 100);
+    syncAll(); syncCropInputs();
+    renderSrcInfo();
+    $('gs-drop').hidden = true; $('gs-src-canvas').hidden = false; $('gs-cropbox').hidden = false;
+    $('gs-scrubwrap').hidden = false;
+    $('gs-scrub').max = String(SRC.duration); $('gs-scrub').step = String(Math.max(0.01, SRC.duration / 1000)); $('gs-scrub').value = '0';
+    $('gs-encode').disabled = false; $('gs-solve').disabled = false;
+    setView('src');
+    SRC_T = 0;
+    drawSource(0);
+    var msg = '素材就绪：' + SRC.label + '。';
+    if (SRC.kind === 'video' && SRC.duration > 6) msg += '默认截取前 6 秒，可在「剪辑」里改。';
+    setStatus(msg);
+  }
+  function renderSrcInfo() {
+    var dl = $('gs-src-info'); dl.textContent = '';
+    var rows = [['类型', SRC.label], ['尺寸', SRC.w + ' × ' + SRC.h], ['时长', fmtS(SRC.duration)]];
+    if (SRC.kind === 'frames') rows.push(['帧数', SRC.frames.length + ' 帧']);
+    if (SRC.size) rows.push(['大小', GS.fmtBytes(SRC.size)]);
+    rows.push(['名称', SRC.name]);
+    rows.forEach(function (r) { dl.appendChild(mk('dt', null, r[0])); dl.appendChild(mk('dd', null, r[1])); });
+  }
+
+  async function loadSequence(files) {
+    setStatus('解码 ' + files.length + ' 张图片…');
+    var frames = [], w = 0, h = 0, total = 0;
+    for (var i = 0; i < files.length; i++) {
+      var bmp = await createImageBitmap(files[i]);
+      if (!w) { w = bmp.width; h = bmp.height; }
+      frames.push({ bmp: bmp, delay: 200 });
+      total += files[i].size;
+    }
+    var info = { kind: 'frames', frames: frames, w: w, h: h, anim: false, name: files.length > 1 ? files[0].name + ' 等 ' + files.length + ' 张' : files[0].name, size: total,
+      label: files.length > 1 ? '图片序列 · ' + files.length + ' 张' : '单张图片' };
+    restamp(info, 200);
+    onSourceReady(info);
+  }
+  // 静态图序列：每张时长由帧率决定（抽帧时按 1/fps 取），这里先给个时间轴
+  function restamp(info, ms) {
+    var t = 0;
+    info.frames.forEach(function (f) { f.delay = ms; f.start = t / 1000; t += ms; });
+    info.duration = t / 1000;
+  }
+  async function loadAnimated(u8, name, kind) {
+    setStatus('解码动图…');
+    var mime = kind === 'gif' ? 'image/gif' : kind === 'apng' ? 'image/png' : 'image/webp';
+    var frames = null, w = 0, h = 0, how = '';
+    if (typeof ImageDecoder !== 'undefined' && await ImageDecoder.isTypeSupported(mime)) {
+      var dec = new ImageDecoder({ data: u8, type: mime });
+      await dec.tracks.ready;
+      var tr = dec.tracks.selectedTrack, n = tr.frameCount;
+      frames = [];
+      for (var i = 0; i < n && i < 2000; i++) {
+        var r = await dec.decode({ frameIndex: i });
+        var bmp = await createImageBitmap(r.image);
+        var d = r.image.duration == null ? 100 : r.image.duration / 1000;
+        w = r.image.displayWidth; h = r.image.displayHeight;
+        r.image.close();
+        frames.push({ bmp: bmp, delay: d <= 10 ? 100 : d });
+        if (i % 8 === 7) await yieldUI();
+      }
+      dec.close(); how = '浏览器解码';
+    } else if (kind === 'gif') {
+      var g = GS.decodeGIF(u8);
+      if (!g.ok) throw new Error(g.error || 'GIF 解码失败');
+      w = g.width; h = g.height; frames = [];
+      for (var j = 0; j < g.decodedFrames.length; j++) {
+        var fr = g.decodedFrames[j];
+        frames.push({ bmp: await createImageBitmap(new ImageData(fr.data, w, h)), delay: fr.delay });
+      }
+      how = '本页 GIF 解码器';
+    } else throw new Error('这个浏览器没有 ImageDecoder，解不了动画 PNG / WebP（GIF 可以）');
+    if (!frames.length) throw new Error('动图里没有帧');
+    var t = 0;
+    frames.forEach(function (f) { f.start = t / 1000; t += f.delay; });
+    var label = { gif: 'GIF', apng: 'APNG', 'webp-anim': '动画 WebP' }[kind] + ' 动图 · ' + frames.length + ' 帧';
+    onSourceReady({ kind: 'frames', frames: frames, w: w, h: h, anim: true, duration: t / 1000, name: name, size: u8.length, label: label, how: how });
+  }
+  async function loadVideo(blob, name) {
+    setStatus('载入视频…');
+    var v = document.createElement('video');
+    v.muted = true; v.playsInline = true; v.preload = 'auto'; v.crossOrigin = 'anonymous';
+    var url = URL.createObjectURL(blob);
+    v.src = url;
+    await new Promise(function (res, rej) {
+      v.onloadedmetadata = function () { res(); };
+      v.onerror = function () { rej(new Error('浏览器解不了这个视频（编码格式不受支持，可先转成 MP4 H.264 或 WebM）')); };
+    });
+    if (!isFinite(v.duration) || v.duration <= 0) {
+      // MediaRecorder 录出来的 WebM 没写时长：跳到很远处，浏览器会把真实时长算出来
+      await new Promise(function (res) { var done = false; v.ondurationchange = function () { if (isFinite(v.duration) && !done) { done = true; res(); } }; v.currentTime = 1e7; setTimeout(function () { if (!done) { done = true; res(); } }, 3000); });
+    }
+    if (!isFinite(v.duration)) throw new Error('读不出视频时长');
+    await seekVideo(v, 0);
+    if (!v.videoWidth) throw new Error('视频没有画面轨');
+    var mime = blob.type || ({ webm: 'video/webm', mp4: 'video/mp4' }[GS.sniff(new Uint8Array(await blob.slice(0, 64).arrayBuffer()))] || '视频');
+    onSourceReady({ kind: 'video', el: v, url: url, w: v.videoWidth, h: v.videoHeight, duration: v.duration, name: name, size: blob.size,
+      label: '视频 · ' + mime.replace(/^video\//, '').toUpperCase().replace(/;.*/, '') });
+  }
+  function seekVideo(v, t) {
+    t = clamp(t, 0, Math.max(0, v.duration - 0.001));
+    return new Promise(function (res) {
+      var done = false;
+      function fin() { if (done) return; done = true; v.removeEventListener('seeked', fin); res(); }
+      if (Math.abs(v.currentTime - t) < 1e-4 && v.readyState >= 2) { fin(); return; }
+      v.addEventListener('seeked', fin);
+      v.currentTime = t;
+      setTimeout(fin, 4000);
+    });
+  }
+
+  // ════════ 舞台：源预览 + 裁剪框 ════════
+  function starts() { if (!SRC.starts) SRC.starts = SRC.frames.map(function (f) { return f.start; }); return SRC.starts; }
+  var drawing = false, pendingT = null;
+  async function drawSource(t) {
+    if (!SRC) return;
+    if (drawing || BUSY) { pendingT = t; return; }
+    drawing = true;
+    try {
+      var cv = $('gs-src-canvas'), sc = Math.min(1, 1280 / Math.max(SRC.w, SRC.h));
+      var w = Math.max(1, Math.round(SRC.w * sc)), h = Math.max(1, Math.round(SRC.h * sc));
+      if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+      var g = cv.getContext('2d');
+      g.clearRect(0, 0, w, h);
+      if (SRC.kind === 'video') { await seekVideo(SRC.el, t); g.drawImage(SRC.el, 0, 0, w, h); }
+      else g.drawImage(SRC.frames[stillIndex(t)].bmp, 0, 0, w, h);
+      $('gs-scrub-t').textContent = fmtS(t) + ' / ' + fmtS(SRC.duration);
+      placeCrop();
+    } finally { drawing = false; }
+    if (pendingT !== null && !BUSY) { var p = pendingT; pendingT = null; drawSource(p); }
+  }
+  function stillIndex(t) { return SRC.anim || SRC.frames.length === 1 ? GS.frameAt(starts(), t) : Math.min(SRC.frames.length - 1, Math.floor(t / (SRC.duration / SRC.frames.length))); }
+  $('gs-scrub').addEventListener('input', function () { SRC_T = parseFloat(this.value) || 0; drawSource(SRC_T); });
+  $('gs-set-in').addEventListener('click', function () { setTrim(SRC_T, null); });
+  $('gs-set-out').addEventListener('click', function () { setTrim(null, SRC_T); });
+  $('gs-t0').addEventListener('change', function () { setTrim(parseFloat(this.value), null); });
+  $('gs-t1').addEventListener('change', function () { setTrim(null, parseFloat(this.value)); });
+  function setTrim(a, b) {
+    if (!SRC) return;
+    var t0 = a == null ? S.t0 : a, t1 = b == null ? S.t1 : b;
+    if (!isFinite(t0) || !isFinite(t1)) { setStatus('起止时间要填数字。', true); $('gs-t0').value = S.t0; $('gs-t1').value = S.t1; return; }
+    t0 = clamp(t0, 0, SRC.duration); t1 = clamp(t1, 0, SRC.duration);
+    if (t1 - t0 < 0.02) {
+      setStatus('终点必须比起点晚（至少 0.02 秒），已保持原值。', true);
+      $('gs-t0').value = String(Math.round(S.t0 * 100) / 100); $('gs-t1').value = String(Math.round(S.t1 * 100) / 100);
+      return;
+    }
+    S.t0 = t0; S.t1 = t1;
+    $('gs-t0').value = String(Math.round(t0 * 100) / 100); $('gs-t1').value = String(Math.round(t1 * 100) / 100);
+    BASE = null; updateOutDim();
+  }
+  function placeCrop() {
+    var box = $('gs-cropbox');
+    if (!SRC || box.hidden) return;
+    var cr = contentRect(), sr = $('gs-stage').getBoundingClientRect();
+    if (!cr.width) return;
+    var k = cr.width / SRC.w;
+    box.style.left = (cr.left - sr.left + CROP.x * k) + 'px'; box.style.top = (cr.top - sr.top + CROP.y * k) + 'px';
+    box.style.width = Math.max(6, CROP.w * k) + 'px'; box.style.height = Math.max(6, CROP.h * k) + 'px';
+    $('gs-cropdim').textContent = CROP.w + ' × ' + CROP.h;
+    box.setAttribute('aria-valuetext', '从 ' + CROP.x + ', ' + CROP.y + ' 起 ' + CROP.w + ' × ' + CROP.h);
+  }
+  // 画布按 object-fit: contain 铺满舞台：真正画了内容的那块矩形（裁剪框要对着它摆）
+  function contentRect() {
+    var cv = $('gs-src-canvas'), r = cv.getBoundingClientRect();
+    if (!r.width || !cv.width) return { left: 0, top: 0, width: 0, height: 0 };
+    var k = Math.min(r.width / cv.width, r.height / cv.height), w = cv.width * k, h = cv.height * k;
+    return { left: r.left + (r.width - w) / 2, top: r.top + (r.height - h) / 2, width: w, height: h };
+  }
+  function ratioVal() { return S.ratio === 'free' ? 0 : parseFloat(S.ratio); }
+  function normCrop(c) {
+    var w = clamp(Math.round(c.w), 1, SRC.w), h = clamp(Math.round(c.h), 1, SRC.h);
+    return { x: clamp(Math.round(c.x), 0, SRC.w - w), y: clamp(Math.round(c.y), 0, SRC.h - h), w: w, h: h };
+  }
+  function dragCrop(c, mode, dx, dy) {
+    if (mode === 'move') return normCrop({ x: c.x + dx, y: c.y + dy, w: c.w, h: c.h });
+    var r = ratioVal(), west = mode.indexOf('w') >= 0, north = mode.indexOf('n') >= 0;
+    var ax = west ? c.x + c.w : c.x, ay = north ? c.y + c.h : c.y;           // 固定的对角点
+    var w = Math.max(8, c.w + (west ? -dx : dx)), h = Math.max(8, c.h + (north ? -dy : dy));
+    var maxW = west ? ax : SRC.w - ax, maxH = north ? ay : SRC.h - ay;
+    if (r) {
+      if (Math.abs(dx) >= Math.abs(dy) * r) h = w / r; else w = h * r;
+      if (w > maxW) { w = maxW; h = w / r; }
+      if (h > maxH) { h = maxH; w = h * r; }
+    } else { w = Math.min(w, maxW); h = Math.min(h, maxH); }
+    return normCrop({ x: west ? ax - w : ax, y: north ? ay - h : ay, w: w, h: h });
+  }
+  (function () {
+    var box = $('gs-cropbox'), drag = null;
+    box.addEventListener('pointerdown', function (e) {
+      if (!SRC || BUSY) return;
+      var k = contentRect().width / SRC.w;
+      drag = { mode: e.target.getAttribute('data-h') || 'move', x: e.clientX, y: e.clientY, c: Object.assign({}, CROP), k: k, id: e.pointerId };
+      try { box.setPointerCapture(e.pointerId); } catch (er) { /* 合成事件没有真实指针 */ }
+      e.preventDefault();
+    });
+    box.addEventListener('pointermove', function (e) {
+      if (!drag || e.pointerId !== drag.id) return;
+      CROP = dragCrop(drag.c, drag.mode, (e.clientX - drag.x) / drag.k, (e.clientY - drag.y) / drag.k);
+      placeCrop(); syncCropInputs();
+    });
+    function end() { if (!drag) return; drag = null; cropChanged(); }
+    box.addEventListener('pointerup', end); box.addEventListener('pointercancel', end);
+    box.addEventListener('keydown', function (e) {
+      var st = e.altKey ? 10 : 2, dx = 0, dy = 0;
+      if (e.key === 'ArrowLeft') dx = -st; else if (e.key === 'ArrowRight') dx = st;
+      else if (e.key === 'ArrowUp') dy = -st; else if (e.key === 'ArrowDown') dy = st; else return;
+      e.preventDefault();
+      CROP = dragCrop(CROP, e.shiftKey ? 'se' : 'move', dx, dy);
+      placeCrop(); syncCropInputs(); cropChanged();
+    });
+  })();
+  function syncCropInputs() {
+    if (!SRC) return;
+    $('gs-cx').value = CROP.x; $('gs-cy').value = CROP.y; $('gs-cw').value = CROP.w; $('gs-ch').value = CROP.h;
+    $('gs-cx').max = String(SRC.w - 1); $('gs-cy').max = String(SRC.h - 1); $('gs-cw').max = String(SRC.w); $('gs-ch').max = String(SRC.h);
+  }
+  ['gs-cx', 'gs-cy', 'gs-cw', 'gs-ch'].forEach(function (id) {
+    $(id).addEventListener('change', function () {
+      if (!SRC) return;
+      var v = parseInt(this.value, 10);
+      if (!isFinite(v)) { syncCropInputs(); setStatus('裁剪值要填整数。', true); return; }
+      var c = Object.assign({}, CROP), r = ratioVal();
+      if (id === 'gs-cx') c.x = v; else if (id === 'gs-cy') c.y = v;
+      else if (id === 'gs-cw') { c.w = clamp(v, 8, SRC.w); if (r) c.h = c.w / r; }
+      else { c.h = clamp(v, 8, SRC.h); if (r) c.w = c.h * r; }
+      if (r && (c.w > SRC.w || c.h > SRC.h)) { var f = Math.min(SRC.w / c.w, SRC.h / c.h); c.w *= f; c.h *= f; }
+      CROP = normCrop(c); syncCropInputs(); placeCrop(); cropChanged();
+    });
+  });
+  $('gs-crop-reset').addEventListener('click', function () {
+    if (!SRC) return;
+    S.ratio = 'free'; writeCtl(bindOf('ratio'));
+    CROP = { x: 0, y: 0, w: SRC.w, h: SRC.h }; syncCropInputs(); placeCrop(); cropChanged(); saveSoon();
+  });
+  function applyRatio(silent) {
+    if (!SRC) return;
+    var r = ratioVal();
+    if (!r) { cropChanged(); return; }
+    var cx = CROP.x + CROP.w / 2, cy = CROP.y + CROP.h / 2, w = SRC.w, h = w / r;
+    if (h > SRC.h) { h = SRC.h; w = h * r; }
+    CROP = normCrop({ x: cx - w / 2, y: cy - h / 2, w: w, h: h });
+    syncCropInputs(); placeCrop();
+    if (!silent) cropChanged();
+  }
+  function cropChanged() { BASE = null; updateOutDim(); }
+  function bindOf(key) { for (var i = 0; i < BIND.length; i++) if (BIND[i][1] === key) return BIND[i]; return null; }
+  $('gs-size-preset').addEventListener('change', function () {
+    var v = this.value; this.value = '';
+    if (!SRC || !v) return;
+    if (v === 'src') S.width = Math.min(1920, CROP.w);
+    else { var n = parseInt(v, 10); S.width = CROP.w >= CROP.h ? n : Math.max(8, Math.round(n * CROP.w / CROP.h)); }
+    writeCtl(bindOf('width')); updateOutDim(); saveSoon();
+  });
+  function outDims() {
+    var w = clamp(Math.round(S.width), 8, 1920), h = Math.max(1, Math.round(w * CROP.h / CROP.w));
+    if (h > 1920) { h = 1920; w = Math.max(8, Math.round(h * CROP.w / CROP.h)); }
+    return [w, h];
+  }
+  function updateOutDim() {
+    var el = $('gs-outdim');
+    if (!SRC) { el.textContent = '输出 —'; return; }
+    var d = outDims(), n = plan().length, t = '输出 ' + d[0] + ' × ' + d[1] + ' · 约 ' + n + ' 帧';
+    if (d[0] > CROP.w * 1.01) t += ' · 比裁剪区放大了 ' + (d[0] / CROP.w).toFixed(2) + ' 倍，不会更清晰';
+    el.textContent = t;
+    var still = SRC.kind === 'frames' && !SRC.anim;
+    $('gs-t0').disabled = still; $('gs-t1').disabled = still;
+  }
+
+  // ════════ 抽帧 ════════
+  function plan() {
+    if (!SRC) return [];
+    var speed = parseFloat(S.speed) || 1, items = [], k;
+    if (SRC.kind === 'frames' && !SRC.anim) {
+      var fpsS = S.fps === 'src' ? 5 : parseFloat(S.fps);
+      for (k = 0; k < SRC.frames.length; k++) items.push({ k: k, delay: 1000 / fpsS / speed });
+    } else {
+      var t0 = clamp(S.t0 || 0, 0, SRC.duration), t1 = clamp(S.t1 || SRC.duration, 0, SRC.duration);
+      if (t1 <= t0) t1 = Math.min(SRC.duration, t0 + 0.05);
+      if (SRC.kind === 'frames' && (S.fps === 'src' || SRC.frames.length === 1)) {
+        for (k = 0; k < SRC.frames.length; k++) {
+          var f = SRC.frames[k], s = f.start, e = s + f.delay / 1000;
+          if (e <= t0 + 1e-9 || s >= t1 - 1e-9) continue;
+          items.push({ k: k, delay: (Math.min(e, t1) - Math.max(s, t0)) * 1000 / speed });
+        }
+      } else {
+        var fps = S.fps === 'src' ? 15 : parseFloat(S.fps), ts = GS.sampleTimes(t0, t1, fps, speed);
+        for (k = 0; k < ts.length; k++) items.push(SRC.kind === 'video' ? { t: ts[k], delay: 1000 / fps } : { k: GS.frameAt(starts(), ts[k] + 1e-6), delay: 1000 / fps });
+      }
+    }
+    if (!items.length) return items;
+    items = minDelay(items, 20);
+    return GS.direction(items, S.dir);
+  }
+  // 浏览器把 ≤10 ms 的帧当 100 ms 播：短于 20 ms 的帧并进前一帧（等于丢帧，保住速度）
+  function minDelay(items, ms) {
+    if (!items.some(function (x) { return x.delay < ms; })) return items;
+    var out = [];
+    for (var i = 0; i < items.length; i++) {
+      var last = out[out.length - 1];
+      if (last && last.delay < ms - 1e-6) last.delay += items[i].delay;
+      else out.push(Object.assign({}, items[i]));
+    }
+    return out;
+  }
+  function check(tok) { if (tok && tok.cancel) throw new Error('已取消'); }
+  function baseKey(W, H) { return JSON.stringify([SRC.id, CROP, W, H, S.t0, S.t1, S.fps, S.speed, S.dir, S.cap, S.capPos, S.capSize]); }
+  async function buildBase(tok) {
+    var d = outDims(), W = d[0], H = d[1], key = baseKey(W, H);
+    if (BASE && BASE.key === key) return BASE;
+    var items = plan();
+    if (!items.length) throw new Error('起止范围里没有帧');
+    if (items.length > 1500) throw new Error('要抽 ' + items.length + ' 帧，太多了（上限 1500）：缩短时长或降低帧率');
+    if (items.length * W * H * 4 > 1.2e9) throw new Error('帧数 × 尺寸太大（约 ' + Math.round(items.length * W * H * 4 / 1e6) + ' MB）：缩小输出尺寸或缩短时长');
+    var cv = canvas2d(W, H), g = cv.g, frames = [], cache = {};
+    g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
+    for (var i = 0; i < items.length; i++) {
+      check(tok);
+      var it = items[i], ck = it.t != null ? 't' + it.t.toFixed(5) : 'k' + it.k;
+      if (!cache[ck]) {
+        g.clearRect(0, 0, W, H);
+        if (SRC.kind === 'video') { await seekVideo(SRC.el, it.t + 0.001); g.drawImage(SRC.el, CROP.x, CROP.y, CROP.w, CROP.h, 0, 0, W, H); }
+        else g.drawImage(SRC.frames[it.k].bmp, CROP.x, CROP.y, CROP.w, CROP.h, 0, 0, W, H);
+        drawCaption(g, W, H);
+        cache[ck] = g.getImageData(0, 0, W, H).data;
+        if (SRC.kind !== 'video' && i % 4 === 3) await yieldUI();
+      }
+      frames.push({ data: cache[ck], delay: it.delay });
+      setProgress(0.35 * (i + 1) / items.length);
+      if (i % 3 === 0 || i === items.length - 1) setStatus('抽帧 ' + (i + 1) + ' / ' + items.length);
+    }
+    var dur = 0;
+    frames.forEach(function (f) { dur += f.delay; });
+    BASE = { key: key, frames: frames, W: W, H: H, dur: dur };
+    renderStrip();
+    return BASE;
+  }
+  function drawCaption(g, W, H) {
+    var text = (S.cap || '').trim();
+    if (!text) return;
+    var size = Math.max(8, Math.round(H * S.capSize / 100));
+    g.save();
+    g.font = '700 ' + size + 'px ' + FONT;
+    while (size > 8 && g.measureText(text).width > W * 0.92) { size--; g.font = '700 ' + size + 'px ' + FONT; }
+    g.textAlign = 'center'; g.textBaseline = 'alphabetic'; g.lineJoin = 'round';
+    g.lineWidth = Math.max(2, size * 0.16); g.strokeStyle = '#000'; g.fillStyle = '#fff';
+    var y = S.capPos === 'top' ? Math.round(H * 0.05 + size * 0.86) : Math.round(H - H * 0.05 - size * 0.12);
+    g.strokeText(text, W / 2, y); g.fillText(text, W / 2, y);
+    g.restore();
+  }
+  function renderStrip() {
+    var st = $('gs-strip'); st.textContent = '';
+    if (!BASE) return;
+    var n = BASE.frames.length, show = Math.min(n, 60), th = 44, tw = Math.max(8, Math.round(th * BASE.W / BASE.H));
+    for (var i = 0; i < show; i++) {
+      var k = Math.floor(i * n / show), c = canvas2d(tw, th), tmp = canvas2d(BASE.W, BASE.H);
+      tmp.g.putImageData(new ImageData(BASE.frames[k].data, BASE.W, BASE.H), 0, 0);
+      c.g.drawImage(tmp.c, 0, 0, tw, th);
+      c.c.setAttribute('data-k', String(k)); c.c.title = '第 ' + (k + 1) + ' 帧';
+      c.c.setAttribute('role', 'button'); c.c.tabIndex = 0; c.c.setAttribute('aria-label', '第 ' + (k + 1) + ' 帧');
+      st.appendChild(c.c);
+    }
+    var note = $('gs-stripnote');
+    note.hidden = false;
+    note.textContent = '抽出 ' + n + ' 帧' + (show < n ? '（缩略图每隔 ' + (n / show).toFixed(1) + ' 帧取一张）' : '') + ' · 总时长 ' + fmtS(BASE.dur / 1000) + ' · 点缩略图对比该帧';
+  }
+  $('gs-strip').addEventListener('click', function (e) { var k = e.target.getAttribute && e.target.getAttribute('data-k'); if (k != null) pickBaseFrame(+k); });
+  $('gs-strip').addEventListener('keydown', function (e) { if (e.key !== 'Enter' && e.key !== ' ') return; var k = e.target.getAttribute('data-k'); if (k != null) { e.preventDefault(); pickBaseFrame(+k); } });
+  function pickBaseFrame(k) {
+    Array.prototype.forEach.call($('gs-strip').children, function (c) { c.classList.toggle('gs-on', +c.getAttribute('data-k') === k); });
+    if (!LAST || LAST.frames !== BASE.frames) return;
+    var j = 0;
+    for (var i = 0; i < LAST.job.out.length; i++) if (LAST.job.out[i].src <= k) j = i;
+    $('gs-cmp-frame').value = String(j); setView('cmp'); drawCompare(j);
+  }
+
+  // ════════ 编码 ════════
+  function hexRGB(h) { var m = /^#?([0-9a-f]{6})$/i.exec(h || ''); var v = m ? parseInt(m[1], 16) : 0xffffff; return [(v >> 16) & 255, (v >> 8) & 255, v & 255]; }
+  function encParams(over) {
+    var p = { format: S.format, colors: S.colors, quant: S.quant, dither: S.dither, strength: S.strength, palette: S.palette, kmeans: S.kmeans,
+      apngMode: S.apngMode, webpQ: S.webpQ, fuzz: S.fuzz, loop: S.loop, matte: S.matte, optimize: S.optimize, dedupe: S.dedupe };
+    return Object.assign(p, over || {});
+  }
+  async function webpEncodeRect(rgba, w, h, q) {
+    var c = canvas2d(w, h);
+    c.g.putImageData(new ImageData(rgba, w, h), 0, 0);
+    var blob = await new Promise(function (res) { c.c.toBlob(res, 'image/webp', q >= 100 ? 1 : q / 100); });
+    if (!blob || blob.type !== 'image/webp') throw new Error('这个浏览器的 canvas 不能导出 WebP（可改用 GIF / APNG）');
+    return new Uint8Array(await blob.arrayBuffer());
+  }
+  async function encodeFrames(frames, W, H, P, tok, prog) {
+    var keep = frames.length * W * H * 4 <= 160e6;
+    var o = { colors: P.colors, quant: P.quant, kmeans: P.kmeans, dither: P.dither, strength: P.strength / 100, palette: P.palette,
+      optimize: P.optimize, fuzz: P.fuzz, dedupe: P.dedupe, matte: hexRGB(P.matte), loop: P.loop, keepIntended: keep };
+    var t0 = performance.now(), job, bytes, sizes = [], n = frames.length, i;
+    prog(0, '统计颜色、建调色板…');
+    await yieldUI();
+    if (P.format === 'gif') job = new GS.IndexedJob(frames, W, H, o);
+    else if (P.format === 'apng') job = P.apngMode === 'rgba' ? new GS.TrueJob(frames, W, H, o) : new GS.IndexedJob(frames, W, H, Object.assign({}, o, { target: 'apng' }));
+    else job = new GS.TrueJob(frames, W, H, Object.assign({}, o, { even: true }));
+    var share = P.format === 'gif' ? 1 : 0.6;
+    while (!job.done) {
+      check(tok); job.step();
+      prog(share * job.k / n, '编码 ' + job.k + ' / ' + n);
+      if (job.k % 2 === 0 || job.done) await yieldUI();
+    }
+    if (P.format === 'gif') {
+      bytes = GS.writeGIF(job);
+      sizes = job.out.map(function (r) { return r.lzw.length + 18 + (r.pal ? 3 << r.tableBits : 0); });
+    } else if (P.format === 'apng') {
+      bytes = await GS.writeAPNG(job, null, async function (k, m) { check(tok); prog(0.6 + 0.4 * k / m, '压缩 ' + k + ' / ' + m); if (k % 3 === 0) await yieldUI(); });
+      sizes = job.out.map(function (r) { return r.bytes; });
+    } else {
+      var recs = [];
+      for (i = 0; i < job.out.length; i++) {
+        check(tok);
+        var r = job.out[i], bits = GS.webpBitstream(await webpEncodeRect(r.rgba, r.w, r.h, P.webpQ));
+        recs.push({ x: r.x, y: r.y, w: r.w, h: r.h, delay: r.delay, blend: r.blend, bits: bits });
+        sizes.push(bits.reduce(function (a, c) { return a + c.data.length + 8; }, 24));
+        prog(0.6 + 0.4 * (i + 1) / job.out.length, 'WebP 编码 ' + (i + 1) + ' / ' + job.out.length);
+      }
+      bytes = GS.muxWebP(W, H, recs, P.loop);
+    }
+    return { bytes: bytes, job: job, W: W, H: H, format: P.format, ms: performance.now() - t0, sizes: sizes, P: P, frames: frames, keep: keep };
+  }
+  function begin(label) {
+    var tok = { cancel: false };
+    BUSY = tok;
+    $('gs-encode').disabled = true; $('gs-solve').disabled = true; $('gs-cancel').hidden = false;
+    setProgress(0); setStatus(label);
+    return tok;
+  }
+  function finish() {
+    BUSY = null;
+    $('gs-encode').disabled = !SRC; $('gs-solve').disabled = !SRC; $('gs-cancel').hidden = true;
+    if (pendingT !== null) { var p = pendingT; pendingT = null; drawSource(p); }
+  }
+  $('gs-cancel').addEventListener('click', function () { if (BUSY) BUSY.cancel = true; });
+  $('gs-encode').addEventListener('click', function () { runEncode(); });
+  $('gs-solve').addEventListener('click', function () { runSolve(); });
+
+  async function runEncode() {
+    if (!SRC || guardBusy()) return;
+    var tok = begin('准备抽帧…');
+    try {
+      var base = await buildBase(tok);
+      var r = await encodeFrames(base.frames, base.W, base.H, encParams(), tok, function (f, t) { setProgress(0.35 + 0.65 * f); setStatus(t); });
+      setProgress(1);
+      await showResult(r, null);
+      setStatus('完成：' + GS.fmtBytes(r.bytes.length) + '，用时 ' + (r.ms / 1000).toFixed(2) + ' s。');
+    } catch (e) {
+      setStatus(e.message === '已取消' ? '已取消。' : '出错了：' + (e.message || e), e.message !== '已取消');
+      setProgress(0);
+    } finally { finish(); }
+  }
+
+  // ════════ 体积预算 ════════
+  async function runSolve() {
+    if (!SRC || guardBusy()) return;
+    var tok = begin('准备抽帧…'), target = budgetBytes(), pre = BUDGETS[S.budget] || {};
+    var tbody = $('gs-solve-log').tBodies[0];
+    tbody.textContent = ''; $('gs-solve-wrap').hidden = false;
+    try {
+      var base = await buildBase(tok), W = base.W, H = base.H;
+      var baseFps = base.frames.length / Math.max(0.001, base.dur / 1000);
+      var allow = { size: S.allowSize, fps: S.allowFps, colors: S.allowColors && S.format !== 'webp' && !(S.format === 'apng' && S.apngMode === 'rgba'), fuzz: S.allowFuzz };
+      var bp = { width: W, height: H, fps: baseFps, colors: S.colors, fuzz: S.fuzz }, fpsCap = Infinity;
+      if (pre.maxFrames && base.frames.length > pre.maxFrames) fpsCap = pre.maxFrames / (base.dur / 1000) * 0.999;
+      var it = 0;
+      var encodeAt = async function (lam) {
+        var p = GS.budgetParams(bp, lam, allow), frames = base.frames;
+        if (fpsCap < Infinity && S.allowFps) p.fps = Math.min(p.fps, fpsCap);
+        if (p.fps < baseFps - 0.01) frames = GS.retime(frames, p.fps);
+        if (p.width !== W) {
+          var fw = p.width, fh = p.height, out = [];
+          for (var i = 0; i < frames.length; i++) { check(tok); out.push({ data: GS.resizeRGBA(frames[i].data, W, H, fw, fh), delay: frames[i].delay }); if (i % 8 === 7) await yieldUI(); }
+          frames = out;
+        }
+        it++;
+        var r = await encodeFrames(frames, p.width, p.height, encParams({ colors: p.colors, fuzz: p.fuzz }), tok, function (f, t) { setProgress(0.35 + 0.65 * Math.min(1, (it - 1 + f) / 6)); setStatus('第 ' + it + ' 次试编码 · ' + t); });
+        r.params = p; r.lam = lam;
+        logRow(tbody, it, lam, p, frames.length, r.bytes.length, target);
+        return { bytes: r.bytes.length, params: p, r: r };
+      };
+      var res = await GS.solveBudget(encodeAt, target, { maxIter: 6, accept: 0.9 });
+      var best = res.best.r;
+      var idx = res.log.indexOf(res.log.filter(function (l) { return l.params === res.best.params; })[0]);
+      if (idx >= 0 && tbody.rows[idx]) tbody.rows[idx].classList.add('gs-best');
+      setProgress(1);
+      await showResult(best, res);
+      if (res.ok) setStatus('求解完成：' + GS.fmtBytes(best.bytes.length) + ' ≤ ' + GS.fmtBytes(target) + '（试了 ' + res.log.length + ' 次）。');
+      else setStatus('压到最狠仍有 ' + GS.fmtBytes(best.bytes.length) + '，超出 ' + GS.fmtBytes(target) + '：缩短时长、先裁小画面，或放开更多可调项。', true);
+    } catch (e) {
+      setStatus(e.message === '已取消' ? '已取消。' : '出错了：' + (e.message || e), e.message !== '已取消');
+      setProgress(0);
+    } finally { finish(); }
+  }
+  function logRow(tbody, it, lam, p, nf, bytes, target) {
+    var tr = tbody.insertRow(), ok = bytes <= target;
+    tr.setAttribute('data-it', String(it));
+    [String(it), lam.toFixed(3), p.width + ' × ' + p.height, (Math.round(p.fps * 10) / 10) + ' (' + nf + ' 帧)', String(p.colors), GS.fmtBytes(bytes), ok ? '装得下' : '超出 ' + Math.round((bytes / target - 1) * 100) + '%'].forEach(function (v, i) {
+      var td = tr.insertCell(); td.textContent = v;
+      if (i === 0 || i === 1 || i === 3 || i === 4 || i === 5) td.className = 'gs-num';
+      if (i === 6) td.className = ok ? 'gs-mark-ok' : 'gs-mark-no';
+    });
+  }
+
+  // ════════ 结果 ════════
+  var FMT_NAME = { gif: 'GIF', apng: 'APNG', webp: 'WebP' }, MIME = { gif: 'image/gif', apng: 'image/png', webp: 'image/webp' }, EXT = { gif: 'gif', apng: 'png', webp: 'webp' };
+  function setView(v) {
+    VIEW = v;
+    $('gs-view-src').setAttribute('aria-pressed', String(v === 'src'));
+    $('gs-view-out').setAttribute('aria-pressed', String(v === 'out'));
+    $('gs-view-cmp').setAttribute('aria-pressed', String(v === 'cmp'));
+    var hasSrc = !!SRC;
+    $('gs-src-canvas').hidden = !(hasSrc && v === 'src');
+    $('gs-cropbox').hidden = !(hasSrc && v === 'src');
+    $('gs-scrubwrap').hidden = !(hasSrc && v === 'src');
+    $('gs-out-img').hidden = v === 'src';
+    $('gs-cmpwrap').hidden = v !== 'cmp';
+    if (v === 'src') requestAnimationFrame(placeCrop);
+    if (v === 'cmp') drawCompare(+$('gs-cmp-frame').value || 0);
+  }
+  $('gs-view-src').addEventListener('click', function () { setView('src'); });
+  $('gs-view-out').addEventListener('click', function () { if (!this.disabled) setView('out'); });
+  $('gs-view-cmp').addEventListener('click', function () { if (!this.disabled) setView('cmp'); });
+  function outName(r) {
+    var b = (SRC && SRC.name ? SRC.name : 'animation').replace(/\.[a-z0-9]+$/i, '').replace(/[\\/:*?"<>|\s]+/g, '-').slice(0, 40) || 'animation';
+    return b + '-' + r.W + 'x' + r.H + '.' + EXT[r.format];
+  }
+  function metric(k, v, id) {
+    var d = mk('div', 'gs-metric'); d.appendChild(mk('p', 'gs-metric-k', k));
+    var p = mk('p', 'gs-metric-v', v); if (id) p.id = id; d.appendChild(p);
+    return d;
+  }
+  var RESULT_SEQ = 0;
+  async function showResult(r, solved) {
+    LAST = r; DECODED = null;
+    r.seq = ++RESULT_SEQ;
+    $('gs-result').setAttribute('data-seq', String(r.seq));
+    if (OUT_URL) URL.revokeObjectURL(OUT_URL);
+    OUT_URL = URL.createObjectURL(new Blob([r.bytes], { type: MIME[r.format] }));
+    $('gs-out-img').src = OUT_URL;
+    var dl = $('gs-download'); dl.href = OUT_URL; dl.download = outName(r);
+    $('gs-view-out').disabled = false; $('gs-view-cmp').disabled = false;
+    $('gs-result').hidden = false;
+    var out = r.job.out, n = out.length, dur = 0, i;
+    for (i = 0; i < n; i++) dur += r.format === 'gif' ? 0 : out[i].delay;
+    var cs = r.format === 'gif' ? GS.centis(out.map(function (f) { return f.delay; })) : null;
+    if (cs) dur = cs.reduce(function (a, c) { return a + c * 10; }, 0);
+    $('gs-res-size').textContent = GS.fmtBytes(r.bytes.length);
+    $('gs-res-sub').textContent = FMT_NAME[r.format] + ' · ' + r.W + ' × ' + r.H + ' · ' + n + ' 帧 · ' + fmtS(dur / 1000) + (r.P.loop ? ' · 播放 ' + r.P.loop + ' 次' : ' · 无限循环');
+    var raw = r.frames.length * r.W * r.H * 3, target = budgetBytes(), m = $('gs-metrics');
+    m.textContent = '';
+    var palTxt = r.job.kind === 'true' ? '真彩 RGBA' : (r.job.gpal ? (r.job.gpal.length / 3) + ' 色 · 全局' : '≤ ' + r.job.Kc + ' 色 · 逐帧');
+    m.appendChild(metric('帧数（源 → 输出）', r.frames.length + ' → ' + n, 'gs-m-frames'));
+    m.appendChild(metric('时长', fmtS(dur / 1000), 'gs-m-dur'));
+    m.appendChild(metric('平均每帧', GS.fmtBytes(Math.round(r.bytes.length / Math.max(1, n))), 'gs-m-per'));
+    m.appendChild(metric('调色板', palTxt, 'gs-m-pal'));
+    m.appendChild(metric('相当于原始 RGB 的', (r.bytes.length / raw * 100).toFixed(raw > r.bytes.length * 1000 ? 2 : 1) + '%', 'gs-m-ratio'));
+    m.appendChild(metric('PSNR', '解码中…', 'gs-m-psnr'));
+    m.appendChild(metric('编码用时', (r.ms / 1000).toFixed(2) + ' s', 'gs-m-ms'));
+    m.appendChild(metric('预算 ' + GS.fmtBytes(target), r.bytes.length <= target ? '装得下 · 余 ' + Math.round((1 - r.bytes.length / target) * 100) + '%' : '超出 ' + Math.round((r.bytes.length / target - 1) * 100) + '%', 'gs-m-budget'));
+    // —— 说明 ——
+    var notes = [], merged = r.frames.length - n;
+    if (merged > 0) notes.push(['合并了 ' + merged + ' 个与上一帧相同（在容差 ' + r.P.fuzz + ' 内）的帧，延迟并进前一帧。']);
+    if (cs) {
+      var uniq = {}; cs.forEach(function (c) { uniq[c] = 1; });
+      var ks = Object.keys(uniq);
+      if (ks.length > 1 && ks.length <= 3 && r.frames.length > 2) notes.push(['GIF 延迟只能写整数个 1/100 秒：每帧按 ' + ks.join(' / ') + ' 交替（误差扩散），总时长误差 < 10 ms。']);
+    }
+    if (r.job.alpha) notes.push([r.format === 'gif' ? '素材含透明：GIF 每帧用处置 2（清成透明）重画可见部分；半透明边缘先衬到「' + r.P.matte + '」上再量化。' : '素材含透明：变化帧用整块替换（SOURCE），透明随帧正确更新。']);
+    if (r.job.uniqueColors > 0 && r.job.gpal && r.job.uniqueColors <= r.job.Kc) notes.push(['素材一共只有 ' + r.job.uniqueColors + ' 种颜色，没超过上限：调色板直接用原色，颜色无损。']);
+    var pre = BUDGETS[S.budget] || {};
+    if (pre.maxFrames && n > pre.maxFrames) notes.push(['输出 ' + n + ' 帧，超过 Slack 表情的 ' + pre.maxFrames + ' 帧上限。', 'bad']);
+    if (r.bytes.length > target) notes.push(['体积超出所选预算 ' + GS.fmtBytes(target) + '：可以点「按预算求解」。', 'bad']);
+    if (solved) notes.push(['按预算求解：试编码 ' + solved.log.length + ' 次，选中压缩档 λ = ' + solved.lam.toFixed(3) + '（尺寸 ' + r.W + ' × ' + r.H + '、色数 ' + r.P.colors + '、容差 ' + r.P.fuzz + '）。']);
+    var ul = $('gs-res-notes'); ul.textContent = '';
+    notes.forEach(function (t) { var li = mk('li', t[1] === 'bad' ? 'gs-n-bad' : null, t[0]); ul.appendChild(li); });
+    drawChart();
+    setView('out');
+    $('gs-insp-last').disabled = false;
+    pushHistory(r);
+    await computeQuality(r);
+  }
+  function drawChart() {
+    var r = LAST, svg = $('gs-res-chart');
+    if (!r || $('gs-result').hidden || !svg.getBoundingClientRect().width) return;
+    AEPlot.theme({ grid: '#18181b', axis: '#27272a', tick: '#7d848e', label: '#767d88', text: '#a7a7a7', plate: '#000', series: '#fff' });
+    var n = r.sizes.length, mx = 0, i;
+    for (i = 0; i < n; i++) mx = Math.max(mx, r.sizes[i]);
+    var F = new AEPlot.Frame('gs-res-chart', { pad: { l: 58, r: 14, t: 14, b: 36 }, fitWidth: true, narrowH: 1 });
+    var ymax = Math.max(0.01, mx * 1.12 / 1000), yt = F.ticks(0, ymax, 5), ystep = yt.length > 1 ? yt[1] - yt[0] : ymax;
+    var ydec = Math.max(0, Math.min(3, -Math.floor(Math.log10(ystep) + 1e-9)));   // 小数位跟刻度步长走，同一根轴上位数一致
+    F.setDomain(-0.5, n - 0.5, 0, ymax);
+    F.axes({ xlabel: '输出帧（第 1 帧最大：它要画满整幅）', ylabel: 'KB', xfmt: function (v) { return String(Math.round(v) + 1); }, yfmt: function (v) { return v.toFixed(ydec); },
+      yticks: yt, xticks: F.ticks(0, Math.max(1, n - 1), 8).filter(function (v) { return Math.abs(v - Math.round(v)) < 1e-9 && v <= n - 1; }) });
+    var bw = Math.max(1, (F.x1 - F.x0) / n * 0.72), g = AEPlot.el('g', { 'clip-path': 'url(#' + F.clipId + ')' }, F.svg);
+    for (i = 0; i < n; i++) {
+      var y = F.sy(r.sizes[i] / 1000);
+      AEPlot.el('rect', { x: (F.sx(i) - bw / 2).toFixed(2), y: y.toFixed(2), width: bw.toFixed(2), height: Math.max(0.5, F.y0 - y).toFixed(2), fill: i === 0 ? '#fff' : '#9aa0a8', 'data-i': i }, g);
+    }
+    svg.setAttribute('data-bars', String(n));
+  }
+  async function browserDecode(bytes, mime) {
+    if (typeof ImageDecoder === 'undefined') return null;
+    try { if (!(await ImageDecoder.isTypeSupported(mime))) return null; } catch (e) { return null; }
+    var dec = new ImageDecoder({ data: bytes, type: mime });
+    await dec.tracks.ready;
+    return { dec: dec, n: dec.tracks.selectedTrack.frameCount, rep: dec.tracks.selectedTrack.repetitionCount };
+  }
+  async function frameFromDecoder(D, j, W, H) {
+    var res = await D.dec.decode({ frameIndex: j }), c = canvas2d(W, H);
+    c.g.drawImage(res.image, 0, 0);
+    var out = { data: c.g.getImageData(0, 0, W, H).data, delay: res.image.duration == null ? null : res.image.duration / 1000 };
+    res.image.close();
+    return out;
+  }
+  async function computeQuality(r) {
+    var D = await browserDecode(r.bytes, MIME[r.format]), how = '浏览器解码', frames = null;
+    if (!D && r.format === 'gif') { var g = GS.decodeGIF(r.bytes); frames = g.decodedFrames; how = '本页 GIF 解码器'; }
+    else if (!D && r.keep) { frames = r.job.intended.map(function (d) { return { data: d }; }); how = '编码器模型'; }
+    DECODED = { D: D, frames: frames, how: how, cache: {} };
+    var n = r.job.out.length, step = Math.max(1, Math.ceil(n / 48)), sum = 0, cnt = 0, worst = Infinity, inf = 0;
+    for (var j = 0; j < n; j += step) {
+      if (LAST !== r) return;
+      var o = await getOutFrame(j);
+      if (!o) break;
+      var p = GS.psnr(o.data, r.frames[r.job.out[j].src].data);
+      if (p === Infinity) inf++; else { sum += p; cnt++; worst = Math.min(worst, p); }
+    }
+    var el = $('gs-m-psnr');
+    if (!el || LAST !== r) return;
+    if (!cnt && inf) el.textContent = '∞ · 无损';
+    else if (cnt) el.textContent = (sum / cnt).toFixed(1) + ' dB';
+    else el.textContent = '—';
+    el.title = how + '，抽查 ' + (cnt + inf) + ' 帧' + (cnt ? '，最差 ' + worst.toFixed(1) + ' dB' : '');
+    el.setAttribute('data-psnr', cnt ? String(sum / cnt) : (inf ? 'Infinity' : ''));
+    var fr = $('gs-cmp-frame'); fr.max = String(Math.max(0, n - 1)); if (+fr.value > n - 1) fr.value = '0';
+    $('gs-cmp-cap-out').textContent = '输出（' + how + '）';
+    if (VIEW === 'cmp') drawCompare(+fr.value);
+    $('gs-result').setAttribute('data-qseq', String(r.seq));   // 质量指标已就绪（测试按序号等，别等「文字里出现 dB」）
+  }
+  async function getOutFrame(j) {
+    var Dd = DECODED;
+    if (!Dd) return null;
+    if (Dd.frames) return Dd.frames[j] || null;
+    if (Dd.cache[j]) return Dd.cache[j];
+    var f = await frameFromDecoder(Dd.D, j, LAST.W, LAST.H);
+    var keys = Object.keys(Dd.cache);
+    if (keys.length > 24) delete Dd.cache[keys[0]];
+    Dd.cache[j] = f;
+    return f;
+  }
+  $('gs-cmp-frame').addEventListener('input', function () { drawCompare(+this.value); });
+  $('gs-cmp-gain').addEventListener('change', function () { drawCompare(+$('gs-cmp-frame').value); });
+  var cmpSeq = 0;
+  async function drawCompare(j) {
+    var r = LAST;
+    if (!r || !DECODED) return;
+    var my = ++cmpSeq, o = await getOutFrame(j);
+    if (my !== cmpSeq || !o) return;
+    var src = r.frames[r.job.out[j].src].data, W = r.W, H = r.H, gain = +$('gs-cmp-gain').value || 4;
+    function put(id, data) { var c = $(id); c.width = W; c.height = H; c.getContext('2d').putImageData(new ImageData(data, W, H), 0, 0); }
+    put('gs-cmp-src', src); put('gs-cmp-out', o.data);
+    var d = new Uint8ClampedArray(W * H * 4);
+    for (var i = 0; i < d.length; i += 4) {
+      var m = Math.max(Math.abs(src[i] - o.data[i]), Math.abs(src[i + 1] - o.data[i + 1]), Math.abs(src[i + 2] - o.data[i + 2]), Math.abs(src[i + 3] - o.data[i + 3]));
+      d[i] = d[i + 1] = d[i + 2] = Math.min(255, m * gain); d[i + 3] = 255;
+    }
+    put('gs-cmp-diff', d);
+    var p = GS.psnr(o.data, src);
+    $('gs-cmp-t').textContent = (j + 1) + ' / ' + r.job.out.length;
+    $('gs-cmp-cap-src').textContent = '原始 · 源第 ' + (r.job.out[j].src + 1) + ' 帧';
+    $('gs-cmp-cap-diff').textContent = '差异 × ' + gain + ' · PSNR ' + (p === Infinity ? '∞' : p.toFixed(1) + ' dB');
+    $('gs-cmp-diff').setAttribute('data-psnr', String(p));
+  }
+  $('gs-to-inspect').addEventListener('click', function () { if (LAST) { inspectBytes(LAST.bytes, outName(LAST)); showTab('inspect'); } });
+
+  // ════════ 录屏 ════════
+  function uiRec(on) { $('gs-rec-stop').hidden = !on; $('gs-rec').disabled = on; $('gs-rec2').disabled = on; }
+  function stamp() { var d = new Date(); function z(v) { return (v < 10 ? '0' : '') + v; } return d.getFullYear() + z(d.getMonth() + 1) + z(d.getDate()) + '-' + z(d.getHours()) + z(d.getMinutes()) + z(d.getSeconds()); }
+  async function startRec() {
+    if (guardBusy() || REC) return;
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia || typeof MediaRecorder === 'undefined') {
+      setStatus('这个浏览器 / 页面不支持录屏（需要 https 或 localhost 下的 Chrome、Edge、Firefox）。', true); return;
+    }
+    var stream;
+    try { stream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 30 }, audio: false }); }
+    catch (e) { setStatus('没有开始录屏：' + (e && e.name === 'NotAllowedError' ? '取消了共享，或浏览器拒绝了权限。' : (e && e.message) || e), true); return; }
+    var types = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm', 'video/mp4'], mt = '', i;
+    for (i = 0; i < types.length; i++) if (MediaRecorder.isTypeSupported(types[i])) { mt = types[i]; break; }
+    var rec = new MediaRecorder(stream, mt ? { mimeType: mt, videoBitsPerSecond: 8e6 } : undefined), chunks = [], t0 = Date.now();
+    REC = { rec: rec, stream: stream, timer: setInterval(function () { setStatus('录制中 ' + ((Date.now() - t0) / 1000).toFixed(1) + ' s…（点「停止录制」或浏览器的「停止共享」）'); }, 200) };
+    rec.ondataavailable = function (e) { if (e.data && e.data.size) chunks.push(e.data); };
+    rec.onstop = async function () {
+      if (REC) clearInterval(REC.timer);
+      stream.getTracks().forEach(function (t) { t.stop(); });
+      REC = null; uiRec(false);
+      var blob = new Blob(chunks, { type: (mt || 'video/webm').replace(/;.*/, '') });
+      if (!blob.size) { setStatus('录屏没有录到数据。', true); return; }
+      try { await loadVideo(blob, '录屏-' + stamp() + (/mp4/.test(mt) ? '.mp4' : '.webm')); }
+      catch (e) { setStatus('载入录屏失败：' + e.message, true); }
+    };
+    var vt = stream.getVideoTracks()[0];
+    if (vt) vt.addEventListener('ended', function () { if (rec.state !== 'inactive') rec.stop(); });
+    rec.start(200); uiRec(true);
+  }
+  function stopRec() { if (REC && REC.rec.state !== 'inactive') REC.rec.stop(); }
+  $('gs-rec').addEventListener('click', startRec);
+  $('gs-rec2').addEventListener('click', startRec);
+  $('gs-rec-stop').addEventListener('click', stopRec);
+
+  // ════════ 示例素材（程序生成）════════
+  function mulberry32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; var t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+  function ridge(rnd, n, base, amp) {
+    var pts = new Array(n + 1), step, i;
+    pts[0] = base + (rnd() - 0.5) * amp; pts[n] = base + (rnd() - 0.5) * amp;
+    for (step = n; step > 1; step >>= 1) {
+      for (i = 0; i < n; i += step) { var m = i + (step >> 1); pts[m] = (pts[i] + pts[i + step]) / 2 + (rnd() - 0.5) * amp * step / n * 2.2; }
+    }
+    return pts;
+  }
+  function demoDusk() {
+    var W = 480, H = 270, N = 45, rnd = mulberry32(20261028), frames = [], k, i;
+    var far = ridge(rnd, 64, 150, 60), mid = ridge(rnd, 64, 170, 46), near = ridge(rnd, 64, 192, 30);
+    var stars = []; for (i = 0; i < 46; i++) stars.push([rnd() * W, rnd() * 112, 0.25 + rnd() * 0.7, rnd() * 6.28]);
+    function hill(g, pts, col) {
+      g.beginPath(); g.moveTo(0, 210);
+      for (var j = 0; j < pts.length; j++) g.lineTo(j * W / (pts.length - 1), pts[j]);
+      g.lineTo(W, 210); g.closePath(); g.fillStyle = col; g.fill();
+    }
+    for (k = 0; k < N; k++) {
+      var c = document.createElement('canvas'); c.width = W; c.height = H;
+      var g = c.getContext('2d');
+      var sky = g.createLinearGradient(0, 0, 0, 205);
+      sky.addColorStop(0, '#060a1c'); sky.addColorStop(0.42, '#251f4c'); sky.addColorStop(0.72, '#9a3f6a'); sky.addColorStop(0.88, '#ee8549'); sky.addColorStop(1, '#ffcf7d');
+      g.fillStyle = sky; g.fillRect(0, 0, W, 205);
+      for (i = 0; i < stars.length; i++) {
+        var s = stars[i]; g.fillStyle = 'rgba(255,255,255,' + (s[2] * (0.55 + 0.45 * Math.sin(k * 0.45 + s[3]))).toFixed(3) + ')';
+        g.fillRect(Math.round(s[0]), Math.round(s[1]), 1, 1);
+      }
+      var sx = 318 - k * 0.9, sy = 146 + k * 0.82;
+      var glow = g.createRadialGradient(sx, sy, 4, sx, sy, 88);
+      glow.addColorStop(0, 'rgba(255,214,150,0.75)'); glow.addColorStop(0.35, 'rgba(255,170,110,0.28)'); glow.addColorStop(1, 'rgba(255,140,90,0)');
+      g.fillStyle = glow; g.fillRect(0, 0, W, 205);
+      g.beginPath(); g.arc(sx, sy, 17, 0, Math.PI * 2); g.fillStyle = '#fff1cf'; g.fill();
+      hill(g, far, '#4a3567'); hill(g, mid, '#2c2049'); hill(g, near, '#120d24');
+      var lake = g.createLinearGradient(0, 204, 0, H);
+      lake.addColorStop(0, '#3a2648'); lake.addColorStop(1, '#07060f');
+      g.fillStyle = lake; g.fillRect(0, 204, W, H - 204);
+      for (i = 0; i < 16; i++) {
+        var yy = 208 + i * 4, wv = 26 - i * 1.2, off = Math.sin(k * 0.55 + i * 1.7) * 6;
+        g.fillStyle = 'rgba(255,214,160,' + (0.5 - i * 0.028).toFixed(3) + ')';
+        g.fillRect(Math.round(sx - wv / 2 + off), yy, Math.max(2, Math.round(wv)), 1);
+      }
+      g.strokeStyle = '#0b0816'; g.lineWidth = 1.6; g.lineCap = 'round';
+      for (i = 0; i < 5; i++) {
+        var bx = 40 + k * 4.6 + i * 26, by = 64 + i * 7 + Math.sin(k * 0.6 + i) * 3, fl = (k + i) % 4 < 2 ? -3 : 1;
+        g.beginPath(); g.moveTo(bx - 6, by + fl); g.lineTo(bx, by + 2); g.lineTo(bx + 6, by + fl); g.stroke();
+      }
+      frames.push({ bmp: c, delay: 1000 / 15 });
+    }
+    var t = 0; frames.forEach(function (f) { f.start = t / 1000; t += f.delay; });
+    return { kind: 'frames', frames: frames, w: W, h: H, anim: true, duration: t / 1000, name: '示例-黄昏山谷', size: 0, label: '示例动画 · ' + N + ' 帧 · 15 fps' };
+  }
+  function demoUI() {
+    var W = 480, H = 300, N = 54, frames = [], k, text = 'release-demo.gif';
+    function rr(g, x, y, w, h, r) { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); }
+    for (k = 0; k < N; k++) {
+      var c = document.createElement('canvas'); c.width = W; c.height = H;
+      var g = c.getContext('2d');
+      g.fillStyle = '#e9ecf2'; g.fillRect(0, 0, W, H);
+      g.fillStyle = '#ffffff'; rr(g, 24, 22, 432, 256, 10); g.fill();
+      g.fillStyle = '#f3f4f7'; rr(g, 24, 22, 432, 30, 10); g.fill(); g.fillRect(24, 40, 432, 12);
+      ['#ff5f57', '#febc2e', '#28c840'].forEach(function (col, i) { g.beginPath(); g.arc(44 + i * 16, 37, 5, 0, Math.PI * 2); g.fillStyle = col; g.fill(); });
+      g.fillStyle = '#f7f8fa'; g.fillRect(24, 52, 104, 226);
+      for (var i = 0; i < 5; i++) { g.fillStyle = i === 1 ? '#1a1a1a' : '#d0d4d4'; g.fillRect(40, 72 + i * 26, i === 1 ? 64 : 52 + (i * 13) % 20, 8); }
+      g.fillStyle = '#404040'; g.font = '600 13px ' + FONT; g.textBaseline = 'alphabetic'; g.fillText('导出动图', 152, 84);
+      g.fillStyle = '#767d88'; g.font = '12px ' + FONT; g.fillText('文件名', 152, 112);
+      g.strokeStyle = '#c9ccd1'; g.lineWidth = 1; rr(g, 152.5, 120.5, 270, 30, 4); g.stroke();
+      var typed = text.slice(0, clamp(Math.floor((k - 4) / 1.5), 0, text.length));
+      g.fillStyle = '#0c0c0c'; g.font = '13px ' + FONT; g.fillText(typed, 162, 140);
+      if (k < 34 && k % 6 < 3) { var tw = g.measureText(typed).width; g.fillStyle = '#0c0c0c'; g.fillRect(163 + tw, 128, 1, 16); }
+      var pressed = k >= 38 && k < 42;
+      g.fillStyle = pressed ? '#404040' : '#0c0c0c'; rr(g, 152, 166, 96, 32, 4); g.fill();
+      g.fillStyle = '#ffffff'; g.font = '600 13px ' + FONT; g.fillText('生成', 186, 187);
+      var prog = clamp((k - 42) / 10, 0, 1);
+      g.fillStyle = '#e9ecf2'; g.fillRect(152, 216, 270, 6);
+      if (prog > 0) { g.fillStyle = '#0c0c0c'; g.fillRect(152, 216, Math.round(270 * prog), 6); }
+      if (k >= 52) { g.fillStyle = '#404040'; g.font = '12px ' + FONT; g.fillText('完成 · 1.8 MB', 152, 244); }
+      var ct = clamp((k - 30) / 8, 0, 1), cx = 400 + (200 - 400) * ct, cy = 262 + (184 - 262) * ct;
+      g.beginPath(); g.moveTo(cx, cy); g.lineTo(cx, cy + 16); g.lineTo(cx + 4, cy + 12); g.lineTo(cx + 8, cy + 19); g.lineTo(cx + 10, cy + 18); g.lineTo(cx + 7, cy + 11); g.lineTo(cx + 12, cy + 11); g.closePath();
+      g.fillStyle = '#000'; g.fill(); g.strokeStyle = '#fff'; g.lineWidth = 1; g.stroke();
+      frames.push({ bmp: c, delay: 1000 / 18 });
+    }
+    var t = 0; frames.forEach(function (f) { f.start = t / 1000; t += f.delay; });
+    return { kind: 'frames', frames: frames, w: W, h: H, anim: true, duration: t / 1000, name: '示例-界面演示', size: 0, label: '示例动画 · ' + N + ' 帧 · 18 fps' };
+  }
+  $('gs-demo-dusk').addEventListener('click', function () { if (!guardBusy()) onSourceReady(demoDusk()); });
+  $('gs-demo-ui').addEventListener('click', function () { if (!guardBusy()) onSourceReady(demoUI()); });
+  $('gs-demo-dusk2').addEventListener('click', function () { if (!guardBusy()) onSourceReady(demoDusk()); });
+  $('gs-demo-ui2').addEventListener('click', function () { if (!guardBusy()) onSourceReady(demoUI()); });
+
+  // ════════ 体检 ════════
+  $('gs-insp-pick').addEventListener('click', function () { $('gs-insp-file').click(); });
+  $('gs-insp-file').addEventListener('change', async function () { var f = this.files && this.files[0]; this.value = ''; if (f) inspectBytes(new Uint8Array(await f.arrayBuffer()), f.name); });
+  ['dragenter', 'dragover'].forEach(function (ev) { $('gs-insp-drop').addEventListener(ev, function (e) { e.preventDefault(); $('gs-insp-drop').classList.add('gs-dragover'); }); });
+  ['dragleave', 'drop'].forEach(function (ev) { $('gs-insp-drop').addEventListener(ev, function () { $('gs-insp-drop').classList.remove('gs-dragover'); }); });
+  $('gs-insp-drop').addEventListener('drop', async function (e) { e.preventDefault(); var f = e.dataTransfer.files[0]; if (f) inspectBytes(new Uint8Array(await f.arrayBuffer()), f.name); });
+  $('gs-insp-last').addEventListener('click', function () { if (LAST) inspectBytes(LAST.bytes, outName(LAST)); });
+  $('gs-insp-send').addEventListener('click', async function () {
+    if (!INSPECTED) return;
+    showTab('make');
+    try { await loadAnimated(INSPECTED.u8, INSPECTED.name, INSPECTED.kind === 'png' ? 'apng' : INSPECTED.kind === 'webp' ? 'webp-anim' : INSPECTED.kind); }
+    catch (e) { setStatus('载入失败：' + e.message, true); }
+  });
+  var INSP_URL = null;
+  function dlRows(dl, rows) { dl.textContent = ''; rows.forEach(function (r) { dl.appendChild(mk('dt', null, r[0])); var dd = mk('dd', null, r[1]); if (r[2]) dd.id = r[2]; dl.appendChild(dd); }); }
+  function fillTable(id, rows, cap, numCols) {
+    var tb = $(id).tBodies[0]; tb.textContent = '';
+    rows.slice(0, cap).forEach(function (r) {
+      var tr = tb.insertRow();
+      r.forEach(function (v, i) { var td = tr.insertCell(); td.textContent = v; if (numCols && numCols.indexOf(i) >= 0) td.className = 'gs-num'; });
+    });
+    if (rows.length > cap) { var tr2 = tb.insertRow(), td2 = tr2.insertCell(); td2.colSpan = rows[0].length; td2.textContent = '…还有 ' + (rows.length - cap) + ' 行未列出'; td2.className = 'gs-empty'; }
+    $(id).setAttribute('data-rows', String(rows.length));
+  }
+  function warnList(ws) {
+    var ul = $('gs-insp-warn'); ul.textContent = '';
+    if (!ws.length) { ul.appendChild(mk('li', null, '没发现问题。')); return; }
+    ws.forEach(function (w) { ul.appendChild(mk('li', w.level === 'bad' ? 'gs-w-bad' : w.level === 'warn' ? 'gs-w-warn' : null, w.text)); });
+  }
+  var DISP = ['0 未指定', '1 保留', '2 清成透明', '3 还原上一状态', '4 保留值', '5 保留值', '6 保留值', '7 保留值'];
+  function loopText(kind, v) {
+    if (kind === 'gif') return v == null ? '没有循环扩展 · 只播 1 遍' : v === 0 ? '无限循环（字段 0）' : '共播 ' + (v + 1) + ' 遍（字段 ' + v + ' = 额外重复次数）';
+    return v === 0 ? '无限循环' : '共播 ' + v + ' 遍';
+  }
+  function inspectBytes(u8, name) {
+    var kind = GS.sniff(u8), ws = [];
+    INSPECTED = { u8: u8, name: name, kind: kind };
+    if (INSP_URL) URL.revokeObjectURL(INSP_URL);
+    INSP_URL = URL.createObjectURL(new Blob([u8], { type: kind === 'gif' ? 'image/gif' : /webp/.test(kind) ? 'image/webp' : 'image/png' }));
+    $('gs-insp-img').src = INSP_URL; $('gs-insp-prevwrap').hidden = false;
+    $('gs-insp-palwrap').hidden = true;
+    var sum = $('gs-insp-sum');
+    if (kind === 'gif') {
+      var g = GS.inspectGIF(u8);
+      if (!g.ok) { dlRows(sum, [['状态', '解析失败：' + (g.error || '未知错误')]]); warnList(g.warnings || []); fillTable('gs-insp-frames', [], 1); fillTable('gs-insp-blocks', [], 1); $('gs-insp-send').disabled = true; return; }
+      dlRows(sum, [['文件', name], ['格式', 'GIF' + g.version, 'gs-insp-fmt'], ['画布', g.width + ' × ' + g.height], ['帧数', g.frames.length + ' 帧', 'gs-insp-n'],
+        ['时长（文件）', fmtS(g.duration / 1000), 'gs-insp-dur'], ['时长（浏览器）', fmtS(g.effDuration / 1000), 'gs-insp-effdur'], ['循环', loopText('gif', g.loop), 'gs-insp-loop'],
+        ['全局调色板', g.gctFlag ? g.gctSize + ' 色' : '无'], ['局部调色板', g.localPalettes + ' 帧'], ['大小', GS.fmtBytes(g.size) + '（' + g.size + ' 字节）'], ['平均每帧', GS.fmtBytes(Math.round(g.size / g.frames.length))]]);
+      fillTable('gs-insp-frames', g.frames.map(function (f, i) {
+        return [String(i + 1), f.w + '×' + f.h + ' @ ' + f.x + ',' + f.y, DISP[f.disposal] || String(f.disposal), f.delay + ' cs', GS.effDelayCs(f.delay) * 10 + ' ms', f.trans >= 0 ? String(f.trans) : '—', f.lctSize ? String(f.lctSize) : '—', f.interlace ? '是' : '否', String(f.dataLen)];
+      }), 500, [0, 3, 4, 5, 6, 8]);
+      fillTable('gs-insp-blocks', g.blocks.map(function (b) { return [String(b.off), String(b.len), b.kind, b.note || '']; }), 600, [0, 1]);
+      if (g.gct) {
+        var pal = $('gs-insp-pal'); pal.textContent = '';
+        for (var i = 0; i < g.gctSize; i++) { var sw = mk('i'); sw.style.background = 'rgb(' + g.gct[3 * i] + ',' + g.gct[3 * i + 1] + ',' + g.gct[3 * i + 2] + ')'; sw.title = '#' + i; pal.appendChild(sw); }
+        $('gs-insp-palcap').textContent = '全局调色板 · ' + g.gctSize + ' 色';
+        $('gs-insp-palwrap').hidden = false;
+      }
+      ws = g.warnings;
+    } else if (kind === 'apng' || kind === 'png') {
+      var p = GS.parsePNG(u8);
+      if (!p.ok) { dlRows(sum, [['状态', '解析失败：' + (p.error || '')]]); warnList(p.warnings); $('gs-insp-send').disabled = true; return; }
+      var tot = p.frames.reduce(function (a, f) { return a + f.ms; }, 0), eff = p.frames.reduce(function (a, f) { return a + (f.ms <= 10 ? 100 : f.ms); }, 0);
+      dlRows(sum, [['文件', name], ['格式', p.animated ? 'APNG' : 'PNG（静态）', 'gs-insp-fmt'], ['画布', p.width + ' × ' + p.height], ['帧数', (p.animated ? p.frames.length : 1) + ' 帧', 'gs-insp-n'],
+        ['时长（文件）', fmtS(tot / 1000), 'gs-insp-dur'], ['时长（浏览器）', fmtS(eff / 1000), 'gs-insp-effdur'], ['循环', p.animated ? loopText('apng', p.numPlays) : '—', 'gs-insp-loop'],
+        ['色彩', { 3: '调色板', 6: '真彩 + 透明', 2: '真彩', 0: '灰度', 4: '灰度 + 透明' }[p.colorType] + ' · ' + p.depth + ' 位'], ['大小', GS.fmtBytes(p.size) + '（' + p.size + ' 字节）']]);
+      fillTable('gs-insp-frames', p.frames.map(function (f, i) {
+        return [String(i + 1), f.w + '×' + f.h + ' @ ' + f.x + ',' + f.y, ['NONE', 'BACKGROUND', 'PREVIOUS'][f.dispose] + ' / ' + ['SOURCE', 'OVER'][f.blend], f.dnum + '/' + f.dden + ' s', (f.ms <= 10 ? 100 : Math.round(f.ms)) + ' ms', '—', '—', '否', String(f.bytes)];
+      }), 500, [0, 3, 4, 8]);
+      fillTable('gs-insp-blocks', p.chunks.map(function (c) { return [String(c.off), String(c.len + 12), c.type, c.crcOk ? 'CRC 正确' : 'CRC 错误']; }), 600, [0, 1]);
+      ws = p.warnings.slice();
+      if (p.frames.some(function (f) { return f.ms <= 10; })) ws.push({ level: 'warn', text: '有帧的延迟 ≤ 10 ms：浏览器会按 100 ms 播放' });
+      if (!p.animated) ws.push({ level: 'info', text: '这是静态 PNG（没有 acTL 块）' });
+    } else if (kind === 'webp-anim' || kind === 'webp') {
+      var w = GS.parseWebP(u8);
+      if (!w.ok) { dlRows(sum, [['状态', '解析失败：' + (w.error || '')]]); warnList(w.warnings); $('gs-insp-send').disabled = true; return; }
+      var tw = w.frames.reduce(function (a, f) { return a + f.ms; }, 0), ew = w.frames.reduce(function (a, f) { return a + (f.ms <= 10 ? 100 : f.ms); }, 0);
+      dlRows(sum, [['文件', name], ['格式', w.animated ? '动画 WebP' : 'WebP（静态）', 'gs-insp-fmt'], ['画布', (w.width || '?') + ' × ' + (w.height || '?')], ['帧数', (w.animated ? w.frames.length : 1) + ' 帧', 'gs-insp-n'],
+        ['时长（文件）', fmtS(tw / 1000), 'gs-insp-dur'], ['时长（浏览器）', fmtS(ew / 1000), 'gs-insp-effdur'], ['循环', w.animated ? loopText('webp', w.loop) : '—', 'gs-insp-loop'], ['透明', w.alpha ? '有' : '无'], ['大小', GS.fmtBytes(w.size) + '（' + w.size + ' 字节）']]);
+      fillTable('gs-insp-frames', w.frames.map(function (f, i) {
+        return [String(i + 1), f.w + '×' + f.h + ' @ ' + f.x + ',' + f.y, (f.dispose ? '清成背景' : '保留') + ' / ' + (f.blend ? 'alpha 混合' : '不混合'), f.ms + ' ms', (f.ms <= 10 ? 100 : f.ms) + ' ms', '—', '—', f.inner.join('+'), String(f.bytes)];
+      }), 500, [0, 3, 4, 8]);
+      fillTable('gs-insp-blocks', w.chunks.map(function (c) { return [String(c.off), String(c.len + 8), c.type.trim(), '']; }), 600, [0, 1]);
+      ws = w.warnings.slice();
+      if (w.frames.some(function (f) { return f.ms <= 10; })) ws.push({ level: 'warn', text: '有帧的时长 ≤ 10 ms：浏览器会按 100 ms 播放' });
+    } else {
+      dlRows(sum, [['文件', name], ['状态', '不是 GIF / APNG / WebP（识别为 ' + kind + '）']]);
+      warnList([{ level: 'bad', text: '体检只支持 GIF、APNG 与 WebP' }]);
+      fillTable('gs-insp-frames', [], 1); fillTable('gs-insp-blocks', [], 1);
+      $('gs-insp-send').disabled = true; $('gs-insp-prevwrap').hidden = true;
+      return;
+    }
+    warnList(ws);
+    $('gs-insp-send').disabled = false;
+  }
+
+  // ════════ 记录与预设 ════════
+  var SET_KEYS = BIND.map(function (b) { return b[1]; });
+  function pickSet() { var o = {}; SET_KEYS.forEach(function (k) { o[k] = S[k]; }); return o; }
+  function setSummary(s) {
+    var f = FMT_NAME[s.format] || s.format, parts = [f];
+    if (s.format === 'gif' || (s.format === 'apng' && s.apngMode === 'indexed')) parts.push(s.colors + ' 色', { wu: 'Wu', median: '中位切分', octree: '八叉树' }[s.quant] || s.quant, s.dither === 'none' ? '不抖动' : ({ fs: 'FS', atkinson: 'Atkinson', bayer: 'Bayer' }[s.dither] + ' ' + s.strength + '%'));
+    if (s.format === 'webp') parts.push(s.webpQ >= 100 ? '无损' : '质量 ' + s.webpQ);
+    if (s.format === 'apng' && s.apngMode === 'rgba') parts.push('真彩');
+    parts.push('容差 ' + s.fuzz, s.fps === 'src' ? '源帧率' : s.fps + ' fps');
+    if (s.speed !== '1') parts.push(s.speed + '×');
+    return parts.join(' · ');
+  }
+  function pushHistory(r) {
+    var h = loadJSON(LS_HIST, []), dur = 0;
+    if (r.format === 'gif') dur = GS.centis(r.job.out.map(function (f) { return f.delay; })).reduce(function (a, c) { return a + c * 10; }, 0);
+    else r.job.out.forEach(function (f) { dur += f.delay; });
+    var set = pickSet(); set.colors = r.P.colors; set.fuzz = r.P.fuzz;
+    h.unshift({ t: Date.now(), name: SRC ? SRC.name : '—', fmt: r.format, bytes: r.bytes.length, W: r.W, H: r.H, n: r.job.out.length, dur: Math.round(dur), set: set });
+    if (h.length > 40) h.length = 40;
+    saveJSON(LS_HIST, h);
+    renderHistory();
+  }
+  function applySet(set, label) {
+    SET_KEYS.forEach(function (k) { if (set[k] !== undefined) S[k] = set[k]; });
+    syncAll(); BASE = null; flushSave();
+    setStatus('已套用' + label + '的设置。');
+  }
+  function renderHistory() {
+    var h = loadJSON(LS_HIST, []), tb = $('gs-hist-table').tBodies[0];
+    tb.textContent = '';
+    if (!h.length) { var tr0 = tb.insertRow(), td0 = tr0.insertCell(); td0.colSpan = 9; td0.className = 'gs-empty'; td0.textContent = '还没有记录：生成一次动图就会出现在这里。'; }
+    h.forEach(function (e, i) {
+      var d = new Date(e.t), z = function (v) { return (v < 10 ? '0' : '') + v; };
+      var tr = tb.insertRow();
+      [(d.getMonth() + 1) + '-' + z(d.getDate()) + ' ' + z(d.getHours()) + ':' + z(d.getMinutes()), e.name, FMT_NAME[e.fmt] || e.fmt, e.W + ' × ' + e.H, String(e.n), fmtS(e.dur / 1000), GS.fmtBytes(e.bytes), setSummary(e.set)].forEach(function (v, j) {
+        var td = tr.insertCell(); td.textContent = v; if (j === 4 || j === 5 || j === 6) td.className = 'gs-num';
+      });
+      var td2 = tr.insertCell(), bt = mk('button', 'gs-btn gs-btn-sm', '套用设置');
+      bt.type = 'button'; bt.setAttribute('data-hi', String(i)); bt.setAttribute('aria-label', '套用第 ' + (i + 1) + ' 条记录的设置');
+      bt.addEventListener('click', function () { applySet(e.set, '这条记录'); showTab('make'); });
+      td2.appendChild(bt);
+    });
+    var tot = h.reduce(function (a, e) { return a + e.bytes; }, 0), by = {};
+    h.forEach(function (e) { by[e.fmt] = (by[e.fmt] || 0) + 1; });
+    dlRows($('gs-hist-sum'), [['记录', h.length + ' 条', 'gs-hist-n'], ['合计体积', GS.fmtBytes(tot)], ['按格式', Object.keys(by).map(function (k) { return (FMT_NAME[k] || k) + ' ' + by[k]; }).join(' · ') || '—']]);
+    renderPresets();
+  }
+  function renderPresets() {
+    var ps = loadJSON(LS_PRE, []), ul = $('gs-preset-list');
+    ul.textContent = '';
+    if (!ps.length) { ul.appendChild(mk('li', null, '还没有预设。')); return; }
+    ps.forEach(function (p, i) {
+      var li = mk('li'); li.style.display = 'flex'; li.style.alignItems = 'center'; li.style.gap = '8px'; li.style.flexWrap = 'wrap';
+      var t = mk('span', null, p.name + ' — ' + setSummary(p.set)); t.style.flex = '1'; t.style.minWidth = '0';
+      var a = mk('button', 'gs-btn gs-btn-sm', '套用'), del = mk('button', 'gs-btn gs-btn-sm', '删除');
+      a.type = del.type = 'button'; a.setAttribute('data-pi', String(i)); del.setAttribute('data-pd', String(i));
+      a.setAttribute('aria-label', '套用预设 ' + p.name); del.setAttribute('aria-label', '删除预设 ' + p.name);
+      a.addEventListener('click', function () { applySet(p.set, '预设「' + p.name + '」'); showTab('make'); });
+      del.addEventListener('click', function () { var q = loadJSON(LS_PRE, []); q.splice(i, 1); saveJSON(LS_PRE, q); renderPresets(); });
+      li.appendChild(t); li.appendChild(a); li.appendChild(del); ul.appendChild(li);
+    });
+  }
+  $('gs-preset-save').addEventListener('click', function () {
+    var name = $('gs-preset-name').value.trim();
+    if (!name) { $('gs-preset-name').focus(); setStatus('先给预设起个名字。', true); return; }
+    var ps = loadJSON(LS_PRE, []).filter(function (p) { return p.name !== name; });
+    ps.unshift({ name: name, set: pickSet() });
+    if (ps.length > 30) ps.length = 30;
+    saveJSON(LS_PRE, ps); $('gs-preset-name').value = ''; renderPresets();
+  });
+  $('gs-hist-clear').addEventListener('click', function () { saveJSON(LS_HIST, []); renderHistory(); });
+
+  // ════════ 启动 ════════
+  syncAll(); renderHistory(); showTab('make');
+  (async function () {
+    try {
+      var c = canvas2d(2, 2), blob = await new Promise(function (res) { c.c.toBlob(res, 'image/webp', 0.8); });
+      WEBP_OK = !!blob && blob.type === 'image/webp';
+    } catch (e) { WEBP_OK = false; }
+    var bt = document.querySelector('#gs-fmt button[data-fmt="webp"]');
+    if (!WEBP_OK) { bt.disabled = true; bt.title = '这个浏览器的 canvas 不能导出 WebP'; if (S.format === 'webp') { S.format = 'gif'; syncFormat(); } }
+  })();
+  window.addEventListener('resize', function () { placeCrop(); if (LAST && !$('gs-result').hidden) drawChart(); });
+  // 调试句柄（集成测试也用它拿到抽帧与编码结果）
+  window.GSApp = {
+    settings: function () { return S; }, base: function () { return BASE; }, last: function () { return LAST; },
+    src: function () { return SRC; }, crop: function () { return CROP; }, decoded: function () { return DECODED; },
+    plan: plan, outDims: outDims, inspectBytes: inspectBytes, flushSave: flushSave
+  };
+
+
+
+})();
+</script>
+</body>
+</html>
