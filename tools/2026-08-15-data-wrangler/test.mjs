@@ -298,6 +298,17 @@ export default async ({ page, toolURL, screenshot, assert }) => {
   const thNames = await page.$$eval('#dw-thead th[data-col]', (ths) => ths.map((t) => t.getAttribute('data-col')));
   assert(JSON.stringify(thNames) === JSON.stringify(['a', 'b', 'c']), '表头应是 a/b/c，实际 ' + JSON.stringify(thNames));
   assert((await cell(0, 1)).trim() === 'x\ty' || (await cell(0, 1)).includes('x'), '引号内的制表符应保留在同一格');
+  // 再粘一份、点完立刻刷新（不等 300 ms 防抖到点）：只有 pagehide 补写才保得住（2026-10-30 回填）
+  await page.click('#dw-btn-paste');
+  await page.waitForFunction(() => !document.getElementById('dw-import').hidden);
+  await page.fill('#dw-pastebox', 'p,q\n7,8\n9,10\n11,12');
+  await page.selectOption('#dw-delim', 'auto');
+  await page.click('#dw-btn-parse');
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('#dw-table td[data-r="0"]');
+  const thAfter = await page.$$eval('#dw-thead th[data-col]', (ths) => ths.map((t) => t.getAttribute('data-col')));
+  assert(JSON.stringify(thAfter) === JSON.stringify(['p', 'q']), '粘贴后立刻刷新，表头应还是 p/q（pagehide 补写），实际 ' + JSON.stringify(thAfter));
+  assert((await page.textContent('#dw-mRows')).trim() === '3', '粘贴后立刻刷新，应还是 3 行');
 
   // 回到示例数据收尾（截图要好看）
   await page.click('#dw-btn-sample');
