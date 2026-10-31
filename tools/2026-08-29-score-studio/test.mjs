@@ -442,6 +442,13 @@ export default async function ({ page, toolURL, screenshot, assert: rawAssert })
   const backHref = await page.getAttribute('.ss-back', 'href');
   assert(backHref === '../../', `顶部有返回工具集的链接（实得 "${backHref}"）`);
 
+  // ================= 17b. 打字后立刻刷新：防抖（160 ms）没到点也不能丢（pagehide 补写，2026-10-31 回填）=================
+  const typed = 'X:1\nT:离页补写\nM:4/4\nL:1/4\nK:C\nC D E F|G A B c|\n';
+  await page.fill('#ss-src', typed);
+  await page.reload();
+  await page.waitForFunction(() => window.SS_UI && window.SS_UI.compiled());
+  assert(await page.inputValue('#ss-src') === typed, '打字后立刻刷新，乐谱源码应原样恢复（pagehide 补写）');
+
   // ================= 18. 缩略图 =================
   await page.evaluate(() => {
     document.getElementById('ss-title').value = window.SS_UI.examples[0].name;
