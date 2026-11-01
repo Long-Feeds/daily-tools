@@ -330,6 +330,14 @@ export default async ({ page, toolURL, screenshot, assert }) => {
   assert(narrow.inRow.some((x) => x.tag === 'INPUT' && x.w >= 100), '390px 下命令输入框仍有可用宽度，实得 ' + JSON.stringify(narrow.inRow));
   await page.setViewportSize({ width: 1280, height: 900 });
 
+  /* ═════════ 离页补写：敲完命令立刻刷新（不等 180 ms 防抖），新分支也得还在（2026-11-01 回填 pagehide）═════════ */
+  await onTab('work');
+  await sh('git branch zz-reload-probe');
+  await page.reload();
+  await page.waitForFunction(() => document.body.dataset.ready === '1', null, { timeout: 30000 });
+  const probe = await sh('git branch');
+  assert(probe.includes('zz-reload-probe'), '敲完命令立刻刷新，分支仍在（pagehide 补写防抖存档），实得 ' + probe.slice(-200));
+
   /* ═════════ 缩略图 ═════════ */
   await page.evaluate(() => localStorage.clear());
   await page.reload();
