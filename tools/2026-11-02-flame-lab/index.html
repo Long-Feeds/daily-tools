@@ -1,0 +1,2292 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>火焰图工作台 · Flame Lab</title>
+<meta name="description" content="在浏览器里打开 pprof、perf script、Chrome / Node cpuprofile 与折叠栈：火焰图、函数表、调用者与被调用者、差分火焰图、时间线。文件不出本机。">
+<style>
+[hidden]{display:none!important}
+:root{
+  --fl-canvas:#0a0a0a;--fl-soft:#121212;--fl-card:#1a1a1a;--fl-elev:#242424;
+  --fl-line:#2a2a2a;--fl-line2:#3a3a3a;
+  --fl-ink:#ffffff;--fl-body:#cccccc;--fl-strong:#e6e6e6;--fl-muted:#888888;--fl-soft-ink:#5a5a5a;
+  --fl-y:#faff69;--fl-y2:#e6eb52;--fl-y0:#3a3a1f;--fl-on-y:#0a0a0a;
+  --fl-green:#22c55e;--fl-rose:#ef4444;--fl-blue:#3b82f6;--fl-amber:#f59e0b;
+  --fl-sans:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  --fl-mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box}
+html{background:var(--fl-canvas);color-scheme:dark}
+body{margin:0;background:var(--fl-canvas);color:var(--fl-body);font:400 14px/1.55 var(--fl-sans);-webkit-font-smoothing:antialiased}
+a{color:var(--fl-y)}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--fl-y);outline-offset:2px}
+.fl-sr{position:absolute!important;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+
+/* ── 顶栏 ── */
+.fl-nav{height:64px;display:flex;align-items:center;gap:20px;padding:0 24px;border-bottom:1px solid var(--fl-line);background:var(--fl-canvas);position:sticky;top:0;z-index:20}
+.fl-back{color:var(--fl-ink);text-decoration:none;font-weight:500;font-size:14px;white-space:nowrap}
+.fl-back:hover{color:var(--fl-y)}
+.fl-brand{display:flex;align-items:center;gap:10px;color:var(--fl-ink);font-weight:700;letter-spacing:-.3px;font-size:16px;white-space:nowrap}
+.fl-logo{width:22px;height:22px;display:grid;grid-template-columns:repeat(4,1fr);gap:2px}
+.fl-logo i{background:var(--fl-y);border-radius:1px}
+.fl-logo i:nth-child(1){grid-column:1/5}.fl-logo i:nth-child(2){grid-column:1/4}.fl-logo i:nth-child(3){grid-column:1/3}.fl-logo i:nth-child(4){grid-column:3/4}
+.fl-nav-sp{flex:1}
+.fl-pill{display:inline-flex;align-items:center;gap:6px;background:var(--fl-card);color:var(--fl-ink);border-radius:9999px;padding:4px 12px;font-size:13px;font-weight:500;white-space:nowrap}
+.fl-pill b{width:7px;height:7px;border-radius:50%;background:var(--fl-green);display:inline-block}
+
+/* ── 布局 ── */
+.fl-wrap{max-width:1280px;margin:0 auto;padding:0 24px}
+.fl-hero{display:grid;grid-template-columns:minmax(0,7fr) minmax(0,5fr);gap:32px;padding:48px 0 32px;align-items:end}
+.fl-hero h1{margin:0 0 12px;color:var(--fl-ink);font-size:56px;line-height:1.08;font-weight:700;letter-spacing:-2px}
+.fl-hero p{margin:0;color:var(--fl-body);font-size:16px;max-width:620px}
+.fl-stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px 24px}
+.fl-stat{min-width:0}
+.fl-stat-v{display:block;color:var(--fl-y);font-weight:700;font-size:40px;line-height:1;letter-spacing:-1.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fl-stat-k{display:block;color:var(--fl-muted);font-size:13px;font-weight:500;margin-top:6px;letter-spacing:.2px}
+
+.fl-card{background:var(--fl-card);border:1px solid var(--fl-line);border-radius:12px;padding:24px;min-width:0;position:relative}
+.fl-card h2{margin:0 0 6px;color:var(--fl-ink);font-size:18px;font-weight:600;letter-spacing:0}
+.fl-card h3{margin:0 0 8px;color:var(--fl-ink);font-size:16px;font-weight:600}
+.fl-sub{color:var(--fl-muted);font-size:13px;margin:0 0 16px}
+.fl-eyebrow{color:var(--fl-muted);font-size:12px;font-weight:600;letter-spacing:1.5px;margin:0 0 10px}
+
+/* ── 导入区 ── */
+.fl-load{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:24px;margin-bottom:24px}
+.fl-drop{border:1px dashed var(--fl-line2);border-radius:12px;padding:22px;display:flex;flex-direction:column;gap:12px;align-items:flex-start;transition:border-color .15s,background .15s;min-width:0}
+.fl-drop.fl-drag{border-color:var(--fl-y);background:#16160c}
+.fl-drop-t{color:var(--fl-ink);font-weight:600;font-size:16px}
+.fl-fmts{display:flex;flex-wrap:wrap;gap:6px}
+.fl-fmt{background:var(--fl-elev);color:var(--fl-strong);border-radius:9999px;padding:2px 10px;font-size:12px;font-family:var(--fl-mono)}
+.fl-ex{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}
+.fl-paste{display:flex;flex-direction:column;gap:10px;min-width:0}
+.fl-paste textarea{width:100%;min-height:118px;resize:vertical;background:var(--fl-canvas);border:1px solid var(--fl-line2);border-radius:8px;padding:10px 12px;font:12px/1.5 var(--fl-mono);color:var(--fl-strong)}
+.fl-paste textarea:focus{border-color:var(--fl-y);outline:none}
+.fl-row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.fl-msg{font-size:13px;color:var(--fl-muted);min-height:20px}
+.fl-msg.fl-bad{color:#ff8a8a}
+.fl-msg.fl-good{color:var(--fl-strong)}
+.fl-warn{margin:8px 0 0;padding:0;list-style:none;font-size:12px;color:var(--fl-amber)}
+
+/* ── 按钮 / 输入 ── */
+.fl-btn{height:40px;display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:0 18px;border-radius:8px;border:1px solid transparent;font-size:14px;font-weight:600;cursor:pointer;white-space:nowrap;min-width:56px;background:var(--fl-card);color:var(--fl-ink);border-color:var(--fl-line2)}
+.fl-btn:hover{background:var(--fl-elev)}
+.fl-btn-y{background:var(--fl-y);color:var(--fl-on-y);border-color:var(--fl-y)}
+.fl-btn-y:hover{background:var(--fl-y2)}
+.fl-btn-sm{height:32px;padding:0 12px;font-size:13px}
+.fl-btn[disabled]{background:var(--fl-y0);color:var(--fl-muted);border-color:transparent;cursor:not-allowed}
+.fl-btn-ghost{background:transparent;border-color:transparent;color:var(--fl-strong)}
+.fl-btn-ghost:hover{background:var(--fl-card)}
+.fl-in,.fl-sel{height:40px;background:var(--fl-card);border:1px solid var(--fl-line2);border-radius:8px;padding:0 12px;color:var(--fl-ink);min-width:120px}
+.fl-in:focus,.fl-sel:focus{border-color:var(--fl-y);outline:none}
+.fl-in[aria-invalid="true"]{border-color:var(--fl-rose)}
+.fl-in-mono{font-family:var(--fl-mono);font-size:13px}
+.fl-field{display:flex;flex-direction:column;gap:6px;min-width:0}
+.fl-field>label,.fl-lab{font-size:12px;color:var(--fl-muted);font-weight:500;letter-spacing:.3px}
+.fl-chk{display:inline-flex;align-items:center;gap:8px;font-size:13px;color:var(--fl-strong);cursor:pointer;min-height:40px}
+.fl-chk input{width:18px;height:18px;accent-color:var(--fl-y);margin:0}
+
+/* ── 工作区 ── */
+.fl-work{margin-bottom:48px}
+.fl-bar{display:grid;grid-template-columns:minmax(180px,1.4fr) repeat(2,minmax(120px,.8fr)) minmax(180px,1.2fr);gap:12px;align-items:end;margin-bottom:12px}
+.fl-filters{display:grid;grid-template-columns:repeat(3,minmax(0,1fr)) auto;gap:12px;align-items:end;margin-bottom:16px}
+.fl-search{position:relative}
+.fl-match{position:absolute;right:10px;bottom:11px;font:12px var(--fl-mono);color:var(--fl-y);pointer-events:none}
+.fl-tabs{display:flex;gap:4px;flex-wrap:wrap;border-bottom:1px solid var(--fl-line);padding-bottom:12px;margin-bottom:16px}
+.fl-tab{background:transparent;border:0;color:var(--fl-muted);font-size:14px;font-weight:500;padding:8px 14px;border-radius:8px;cursor:pointer;min-height:36px;min-width:56px}
+.fl-tab:hover{color:var(--fl-ink)}
+.fl-tab[aria-selected="true"]{background:var(--fl-card);color:var(--fl-ink)}
+.fl-tab .fl-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--fl-y);margin-left:6px;vertical-align:middle}
+.fl-empty{border:1px dashed var(--fl-line2);border-radius:12px;padding:40px 24px;text-align:center;color:var(--fl-muted)}
+.fl-empty b{display:block;color:var(--fl-ink);font-size:18px;margin-bottom:6px}
+
+/* 火焰图 */
+.fl-tools{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:12px}
+.fl-seg{display:inline-flex;background:var(--fl-canvas);border:1px solid var(--fl-line2);border-radius:8px;padding:3px;gap:2px}
+.fl-seg button{border:0;background:transparent;color:var(--fl-muted);font-size:13px;font-weight:500;height:32px;padding:0 12px;border-radius:6px;cursor:pointer;min-width:56px}
+.fl-seg button[aria-pressed="true"]{background:var(--fl-elev);color:var(--fl-ink)}
+.fl-crumbs{display:flex;flex-wrap:wrap;gap:4px;align-items:center;font:12px var(--fl-mono);color:var(--fl-muted);margin:0 0 10px;min-height:22px}
+.fl-crumbs button{background:var(--fl-elev);border:0;color:var(--fl-strong);border-radius:4px;padding:4px 10px;cursor:pointer;font:12px var(--fl-mono);max-width:260px;min-width:56px;min-height:26px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fl-crumbs button:last-child{background:var(--fl-y);color:var(--fl-on-y)}
+.fl-fig{position:relative;background:var(--fl-canvas);border:1px solid var(--fl-line);border-radius:12px;overflow:auto;max-height:68vh;min-width:0}
+.fl-fig canvas{display:block;width:100%;cursor:pointer}
+.fl-fig canvas:focus-visible{outline:2px solid var(--fl-y);outline-offset:-2px}
+.fl-tip{position:fixed;z-index:50;pointer-events:none;background:var(--fl-elev);border:1px solid var(--fl-line2);border-radius:8px;padding:10px 12px;max-width:min(520px,92vw);font-size:12px;color:var(--fl-body);box-shadow:0 8px 24px rgba(0,0,0,.5)}
+.fl-tip b{display:block;color:var(--fl-ink);font:600 12px/1.45 var(--fl-mono);word-break:break-all;margin-bottom:4px}
+.fl-tip span{display:block;font-family:var(--fl-mono)}
+.fl-detail{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:16px;align-items:center;margin-top:12px}
+.fl-detail-name{font:600 13px/1.5 var(--fl-mono);color:var(--fl-ink);word-break:break-all}
+.fl-detail-meta{font:12px var(--fl-mono);color:var(--fl-muted);margin-top:2px}
+.fl-legend{display:flex;flex-wrap:wrap;gap:14px;font-size:12px;color:var(--fl-muted);margin-top:10px}
+.fl-legend i{display:inline-block;width:12px;height:12px;border-radius:3px;vertical-align:-2px;margin-right:6px}
+
+/* 表格 */
+.fl-tablewrap{overflow:auto;border:1px solid var(--fl-line);border-radius:12px;position:relative;max-height:66vh;min-width:0}
+.fl-table{width:100%;border-collapse:collapse;font-size:13px;min-width:560px}
+.fl-table th{position:sticky;top:0;background:var(--fl-soft);color:var(--fl-muted);font-weight:500;text-align:right;padding:0;border-bottom:1px solid var(--fl-line);z-index:1;white-space:nowrap}
+.fl-table th:first-child{text-align:left}
+.fl-table th button{all:unset;display:block;padding:10px 12px;cursor:pointer;box-sizing:border-box;width:100%}
+.fl-table th button:focus-visible{outline:2px solid var(--fl-y);outline-offset:-2px}
+.fl-table th[aria-sort="descending"] button::after{content:" ↓";color:var(--fl-y)}
+.fl-table th[aria-sort="ascending"] button::after{content:" ↑";color:var(--fl-y)}
+.fl-table td{padding:8px 12px;border-bottom:1px solid var(--fl-line);text-align:right;font-family:var(--fl-mono);font-size:12px;color:var(--fl-strong);white-space:nowrap}
+.fl-table td:first-child{text-align:left;white-space:normal;word-break:break-all;color:var(--fl-ink);max-width:520px}
+.fl-table tbody tr{cursor:pointer}
+.fl-table tbody tr:hover td{background:#141414}
+.fl-table tbody tr.fl-cur td{background:#1d1d10}
+.fl-bar-in{display:inline-block;height:6px;border-radius:3px;background:var(--fl-y);vertical-align:middle;margin-left:8px;opacity:.85}
+.fl-pos{color:#ff8a8a}.fl-neg{color:#7fb0ff}
+.fl-more{margin-top:12px}
+
+/* 三明治 / 差分 */
+.fl-sw{display:grid;grid-template-columns:minmax(0,1fr);gap:16px}
+.fl-sw-h{display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin-bottom:8px;flex-wrap:wrap}
+.fl-sw-h h3{margin:0}
+.fl-sw-h span{font:12px var(--fl-mono);color:var(--fl-muted)}
+.fl-diffbar{display:grid;grid-template-columns:repeat(2,minmax(0,1fr)) auto;gap:12px;align-items:end;margin-bottom:12px}
+.fl-diffsum{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin:4px 0 16px}
+.fl-diffsum .fl-stat-v{font-size:28px;letter-spacing:-1px}
+
+/* 资料库 */
+.fl-lib{display:grid;gap:10px}
+.fl-libitem{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:center;background:var(--fl-canvas);border:1px solid var(--fl-line);border-radius:12px;padding:14px 16px}
+.fl-libitem.fl-open{border-color:var(--fl-y)}
+.fl-libname{color:var(--fl-ink);font-weight:600;word-break:break-all}
+.fl-libmeta{font:12px var(--fl-mono);color:var(--fl-muted);margin-top:2px}
+.fl-libact{display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end}
+.fl-quota{height:6px;border-radius:3px;background:var(--fl-elev);overflow:hidden;margin:6px 0 16px}
+.fl-quota i{display:block;height:100%;background:var(--fl-y)}
+
+/* 说明 */
+.fl-doc{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.fl-doc p,.fl-doc li{font-size:13px;color:var(--fl-body)}
+.fl-doc ul{padding-left:18px;margin:8px 0}
+.fl-code{background:var(--fl-canvas);border:1px solid var(--fl-line);border-radius:8px;padding:10px 12px;font:12px/1.6 var(--fl-mono);color:var(--fl-strong);white-space:pre-wrap;word-break:break-all;margin:8px 0;position:relative}
+.fl-doc dl{display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px 14px;margin:8px 0;font-size:13px}
+.fl-doc dt{color:var(--fl-ink);font-family:var(--fl-mono);font-size:12px;white-space:nowrap}
+.fl-doc dd{margin:0;color:var(--fl-body)}
+kbd{background:var(--fl-elev);border:1px solid var(--fl-line2);border-bottom-width:2px;border-radius:4px;padding:0 5px;font:11px var(--fl-mono);color:var(--fl-ink)}
+.fl-foot{border-top:1px solid var(--fl-line);padding:32px 0 48px;color:var(--fl-muted);font-size:13px}
+
+@media (max-width:1024px){
+  .fl-hero{grid-template-columns:minmax(0,1fr);gap:24px}
+  .fl-bar{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .fl-doc{grid-template-columns:minmax(0,1fr)}
+}
+@media (max-width:768px){
+  .fl-wrap{padding:0 16px}
+  .fl-nav{padding:0 16px;gap:12px}
+  .fl-pill{display:none}
+  .fl-hero{padding:28px 0 20px}
+  .fl-hero h1{font-size:36px;letter-spacing:-1px}
+  .fl-stat-v{font-size:28px;letter-spacing:-1px}
+  .fl-load{grid-template-columns:minmax(0,1fr)}
+  .fl-bar,.fl-filters,.fl-diffbar{grid-template-columns:minmax(0,1fr)}
+  .fl-diffsum{grid-template-columns:minmax(0,1fr)}
+  .fl-detail{grid-template-columns:minmax(0,1fr)}
+  .fl-libitem{grid-template-columns:minmax(0,1fr)}
+  .fl-libact{justify-content:flex-start}
+  .fl-card{padding:18px}
+}
+</style>
+</head>
+<body>
+<header class="fl-nav">
+  <a class="fl-back" id="fl-back" href="../../">← 返回工具集</a>
+  <span class="fl-brand"><span class="fl-logo" aria-hidden="true"><i></i><i></i><i></i><i></i></span>Flame Lab</span>
+  <span class="fl-nav-sp"></span>
+  <span class="fl-pill" title="所有解析都在本页完成，文件不会上传"><b aria-hidden="true"></b>文件不出本机</span>
+</header>
+
+<main class="fl-wrap">
+  <section class="fl-hero" aria-labelledby="fl-h1">
+    <div>
+      <p class="fl-eyebrow">火焰图工作台 · 性能分析</p>
+      <h1 id="fl-h1">看清时间花在哪。</h1>
+      <p>把 <b>pprof</b>、<b>perf script</b>、Chrome / Node <b>cpuprofile</b> 或<b>折叠栈</b>拖进来：火焰图、函数表（flat / cum）、调用者与被调用者、差分火焰图、时间线，一页看完。</p>
+    </div>
+    <div class="fl-stats" id="fl-stats" aria-live="polite">
+      <div class="fl-stat"><span class="fl-stat-v" id="fl-st-total">—</span><span class="fl-stat-k" id="fl-st-total-k">总量</span></div>
+      <div class="fl-stat"><span class="fl-stat-v" id="fl-st-hot">—</span><span class="fl-stat-k">最热函数（自身占比）</span></div>
+      <div class="fl-stat"><span class="fl-stat-v" id="fl-st-fns">—</span><span class="fl-stat-k">函数 / 不同调用栈</span></div>
+      <div class="fl-stat"><span class="fl-stat-v" id="fl-st-depth">—</span><span class="fl-stat-k">最深调用层数</span></div>
+    </div>
+  </section>
+
+  <section class="fl-load" aria-label="导入 profile">
+    <div class="fl-card fl-drop" id="fl-drop">
+      <span class="fl-drop-t">拖入 profile 文件，或</span>
+      <div class="fl-row">
+        <label class="fl-btn fl-btn-y" for="fl-file">选择文件</label>
+        <input type="file" id="fl-file" class="fl-sr" multiple>
+        <span class="fl-msg" id="fl-filemsg">可一次选两个文件做差分</span>
+      </div>
+      <div class="fl-fmts" aria-label="支持的格式">
+        <span class="fl-fmt">.pb.gz / pprof</span><span class="fl-fmt">perf script</span><span class="fl-fmt">.cpuprofile</span><span class="fl-fmt">Chrome trace</span><span class="fl-fmt">折叠栈 .folded</span>
+      </div>
+      <div>
+        <p class="fl-eyebrow" style="margin:6px 0 8px">真实示例（本机实录）</p>
+        <div class="fl-ex" id="fl-examples"></div>
+      </div>
+    </div>
+    <div class="fl-card fl-paste">
+      <label class="fl-drop-t" for="fl-paste">或者直接粘贴文本</label>
+      <textarea id="fl-paste" spellcheck="false" placeholder="main;handle;parseQuery;regexp.Compile 85&#10;main;handle;compress;flate.NewWriter 61&#10;……&#10;&#10;也可以粘 perf script 输出或 cpuprofile JSON"></textarea>
+      <div class="fl-row">
+        <button class="fl-btn fl-btn-y" id="fl-paste-go" type="button">解析粘贴内容</button>
+        <label class="fl-field" style="flex-direction:row;align-items:center;gap:8px"><span class="fl-lab">perf 选项</span>
+          <select class="fl-sel" id="fl-perfopt" aria-label="perf script 折叠选项">
+            <option value="">默认</option><option value="pid">--pid</option><option value="tid">--tid</option><option value="kernel">--kernel</option><option value="jit">--jit</option><option value="all">--all</option><option value="addrs">--addrs</option>
+          </select></label>
+      </div>
+      <div class="fl-msg" id="fl-msg" role="status"></div>
+      <ul class="fl-warn" id="fl-warn"></ul>
+    </div>
+  </section>
+
+  <section class="fl-work" id="fl-work" aria-label="分析">
+    <div class="fl-bar">
+      <div class="fl-field"><label for="fl-prof">当前 profile</label><select class="fl-sel" id="fl-prof"></select></div>
+      <div class="fl-field"><label for="fl-type">样本类型</label><select class="fl-sel" id="fl-type"></select></div>
+      <div class="fl-field"><label for="fl-gran">粒度</label><select class="fl-sel" id="fl-gran"><option value="function">函数</option><option value="line">函数 + 行号</option></select></div>
+      <div class="fl-field fl-search"><label for="fl-search">搜索（正则，回车跳到下一个）</label><input class="fl-in fl-in-mono" id="fl-search" placeholder="例如 json|regexp" autocomplete="off"><span class="fl-match" id="fl-match"></span></div>
+    </div>
+    <div class="fl-filters">
+      <div class="fl-field"><label for="fl-focus">聚焦（只留经过它的样本）</label><input class="fl-in fl-in-mono" id="fl-focus" placeholder="pprof -focus" autocomplete="off"></div>
+      <div class="fl-field"><label for="fl-ignore">忽略（丢掉经过它的样本）</label><input class="fl-in fl-in-mono" id="fl-ignore" placeholder="pprof -ignore" autocomplete="off"></div>
+      <div class="fl-field"><label for="fl-hide">隐藏（只抹掉这些帧）</label><input class="fl-in fl-in-mono" id="fl-hide" placeholder="pprof -hide" autocomplete="off"></div>
+      <label class="fl-chk"><input type="checkbox" id="fl-rec">合并直接递归</label>
+    </div>
+    <div class="fl-msg" id="fl-filtermsg"></div>
+
+    <div class="fl-tabs" role="tablist" aria-label="视图" id="fl-tabs">
+      <button class="fl-tab" role="tab" id="fl-tab-flame" aria-controls="pane-flame" aria-selected="true">火焰图</button>
+      <button class="fl-tab" role="tab" id="fl-tab-top" aria-controls="pane-top" aria-selected="false" tabindex="-1">函数表</button>
+      <button class="fl-tab" role="tab" id="fl-tab-sandwich" aria-controls="pane-sandwich" aria-selected="false" tabindex="-1">调用关系</button>
+      <button class="fl-tab" role="tab" id="fl-tab-diff" aria-controls="pane-diff" aria-selected="false" tabindex="-1">差分</button>
+      <button class="fl-tab" role="tab" id="fl-tab-timeline" aria-controls="pane-timeline" aria-selected="false" tabindex="-1">时间线</button>
+      <button class="fl-tab" role="tab" id="fl-tab-lib" aria-controls="pane-lib" aria-selected="false" tabindex="-1">资料库</button>
+      <button class="fl-tab" role="tab" id="fl-tab-about" aria-controls="pane-about" aria-selected="false" tabindex="-1">说明</button>
+    </div>
+
+    <div id="fl-panes">
+      <!-- 火焰图 -->
+      <div class="fl-pane" role="tabpanel" id="pane-flame" aria-labelledby="fl-tab-flame">
+        <div class="fl-tools">
+          <div class="fl-seg" role="group" aria-label="方向"><button type="button" id="fl-or-icicle" aria-pressed="true">冰柱（根在上）</button><button type="button" id="fl-or-flame" aria-pressed="false">火焰（根在下）</button></div>
+          <div class="fl-seg" role="group" aria-label="排序"><button type="button" id="fl-ord-alpha" aria-pressed="true">按名字</button><button type="button" id="fl-ord-weight" aria-pressed="false">重的在左</button></div>
+          <div class="fl-seg" role="group" aria-label="配色"><button type="button" id="fl-pal-pkg" aria-pressed="true">按包</button><button type="button" id="fl-pal-hot" aria-pressed="false">经典暖色</button></div>
+          <button class="fl-btn fl-btn-sm" type="button" id="fl-reset">复位缩放</button>
+          <span class="fl-nav-sp"></span>
+          <button class="fl-btn fl-btn-sm" type="button" id="fl-exp-svg">导出 SVG</button>
+          <button class="fl-btn fl-btn-sm" type="button" id="fl-exp-png">导出 PNG</button>
+          <button class="fl-btn fl-btn-sm" type="button" id="fl-exp-folded">导出折叠栈</button>
+        </div>
+        <nav class="fl-crumbs" id="fl-crumbs" aria-label="缩放路径"></nav>
+        <div class="fl-fig" id="fl-fig"><canvas id="fl-canvas" tabindex="0" role="img" aria-label="火焰图"></canvas></div>
+        <div class="fl-detail" id="fl-detail">
+          <div><div class="fl-detail-name" id="fl-sel-name">点一个方块看详情；双击或 Esc 复位</div><div class="fl-detail-meta" id="fl-sel-meta">方向键在方块间移动 · 回车放大 · / 跳到搜索</div></div>
+          <div class="fl-row"><button class="fl-btn fl-btn-sm" type="button" id="fl-sel-sw" disabled>看调用关系</button><button class="fl-btn fl-btn-sm" type="button" id="fl-sel-focus" disabled>只看经过它的样本</button></div>
+        </div>
+        <div class="fl-legend" id="fl-legend"></div>
+      </div>
+
+      <!-- 函数表 -->
+      <div class="fl-pane" role="tabpanel" id="pane-top" aria-labelledby="fl-tab-top" hidden>
+        <div class="fl-tools">
+          <div class="fl-field" style="flex:1;min-width:200px"><label for="fl-top-filter">筛选函数名</label><input class="fl-in fl-in-mono" id="fl-top-filter" placeholder="子串，不分大小写" autocomplete="off"></div>
+          <button class="fl-btn fl-btn-sm" type="button" id="fl-top-csv">导出 CSV</button>
+        </div>
+        <p class="fl-sub" id="fl-top-sum"></p>
+        <div class="fl-tablewrap"><table class="fl-table" id="fl-top-table">
+          <caption class="fl-sr">函数表：自身（flat）与总计（cum）</caption>
+          <thead><tr>
+            <th scope="col" data-k="name" aria-sort="none"><button type="button">函数</button></th>
+            <th scope="col" data-k="flat" aria-sort="descending"><button type="button">自身</button></th>
+            <th scope="col" data-k="flatp" aria-sort="none"><button type="button">自身 %</button></th>
+            <th scope="col" data-k="cum" aria-sort="none"><button type="button">总计</button></th>
+            <th scope="col" data-k="cump" aria-sort="none"><button type="button">总计 %</button></th>
+          </tr></thead>
+          <tbody id="fl-top-body"></tbody>
+        </table></div>
+        <button class="fl-btn fl-btn-sm fl-more" type="button" id="fl-top-more" hidden>再显示 200 行</button>
+      </div>
+
+      <!-- 调用关系（三明治） -->
+      <div class="fl-pane" role="tabpanel" id="pane-sandwich" aria-labelledby="fl-tab-sandwich" hidden>
+        <div class="fl-tools">
+          <div class="fl-field" style="flex:1;min-width:220px"><label for="fl-sw-fn">函数</label><select class="fl-sel" id="fl-sw-fn"></select></div>
+        </div>
+        <p class="fl-sub" id="fl-sw-sum"></p>
+        <div class="fl-sw">
+          <div class="fl-card"><div class="fl-sw-h"><h3>谁调用了它</h3><span id="fl-sw-callers-n"></span></div><p class="fl-sub">根是它自己，往下是调用者、调用者的调用者……</p><div class="fl-fig"><canvas id="fl-sw-callers" tabindex="0" role="img" aria-label="调用者火焰图"></canvas></div></div>
+          <div class="fl-card"><div class="fl-sw-h"><h3>它调用了谁</h3><span id="fl-sw-callees-n"></span></div><p class="fl-sub">根是它自己，往下是它调用的函数（递归时取最外层那一次）</p><div class="fl-fig"><canvas id="fl-sw-callees" tabindex="0" role="img" aria-label="被调用者火焰图"></canvas></div></div>
+        </div>
+      </div>
+
+      <!-- 差分 -->
+      <div class="fl-pane" role="tabpanel" id="pane-diff" aria-labelledby="fl-tab-diff" hidden>
+        <div class="fl-diffbar">
+          <div class="fl-field"><label for="fl-diff-a">基线（旧）</label><select class="fl-sel" id="fl-diff-a"></select></div>
+          <div class="fl-field"><label for="fl-diff-b">对比（新）</label><select class="fl-sel" id="fl-diff-b"></select></div>
+          <button class="fl-btn" type="button" id="fl-diff-swap">交换</button>
+        </div>
+        <div class="fl-tools">
+          <label class="fl-chk"><input type="checkbox" id="fl-diff-norm" checked>按总量归一化（difffolded -n）</label>
+          <div class="fl-seg" role="group" aria-label="宽度"><button type="button" id="fl-dw-new" aria-pressed="true">宽度按新</button><button type="button" id="fl-dw-base" aria-pressed="false">宽度按基线</button></div>
+          <div class="fl-seg" role="group" aria-label="着色"><button type="button" id="fl-dc-self" aria-pressed="true">按自身变化</button><button type="button" id="fl-dc-total" aria-pressed="false">按总计变化</button></div>
+          <span class="fl-nav-sp"></span>
+          <button class="fl-btn fl-btn-sm" type="button" id="fl-diff-svg">导出差分 SVG</button>
+        </div>
+        <div class="fl-diffsum" id="fl-diffsum"></div>
+        <div class="fl-fig"><canvas id="fl-diff-canvas" tabindex="0" role="img" aria-label="差分火焰图"></canvas></div>
+        <div class="fl-legend" id="fl-diff-legend"><span><i style="background:#ef4444"></i>新的比基线多</span><span><i style="background:#3b82f6"></i>新的比基线少</span><span><i style="background:#3a3a3a"></i>没变</span><span id="fl-diff-note"></span></div>
+        <h3 style="margin:24px 0 10px;color:#fff;font-size:16px">函数变化（pprof -diff_base 口径）</h3>
+        <div class="fl-tablewrap"><table class="fl-table" id="fl-diff-table">
+          <caption class="fl-sr">函数自身与总计的变化</caption>
+          <thead><tr><th scope="col"><button type="button" tabindex="-1">函数</button></th><th scope="col"><button type="button" tabindex="-1">Δ 自身</button></th><th scope="col"><button type="button" tabindex="-1">Δ 总计</button></th><th scope="col"><button type="button" tabindex="-1">基线总计</button></th><th scope="col"><button type="button" tabindex="-1">新总计</button></th></tr></thead>
+          <tbody id="fl-diff-body"></tbody>
+        </table></div>
+      </div>
+
+      <!-- 时间线 -->
+      <div class="fl-pane" role="tabpanel" id="pane-timeline" aria-labelledby="fl-tab-timeline" hidden>
+        <div class="fl-empty" id="fl-tl-empty"><b>这份 profile 没有时间顺序</b>只有 cpuprofile 和 Chrome trace 记录了每个样本的时间；pprof、perf 折叠后、折叠栈都已按调用栈合并。</div>
+        <div id="fl-tl-box">
+          <p class="fl-sub" id="fl-tl-sum">横轴是时间：同一个函数连续出现的样本合并成一块。拖动选一段放大，双击复位。</p>
+          <div class="fl-fig"><canvas id="fl-tl-canvas" tabindex="0" role="img" aria-label="时间线火焰图"></canvas></div>
+        </div>
+      </div>
+
+      <!-- 资料库 -->
+      <div class="fl-pane" role="tabpanel" id="pane-lib" aria-labelledby="fl-tab-lib" hidden>
+        <div class="fl-tools">
+          <label class="fl-chk"><input type="checkbox" id="fl-lib-auto" checked>打开的文件自动存进资料库</label>
+          <span class="fl-nav-sp"></span>
+          <button class="fl-btn fl-btn-sm" type="button" id="fl-lib-save">保存当前 profile</button>
+        </div>
+        <p class="fl-sub" id="fl-lib-sum"></p>
+        <div class="fl-quota" aria-hidden="true"><i id="fl-lib-quota" style="width:0"></i></div>
+        <div class="fl-lib" id="fl-lib-list"></div>
+      </div>
+
+      <!-- 说明 -->
+      <div class="fl-pane" role="tabpanel" id="pane-about" aria-labelledby="fl-tab-about" hidden>
+        <div class="fl-doc">
+          <div class="fl-card">
+            <h3>怎么拿到 profile</h3>
+            <dl>
+              <dt>Go</dt><dd><code>go test -cpuprofile cpu.pb.gz</code>，或 <code>curl -o cpu.pb.gz :6060/debug/pprof/profile?seconds=30</code></dd>
+              <dt>Linux perf</dt><dd><code>perf record -F 99 -g -p PID</code> 之后 <code>perf script &gt; out.perf</code></dd>
+              <dt>Node</dt><dd><code>node --cpu-prof app.js</code> 生成 .cpuprofile</dd>
+              <dt>Chrome</dt><dd>开发者工具 → 性能 → 录制 → 保存 profile（trace JSON）</dd>
+              <dt>Python</dt><dd><code>py-spy record --format raw -o out.folded -- python app.py</code></dd>
+              <dt>Java</dt><dd>async-profiler <code>-o collapsed</code></dd>
+            </dl>
+          </div>
+          <div class="fl-card">
+            <h3>数字是怎么算的</h3>
+            <ul>
+              <li><b>自身</b>：样本的最内层（叶子）是这个函数的那部分；<b>总计</b>：调用栈里出现过这个函数的样本，<b>同一个样本里递归出现多次只算一次</b>（与 pprof 的 flat / cum 相同）。</li>
+              <li><b>聚焦 / 忽略 / 隐藏</b>照 pprof 的 <code>-focus / -ignore / -hide</code>：匹配函数名、文件名或映射文件；同时命中聚焦与忽略的按忽略处理；帧全部被隐藏的样本整条丢掉。</li>
+              <li><b>搜索</b>的占比 = 至少含一个命中帧的样本量（与 flamegraph.pl 的 Matched 相同，嵌套命中不重复算）。</li>
+              <li><b>差分</b>照 difffolded.pl + flamegraph.pl：宽度取「新」，颜色取该帧自身的变化；归一化时基线每条栈按 <code>int(旧 × 新总量 ÷ 旧总量)</code> 缩放。</li>
+              <li><b>perf script</b> 折叠照 stackcollapse-perf.pl：默认按第一种事件过滤、进程名作根帧、去掉 <code>+0x</code> 偏移与参数表；最后一个样本后面要有空行才算。</li>
+              <li><b>cpuprofile 的时间</b>：每个样本的时长 = 下一个样本的时间戳 − 它自己的，最后一个到 endTime 为止；时间戳倒退时先按时间排序（与 DevTools 一致）。</li>
+            </ul>
+          </div>
+          <div class="fl-card">
+            <h3>键盘</h3>
+            <dl>
+              <dt><kbd>←</kbd> <kbd>→</kbd></dt><dd>同一层的上一个 / 下一个方块</dd>
+              <dt><kbd>↑</kbd> <kbd>↓</kbd></dt><dd>父帧 / 子帧（冰柱方向）</dd>
+              <dt><kbd>Enter</kbd></dt><dd>放大到这个方块</dd>
+              <dt><kbd>Esc</kbd></dt><dd>复位缩放</dd>
+              <dt><kbd>/</kbd></dt><dd>跳到搜索框</dd>
+            </dl>
+          </div>
+          <div class="fl-card">
+            <h3>隐私与存储</h3>
+            <p>解析、绘图都在这个页面里完成，没有任何网络请求。资料库存在本机浏览器的 localStorage（约 5 MB 上限），存的是解析后的调用栈，不是原文件；pprof 只保存函数粒度。</p>
+            <p>内置示例都是真实录制：Go 1.25 订单服务（优化前 / 后各跑 3 秒，GOMAXPROCS=1 GOGC=400，macOS）、Node 25 静态博客生成器、Python 3.14 日志统计流水线（ITIMER_PROF 每 1 ms 采一次）。</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+<footer class="fl-wrap fl-foot">Flame Lab · 每日工具集 · 口径对拍：stackcollapse-perf.pl / flamegraph.pl / difffolded.pl / google/pprof</footer>
+<div class="fl-tip" id="fl-tip" hidden></div>
+<div class="fl-sr" id="fl-live" aria-live="polite"></div>
+<a id="fl-dl" hidden></a>
+
+<script id="fl-engine">
+/* 火焰图工作台 · Flame Lab —— 引擎（纯函数，无 DOM，可在 node:vm 里复跑）
+ *
+ * 口径来源（每条都有对拍）：
+ *   · 折叠栈（folded）解析 = flamegraph.pl 的 /^(.*)\s+?(\d+(?:\.\d*)?)$/，含两列差分格式；
+ *   · perf script 折叠 = stackcollapse-perf.pl（默认 + --pid --tid --kernel --jit --all --addrs）；
+ *   · pprof（profile.proto）= google/pprof 的 profile 包：函数粒度、内联帧展开、
+ *     默认样本类型 = default_sample_type 否则最后一个；focus / ignore / hide 照 FilterSamplesByName；
+ *     flat / cum 照 pprof（cum 每个样本里同名函数只算一次）；
+ *   · Chrome / Node .cpuprofile = V8 CPU Profile（nodes + samples + timeDeltas）；
+ *   · 合并递归 = stackcollapse-recursive.pl（相邻同名帧去重）；
+ *   · 差分 = difffolded.pl + flamegraph.pl（宽度取新、颜色取叶子自身差值，-n 归一化取整截断）。
+ */
+var FL = (function () {
+  'use strict';
+  var M = Math;
+
+  // ───────────────────────── 小工具 ─────────────────────────
+  function utf8(b, s, e) {
+    var out = '', i = s;
+    while (i < e) {
+      var c = b[i++];
+      if (c < 0x80) { out += String.fromCharCode(c); continue; }
+      var n = 0, cp = 0;
+      if (c >= 0xc2 && c <= 0xdf) { n = 1; cp = c & 0x1f; }
+      else if (c >= 0xe0 && c <= 0xef) { n = 2; cp = c & 0x0f; }
+      else if (c >= 0xf0 && c <= 0xf4) { n = 3; cp = c & 0x07; }
+      else { out += '\ufffd'; continue; }
+      if (i + n > e) { out += '\ufffd'; i = e; break; }
+      var bad = false;
+      for (var k = 0; k < n; k++) {
+        var d = b[i + k];
+        if ((d & 0xc0) !== 0x80) { bad = true; break; }
+        cp = (cp << 6) | (d & 0x3f);
+      }
+      if (bad || (n === 2 && cp < 0x800) || (n === 3 && (cp < 0x10000 || cp > 0x10ffff)) || (cp >= 0xd800 && cp <= 0xdfff)) { out += '\ufffd'; continue; }
+      i += n;
+      out += String.fromCodePoint(cp);
+    }
+    return out;
+  }
+  function cmpStr(a, b) { return a < b ? -1 : a > b ? 1 : 0; }
+  function baseName(p) {
+    if (!p) return '';
+    var s = String(p).replace(/[?#].*$/, '');
+    var i = M.max(s.lastIndexOf('/'), s.lastIndexOf('\\'));
+    return i >= 0 ? s.slice(i + 1) : s;
+  }
+
+  // 帧表 + 栈聚合
+  function Builder(types) {
+    this.types = types; this.nT = types.length;
+    this.fmap = new Map(); this.frames = []; this.finfo = []; this.lmap = new Map(); this.canon = [];
+    this.smap = new Map(); this.stacks = [];
+  }
+  // 帧按「显示名 + 来源（函数名 / 文件 / 映射文件）」去重：过滤要逐个来源判（pprof Location.matchesName 是逐 location 的）；
+  // canon[i] = 同显示名的第一个帧号，view() 过滤完再折成它，树 / 函数表 / 折叠栈仍按显示名合并（= pprof functions 粒度）。
+  // （2026-11-02 fork 对拍台 BUG-1：原先按显示名去重、只留第一次出现的文件，另一处同名函数被按错的文件判定）
+  Builder.prototype.frame = function (label, info) {
+    var key = info ? label + '\u0001' + (info.name || '') + '\u0001' + (info.file || '') + '\u0001' + (info.obj || '') + '\u0001' + (info.nofn ? 1 : 0) : label;
+    var i = this.fmap.get(key);
+    if (i === undefined) {
+      i = this.frames.length; this.fmap.set(key, i); this.frames.push(label); this.finfo.push(info || null);
+      var c = this.lmap.get(label); if (c === undefined) { c = i; this.lmap.set(label, i); } this.canon.push(c);
+    }
+    return i;
+  };
+  Builder.prototype.add = function (f, v) {
+    var key = f.join(',');
+    var s = this.smap.get(key);
+    if (s === undefined) {
+      s = { f: f.slice(), v: new Array(this.nT).fill(0), i: this.stacks.length };
+      this.smap.set(key, s); this.stacks.push(s);
+    }
+    for (var k = 0; k < this.nT; k++) s.v[k] += v[k];
+    return s.i;
+  };
+  Builder.prototype.done = function (format, extra) {
+    var p = { format: format, types: this.types, defaultType: this.nT - 1, frames: this.frames, finfo: this.finfo,
+      stacks: this.stacks.map(function (s) { return { f: s.f, v: s.v }; }), meta: {}, timeline: null, warnings: [], canon: this.canon };
+    if (extra) for (var k in extra) p[k] = extra[k];
+    return p;
+  };
+
+  // ───────────────────────── 折叠栈（flamegraph.pl 口径） ─────────────────────────
+  var RE_FOLD = /^(.*)\s+?(\d+(?:\.\d*)?)$/;
+  function perlSplitSemi(s) {
+    // Perl split ";" 丢弃末尾空字段（开头 / 中间的空字段保留）
+    var a = s.split(';');
+    while (a.length && a[a.length - 1] === '') a.pop();
+    return a;
+  }
+  function parseFolded(text) {
+    var lines = String(text).split('\n');
+    var rows = [], ignored = 0, twoCol = 0;
+    for (var i = 0; i < lines.length; i++) {
+      var line = lines[i];
+      if (line.length && line.charCodeAt(line.length - 1) === 13) line = line.slice(0, -1); // CRLF 宽容（flamegraph.pl 会整行忽略）
+      if (line === '') continue;
+      var m = RE_FOLD.exec(line);
+      if (!m) { ignored++; continue; }
+      var stack = m[1], c = parseFloat(m[2]), c1 = null;
+      var m2 = RE_FOLD.exec(stack);
+      if (m2) { stack = m2[1]; c1 = parseFloat(m2[2]); twoCol++; }
+      rows.push([stack, c1, c]);
+    }
+    var types = twoCol ? [{ type: '列 1（基线）', unit: 'count' }, { type: '列 2（新）', unit: 'count' }] : [{ type: 'samples', unit: 'count' }];
+    var B = new Builder(types);
+    for (var r = 0; r < rows.length; r++) {
+      var parts = perlSplitSemi(rows[r][0]), f = new Array(parts.length);
+      for (var j = 0; j < parts.length; j++) f[j] = B.frame(parts[j]);
+      B.add(f, twoCol ? [rows[r][1] == null ? rows[r][2] : rows[r][1], rows[r][2]] : [rows[r][2]]);
+    }
+    var p = B.done('folded');
+    p.meta.lines = rows.length; p.meta.ignored = ignored; p.meta.twoColumn = twoCol > 0;
+    if (ignored) p.warnings.push('有 ' + ignored + ' 行不是「栈 数字」格式，已忽略（flamegraph.pl 同口径）');
+    if (twoCol && twoCol < rows.length) p.warnings.push((rows.length - twoCol) + ' 行只有一列数字，按两列相同处理');
+    return p;
+  }
+
+  // ───────────────────────── perf script（stackcollapse-perf.pl 口径） ─────────────────────────
+  var RE_PERF_HDR = /^(\S.+?)\s+(\d+)\/*(\d+)*\s+/;
+  var RE_PERF_EVT = /:\s*(\d+)*\s+(\S+):\s*$/;
+  var RE_PERF_FRAME = /^\s*(\w+)\s*(.+) \((.*)\)/;
+  function parsePerf(text, opt) {
+    opt = opt || {};
+    var annK = !!(opt.kernel || opt.all), annJ = !!(opt.jit || opt.all), incPid = !!opt.pid, incTid = !!opt.tid, addrs = !!opt.addrs;
+    var evFilter = opt.event || '', evDefaulted = false, evSkipped = 0, unrecognized = 0, samples = 0, events = new Map();
+    var collapsed = new Map(), order = [];
+    var stack = [], pname = null, period = 1, trailing = false;
+    var lines = String(text).split('\n');
+    if (lines.length && lines[lines.length - 1] === '') lines.pop();
+    for (var li = 0; li < lines.length; li++) {
+      var line = lines[li];
+      if (line.charCodeAt(0) === 35) continue; // '#'
+      if (line === '') {
+        if (pname === null || pname === '0') continue;
+        stack.unshift(pname);
+        var key = stack.join(';');
+        if (!collapsed.has(key)) { collapsed.set(key, 0); order.push(key); }
+        collapsed.set(key, collapsed.get(key) + period);
+        samples++;
+        stack = []; pname = null; trailing = false;
+        continue;
+      }
+      var m = RE_PERF_HDR.exec(line);
+      if (m) {
+        var comm = m[1], pid = m[2], tid = m[3], per = '';
+        if (!tid || tid === '0') { tid = pid; pid = '?'; } // Perl：not $tid（"0" 也是假）
+        var e = RE_PERF_EVT.exec(line);
+        if (e) {
+          per = e[1] || '';
+          var ev = e[2];
+          events.set(ev, (events.get(ev) || 0) + 1);
+          if (evFilter === '') { evFilter = ev; evDefaulted = true; }
+          else if (ev !== evFilter) { evSkipped++; continue; }
+        }
+        // Perl：if (not $period) { $period = 1 } —— 空串与 "0" 都是假
+        period = (per === '' || per === '0') ? 1 : Number(per);
+        var pn = incTid ? comm + '-' + pid + '/' + tid : incPid ? comm + '-' + pid : comm;
+        pname = pn.replace(/ /g, '_');
+        trailing = true;
+        continue;
+      }
+      var f = RE_PERF_FRAME.exec(line);
+      if (f) {
+        if (pname === null || pname === '0') continue; // Perl：next if not $pname
+        var pc = f[1], raw = f[2], mod = f[3];
+        raw = raw.replace(/\+0x[\da-f]+$/, '');
+        if (raw.charCodeAt(0) === 40) continue; // '(' 开头：进程名，跳过
+        var parts = raw.split('->'), inl = [];
+        for (var k = 0; k < parts.length; k++) {
+          var func = parts[k];
+          if (func === '[unknown]') {
+            if (mod !== '[unknown]') { func = mod.replace(/.*\//, ''); }
+            else { func = 'unknown'; }
+            func = addrs ? '[' + func + ' <' + pc + '>]' : '[' + func + ']';
+          }
+          // tidy_generic
+          func = func.replace(/;/g, ':');
+          if (!/\.\(.*\)\./.test(func)) func = func.replace(/\((?!anonymous namespace\)).*/, '');
+          func = func.replace(/["']/g, '');
+          // tidy_java
+          if (/^java/.test(pname) && func.indexOf('/') >= 0) func = func.replace(/^L/, '');
+          if (inl.length > 0) { if (!/_\[i\]/.test(func)) func += '_[i]'; }
+          else if (annK && /(^\[|vmlinux$)/.test(mod) && !/unknown/.test(mod)) func += '_[k]';
+          else if (annJ && /\/tmp\/perf-\d+\.map/.test(mod)) { if (!/_\[j\]/.test(func)) func += '_[j]'; }
+          inl.push(func);
+        }
+        for (var q = inl.length - 1; q >= 0; q--) stack.unshift(inl[q]);
+        continue;
+      }
+      unrecognized++;
+    }
+    var B = new Builder([{ type: 'samples', unit: 'count' }]);
+    var keys = order.slice().sort(cmpStr);
+    for (var i = 0; i < keys.length; i++) {
+      var fr = perlSplitSemi(keys[i]), ids = new Array(fr.length);
+      for (var j = 0; j < fr.length; j++) ids[j] = B.frame(fr[j]);
+      B.add(ids, [collapsed.get(keys[i])]);
+    }
+    var p = B.done('perf');
+    p.meta.samples = samples; p.meta.event = evFilter; p.meta.eventSkipped = evSkipped; p.meta.unrecognized = unrecognized;
+    p.meta.events = Array.from(events.entries());
+    p.meta.droppedTail = (pname !== null && trailing) ? 1 : 0;
+    if (evDefaulted && events.size > 1) p.warnings.push('有多种事件，按第一种「' + evFilter + '」统计，跳过 ' + evSkipped + ' 个其他事件样本（stackcollapse-perf.pl 同口径）');
+    if (unrecognized) p.warnings.push(unrecognized + ' 行无法识别，已跳过');
+    if (p.meta.droppedTail) p.warnings.push('文件末尾的最后一个样本后面没有空行，按 stackcollapse-perf.pl 口径不计入');
+    return p;
+  }
+
+  // ───────────────────────── protobuf（pprof） ─────────────────────────
+  function PB(b, s, e) { this.b = b; this.p = s || 0; this.end = e == null ? b.length : e; this.lo = 0; this.hi = 0; }
+  PB.prototype.raw = function () {
+    var b = this.b, p = this.p, lo = 0, hi = 0;
+    for (var i = 0; i < 10; i++) {
+      if (p >= this.end) throw new Error('protobuf 数据被截断');
+      var c = b[p++];
+      if (i < 4) lo |= (c & 0x7f) << (7 * i);
+      else if (i === 4) { lo |= (c & 0x0f) << 28; hi |= (c & 0x7f) >> 4; }
+      else hi |= (c & 0x7f) << (7 * (i - 4) - 4);
+      if (!(c & 0x80)) { this.p = p; this.lo = lo >>> 0; this.hi = hi >>> 0; return; }
+    }
+    throw new Error('varint 过长');
+  };
+  PB.prototype.u = function () { this.raw(); return this.hi * 4294967296 + this.lo; };
+  PB.prototype.i = function () {
+    this.raw();
+    if (this.hi & 0x80000000) {
+      var nlo = (~this.lo + 1) >>> 0, nhi = (~this.hi >>> 0) + (nlo === 0 ? 1 : 0);
+      return -(nhi * 4294967296 + nlo);
+    }
+    return this.hi * 4294967296 + this.lo;
+  };
+  PB.prototype.hex = function () { this.raw(); var h = this.hi ? this.hi.toString(16) + ('00000000' + this.lo.toString(16)).slice(-8) : this.lo.toString(16); return h; };
+  PB.prototype.len = function () { var n = this.u(); if (this.p + n > this.end) throw new Error('protobuf 长度越界'); return n; };
+  PB.prototype.skip = function (wt) {
+    if (wt === 0) this.raw();
+    else if (wt === 1) this.p += 8;
+    else if (wt === 2) { var n = this.len(); this.p += n; }
+    else if (wt === 5) this.p += 4;
+    else throw new Error('不支持的 protobuf wire type ' + wt);
+    if (this.p > this.end) throw new Error('protobuf 数据被截断');
+  };
+  // 重复的标量字段：既认 packed（wt=2）也认逐个（wt=0）
+  function rep(r, wt, out, signed) {
+    if (wt === 2) { var n = r.len(), e = r.p + n, sub = new PB(r.b, r.p, e); while (sub.p < e) out.push(signed ? sub.i() : sub.u()); r.p = e; }
+    else if (wt === 0) out.push(signed ? r.i() : r.u());
+    else throw new Error('重复字段 wire type 不对');
+  }
+  function msg(r, wt, fn) {
+    if (wt !== 2) throw new Error('期望嵌套消息');
+    var n = r.len(), e = r.p + n, sub = new PB(r.b, r.p, e);
+    fn(sub, e); r.p = e;
+  }
+  function eachField(r, fn) {
+    while (r.p < r.end) {
+      var key = r.u(), field = M.floor(key / 8), wt = key % 8;
+      if (field === 0) throw new Error('protobuf 字段号为 0');
+      fn(field, wt);
+    }
+  }
+  function decodePprof(b) {
+    var r = new PB(b, 0, b.length);
+    var P = { sampleType: [], sample: [], mapping: [], location: [], function: [], strings: [], dropFrames: 0, keepFrames: 0,
+      timeNanos: 0, durationNanos: 0, periodType: null, period: 0, comment: [], defaultSampleType: 0 };
+    function vt(sub) { var o = { type: 0, unit: 0 }; eachField(sub, function (f, wt) { if (f === 1) o.type = sub.i(); else if (f === 2) o.unit = sub.i(); else sub.skip(wt); }); return o; }
+    eachField(r, function (f, wt) {
+      switch (f) {
+        case 1: msg(r, wt, function (s) { P.sampleType.push(vt(s)); }); break;
+        case 2: msg(r, wt, function (s) {
+          var o = { loc: [], val: [], label: [] };
+          eachField(s, function (g, w) {
+            if (g === 1) rep(s, w, o.loc, false);
+            else if (g === 2) rep(s, w, o.val, true);
+            else if (g === 3) msg(s, w, function (t) { var l = { key: 0, str: 0, num: 0, unit: 0 }; eachField(t, function (h, x) { if (h === 1) l.key = t.i(); else if (h === 2) l.str = t.i(); else if (h === 3) l.num = t.i(); else if (h === 4) l.unit = t.i(); else t.skip(x); }); o.label.push(l); });
+            else s.skip(w);
+          });
+          P.sample.push(o);
+        }); break;
+        case 3: msg(r, wt, function (s) {
+          var o = { id: 0, start: 0, limit: 0, offset: 0, file: 0, buildId: 0 };
+          eachField(s, function (g, w) {
+            if (g === 1) o.id = s.u(); else if (g === 2) o.start = s.hex(); else if (g === 3) o.limit = s.hex(); else if (g === 4) o.offset = s.hex();
+            else if (g === 5) o.file = s.i(); else if (g === 6) o.buildId = s.i(); else s.skip(w);
+          });
+          P.mapping.push(o);
+        }); break;
+        case 4: msg(r, wt, function (s) {
+          var o = { id: 0, mapping: 0, addr: '0', line: [] };
+          eachField(s, function (g, w) {
+            if (g === 1) o.id = s.u(); else if (g === 2) o.mapping = s.u(); else if (g === 3) o.addr = s.hex();
+            else if (g === 4) msg(s, w, function (t) { var l = { fn: 0, line: 0, col: 0 }; eachField(t, function (h, x) { if (h === 1) l.fn = t.u(); else if (h === 2) l.line = t.i(); else if (h === 3) l.col = t.i(); else t.skip(x); }); o.line.push(l); });
+            else s.skip(w);
+          });
+          P.location.push(o);
+        }); break;
+        case 5: msg(r, wt, function (s) {
+          var o = { id: 0, name: 0, sys: 0, file: 0, start: 0 };
+          eachField(s, function (g, w) {
+            if (g === 1) o.id = s.u(); else if (g === 2) o.name = s.i(); else if (g === 3) o.sys = s.i(); else if (g === 4) o.file = s.i(); else if (g === 5) o.start = s.i(); else s.skip(w);
+          });
+          P.function.push(o);
+        }); break;
+        case 6: if (wt !== 2) throw new Error('string_table 类型不对'); var n = r.len(); P.strings.push(utf8(r.b, r.p, r.p + n)); r.p += n; break;
+        case 7: P.dropFrames = r.i(); break;
+        case 8: P.keepFrames = r.i(); break;
+        case 9: P.timeNanos = r.i(); break;
+        case 10: P.durationNanos = r.i(); break;
+        case 11: msg(r, wt, function (s) { P.periodType = vt(s); }); break;
+        case 12: P.period = r.i(); break;
+        case 13: rep(r, wt, P.comment, true); break;
+        case 14: P.defaultSampleType = r.i(); break;
+        default: r.skip(wt);
+      }
+    });
+    if (!P.strings.length || P.strings[0] !== '') throw new Error('不是 pprof：string_table 第 0 项必须是空串');
+    return P;
+  }
+  function pprofFromDecoded(P, gran) {
+    gran = gran || 'function';
+    var S = P.strings;
+    function str(i) { if (i < 0 || i >= S.length) throw new Error('字符串下标越界 ' + i); return S[i]; }
+    var fnById = new Map(), locById = new Map(), mapById = new Map();
+    P.function.forEach(function (f) { fnById.set(f.id, f); });
+    P.location.forEach(function (l) { locById.set(l.id, l); });
+    P.mapping.forEach(function (m) { mapById.set(m.id, m); });
+    var types = P.sampleType.map(function (t) { return { type: str(t.type), unit: str(t.unit) }; });
+    if (!types.length) types = [{ type: 'samples', unit: 'count' }];
+    var B = new Builder(types);
+    // 每个 location → 根在前的帧号数组（内联：line[0] 最内层，最后一项是调用者）
+    var locFrames = new Map();
+    function objName(l) {
+      var m = l.mapping ? mapById.get(l.mapping) : null;
+      var f = m ? str(m.file) : '';
+      return f ? '[' + baseName(f) + ']' : '<unknown>';
+    }
+    function framesOf(id) {
+      var got = locFrames.get(id);
+      if (got) return got;
+      var l = locById.get(id);
+      if (!l) throw new Error('样本引用了不存在的 location ' + id);
+      var arr = [], mf = l.mapping && mapById.get(l.mapping) ? str(mapById.get(l.mapping).file) : '';
+      if (!l.line.length) {
+        arr.push(B.frame(objName(l), { name: '', file: '', line: 0, obj: mf, nofn: true }));
+      } else {
+        for (var k = l.line.length - 1; k >= 0; k--) {
+          var ln = l.line[k], fn = ln.fn ? fnById.get(ln.fn) : null;
+          if (ln.fn && !fn) throw new Error('location ' + id + ' 引用了不存在的 function ' + ln.fn);
+          var name = fn ? str(fn.name) : '', file = fn ? str(fn.file) : '';
+          var label;
+          if (gran === 'line') {
+            var comps = [];
+            if (name) comps.push(name);
+            if (ln.line) comps.push((file || '') + ':' + ln.line);
+            else if (file) comps.push(file);
+            else if (!name) comps.push(mf ? '[' + baseName(mf) + ']' : '<unknown>');
+            label = comps.join(' ');
+          } else {
+            label = name || (mf ? '[' + baseName(mf) + ']' : '<unknown>');
+          }
+          arr.push(B.frame(label, fn ? { name: name, file: file, line: gran === 'line' ? ln.line : 0, obj: mf } : { name: '', file: '', line: 0, obj: mf, nofn: true }));
+        }
+      }
+      locFrames.set(id, arr);
+      return arr;
+    }
+    var nT = types.length, empty = 0;
+    for (var i = 0; i < P.sample.length; i++) {
+      var s = P.sample[i], f = [];
+      for (var j = s.loc.length - 1; j >= 0; j--) { var fr = framesOf(s.loc[j]); for (var q = 0; q < fr.length; q++) f.push(fr[q]); }
+      var v = new Array(nT);
+      for (var t = 0; t < nT; t++) v[t] = s.val[t] || 0;
+      if (!f.length) empty++;
+      B.add(f, v);
+    }
+    var p = B.done('pprof');
+    var def = P.defaultSampleType ? str(P.defaultSampleType) : '';
+    var di = def ? types.map(function (t) { return t.type; }).indexOf(def) : -1;
+    p.defaultType = di >= 0 ? di : types.length - 1;
+    p.meta.samples = P.sample.length;
+    p.meta.period = P.period; p.meta.periodType = P.periodType ? { type: str(P.periodType.type), unit: str(P.periodType.unit) } : null;
+    p.meta.durationNanos = P.durationNanos; p.meta.timeNanos = P.timeNanos;
+    p.meta.comments = P.comment.map(str);
+    p.meta.functions = P.function.length; p.meta.locations = P.location.length; p.meta.mappings = P.mapping.map(function (m) { return str(m.file); }).filter(Boolean);
+    p.meta.granularity = gran; p.meta.emptyStacks = empty;
+    p.meta.dropFrames = P.dropFrames ? str(P.dropFrames) : '';
+    return p;
+  }
+  function parsePprof(u8, opt) {
+    opt = opt || {};
+    if (u8.length >= 2 && u8[0] === 0x1f && u8[1] === 0x8b) throw new Error('这是 gzip 压缩数据，需要先解压');
+    var P = decodePprof(u8);
+    var p = pprofFromDecoded(P, opt.granularity);
+    p.raw = P;
+    return p;
+  }
+  function regranulate(p, gran) {
+    if (p.format !== 'pprof' || !p.raw) return p;
+    var q = pprofFromDecoded(p.raw, gran);
+    q.raw = p.raw; q.name = p.name;
+    return q;
+  }
+
+  // ───────────────────────── V8 / Chrome .cpuprofile ─────────────────────────
+  var SPECIAL = { '(root)': 1, '(program)': 1, '(idle)': 1, '(garbage collector)': 1 };
+  function cpuLabel(cf) {
+    var name = cf.functionName || '(anonymous)';
+    if (SPECIAL[name] && !cf.url) return name;
+    var url = cf.url || '';
+    if (!url) return name;
+    var u = url.replace(/^file:\/\//, '');
+    return name + ' ' + u + ':' + ((cf.lineNumber | 0) + 1) + ':' + ((cf.columnNumber | 0) + 1);
+  }
+  function parseCpuprofile(input) {
+    var o = typeof input === 'string' ? JSON.parse(input) : input;
+    if (o && o.nodes === undefined && o.cpuProfile) o = o.cpuProfile;
+    if (!o || !Array.isArray(o.nodes) || !Array.isArray(o.samples)) throw new Error('不是 V8 cpuprofile：缺少 nodes / samples');
+    var nodes = o.nodes, byId = new Map(), parent = new Map();
+    nodes.forEach(function (n) { byId.set(n.id, n); });
+    nodes.forEach(function (n) { (n.children || []).forEach(function (c) { parent.set(c, n.id); }); });
+    if (nodes.some(function (n) { return n.parent !== undefined; })) nodes.forEach(function (n) { if (n.parent !== undefined) parent.set(n.id, n.parent); });
+    var types = [{ type: 'samples', unit: 'count' }, { type: 'time', unit: 'microseconds' }];
+    var B = new Builder(types);
+    var rootId = null;
+    nodes.forEach(function (n) { if (!parent.has(n.id) && rootId === null) rootId = n.id; });
+    var pathCache = new Map();
+    function path(id) {
+      var got = pathCache.get(id);
+      if (got) return got;
+      var chain = [], cur = id, guard = 0;
+      while (cur !== undefined && cur !== null) {
+        var n = byId.get(cur);
+        if (!n) throw new Error('样本引用了不存在的节点 ' + cur);
+        chain.push(n);
+        cur = parent.get(cur);
+        if (++guard > 100000) throw new Error('节点父子关系成环');
+      }
+      chain.reverse();
+      // 去掉树根 (root)
+      if (chain.length > 1 && chain[0].callFrame && chain[0].callFrame.functionName === '(root)') chain.shift();
+      var f = chain.map(function (n) { var cf = n.callFrame || {}; return B.frame(cpuLabel(cf), { name: cf.functionName || '(anonymous)', file: cf.url || '', line: (cf.lineNumber | 0) + 1, col: (cf.columnNumber | 0) + 1 }); });
+      pathCache.set(id, f);
+      return f;
+    }
+    var ns = o.samples.length, td = o.timeDeltas || [];
+    var ts = new Array(ns), acc = +o.startTime || 0, sorted = true;
+    for (var i = 0; i < ns; i++) { acc += +(td[i] || 0); ts[i] = acc; if (i && ts[i] < ts[i - 1]) sorted = false; }
+    var idx = new Array(ns);
+    for (i = 0; i < ns; i++) idx[i] = i;
+    if (!sorted) idx.sort(function (a, b) { return ts[a] - ts[b] || a - b; });
+    var end = o.endTime !== undefined ? +o.endTime : (ns ? ts[idx[ns - 1]] : 0);
+    var tl = { si: new Array(ns), t: new Array(ns), d: new Array(ns) };
+    var hitFromSamples = new Map();
+    for (var k = 0; k < ns; k++) {
+      var si = idx[k], id = o.samples[si];
+      var t0 = ts[si], t1 = k + 1 < ns ? ts[idx[k + 1]] : M.max(end, t0);
+      var dur = M.max(0, t1 - t0);
+      var sidx = B.add(path(id), [1, dur]);
+      tl.si[k] = sidx; tl.t[k] = t0; tl.d[k] = dur;
+      hitFromSamples.set(id, (hitFromSamples.get(id) || 0) + 1);
+    }
+    var p = B.done('cpuprofile');
+    p.timeline = tl;
+    p.defaultType = 1;
+    p.meta.startTime = +o.startTime || 0; p.meta.endTime = end; p.meta.samples = ns; p.meta.nodes = nodes.length; p.meta.reordered = !sorted;
+    // V8 自己写的 hitCount 与 samples[] 是两份独立记录：逐节点核对
+    // （V8 在开始 / 停止采样那一刻常有 ±1 的出入，所以只在总差超过 1% 时提示）
+    var hcMismatch = 0, hcTotal = 0, hcDiff = 0, hcMax = 0;
+    nodes.forEach(function (n) { if (typeof n.hitCount === 'number') { hcTotal++; var dd = M.abs((hitFromSamples.get(n.id) || 0) - n.hitCount); if (dd) { hcMismatch++; hcDiff += dd; if (dd > hcMax) hcMax = dd; } } });
+    p.meta.hitCountChecked = hcTotal; p.meta.hitCountMismatch = hcMismatch; p.meta.hitCountDiff = hcDiff; p.meta.hitCountMaxDiff = hcMax;
+    if (!sorted) p.warnings.push('timeDeltas 里有负值，已按时间戳重新排序样本（与 DevTools 一致）');
+    if (hcTotal && hcDiff > M.max(2, 0.01 * ns)) p.warnings.push(hcMismatch + ' 个节点的 hitCount 与 samples[] 不一致（合计差 ' + hcDiff + ' 个样本），本页以 samples[] 为准');
+    return p;
+  }
+
+  // ───────────────────────── 自动识别 ─────────────────────────
+  function looksBinary(u8) {
+    var n = M.min(u8.length, 4096), bad = 0;
+    for (var i = 0; i < n; i++) { var c = u8[i]; if (c === 0 || (c < 9) || (c > 13 && c < 32 && c !== 27)) bad++; }
+    return bad > 0;
+  }
+  function detectText(t) {
+    var s = t.replace(/^\ufeff/, '').replace(/^\s+/, '');
+    if (s[0] === '{' || s[0] === '[') return 'json';
+    var lines = s.split('\n', 400), perfLike = 0, foldLike = 0, hdr = 0;
+    for (var i = 0; i < lines.length; i++) {
+      var l = lines[i];
+      if (/^\s+[0-9a-f]+\s+\S.* \(.*\)\s*$/.test(l)) perfLike++;
+      else if (RE_PERF_HDR.test(l) && RE_PERF_EVT.test(l)) hdr++;
+      else if (RE_FOLD.test(l)) foldLike++;
+    }
+    if (perfLike > 0 && (perfLike >= foldLike || hdr > 0)) return 'perf';
+    return 'folded';
+  }
+  function parseAuto(input, opt) {
+    opt = opt || {};
+    if (typeof input !== 'string') {
+      var u8 = input instanceof Uint8Array ? input : new Uint8Array(input);
+      if (u8.length >= 2 && u8[0] === 0x1f && u8[1] === 0x8b) throw new Error('这是 gzip 压缩数据，需要先解压');
+      if (looksBinary(u8)) return parsePprof(u8, opt);
+      input = utf8(u8, 0, u8.length);
+    }
+    var kind = detectText(input);
+    if (kind === 'json') {
+      var o = JSON.parse(input.replace(/^\ufeff/, ''));
+      if (o && (Array.isArray(o.nodes) || (o.cpuProfile && Array.isArray(o.cpuProfile.nodes)))) return parseCpuprofile(o);
+      if (o && (Array.isArray(o) || Array.isArray(o.traceEvents))) {
+        var t = traceToCpuprofile(o);
+        if (t) { var p = parseCpuprofile(t); p.format = 'trace'; return p; }
+      }
+      throw new Error('认不出这个 JSON：支持 V8 / Chrome .cpuprofile 与含 ProfileChunk 的 Chrome trace');
+    }
+    if (kind === 'perf') return parsePerf(input, opt.perf);
+    return parseFolded(input);
+  }
+  // Chrome Performance 面板导出的 trace（ProfileChunk 事件）→ 合并成一份 cpuprofile（取样本最多的那个 profile id）
+  function traceToCpuprofile(o) {
+    var ev = Array.isArray(o) ? o : o.traceEvents, prof = new Map();
+    for (var i = 0; i < ev.length; i++) {
+      var e = ev[i];
+      if (!e || (e.name !== 'Profile' && e.name !== 'ProfileChunk')) continue;
+      var key = (e.pid || 0) + ':' + (e.id || '');
+      var P = prof.get(key);
+      if (!P) { P = { nodes: [], samples: [], timeDeltas: [], startTime: null }; prof.set(key, P); }
+      var d = e.args && e.args.data;
+      if (!d) continue;
+      if (e.name === 'Profile' && d.startTime !== undefined) P.startTime = d.startTime;
+      var cp = d.cpuProfile;
+      if (cp) {
+        (cp.nodes || []).forEach(function (n) { P.nodes.push(n); });
+        (cp.samples || []).forEach(function (s) { P.samples.push(s); });
+      }
+      (d.timeDeltas || []).forEach(function (t) { P.timeDeltas.push(t); });
+    }
+    var best = null;
+    prof.forEach(function (P) { if (P.samples.length && (!best || P.samples.length > best.samples.length)) best = P; });
+    if (!best) return null;
+    var st = best.startTime || 0, acc = st;
+    for (var k = 0; k < best.timeDeltas.length; k++) acc += best.timeDeltas[k];
+    return { nodes: best.nodes, samples: best.samples, timeDeltas: best.timeDeltas, startTime: st, endTime: acc };
+  }
+
+  // ───────────────────────── 过滤（pprof FilterSamplesByName 口径） ─────────────────────────
+  function compile(src, o) {
+    o = o || {};
+    if (src == null || src === '') return null;
+    try {
+      var re = o.literal ? new RegExp(String(src).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), o.ci ? 'i' : '') : new RegExp(src, o.ci ? 'i' : '');
+      return re;
+    } catch (e) { var err = new Error('正则写错了：' + e.message); err.bad = true; throw err; }
+  }
+  function frameMatcher(p, re) {
+    if (!re) return null;
+    var n = p.frames.length, hit = new Uint8Array(n);
+    for (var i = 0; i < n; i++) {
+      // 有来源信息的帧（pprof / cpuprofile）照 pprof Location.matchesName：函数名、文件名、映射文件；纯文本帧按标签
+      var inf = p.finfo[i], ok;
+      if (inf) ok = (!inf.nofn && (re.test(inf.name || '') || (inf.file ? re.test(inf.file) : false))) || (inf.obj ? re.test(inf.obj) : false);
+      else ok = re.test(p.frames[i]);
+      hit[i] = ok ? 1 : 0;
+    }
+    return hit;
+  }
+  // view：取一种样本值 + 过滤 + 可选合并递归 → { stacks:[{f,w}], frames, finfo, total }
+  function view(p, opt) {
+    opt = opt || {};
+    var ti = opt.type == null ? p.defaultType : opt.type;
+    if (ti < 0 || ti >= p.types.length) ti = p.defaultType;
+    var fo = frameMatcher(p, opt.focus), ig = frameMatcher(p, opt.ignore), hd = frameMatcher(p, opt.hide);
+    var any = !!(fo || ig || hd);
+    var out = [], total = 0, dropped = 0, droppedW = 0, map = opt.keepIndex ? new Array(p.stacks.length) : null;
+    for (var i = 0; i < p.stacks.length; i++) {
+      var s = p.stacks[i], w = s.v[ti], f = s.f;
+      if (map) map[i] = -1;
+      if (any) {
+        var focused = false, ignored = false;
+        for (var j = 0; j < f.length; j++) {
+          var x = f[j];
+          if (ig && ig[x]) { ignored = true; break; }
+          if (!fo || fo[x]) focused = true;
+        }
+        if (ignored || !focused) { dropped++; droppedW += w; continue; }
+        if (hd) {
+          var g = [];
+          for (j = 0; j < f.length; j++) if (!hd[f[j]]) g.push(f[j]);
+          if (!g.length) { dropped++; droppedW += w; continue; }
+          f = g;
+        }
+      }
+      if (p.canon) { var cf = new Array(f.length); for (j = 0; j < f.length; j++) cf[j] = p.canon[f[j]]; f = cf; }
+      if (opt.recursion === 'collapse' && f.length > 1) {
+        var h = [f[0]];
+        for (j = 1; j < f.length; j++) if (f[j] !== f[j - 1]) h.push(f[j]);
+        f = h;
+      }
+      if (w === 0 && !opt.keepZero) continue;
+      if (map) map[i] = out.length;
+      out.push({ f: f, w: w });
+      total += w;
+    }
+    return { stacks: out, frames: p.frames, finfo: p.finfo, total: total, type: ti, unit: p.types[ti].unit, typeName: p.types[ti].type,
+      dropped: dropped, droppedW: droppedW, map: map, filtered: any };
+  }
+
+  // ───────────────────────── 调用树 / 布局 ─────────────────────────
+  function Node(n, parent, depth) { this.n = n; this.t = 0; this.s = 0; this.c = null; this.m = null; this.p = parent; this.d = depth; }
+  function child(node, n) {
+    if (!node.m) { node.m = new Map(); node.c = []; }
+    var ch = node.m.get(n);
+    if (!ch) { ch = new Node(n, node, node.d + 1); node.m.set(n, ch); node.c.push(ch); }
+    return ch;
+  }
+  function tree(v, opt) {
+    opt = opt || {};
+    var root = new Node(-1, null, 0);
+    for (var i = 0; i < v.stacks.length; i++) {
+      var s = v.stacks[i], node = root;
+      root.t += s.w;
+      for (var j = 0; j < s.f.length; j++) { node = child(node, s.f[j]); node.t += s.w; }
+      node.s += s.w;
+    }
+    sortTree(root, v.frames, opt.order || 'alpha');
+    root.frames = v.frames; root.finfo = v.finfo;
+    return root;
+  }
+  function sortTree(root, frames, order) {
+    var st = [root];
+    while (st.length) {
+      var n = st.pop();
+      if (!n.c) continue;
+      if (order === 'weight') n.c.sort(function (a, b) { return (M.abs(b.t) - M.abs(a.t)) || cmpStr(frames[a.n], frames[b.n]); });
+      else n.c.sort(function (a, b) { return cmpStr(frames[a.n], frames[b.n]); });
+      for (var i = 0; i < n.c.length; i++) st.push(n.c[i]);
+    }
+  }
+  function maxDepth(root) {
+    var md = 0, st = [root];
+    while (st.length) { var n = st.pop(); if (n.d > md) md = n.d; if (n.c) for (var i = 0; i < n.c.length; i++) st.push(n.c[i]); }
+    return md;
+  }
+  // 布局：focus 节点占满全宽；其祖先也画成全宽；只输出宽度 ≥ minW（单位：样本值）的块
+  function layout(root, focus, minW) {
+    focus = focus || root;
+    var out = [], anc = [], a = focus;
+    while (a) { anc.push(a); a = a.p; }
+    anc.reverse();
+    var span = focus.t || 1;
+    for (var i = 0; i < anc.length - 1; i++) out.push({ node: anc[i], x: 0, w: span, d: anc[i].d, anc: true });
+    var st = [[focus, 0]];
+    while (st.length) {
+      var top = st.pop(), n = top[0], x = top[1];
+      out.push({ node: n, x: x, w: n.t, d: n.d, anc: false });
+      if (!n.c) continue;
+      var cx = x;
+      for (var k = 0; k < n.c.length; k++) {
+        var c = n.c[k];
+        if (c.t >= minW && c.t > 0) st.push([c, cx]);
+        cx += c.t;
+      }
+    }
+    return out;
+  }
+  // 搜索：命中帧的「最上层」节点的 total 之和（= flamegraph.pl 的 Matched 口径 = 至少含一个命中帧的样本总量）
+  function matched(root, re) {
+    if (!re) return { total: 0, nodes: 0, hit: null };
+    var frames = root.frames, cache = new Map(), total = 0, nodes = 0, st = [[root, false]];
+    function test(n) { var h = cache.get(n); if (h === undefined) { h = re.test(frames[n]); cache.set(n, h); } return h; }
+    while (st.length) {
+      var top = st.pop(), node = top[0], under = top[1];
+      var h = node.n >= 0 && test(node.n);
+      if (h) nodes++;
+      if (h && !under) total += node.t;
+      if (node.c) for (var i = 0; i < node.c.length; i++) st.push([node.c[i], under || h]);
+    }
+    return { total: total, nodes: nodes, hitFrames: cache };
+  }
+
+  // ───────────────────────── 函数表（pprof flat / cum） ─────────────────────────
+  function top(v) {
+    var n = v.frames.length, flat = new Float64Array(n), cum = new Float64Array(n), seen = new Int32Array(n).fill(-1), present = new Uint8Array(n);
+    for (var i = 0; i < v.stacks.length; i++) {
+      var s = v.stacks[i], f = s.f;
+      if (!f.length) continue;
+      flat[f[f.length - 1]] += s.w;
+      for (var j = 0; j < f.length; j++) { var x = f[j]; present[x] = 1; if (seen[x] !== i) { seen[x] = i; cum[x] += s.w; } }
+    }
+    // 同名不同 info 的帧在这里不会出现（帧表按标签去重）
+    var rows = [];
+    for (var k = 0; k < n; k++) if (present[k]) rows.push({ id: k, name: v.frames[k], flat: flat[k], cum: cum[k] });
+    rows.sort(function (a, b) { return (M.abs(b.flat) - M.abs(a.flat)) || (M.abs(b.cum) - M.abs(a.cum)) || cmpStr(a.name, b.name); });
+    return rows;
+  }
+
+  // ───────────────────────── 三明治：调用者 / 被调用者（取最外层出现） ─────────────────────────
+  function callees(v, fid, opt) {
+    var root = new Node(fid, null, 0);
+    for (var i = 0; i < v.stacks.length; i++) {
+      var s = v.stacks[i], f = s.f, at = f.indexOf(fid);
+      if (at < 0) continue;
+      root.t += s.w;
+      var node = root;
+      for (var j = at + 1; j < f.length; j++) { node = child(node, f[j]); node.t += s.w; }
+      node.s += s.w;
+    }
+    sortTree(root, v.frames, (opt && opt.order) || 'alpha');
+    root.frames = v.frames; root.finfo = v.finfo;
+    return root;
+  }
+  function callers(v, fid, opt) {
+    var root = new Node(fid, null, 0);
+    for (var i = 0; i < v.stacks.length; i++) {
+      var s = v.stacks[i], f = s.f, at = f.indexOf(fid);
+      if (at < 0) continue;
+      root.t += s.w;
+      var node = root;
+      for (var j = at - 1; j >= 0; j--) { node = child(node, f[j]); node.t += s.w; }
+      node.s += s.w;
+    }
+    sortTree(root, v.frames, (opt && opt.order) || 'alpha');
+    root.frames = v.frames; root.finfo = v.finfo;
+    return root;
+  }
+
+  // ───────────────────────── 差分（difffolded.pl + flamegraph.pl 口径） ─────────────────────────
+  // a = 基线 view、b = 新 view；按帧标签对齐。返回树：t = 宽度所用的那一侧，b0/b1 = 两侧 total，d = 叶子自身差值（新 − 基线）
+  function diff(a, b, opt) {
+    opt = opt || {};
+    var frames = [], fmap = new Map(), finfo = [];
+    function fid(label, info) { var i = fmap.get(label); if (i === undefined) { i = frames.length; fmap.set(label, i); frames.push(label); finfo.push(info || null); } return i; }
+    var agg = new Map(), keys = [];
+    function put(v, side) {
+      for (var i = 0; i < v.stacks.length; i++) {
+        var s = v.stacks[i], ids = new Array(s.f.length);
+        for (var j = 0; j < s.f.length; j++) ids[j] = fid(v.frames[s.f[j]], v.finfo[s.f[j]]);
+        var key = ids.join(','), e = agg.get(key);
+        if (!e) { e = { f: ids, c: [0, 0] }; agg.set(key, e); keys.push(key); }
+        e.c[side] += s.w;
+      }
+    }
+    put(a, 0); put(b, 1);
+    var T0 = 0, T1 = 0;
+    keys.forEach(function (k) { var e = agg.get(k); T0 += e.c[0]; T1 += e.c[1]; });
+    var norm = !!opt.normalize && T0 !== T1 && T0 !== 0;
+    var root = new Node(-1, null, 0), maxd = 1, widthSide = opt.width === 'base' ? 0 : 1;
+    root.b0 = 0; root.b1 = 0; root.dSelf = 0;
+    keys.forEach(function (k) {
+      var e = agg.get(k), c0 = e.c[0], c1 = e.c[1];
+      if (norm) c0 = M.trunc((c0 * T1) / T0);
+      var d = c1 - c0;
+      if (M.abs(d) > maxd) maxd = M.abs(d);
+      var wv = widthSide ? c1 : c0, node = root;
+      root.t += wv; root.b0 += c0; root.b1 += c1;
+      for (var j = 0; j < e.f.length; j++) {
+        node = child(node, e.f[j]);
+        if (node.b0 === undefined) { node.b0 = 0; node.b1 = 0; node.dSelf = 0; }
+        node.t += wv; node.b0 += c0; node.b1 += c1;
+      }
+      node.s += wv; node.dSelf += d;
+    });
+    sortTree(root, frames, opt.order || 'alpha');
+    root.frames = frames; root.finfo = finfo;
+    root.maxDelta = maxd; root.T0 = norm ? root.b0 : T0; root.T1 = T1; root.normalized = norm; root.widthSide = widthSide;
+    return root;
+  }
+  // flamegraph.pl color_scale：正 → 红、负 → 蓝（--negate 反过来）
+  function deltaColor(value, max, negate) {
+    var r = 255, g = 255, b = 255;
+    if (negate) value = -value;
+    if (value > 0) { g = b = M.floor(210 * (max - value) / max); }
+    else if (value < 0) { r = g = M.floor(210 * (max + value) / max); }
+    return [r, g, b];
+  }
+  // 两份 view 的函数表差值（pprof -diff_base 的 flat / cum 差）
+  function diffTop(a, b) {
+    var ta = top(a), tb = top(b), m = new Map();
+    ta.forEach(function (r) { m.set(r.name, { name: r.name, flat0: r.flat, cum0: r.cum, flat1: 0, cum1: 0 }); });
+    tb.forEach(function (r) { var e = m.get(r.name); if (!e) { e = { name: r.name, flat0: 0, cum0: 0, flat1: 0, cum1: 0 }; m.set(r.name, e); } e.flat1 = r.flat; e.cum1 = r.cum; });
+    var rows = Array.from(m.values());
+    rows.forEach(function (r) { r.dflat = r.flat1 - r.flat0; r.dcum = r.cum1 - r.cum0; });
+    rows.sort(function (x, y) { return (M.abs(y.dflat) - M.abs(x.dflat)) || (M.abs(y.dcum) - M.abs(x.dcum)) || cmpStr(x.name, y.name); });
+    return rows;
+  }
+
+  // ───────────────────────── 时间线（火焰图表 flame chart，仅含时间顺序的格式） ─────────────────────────
+  function timeline(p, v) {
+    if (!p.timeline || !v.map) return null;
+    var tl = p.timeline, blocks = [], open = [], n = tl.si.length, md = 0;
+    var t0 = n ? tl.t[0] : 0;
+    function closeTo(k, t) { while (open.length > k) { var b = open.pop(); b.e = t; if (b.e > b.s) blocks.push(b); } }
+    var last = t0;
+    for (var i = 0; i < n; i++) {
+      var vi = v.map[tl.si[i]], st = tl.t[i] - t0;
+      if (vi < 0) { closeTo(0, st); last = st + tl.d[i]; continue; }
+      var f = v.stacks[vi].f, k = 0;
+      while (k < open.length && k < f.length && open[k].n === f[k]) k++;
+      closeTo(k, st);
+      for (var j = k; j < f.length; j++) { open.push({ n: f[j], d: j + 1, s: st, e: st }); if (j + 1 > md) md = j + 1; }
+      last = st + tl.d[i];
+    }
+    closeTo(0, last);
+    blocks.sort(function (a, b) { return a.d - b.d || a.s - b.s; });
+    return { blocks: blocks, total: last, depth: md };
+  }
+
+  // ───────────────────────── 导出 ─────────────────────────
+  function fmtNum(w) { return Number.isInteger(w) ? String(w) : String(M.round(w * 1000) / 1000); }
+  function cleanLabel(s) { return String(s).replace(/;/g, ':').replace(/[\r\n]+/g, ' '); }
+  function toFolded(v) {
+    var m = new Map();
+    for (var i = 0; i < v.stacks.length; i++) {
+      var s = v.stacks[i], key = s.f.map(function (x) { return cleanLabel(v.frames[x]); }).join(';');
+      m.set(key, (m.get(key) || 0) + s.w);
+    }
+    var keys = Array.from(m.keys()).sort(cmpStr), out = [];
+    for (var k = 0; k < keys.length; k++) { var w = m.get(keys[k]); if (w !== 0) out.push(keys[k] + ' ' + fmtNum(w)); }
+    return out.length ? out.join('\n') + '\n' : '';
+  }
+  function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+  // 静态 SVG：o = { width, rowH, title, colorOf(node) → css 颜色, fmt(value) → 文本, inverted }
+  function toSVG(root, o) {
+    o = o || {};
+    var W = o.width || 1200, rowH = o.rowH || 18, pad = 10, top = 34, md = maxDepth(root), H = top + (md + 1) * rowH + 30;
+    var total = root.t || 1, fw = o.charW || 6.6, scale = (W - 2 * pad) / total;
+    var parts = ['<?xml version="1.0" standalone="no"?>',
+      '<svg version="1.1" width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '" xmlns="http://www.w3.org/2000/svg">',
+      '<rect x="0" y="0" width="' + W + '" height="' + H + '" fill="' + (o.bg || '#0a0a0a') + '"/>',
+      '<text x="' + pad + '" y="22" font-family="Inter, -apple-system, sans-serif" font-size="15" font-weight="700" fill="#ffffff">' + esc(o.title || 'Flame Lab') + '</text>',
+      '<g font-family="JetBrains Mono, ui-monospace, Menlo, monospace" font-size="11">'];
+    var items = layout(root, root, 0);
+    for (var i = 0; i < items.length; i++) {
+      var it = items[i], n = it.node;
+      var x = pad + it.x * scale, w = it.w * scale;
+      if (w < 0.1) continue;
+      var y = o.inverted === false ? top + (md - it.d) * rowH : top + it.d * rowH;
+      var name = n.n < 0 ? 'all' : root.frames[n.n];
+      var pct = (100 * n.t / total).toFixed(2);
+      var title = name + ' (' + (o.fmt ? o.fmt(n.t) : fmtNum(n.t)) + ', ' + pct + '%)';
+      var fill = o.colorOf ? o.colorOf(n) : '#faff69';
+      parts.push('<g><title>' + esc(title) + '</title><rect x="' + x.toFixed(2) + '" y="' + y + '" width="' + M.max(0, w - 0.5).toFixed(2) + '" height="' + (rowH - 1) + '" rx="2" fill="' + fill + '"/>');
+      var chars = M.floor((w - 6) / fw);
+      if (chars >= 3) {
+        var t = name.length > chars ? name.slice(0, chars - 1) + '…' : name;
+        parts.push('<text x="' + (x + 3).toFixed(2) + '" y="' + (y + rowH - 6) + '" fill="' + (o.textOf ? o.textOf(n) : '#0a0a0a') + '">' + esc(t) + '</text>');
+      }
+      parts.push('</g>');
+    }
+    parts.push('</g></svg>');
+    return parts.join('\n');
+  }
+
+  // ───────────────────────── 资料库序列化（localStorage） ─────────────────────────
+  function pack(p) {
+    return { v: 1, format: p.format, name: p.name || '', types: p.types, defaultType: p.defaultType, frames: p.frames,
+      finfo: p.finfo.map(function (i) { return i ? [i.name || '', i.file || '', i.line || 0, i.obj || '', i.nofn ? 1 : 0, i.col || 0] : 0; }),
+      stacks: p.stacks.map(function (s) { return [s.f, s.v]; }), meta: p.meta, warnings: p.warnings,
+      tl: p.timeline ? [p.timeline.si, p.timeline.t, p.timeline.d] : null };
+  }
+  function unpack(o) {
+    if (!o || o.v !== 1 || !Array.isArray(o.frames) || !Array.isArray(o.stacks)) throw new Error('资料库条目格式不对');
+    var nf = o.frames.length, nt = (o.types || []).length;
+    if (!nt) throw new Error('资料库条目缺少样本类型');
+    var stacks = o.stacks.map(function (s) {
+      if (!Array.isArray(s) || !Array.isArray(s[0]) || !Array.isArray(s[1]) || s[1].length !== nt) throw new Error('资料库条目的栈格式不对');
+      s[0].forEach(function (x) { if (!(x >= 0 && x < nf && Number.isInteger(x))) throw new Error('资料库条目的帧下标越界'); });
+      return { f: s[0], v: s[1].map(Number) };
+    });
+    var p = { format: o.format, name: o.name, types: o.types, defaultType: M.min(M.max(o.defaultType | 0, 0), nt - 1), frames: o.frames,
+      finfo: (o.finfo || []).map(function (i) { return i ? { name: i[0], file: i[1], line: i[2], obj: i[3], nofn: !!i[4], col: i[5] || 0 } : null; }),
+      stacks: stacks, meta: o.meta || {}, warnings: o.warnings || [], timeline: null };
+    while (p.finfo.length < nf) p.finfo.push(null);
+    var lm = new Map();
+    p.canon = p.frames.map(function (l, i) { var c = lm.get(l); if (c === undefined) { lm.set(l, i); c = i; } return c; });
+    if (o.tl && Array.isArray(o.tl[0])) {
+      o.tl[0].forEach(function (x) { if (!(x >= 0 && x < stacks.length)) throw new Error('资料库条目的时间线越界'); });
+      p.timeline = { si: o.tl[0], t: o.tl[1], d: o.tl[2] };
+    }
+    return p;
+  }
+
+  // ───────────────────────── 数值格式 ─────────────────────────
+  function fmtValue(v, unit) {
+    if (v === 0) return '0';
+    var a = M.abs(v), sgn = v < 0 ? '−' : '';
+    function f(x, u) { var s = x >= 100 ? x.toFixed(0) : x >= 10 ? x.toFixed(1) : x.toFixed(2); return sgn + s + ' ' + u; }
+    switch (unit) {
+      case 'nanoseconds': return a >= 1e9 ? f(a / 1e9, 's') : a >= 1e6 ? f(a / 1e6, 'ms') : a >= 1e3 ? f(a / 1e3, 'µs') : sgn + a + ' ns';
+      case 'microseconds': return a >= 1e6 ? f(a / 1e6, 's') : a >= 1e3 ? f(a / 1e3, 'ms') : f(a, 'µs');
+      case 'milliseconds': return a >= 1e3 ? f(a / 1e3, 's') : f(a, 'ms');
+      case 'bytes': return a >= 1073741824 ? f(a / 1073741824, 'GiB') : a >= 1048576 ? f(a / 1048576, 'MiB') : a >= 1024 ? f(a / 1024, 'KiB') : sgn + a + ' B';
+      default: return sgn + (Number.isInteger(a) ? a.toLocaleString('en-US') : (M.round(a * 100) / 100).toLocaleString('en-US'));
+    }
+  }
+
+  return {
+    version: '2026-11-02',
+    parseFolded: parseFolded, parsePerf: parsePerf, parsePprof: parsePprof, decodePprof: decodePprof, regranulate: regranulate,
+    parseCpuprofile: parseCpuprofile, traceToCpuprofile: traceToCpuprofile, parseAuto: parseAuto, detectText: detectText,
+    compile: compile, view: view, tree: tree, layout: layout, maxDepth: maxDepth, matched: matched, top: top,
+    callers: callers, callees: callees, diff: diff, diffTop: diffTop, deltaColor: deltaColor, timeline: timeline,
+    toFolded: toFolded, toSVG: toSVG, pack: pack, unpack: unpack, fmtValue: fmtValue, utf8: utf8, cmpStr: cmpStr
+  };
+})();
+if (typeof module !== 'undefined' && module.exports) module.exports = FL;
+
+</script>
+<script id="fl-data">
+/* 内置示例：全部是本页作者在本机实录的真实 profile（Go 1.25 runtime/pprof、Node 25 --cpu-prof、Python 3.14 SIGPROF 采样）；文件路径已换成中性路径，数值未改 */
+var FL_DATA = {
+ "goCpuBefore": {
+  "name": "Go 订单服务 · CPU（优化前）",
+  "file": "order-api-before.pb.gz",
+  "kind": "gz",
+  "b64": "H4sIAAAAAAAA/5x9d3iUxfb/90xIGN6QzcmGMoDgy2t7Wb2JrF7L1VtEBVFRFPst3GXzJqxJduPuBoj3em/oVXoVkN5BepHepHekCEhXFJReBeT3nJmtyRLv8/uHZD4zc+bM6WfePA9aJQ7ItEo8CSvZq2mpwJIqJadU5lW0VEzC0q6TbBG0qkIBS2ccl2vTbOmYYc+sVj2K1tRsNWqKWrXr3FO33r16/ehEpqYREeM+SaMqlo4Y8bS9lob3P/DgQ2YDx8Nlydu0So/87iET62Hpui59IEo4OSv70YbO6ELUKj9mPP77J+KQJ596+g/PxB3+7B//9Oe/PNco5oQaWtrzL7xYr3GTF+M5ra5Vfanpy6/UKwPX1GyvNnvt9eZvlKVj05LfbBHP0FvxK6prVd9+593oRoalB9ZWIfi99z/4698+yH604d/j9v8jfj9qlVvGI+layj9drWK4q6tVU+Jx51i5H2TntY4XUqameaLSD51v05I/zC8oNNGOpVNPv223a1W8kTXRjb7oRg1LV+/LttfWMoo+8gfMYHGtNhFjCW2oo9nbtiv5ODwbT62alvqvf3/yn/+WQnuIokJL7wBSDmXZrq5V7QidoDN0iduQqWldoRvE66ealtodysm4pmbrAYlI61rNntALzE+hN/SBvtAPytpBNS21PwwAcyAMgsEQRjU+BGIsaCgMg8+gjAbTtZThMAJGQsw9PofylpaupXyYXzAKTLRh6dWjjUiwo6HZGHjt9XfLmVkNLW0svFPe/FCrPA7ibOFercZ4mAATYRJMhikwNZH8psF0mAFlNP0FzIR44hkanwXl+JgNc8oLBrXKc+P5SNdS5kEsUENLmw/vlL9ahsYXQDmXWQiL4Eso54SLYQmUdxolnRjSodhVQ0tbmujIdC1lWRxvtTRcDisSmkptLWMlrCpjoSH7qqGlrb7LldZAOUWtjRdQHc3+FTR7bR2sh/J6zdS0DeX0UUNL2wjvbIKyZl5DS9sMCUJMXa3aFtgK2yCxTd2jZW6HbSA5KD8rtPQdsBMShMh0LWUXlLnJbrib19fUbF+TJsuRqa1l7IG9sE8eUn5uP3yT+PhqWuoBKGcC1bWqB+EQJLjjt3D4bqQyNH4E4mVWW8s4Cne/yjE4DifgJHwH30Oc+ZyCOj/Aj3AazsBP8EQctz8n5PZsAm7T+Dng0cBhaLXOwwVo+vJFuASXE1+hulb1SgJK1bTUq3ANrsONWGZqafgL3IRbCbRxj5Z5++6CqqGl/Qp3oJSVF2B7Fp9ta2hpHVgpK0fiXq1GR1bRTWpqtk4skXRrarbOLFGuVnaf0Hm6sLLOY9eqdGXdmKtMSOrOerBE6unJyoeZmpqtF/uU9WZ9WF/Wj/VnMXQGsIGsXHVSQ0sbxAazcjmvjmYfwoayYSyRW+pazc/YcDaCjWSfs4R2eI+WOYqNZneX4xg2liUU1zhmSx/PyldtE9hENolNllebwmLsbyqbxqazGewLNpOZs9hsNofF8yK09LksYWVUXas6LwEXdbVq81nJAraQhSqI+MqvulZ1EfuSJfDjxXe/sl2rsoTVuedGGcej8LKULWMx6P1aneVsBVvJBsEqtpqtYWvZV6yOsY5VLpMN1yeSxga2kW1im+/OSA0tbQtTPhSHo1Z5K9vG4u85hm1nCQjsYDtZuXK1tpaxi90lWNbScDf7miVKXvdomXvYXraPJSywdK3mftZuBPuGHQgbWhlt1NLwINuWMHvIsnZTucAjtPRD7Fu2Fw6zI+xorOjra+IYO85CVdcJdrK8X9yjZX7Hmo2B7xM6Rg0t7RRLkG0NrdYP7Ed2moWqklXsDHu4jMs8qNX9if3MzrJzzDzPal1gEyD5IkvofJcqNvj6mrhcdkX5KvhK9KZX42NOTc12LaGu6mj26+wG+yWsrbjQk6Hxmyye1fu02rfKe2cZVupq1W5HWfmV3Yl3B0OrVZr0Gx5eU7O1T+qQ1DGpbCEpPczolBRvjXU0e+ekLkldk7ollfcPoaV3T6LuMJHn9EjqmUTtS9zFMzWtV1LZNuNBre6nSSUf907qk9Q3qQLWda1mv6T+SQOSBiYNSgo1millw83gpLGsrEvV1aqpUjxxbVRDSxuSREZeJrrU0exDk4Yl7U2owhpa2mdJiYvF4Ukjksrkh5FJze5yOLUTSQmruVFJdw1M1bWqo5PGJJVNrWl8bBKPy2MbE9WzdTT7uKTxSe/frU2bkPR+ObiuVm1i0qSkuxh0bTsHLC1d3Q9Faemw/mgmPwVGBgcEMWvFkX5oJHPAuQQxBDHu8joJMdycZmTwJASx/icFJeGWqkYGr0SrenwroUo4ixvIkxHEqGsEVeLJGDQET0EQPXddkotS8DIzknll3FnJELwygph767Kc4Tg02UjmVXAFGMg5gljSo2t/oqJhOyODVyGkHyHJPBW7EI8aghgwSEFVcRBBqQii65SdkmIajmSG4FXpkJ3h4y9GjkeehiD6rjoiWbVhKyOD22j7EHWfdJwEhuDpCKLPUAUhHgcjmWfgKeIREcS+wUfldju+aiDPQBDXxl6USCamGcjtRHCGQqphUwN5JoLYPloh1bGugbwaglh4vYu8aw18w8jg1UlifcJ37UgXq4EgRkzdJtmoiecJqokgZs5RkMANzMjgAkGsWKKgWrg6ycjgtRDEmatKa7Vxms3I4LXpSscUVAcHpxoZvA6CuNk9rMip3Mjg9yCIju0PS+ge7Evk6xL5wVclVBePJxsZvB6COPL1FQnVw1u06l6ygPUKuhcXkqh0Ut7KK/LSOn5k1OT16cBPlYLr41/kRdvTrQwEMe2KYs7A3WmG4PcRwYiZDImYSQa/H0Gs7LJVztyHN8lKH6DLnd8ioftxLF3uQQSx+0cFPYAXNCODP0S6O6CgB/FGZSODm6SGU+q+D+FEukkDYvsbtcrES7TKQbysWS+hBvgTMfEwgph0OuwXfckvHkEQm3fsl5ADRzCjLv8dglhzeosUwcNY36jEH8G3JUO3iKEsOmrjNbnjdzg8xcjg2aTfc0raWXiOGHqUDOy0grJxH0ENSU3HFPQo7iSGnHSTiKt0JugxBDE54qgbuVGTP07e01dBDcl8KnEnPmog/z2CuHRG2eNj+ISB/AkEcaqXUlYq/tfI4E8iiFt9L8jNj+MvZAlPESMHFfR7nEMm9DTZ3uLzEnoCz5El/IGCyB1F/En80Mjgz5B2IsbeCYya/FkEcXL8ZSmrp/BNI5k/jZsrGRn8j3TGYGUJf8DTZN9/IimNVO79DE6jy/4ZQdxZpqBncRit+gsde0BBf8SbFHyeI1neUbT+hPvIqv6MF4nHRqSqSPApMTL48xQpdimT/gseJbm/QCreEzb8rnTIi8Rdp7B73CGhNCYhn1GrnsPZdIcmZKCRjReJ1ksI4uj1gxJqhBspajUl/ziptPM8nqeo9QIuTTYEf5mCw+1TcuZFXFjJSOaNca1mCP4KsRQ6vwku1yQb3VMM5K+Sn6xSQeclTDWQN0MQ5zYrpKkMTK+RJ49RyMv4lCH467RmlZLQK8RWMn8VvyCGm5NiR6uZZjiHrvUGRbp+YdXMTTKQv4kgftqmAuRr6DYyeAtyleNhY91HynoLQYz/Mqysn0mOb1M6WqhIvY4/0Kp3iPpqBb2Ks4mHd8luIjxI0b6HIDbM/UVCzZUJvk/+ukj51Rt4nVZ9gCBOrFbQm3iV1PRX0skpBbXAzuTof6MrHlbQW3iaHPLvZBefhi21lPj6B7G6Msz9TuK+JYIYGA/9k8xn8nUJvY3fko25KMyNvC5l8w4+YCBvRYa8Ihwj840M7iZ99lI28C7+QNEth64zSin/PVxN0dwiS7nynYTex4UkmlwKAJvDwWQc8Z6HIIYvUdAHuJ4u3ZoO3BpeNZNWeRDEokghMJ9u+CGt2qdC2V/xIuk1H0EMubhdcvo39BoZvIB46LFLLvq74rSQYsaNDRL6B84n6l4EMS9SU6ymVT6CIgfOowOLEMTXY1QcbonTSRcfkeD3fCOhf6q05qf7HFOQC8+RXgOUWQcdkFAr3ELaD5K9bVa03BT2Mngxmc3icIpcQbTaUHA4Ew7gy6oagreVpYG6dQ4OI1eysAsF6nYUNmaomVyyMcFLKJnsVLzk4dwqRjJvjetIER8T5X1hxtsTl/9CENd/+TaUVg/Sjf9Nxt27VNqVB0/Txk9IeqsV9CEOoY3/oTpmaXsJ5WMPEuh/ifxKBRXg9CpGBi+lWm7SDyrAFmK2kcHbg7SjcPj+j2HnHQhaNF3p3otbKhl23pGwEX0UNR9uSTLsvBPIgkhhRbgEjFq8M2F9pinsI6pOkrlf2V0XmuoYOfwRw867EnR0yA15UgCXVzHsvBthS25eCQXKKcmGnXcnbOnIsDsPJo56EDZ+bdhTz9K6noT9tG+7xIJ4GQw770XY3CWHJFZMZmvnnxJ2Zo9a14Ysy857y3X7lDm0xaWaYed9CFuzUXlUO7xSzbDzvoQdXKewEvyBsH6S3o/hSD6Z+OtP2LxSVX58jPPSDDsfQNj6gapm+BfeqmrU4gMJO9JVYf/GY1WNZP4Jrkox7HwQTd08u1lO/Qd7ktAHE7b9R4X9F6czo478/iFKZ27sh0YK6fhqJSOFFHsg1bDzoTS5IRIV1tqMTD5MKv3yd3JDB8CezLDzzwg8sSns8qNTjEw+nLAfNuyRCzsCjqxkZPIRBA64fUiCnQBvgpEpX0jFgJEd+xPYGfAoXeBzydivYV1+lWxk8lHyUhMVs10AZ5BhjiZwfyQHoZHBxxA0M5KEPjHsfCxBO+aHY/9sOnccYedXX5fkugLuZkYmH0/g6H3rJNgNsBcpcwKBwyNlzjhu2PlEeedIHduNNk8i7Nr3v8rN3QG3pxuZfDKBPb9VYA/AcyTGKVKdN29LsCfgtspGbT4VZB3cXgqiF+D1FOkdk8nGpsle6pS6wKeAjxiZfLq853eXJZHegLvAqM1nSEe9rcA+gIdAlrVr6MZf0Fy38ZfkXF/AUlLeTMnKvHBimU+mMouwTpFksyPJyOSzCRu4ebvc3A9wALnNHKmSiKmuTjMy+VzCtqyJyHU/ufA8Am+NCCem+w07n0/Q0IUxOrHzBVJPc8MHTyFmFhL2dSTNfU83WUTYkB1X5Bn9AWfQTb6UBl4aLpTOJRu1+WIZJ746LrEBgB8bKeQ3C+mwJVKFX4Sj1QHyvaVSzgvCTK2kOLqMsF6RpHqfUYcvl5L89Xt5/iDA4+Q3gwFvUBxaIemuCceXU2S7Kwm7vO643DAQKOTZ+SoZOGKrCDtfLYNThIFltG6NtNTZYal0IXWslSpaF5HyEZLyVwQeWh12hqpGHb5OBqJlyh6GAC5mRgp5dkeS2HppLJH6Zy4Z8QYZCaNGMoAWbpQi+DLM1SHiahNh+waES7NdpKvN0usj3G8kXW2ROt2uOBgGuJ1O2Spj19aLEvwMsDcJept0gE1hx/UbmXy7tJvtkXUjieIOGZjWXpXgcMBfKht2vlN6w95wAdyDMvAu6c0x5ZCd75Y3mRlOtBu5kcm/lsui1jSTrrxHCr1b2OmvVjYy+V7Cdl/ZJxeOABxP3OyTIXFahJvlxM1+AlcODuenOVWMTP6NDCMTIgsn0cIDMmVGktFRMpaDUgW3lQpGAh4jcR+S2S0i7p1kBN9KM5x0TC78XErHzg8TOGpo+OivyCSPyIURv5pAujoqjWWXqiJa4x1SyzGpvzsnJMFRgEPpgsflrbuclOBowE208oS0q5EKHAMUpTL5SQLvDFXgWMBRlNi/k2nvUheZ2McBOo1kCrMvG3b+PU2d6h0ufTsQ+6dkWDgafka4phmZ/Aep297fSroTAO9QnPlRyr2PAicCjrQZdfhpCZ5fLcFJgEvJ3CcD7qb0c0ZOXl8jJ6cANdAZ/CeZfn6K9qV2/rO0h5VhnZwmnZyVCr0V0ckuuu85BUby2SW6wHkZKNevkbunAtYy7PyCTPM3wq3YScq9F6Vc9qgYMg3wrGakUEzvR+K9JJV4QJnkDMC1pO7L0l0/jxjQUUq0VwicXno5zFhf2n5VxuBe6yX4BeAV4vaalOJwBc4EKrrt/Lr0uUgeG0oiuSGj6/mwSJ4yMvkvMn7NV+FmFuA0cpGbkmCkfz1G2C1501/CiXsSye42YWujZjqduPlV6vnLCMUFxPcdGRG3qWvPBhxNJEsZJZnIY1AHYrs9YZ26h18KptIxHZhsDCObJ9LmjgSWfqfcWLa6mbwTYUujVj6Q1NaZwA27w5fZQCrqQtisCUrpcwBXMRUTOxCvXSXlQ+oCcwHnkIq6MflcocB5gNOSjNq8uzxvS1wSmg84gfjrQXN9VscUo7V4T8L6TlPYAsDHZH5aRibci6YGntwl6S8EHFXbyOSfSgHN3y3BRYBndSOT9ybwxEoFfgl4oL5Rh/chcMBqFcAWA56pb6RQHvyewmBfmlyxVjnUUqBSPZP3k+C8wxJcBniGrt5fMh0t2Y6QIQ4gcPJYZV7LAT+n/DuQwH1HVD21AqiQI6/+mbx6EM1dv35Hzq2U0dTOBzPZDYe7liOySiVs9GGVBFZJ40uhRDmfeBlKk0sOqck1IaceRuDcDeFM8r6RyT8jaMu4/XLdWsDZxN5wKY/pCvwK8NcUmRVmkDhG0NyppWpuHeChKkYtPpLAM6tV+lgP8hFpA6CLSlZ51RPh3vEyqWsUYYeunJI0NgJuJPMbTeDBbyK+vZrkPIbAedEcNIeMY6wURsSZRlB7PY6wWyvDz8t/NzL4eILWR56MXzEy+QTpC/2+keQ2AS6gG00k8EhvBW4G7EPgJCmCU8qitgBuJouaTOC5ORGLWkQWNUWawo/KFLYCdiO+pxI4YoZS8DbAr5hh8GmSodJNku/tgPcZKZS0O5PedgIOpY3TpbjOq2p+F6haYYaU+fJNEtwNuIHs5AsCJw1S4NeAc0iIM6UJ9lfgHsCvSNyz5F16KnAv4FoCZ0tbuKQ43Ac4i/qpOZLDyMv0UGrh50o3irQStGyetOnbYQWsppp3vvTOeeEKohsJcQFhw7coye4HPEqmvJDAhZGXg83cqM0XSe11Uln8G8ACI4VKgCmyfpWXj2T43SSlxXJ91IC2EQdLCDx/OJwiv6MeZalkPvIoKl/yl0nBnY2N48ulusYqYRwEnAqGwVfIddNVFX8IUBgpVFoMBSOFqonONQw7X0lrtvdVzeYnuJcku0o6w+gtktgRwAVU0KyWet2qnrKPAr5tZPI10kdXqtBwDHAR6XqtDFBbFCvHATfQ7q8I3By52nHN0Pk6uXCzKl5OAD5rJFOlkSu/uCwmRtbTirUdd4dtuEMdKmQJ7HXloAS/A/yCosVGAqedVDHue6DEUYdvkkH7vBLyKcC5VM3/ALiGaG+Wn6yiGpA2sIXAHZHnh2VUY22V551T6vsR8DmqaAkbFXnzbWPY+XbJQaTjH01n7CDsZDeVw08DHiZz2CmFNk7RexqXU3ewS6ovYrbS9nZLG92gWoszgOvJ9r6WKo2klQvkMnsIu3xMVWc/Aa6nU/ZKRxh2Ui4cC1hi1OL7JNcz1OafAZ+S+WcHMbBfhuKVyvgt7K8Ztfg38kYTD8fGxLOqwDsgJXs8LiYelJfdFinpx5ExHJLZd4cyhnOAfUmi30p3jvTdY+i2hwmb+au6xHnAVXTbI/K2V9QlLgDWNQQ/Kq3mtCo7L1IMUuVdJj8mHXiEsoFLgJPIf45LW448AF0ipk5IY9xxVC68DNidytmTkoHuKkFdUeWsB5dQ1vmOpsbHtF8Z/HuCrkVamhIqcKUO43upHwhb9Jl6PrwK2NSow3+UF7iwVZ5+DfAURc/rof7itAx/HcON924KVmdkCFgd/oj0I4WAn6S+lqpsAViVqlvpoEfVE+oN5aBnJbnJ6qxfAFdUp+pWpotl2yR4E3AHFV7nVVYMP3RupyB1QQa6A5FHkyUk0Ivy5ivCveUgWdVKAd1RMX8n4HkCL0v7LQNekSHu84iO5lAiuCoZOhApriYTQ9ek262IKaAy+XWp4aXKSG4BbiIub0irnqjA24DbSMW/SHB4pGMZQ9q4KYvLpeFu6SbtviWdZ1okzw2gwuS2TNohS/pVRmfJ7WTi9lepv7nn5eQdwDlE+g6BPZeEw/QFMOrw0iRquqYq0qWM+it5hGwE2svJdapIas9wITHTgcBx6yPgEhJERwI3Dw4/qk6n4zoRtiKSv9aQcDoTVrpNpfEODCdSQOsiv8L3UE1LR4bPGHbelbCe5xTWiWE7w867EbbmVpjgEvnGStityIff0alU1hK2ckj4+/YJYqYnYXMj74lrbEZt3ouwWT+ru3dmeLuSfCw/XtWozT+luQ0zyhZncygM9Ka5E5NUpu/CcAS1530kc9eVJXVleJ003JfASxcidcZhAvsRuHSCMu1ujIrGTN6fwCHjFdid4c+0cgCBXQ8oz+jBcDOVugOTZM+owJ4Mu5FLDiJw4cnw9+C+ZAODCRu9PVLVTaVzhhDYbWck1g2rQmWs1MoPyhB7MexEeh5G4L5oxP5KvrYSeDLyljmHuBxO2OQbkc52HIWjEZL1H8PP5o8aGXykXBcToez8c4J2rAz76XDicBRha6M5bwupebRU880T6gmSoYuq1iT5vSnyCjCJmBkrdR9tGX4mkuPk/aapHrA3o/7ZzscTeGpW+MvaZ9yw8wmE7Z8Sxq5VNjL4RMnjinDNW4/KVintxREXX5bk0DhgikjRK5upjlTOkAuuVzGXpjlSeRJqQtOrmKVVHam8EqaKVL2KebWyQ+PJWFVU1dNMy5HKU9AmbHq6eYE5UnllRIF6uvllJUcq55ghMvR0c3CyI5VXQbuw65lmT3BoXMNqoppe3fQ5NJ6KNUQNvbr5iSOVV8WaoqZe3ewOjlSehkIIvZY5kHbYsLaordcx6zpSeTreI+7R65qDaRViPVFPr2vuoUEG3ivu1eua39MWO+pC1+ubLzg0nomGMPT7TM2h8Wp4v7hfv8/8o0Pj1fEB8YD+oCkcGq+BD4mH9Orm645UXhNNYeoNzJNEVaBDOPQG5gC6YS18WDysNzDnJzlSeW18RDyiVzHH2xypvA7+TvxOr2Ju0Byp/B7MEll6mjmbCNTFbJGtP2oeIqnUw4aiof6oeYao3YtO4dQfNWcQwzo+Jh7THzVzHRqvj4+Lx/Xq5p8cqdzA34vf61XMXaSU+/AJ8YT+pHmDBvfjU+Ip/UlzFOnuAXxaPK0/aW6o4kjlD+IfxB/0J81LlR2p/CF8RjyjP2veIWZM/KP4o/6keZZmGuCfxJ/0P5vf0owD/yL+oj9nDmcOjT+MjUQj/XmzrkPjj+AL4gX9RbOFI5X/DhuLxnoTs1uKI5Vn4UviJb2JeZbuko1NRVO9ibmVBo/iy+JlGhDhhviKeEV/1VxPhJ3YTDTTXzOzHRp/DF8Xr+vVzd87Uvnj2Fw0198wp5C1/B7fFG/qb5g3icknsIVoob9h/kxCehLfEm/p1c13HRp/Ct8Wb+vvmG86UvnT+K54V3/PXEQy/gO+L97X3zNnkJKewQ/EB3q6OZ5YeRb/Kv6qp5u3ick/4t/E3/R08xLt+RP+XfxdTzf30vl/xn+If+iZSv9/wZaipf6ouZr2PIf/FP/UHzVvEulG6BIuvZW5kWaeR7dw663MczR4AXNEjm6ZS4jai5grcvU8cwGd0xhbi9Z6nrmKzKQJeoRHzzOXkWG+hB+KD/V8aaRNsUAU6PnSSF/GQlGoe02nI5W/gj7h04tIlKn8VfxIfKQXmX1p0Az9wq+/Z/av5ND4axgQAT1ouh2p/HUsFsV6kdmJ7tIc24g2ehPzIgn2DWwr2upNzOPE15vYTrTTm5j7ieMWWCJK9Cbmr6Tlt/Bj8bHexNxLg7fxX+Jf+r/Nb0gZ7+An4hP932Z9Ryp/F/8j/qNXMU+lOary9/C/4r96KZjLbQ4bfx/bg2gPegcwpzNHGv8AO4LoCHoTc3WyI43/FTuB6AT6c+aFJEca/xt2BtEZ9C5gfuBI43/HriC6gl7LPJHmsPF/YDcQ3UDvDua8FIeNt8QeIHqA3hPMAZUdNv5P7AWiF+ifgrkoyWHjLuwNorcc/1TJYeOtsA+IPnK8kTts3I19QfSV47U0zsF+IPpJeoM1h43KdRD95fh2FYeN5+IAEAPk+Gc6Lw8Hghgox3NovjUOAjFI0rsFDhv34GAQg0EfAuZs5rDxD3EoiKGgDwOzO/GTj5+B+Az04WC2p/sU4AgQI+R4UhVHVV6II0GMBL262cCRxr34OYjPSXJLaLMPR4EYBfpoMDfTZYtwDIgxajMd/hGOBTFWjjvQ2I/jQIyT4wWkiACOBzEe9EcV70GcAGIC6BPBXEPLi3ESiElyPI/GbXAyiMlyPBEcabwtTgExBfRnzb4kqnY4FcRUILX/VM1h4yU4DcQ0Of6umiONf4zTQUwH/UlzdJojjf8LZ4CYQcNjVR1p/N/4BYgvaHi0qsPGP8GZIGaCPgvM63S1/+BsELPl+HuS439xDog5ctyXxqWAc0HMBd0yL1dypPP2gPNAzJOGMjDVkc47AM4HMV9aYSlzpPOOgAtALAB9IVCgSOedqMcWi0D/EsxL4EjnnQEXg1gM+hIwD6Y40nkXwKUglkqi40hiXQGXgVgG+r/N3cRFN8DlIJaDXsW8WMWRzrsDrgCxAvSVYC5Od6TzHtR8iVUSGGdzpPOegKtBrJbATTqjF+AaEGskcI0s4lPAtSDWgv4VmI840nlvwHUg1oG+HsxNxGYfwA0gNkjgG9JTX8CNIDaCnm6eogX9ADeB2AT6ZjAHJDtsVFRtAbGFFD+V2B4AuBXEVtC3gVniSOcDAbeD2C7H84nCIMAdIHaAvhPMYyTewYC7QOySyj1DkhgCuBvEbtCLzEVEcijg1yC+pvFV4mkY4B4Qe2i8jeY/A9wLYi/o+WZXmh8OuA/EPmJpP4lhBOB+EPtB/wbMzrRgJOABEAdAf8/cQCx9DngQxEHQD4E5khaMAvwWxLegHwbT60jnowGPgDgix0tI4WMAj4I4CvoxMCfQjrGAx0Ecl8AzDhsfB3gCxAk5buhI4+MBT4I4Sc7X2GHjEwC/A/EdKfc2haKJgN+D+J7GI0iVkwBPgTgF+g9gfkl3nAz4I4gfQX/V3EVCmwJ4GsRp0M+A2ZUWTAX8CcRPoP8MZobDJj9ogDgLep75s+ZI59MBz4E4J6XcgzbMADwP4jxJaRaZ7BeAF0BcAP1iyGRnAl4CcUkCB8hvZgFeBnGZLHQYUZgNeAXEFaLwOY3nAF4FcZVsZTmN5wJeA3GN1s+k/fMAr4O4TuOJdOJ8wBsgbkjTGEcbFgD+AuIX0G+CmeWw8YWAt0DcooDdrbbDxhcB3gZxm8bDdYeNfwn4K4hfabykvsPGFwPeAXGHxqfrO9L5EsBSJkqZ3p6Z1yjCLgXswEQHRhuIg2WAHZnoyPROzNxEel0O2JmJzozufJ7kvAKwCxNdJLAq2ZHOVwJ2ZaIroyjcgzS/CrAbE92Ynq8cYDVgdya603gujdcA9mCiB4070xFrAXsy0ZNRmJ9FFL8C7MVELwncJntdB/gpE59KYD85xHrA3kz0ZnofZjZz2PgGwL5M9JXjvzps1CH0Y6If0/PM5URxE2B/JvrLa83kjnS+mfplMUACZ0kQWwAHMjGQBDGbJLsVcBATg5j+rHmUmNwGOJiJwUwfwsyedIvtgEOZGMr0Ycw0HOl8B+BnTHwmF3SiHTsBhzMxnOkjmLmdgF2AI5kYKYFxZE+7AT9n4nMJTCKT/BpwFBOjJPAp8b0HcDQToyWwlqS/F3AME2Mk8CWZ0D7AsUyMZXoVc2yaI53vp1ZLjGOUIztRHvkGcDwT45leZH7osPEDgBOYmMD098hE0/lBwIlMTJRsDyftHQKcxMQkea+ajnT+LeBkJibLBUNowWHAKUxMYfqT5uXqjnR+hJpIMZXJbEGiPAo4jYlpTJ/OzDcdNn4McAYTM5j+Z3MQETgO+AUTXxDLyys70vgJwJlMzCQOn3Gk8ZOAs5iYRRz+w2Hj3wHOZmI201uZk0ju3wPOYWIO0y2qZm3ydZSJuaTqOZS2fwCcx8Q8Gq+u5EjjPwLOZ2I+0zPNZx02fhpwARMLiPpXdP8zgAuZWMjI5VaRUn4CXMTEIqZ/ycwTxO7PgIuZWMwocD3psPGzgEuYWCJt7XmHjfrlpUwspevspSLnPOAyJpYxfTkz33PY+AXAFUyskONaDhu/CLiSiZVyTIZzCXAVE6ukQ02iVH8ZcDUTq5keNDsSA1cA1zCxRjpYQ4eNXwVcy8Rapn/FzJcc6fwa4Dom1snx93Sn64DrmVjP9A3MnEwauQG4kYmNTN/EzJcdNv4L4GYmNpMKl1V32PhNwC1MbGF6A3M7RYFbgFuZ2CqvPI+A24DbmNgmgY3E06+A25nYThSWkhbuAO5gYgfT3zDHkBRLGe5kYqe0mo3EU3uGu5jYxfTdjNo7G+/A8GsmviYH60oUOjLcw8QeRvGbwnUnhnuZ2CvHeQ4b78xwHxP7SO83yRO6MNzPxH7pCTKpdWX4DRPfSOAw8dCN4QEmDki59CIeujM8yMRBCfxAK3owPMTEISmoHuRvPRl+y8S3EjgjCwaGh5k4LK3hLJnfpwyPMHGEUeJ7gwoGhkeZOMooU24F5/85KwdchUUFVsCZ7PYVe4POJHdRsTPV6/L6Apbb580JOKtnB/xtsn3+HMv/O1eRJzvP19bnz3fe4y/2Bj2FVlahVegu8L/me8lyFTX3ebxByx9wmtnFAX92gc/tKsjO82UH/O7s0Ppstb6ly1/4xONZAed9FdF5vnWxN9/Kcd5XATlXQYHPnZXnc1aPUJJQnvtVlz/PcmJZ2JkRRfKtQIHHbTmNux8gFxB90+0rLPJbgUB2boEraGWZjjDg8zfI8ng9wRcsOeN8uDy1+L3ZOWolka3/m2SdosyS16y27/o9QcvvrBuZyfvYU5RlOhTeIEv+dD5UASO0Qe3K8znTCl0eb1Z4zlmjjM7lbJ7PmSp/ae3y5hRYzipyQP84q0Yl6vE6699dmEV+pav0GK0X+tpYzgYVGgwtiVhMtfDeYEmRlRMm8EAFBFq5/H6P5aeDq/mt3ALLHYzfXF+am9dVkB2aLvAEy9A3Ei5p0dZVVGT5s3KLve6nnQ3L85BoV3YgtCvP56wZ8PmDWR5vwPIHPT5vC58/2JKIJTJ5Wpr9Mf1LK2h3htxdlPNRILJPk1ALadX33oVGxKRtUoV+lze/adAqDEQ9w2u1bVTszreCFXlGYZHflyvZCG8LBPNbqW0RJRU29/tyWzaTvhdFaaenwFJo/bIe2oJ+aeF2eWU0yLH80RPy/L62ymXvs7xuX47Hm5f9YcDnzTIdOZbbl2O1CLqCVoMsX6sPLXcwkVnFbctWm+gSRoX02rgKii3ngxWuKfYWuvyB1q4CZ834dW9HJlAKXO163R93M6/VNsR0JJCZjsJAkcsbigIVaaK15ZJ+XCtmK2Fqa4sil9dZu9yUlLacuyfxnDTrhs7MiHpLAmQmQZc7vyJ/cwUKI85aIzHluBPdLndrKzShYnZF8V6ujo8hrpw2nkDCaBcJ4iWBljkuf1sVxjJiLvR2wMp5vUVFewutwpi96WX2OvUKd9KWe+OtodBV9CIBlj9LTiQMfvFWqtYRrQZlLVBNhSwwFGTekcZ6f4VLwxZZPX5VsxAcExEjibYoQJnnxcKiYEkzV5Ezq6JoF7OJ/imTn/OtQldRywC5ufPBinJ7UctAW08gEI1VtFc5jj23MJhlOoqKGmQV+T3e4HP+PGe98rRyC4PZcp5oxOzJ8TUnNNeZSliLIjWwq4BoeXMsf4viwkKXv8RZp0z2DfryLW+WLzc3YCUMMGVSvVqe53NmlUv0rYtzcwtd3kaeYDhtt6Wfb9GOgPOJ3yQd2t+ylSfYUu6UKeV3/+s5jQp87nznQxXWHzEL769wYaiicRoVrnIX+AKWs165NWG+npfzd61q1LSjwijstwJul/dV2uAq+I2o7vL7XSXRGOW3Ar6CNtZbJUXW67m5FdUxVBrE2bRfIsHQzhrhKqMMxQqCZuhnQ6IqwttNh6TbIEI4EUtqbYSlGuU2FwX9b1HQC+Gh4votn9NevvhIVLlH6w65MdelioeqscWHs4qqO+jXBF6oyg5akeeLUW9Y/a1KGvutjxpkSUqP/s92HwmKd7P4UJxtkJVneS0/mef/4oQeb47VLuSEGCjxurNMR3Ofr6BBVvPixLcr8bqzi3y+AmLG8ZvMtPIEn6dmK+B8ON46qSr05rQI+j3evL/m+bICrV1FVFTR+O/OOvGLFRwiWtbOA0F/sTtYJs3UL3MaGX/FS2SlVWZJ3bInuYJWIyvP41VZx/FbuYy806silYgn5W5tufPfcRV4cpz2sLEWewOuXKvla1ZbZ3oYc/uKSt4h3767M8hyrYwrNXMVNZX6VYwmyjuh3XF5p148kxEXCEveFg4B+VYbyxuMFgheK1jkKyhI1A2GnT60pGX+R8WW4rdutJR2+YNvtbbe9fkLct71BFu3sApd0XiT525BC2SF9niFNUie7BQiXXCux5tztwYjWi0VBl2tlPgiZVqxty05hr9BltdqF6wobQf9LrfVyuXOVw1XuFsLo82fD0Tv4XYVFFj+QKjSTC8DO+3R0OzKaeOiJB1tNgNBqyi6pcitavRItUokA0U5VkHQFX1liL1HKDg3DRUtztp+K89qR/nmTflLgyxil/hOXO7KRdmRNXTb8iRyfC+2s9zFQSuhkhQJq50llVSn3G5XQUEzV9Dd2goktna5PbQrz+d8sByBxh5vznMFBSqmtChuVUjUnOmyzCly+QPWG8WWv6Ss3+cW+Fxlo0f1EG0Kb54C63Wv1dwVCCQ0I8WWz2sVuUK1W/zeyPj50NgeGjcrDgTDWO14loq9HxX7glajkqAViOq4batGxbmNC4oDrRtW2DS0bdWqODfOoKM7Q7ZnLz/jtOW5ZVJopB4QomHpHRVf/L62ZbEmhN1bruvJ9VsWtVqv+tz5Vo7z8eiCQFvLKlJwgyw5KL9LsvhYgu4uvCC2nypPsMLHkTy3OjQ2SEjE57Wi3tUqT1GKLHG5Pyr2+K3CaPWU526U18zlz3/X58+3/LF1SCTyvmKVOGtGOS3y+3IbFec2kN7tvL/CZ6PckAJrRTD5+kA7m6vHhIoIuIuKw48VdeIJhF4iQu9pFbxbyuWhTdTURa9Nl37L8hd6vC4qo0LKKpeuXUGrqVc5YoSJ+CeP13yUHJ21Qg4UKPEGXe1CVcGbLm+elZC/2MXZ0qflc0Y8EdMhZ/wNlNc/X0C+mxm/Rs6UBZtLsFZrV6B1ttvvfsyZ5fK7W79dlEPXefHFFxOlt+hi9W/oNYA67xg6xZJGItssu7/sTnW688EKWw1KdDJ2xrpNoCTQzCqk6r9Bliun4odl0piMXhW/+pDK3m1N9qe3ouCUZToaFefmkqiD/hIKB41K3gw9Myco3+We7FZyh+woyhJRL7n3RFprVytP1muuQiuraeDFdkU+f9DKSZSMY9dHeoPM+FjV2GMV5Dj1BOV4qH0KVeRP/GZJ6woEPHlq6PHmPefNaeH52HLWLrNPlflZr1qBgNOmugeXP+ghpyn/sBEn5ALFT4ugz29F9SmFSvIK+lQ1XGFRI1eQFJz/Qw8Qbhie9+VYeZbXWbPY6yF+souDuU9lvSB5e7PYm7CMjF2q1udRrxX0u33eNll+T17rYIvWntxgooAVWpWdY7k9hS7ZUIjwTikTQhtkqf3p4ZlWnrzGQZ8rkX2FCeYGfS5pAuE98oYet9wXARv7/IWuYGNK/6EHF9KrenDBmJdK1TjXS/xIFJm/967zTfy+4qJAolYv8RNSHq2XH2ESk5Q5poFMyG/5ZCyNWkmhq0iZZ8tcVyAYCPqdf/lfjw0NwhujTUEccbfbCgQaykWPOZ1//v8h/pgzSjst7KSqby9TXzyXk+N31ijbk+R4/JY7GGWLHD78EU3V6xUkx8JWnmDojc6I5PvigvxQ1dPcr7JjC7/7dW9BScLE9qI3R3VVD/xmrHyNuKlZxgVlWfqq5XVWS0D80YRoQ2ethKGSKkSnVugKts5qGmjqzU3UsNNsdiuPCu+RGscKFerRMsjd2sopLojpKfJ8EmtaWFQQCxb5LauwKNiyMM5J1EN5RZ8Wg6G2wRZDyuXPd2py0KKAKq6KXqHUltjuJvTBQD7bvWS5ihp5ggHlD5GSgyrHFlbwrZIiK/J9pW65xiHoL2kU6X5SZbCW3wOdoUGhleNxeZ0oB+7WPl/Aau5p4ws668Uw4yPp5biCrgZZQatdUNlubH/W1Jvry7K8QX9JzLchN+2QzVxDZ4MoNY+3wOO13r5r+1ZBR6oaWo9XxtN6dycpPaV6uQc0SrexX2Xohz/QIMtf7I0tZ8OwfMeI3ocKkTeLvV5XqwIr5tuzz28pA4nYX7FXvrNW9C2UFrQMFHm8rTxB9dgXt/ddT7D1my5v/m+R8Lu8+S19ublxthc6PuaZ3p/v9/nk16NAhfEjz01r4zqI8OYokud+we/yeF+LbRieCwQ8geBzVAI3jBpoHC7NxBn78BEzGf2olWPlFLuDaup5v5XjCcZ+8Ir2/B6vJ/hc8H97pHvV8uYFW/9PT4Y5JV5Xocctq5608LlKm9VihxEFVY1bFH2zkP2c5fa4YhKYulsL6r9CV6sb+/WM3IdqAvlhTDaDFbV7oeVlHnfC3+D8Vq6noCDuW2Fohlyjsd+yypWLXqvtS3GyK/cJILoiIrFyb+7kYolezsN4+Sdxb2imZrmZUI91T/xXhMgfTbxqtbEKnI/8r19JqAJ01kmYakIH1YyUdiXFVE61aE1VeaDC+o7KMX9JcVxF9pxs9FTxVSsmjzSNi1Ixn9ZDveNbHm9JtL7MlSUcxf2KykFPqBzMiK/8mnqDzqphqCmVhvbYMPa6+kAd/yjexApGHnC8VttGnqDM9rFxtsiVZxFHDbLcBZbLf/deNmylRfJq4QxdO5YSTSha5CyxzR2dIsNCaKqib7q0NvKXQzE0cj3tXIqE+k5d0dfJ8No4XwpYwdCTQugvISLMx/4lROjNKSLq3MJgY2e1eBW+4MkjJUbiM2X213Odtug3THnLSCwoLA5a7VrIP+d63ucNWl7ZV9Ur+w4QTvDNXO2edxUlzBRxLwrR18VUlxWgLryVL6fE+UTFhbgVpFDnKw6+YpXI+qOxKxBsEfTHiCO+cqa6HKNBocByBazCmC/1bpdXpcsaZVNMSJb6XYzE481Rjyt3NSOPN+duZkRTtRNOKfPIiHH9kL5qJWjXnpP9h/PeuzSR4Wehl0qvDVl1YWqPi6L5wlFbNqR+IP8nqn+Wzjheqej//l8AAAD//wiTv8CdagAA"
+ },
+ "goCpuAfter": {
+  "name": "Go 订单服务 · CPU（优化后）",
+  "file": "order-api-after.pb.gz",
+  "kind": "gz",
+  "b64": "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"
+ },
+ "goAllocs": {
+  "name": "Go 订单服务 · 内存分配（优化前）",
+  "file": "order-api-allocs.pb.gz",
+  "kind": "gz",
+  "b64": "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"
+ },
+ "nodeBlog": {
+  "name": "Node 静态博客生成器 · cpuprofile",
+  "file": "blog.cpuprofile",
+  "kind": "gz",
+  "b64": "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"
+ },
+ "pyLogs": {
+  "name": "Python 日志统计流水线 · 折叠栈",
+  "file": "py-logs.folded",
+  "kind": "text",
+  "text": "python3;<module> (sampler.py:85);main (sampler.py:79) 21\npython3;<module> (sampler.py:85);main (sampler.py:79);pipeline (sampler.py:70);gen_lines (sampler.py:27) 35\npython3;<module> (sampler.py:85);main (sampler.py:79);pipeline (sampler.py:70);gen_lines (sampler.py:27);choice (random.py:347) 3\npython3;<module> (sampler.py:85);main (sampler.py:79);pipeline (sampler.py:70);gen_lines (sampler.py:27);choice (random.py:354);_randbelow_with_getrandbits (random.py:245) 4\npython3;<module> (sampler.py:85);main (sampler.py:79);pipeline (sampler.py:70);gen_lines (sampler.py:27);choice (random.py:354);_randbelow_with_getrandbits (random.py:248) 1\npython3;<module> (sampler.py:85);main (sampler.py:79);pipeline (sampler.py:70);gen_lines (sampler.py:27);choice (random.py:354);_randbelow_with_getrandbits (random.py:249) 4\npython3;<module> (sampler.py:85);main (sampler.py:79);pipeline (sampler.py:70);gen_lines (sampler.py:27);choice (random.py:354);_randbelow_with_getrandbits (random.py:251) 10\npython3;<module> (sampler.py:85);main (sampler.py:79);pipeline (sampler.py:70);gen_lines (sampler.py:27);randint (random.py:335) 8\npython3;<module> (sampler.py:85);main (sampler.py:79);pipeline (sampler.py:70);gen_lines (sampler.py:27);randint (random.py:339) 2\npython3;<module> (sampler.py:85);main (sampler.py:79);pipeline (sampler.py:70);gen_lines (sampler.py:27);randint (random.py:342);_randbelow_with_getrandbits (random.py:245) 8\npython3;<module> (sampler.py:85);main (sampler.py:79);pipeline (sampler.py:70);gen_lines (sampler.py:27);randint (random.py:342);_randbelow_with_getrandbits (random.py:248) 5\npython3;<module> (sampler.py:85);main (sampler.py:79);pipeline (sampler.py:70);gen_lines (sampler.py:27);randint (random.py:342);_randbelow_with_getrandbits (random.py:249) 2\npython3;<module> (sampler.py:85);main (sampler.py:79);pipeline (sampler.py:70);gen_lines (sampler.py:27);randint (random.py:342);_randbelow_with_getrandbits (random.py:251) 6\npython3;<module> (sampler.py:85);main (sampler.py:79);pipeline (sampler.py:70);gen_lines (sampler.py:28) 634\npython3;<module> (sampler.py:85);main (sampler.py:79);pipeline (sampler.py:70);gen_lines (sampler.py:28);choice (random.py:347) 20\npython3;<module> (sampler.py:85);main (sampler.py:79);pipeline (sampler.py:70);gen_lines (sampler.py:28);choice (random.py:354);_randbelow_with_getrandbits (random.py:245) 13\npython3;<module> (sampler.py:85);main (sampler.py:79);pipeline (sampler.py:70);gen_lines (sampler.py:28);choice (random.py:354);_randbelow_with_getrandbits (random.py:248) 4\npython3;<module> (sampler.py:85);main (sampler.py:79);pipeline (sampler.py:70);gen_lines (sampler.py:28);choice (random.py:354);_randbelow_with_getrandbits (random.py:249) 13\npython3;<module> (sampler.py:85);main (sampler.py:79);pipeline (sampler.py:70);gen_lines (sampler.py:28);choice (random.py:354);_randbelow_with_getrandbits (random.py:251) 4\npython3;<module> (sampler.py:85);main (sampler.py:79);pipeline (sampler.py:70);gen_lines (sampler.py:28);randint (random.py:335) 21\npython3;<module> (sampler.py:85);main (sampler.py:79);pipeline (sampler.py:70);gen_lines (sampler.py:28);randint (random.py:338) 5\npython3;<module> (sampler.py:85);main (sampler.py:79);pipeline (sampler.py:70);gen_lines (sampler.py:28);randint (random.py:339) 9\npython3;<module> (sampler.py:85);main (sampler.py:79);pipeline (sampler.py:70);gen_lines (sampler.py:28);randint (random.py:342);_randbelow_with_getrandbits (random.py:245) 21\npython3;<module> (sampler.py:85);main (sampler.py:79);pipeline (sampler.py:70);gen_lines (sampler.py:28);randint (random.py:342);_randbelow_with_getrandbits (random.py:248) 11\npython3;<module> (sampler.py:85);main (sampler.py:79);pipeline (sampler.py:70);gen_lines (sampler.py:28);randint (random.py:342);_randbelow_with_getrandbits (random.py:249) 20\npython3;<module> (sampler.py:85);main (sampler.py:79);pipeline (sampler.py:70);gen_lines (sampler.py:28);randint (random.py:342);_randbelow_with_getrandbits (random.py:251) 22\npython3;<module> (sampler.py:85);main (sampler.py:79);pipeline (sampler.py:71) 366\npython3;<module> (sampler.py:85);main (sampler.py:79);pipeline (sampler.py:71);<genexpr> (sampler.py:71) 1\npython3;<module> (sampler.py:85);main (sampler.py:79);pipeline (sampler.py:71);<genexpr> (sampler.py:71);parse_line (sampler.py:31) 3\npython3;<module> (sampler.py:85);main (sampler.py:79);pipeline (sampler.py:71);<genexpr> (sampler.py:71);parse_line (sampler.py:32) 71\npython3;<module> (sampler.py:85);main (sampler.py:79);pipeline (sampler.py:71);<genexpr> (sampler.py:71);parse_line (sampler.py:35) 151\npython3;<module> (sampler.py:85);main (sampler.py:79);pipeline (sampler.py:71);<genexpr> (sampler.py:71);parse_line (sampler.py:36) 49\npython3;<module> (sampler.py:85);main (sampler.py:79);pipeline (sampler.py:72);aggregate (sampler.py:45) 54\npython3;<module> (sampler.py:85);main (sampler.py:79);pipeline (sampler.py:72);aggregate (sampler.py:45);normalize_path (sampler.py:39) 7\npython3;<module> (sampler.py:85);main (sampler.py:79);pipeline (sampler.py:72);aggregate (sampler.py:45);normalize_path (sampler.py:40);sub (__init__.py:183) 3\npython3;<module> (sampler.py:85);main (sampler.py:79);pipeline (sampler.py:72);aggregate (sampler.py:45);normalize_path (sampler.py:40);sub (__init__.py:208) 47\npython3;<module> (sampler.py:85);main (sampler.py:79);pipeline (sampler.py:72);aggregate (sampler.py:45);normalize_path (sampler.py:40);sub (__init__.py:208);_compile (__init__.py:330) 1\npython3;<module> (sampler.py:85);main (sampler.py:79);pipeline (sampler.py:72);summarize (sampler.py:57) 1\npython3;<module> (sampler.py:85);main (sampler.py:79);pipeline (sampler.py:72);summarize (sampler.py:57);fmean (statistics.py:201) 5\npython3;<module> (sampler.py:85);main (sampler.py:79);pipeline (sampler.py:72);summarize (sampler.py:57);percentile (sampler.py:48) 1\npython3;<module> (sampler.py:85);main (sampler.py:79);pipeline (sampler.py:72);summarize (sampler.py:57);percentile (sampler.py:49) 42\npython3;<module> (sampler.py:85);main (sampler.py:79);pipeline (sampler.py:72);summarize (sampler.py:57);percentile (sampler.py:52) 1\npython3;<module> (sampler.py:85);main (sampler.py:79);pipeline (sampler.py:73);dumps (__init__.py:185) 1\npython3;<module> (sampler.py:85);main (sampler.py:79);pipeline (sampler.py:73);dumps (__init__.py:235);encode (encoder.py:202);iterencode (encoder.py:263) 1\npython3;<module> (sampler.py:85);main (sampler.py:79);pipeline (sampler.py:73);to_csv (sampler.py:64);writeheader (csv.py:214);writerow (csv.py:225);<genexpr> (csv.py:222) 183\n"
+ }
+};
+
+</script>
+<script id="fl-app">
+/* 火焰图工作台 · 界面层 */
+(function () {
+  'use strict';
+  var M = Math, D = document;
+  function $(id) { return D.getElementById(id); }
+  var LS_PREFS = 'fl:prefs:v1', LS_IDX = 'fl:lib:index:v1', LS_ITEM = 'fl:lib:item:';
+  var MONO = '11px "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
+
+  // ───────────────────────── 状态 ─────────────────────────
+  var S = {
+    opened: [], cur: -1, typeName: null, gran: 'function',
+    search: '', focus: '', ignore: '', hide: '', rec: false,
+    tab: 'flame', orient: 'icicle', order: 'alpha', palette: 'pkg',
+    topSort: { k: 'flat', dir: -1 }, topFilter: '', topLimit: 200,
+    swFn: null, diffA: null, diffB: null, diffNorm: true, diffWidth: 'new', diffColor: 'self',
+    libAuto: true, last: null
+  };
+  var P = null, V = null, T = null, TOP = null, HIT = null, seq = 0, recomputeN = 0, pasteN = 0;
+
+  // ───────────────────────── 小工具 ─────────────────────────
+  function fmt(v) { return FL.fmtValue(v, V ? V.unit : 'count'); }
+  function pct(v, tot) { return tot ? (100 * v / tot).toFixed(2) + '%' : '—'; }
+  function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+  function debounce(fn, ms) { var t = 0; var f = function () { clearTimeout(t); t = setTimeout(fn, ms); }; f.flush = function () { clearTimeout(t); fn(); }; return f; }
+  function hash32(s) { var h = 0x811c9dc5; for (var i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = M.imul(h, 0x01000193); } return h >>> 0; }
+  function shortName(label) {
+    var s = String(label).replace(/ \(.*\)$/, '').replace(/ \S+:\d+:\d+$/, '');
+    return s.length > 42 ? s.slice(0, 41) + '…' : s;
+  }
+  function live(msg) { var l = $('fl-live'); l.textContent = ''; setTimeout(function () { l.textContent = msg; }, 20); }
+  function setMsg(id, text, kind) { var e = $(id); e.textContent = text || ''; e.className = 'fl-msg' + (kind ? ' fl-' + kind : ''); }
+  function download(name, data, type) {
+    var blob = data instanceof Blob ? data : new Blob([data], { type: type || 'text/plain;charset=utf-8' });
+    var a = $('fl-dl'), url = URL.createObjectURL(blob);
+    a.href = url; a.download = name; a.click();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+  }
+  function b64bytes(b64) { var s = atob(b64), u = new Uint8Array(s.length); for (var i = 0; i < s.length; i++) u[i] = s.charCodeAt(i); return u; }
+  function gunzip(u8) {
+    var ds = new DecompressionStream('gzip');
+    return new Response(new Blob([u8]).stream().pipeThrough(ds)).arrayBuffer().then(function (b) { return new Uint8Array(b); });
+  }
+  function isGz(u8) { return u8.length > 2 && u8[0] === 0x1f && u8[1] === 0x8b; }
+
+  // 画布上的显示名：cpuprofile 帧的标签里带完整 URL，太长；画布上只放「函数名 文件名:行」，完整的在悬停提示里
+  function disp(frames, finfo, i) {
+    var inf = finfo && finfo[i];
+    if (inf && inf.col) { var f = (inf.file || '').replace(/[?#].*$/, '').replace(/^.*\//, ''); return f ? inf.name + ' ' + f + ':' + inf.line : inf.name; }
+    return frames[i];
+  }
+  // ───────────────────────── 配色 ─────────────────────────
+  var PAL = ['#faff69', '#f6e05e', '#f2c94c', '#f4b740', '#f59e0b', '#f7b267', '#ffd166', '#e9c46a', '#f4a261', '#ffb703', '#fcbf49', '#eab308', '#facc15', '#fde047', '#fb923c', '#fdba74'];
+  var GRAY = ['#4a4a4a', '#5a5a5a', '#525252', '#626262'];
+  var SYS = { 'runtime': 1, '~sys': 1, 'syscall': 1, 'internal/runtime': 1, 'node:internal': 1 };
+  function pkgOf(label, info) {
+    if (!label || label === 'all' || label.charAt(0) === '(' || label.charAt(0) === '[' || label.charAt(0) === '<') return '~sys';
+    if (/_\[k\]$/.test(label)) return '~sys';
+    if (info && info.col) { var f = info.file || ''; if (!f) return '~sys'; if (/^node:/.test(f)) return 'node:internal'; return f.replace(/[?#].*$/, '').replace(/^.*\//, ''); }
+    var m = /\(([^():]+\.py):\d+\)$/.exec(label); if (m) return m[1];
+    var par = label.indexOf('('), lim = par >= 0 ? par : label.length;
+    var slash = label.lastIndexOf('/', lim), dot = label.indexOf('.', slash + 1);
+    if (dot > 0 && dot < lim) return label.slice(0, dot);
+    var cc = label.indexOf('::'); if (cc > 0) return label.slice(0, cc);
+    return label.split(/[ ;:.]/)[0];
+  }
+  // flamegraph.pl 的 namehash（--hash）：同名函数在不同图里颜色一致
+  function namehash(name) {
+    var vector = 0, weight = 1, max = 1, mod = 10;
+    name = name.replace(/.(.*?)`/, '');
+    for (var i = 0; i < name.length; i++) {
+      var k = name.charCodeAt(i) % mod;
+      vector += (k / (mod++ - 1)) * weight; max += weight; weight *= 0.7;
+      if (mod > 12) break;
+    }
+    return 1 - vector / max;
+  }
+  var colorCache = new Map();
+  function frameColor(label, info, palette) {
+    var key = palette + '\u0001' + label, c = colorCache.get(key);
+    if (c) return c;
+    if (palette === 'hot') {
+      var v1 = namehash(label), v2 = namehash(label.split('').reverse().join(''));
+      c = 'rgb(' + (205 + M.floor(50 * v2)) + ',' + M.floor(230 * v1) + ',' + M.floor(55 * v2) + ')';
+    } else {
+      var p = pkgOf(label, info);
+      if (SYS[p] || p.charAt(0) === '~') c = GRAY[hash32(label) % GRAY.length];
+      else c = PAL[hash32(p) % PAL.length];
+    }
+    colorCache.set(key, c);
+    return c;
+  }
+  function inkOn(c) {
+    var m = /^#(..)(..)(..)$/.exec(c), r, g, b;
+    if (m) { r = parseInt(m[1], 16); g = parseInt(m[2], 16); b = parseInt(m[3], 16); }
+    else { m = /(\d+),\s*(\d+),\s*(\d+)/.exec(c); r = +m[1]; g = +m[2]; b = +m[3]; }
+    return (0.299 * r + 0.587 * g + 0.114 * b) > 140 ? '#0a0a0a' : '#e6e6e6';
+  }
+  function diffColor(d, max) {
+    if (!d || !max) return '#3a3a3a';
+    var t = M.min(1, M.abs(d) / max), k = 0.3 + 0.7 * t, base = [58, 58, 58], tg = d > 0 ? [239, 68, 68] : [59, 130, 246];
+    return 'rgb(' + M.round(base[0] + (tg[0] - base[0]) * k) + ',' + M.round(base[1] + (tg[1] - base[1]) * k) + ',' + M.round(base[2] + (tg[2] - base[2]) * k) + ')';
+  }
+
+  // ───────────────────────── 火焰图画布 ─────────────────────────
+  function FlameView(cv, opt) {
+    this.cv = cv; this.opt = opt || {}; this.rowH = 18; this.root = null; this.focus = null; this.sel = null;
+    this.x0 = 0; this.span = 1; this.anim = 0; this.rows = []; this.drawn = []; this.rects = 0; this.maxD = 0; this.key = '';
+    this.mode = 'pkg'; this.inverted = true; this.hit = null; this.diff = null; this.fmt = fmt; this.total = 1; this.unit = 'count';
+    var self = this;
+    cv.addEventListener('mousemove', function (e) { self.hover(e); });
+    cv.addEventListener('mouseleave', function () { $('fl-tip').hidden = true; });
+    cv.addEventListener('click', function (e) { var n = self.at(e); if (n) { self.select(n); self.zoomTo(n); } });
+    cv.addEventListener('keydown', function (e) { self.key_(e); });
+  }
+  FlameView.prototype.set = function (root, o) {
+    o = o || {};
+    cancelAnimationFrame(this.anim); this.animating = false;
+    this.root = root; this.frames = root ? root.frames : []; this.finfo = root ? root.finfo : [];
+    this.total = root ? (root.t || 0) : 0;
+    this.maxD = root ? FL.maxDepth(root) : 0;
+    if (root) { var items = FL.layout(root, root, 0); for (var i = 0; i < items.length; i++) items[i].node._x = items[i].x; }
+    this.focus = o.focus || root; this.sel = o.sel || null;
+    if (this.focus) { this.x0 = this.focus._x || 0; this.span = this.focus.t || 1; }
+    this.draw();
+  };
+  FlameView.prototype.label = function (n) { return n.n < 0 ? '全部' : disp(this.frames, this.finfo, n.n); };
+  FlameView.prototype.colorOf = function (n) {
+    if (this.diff) {
+      var d = this.diff.mode === 'total' ? (n.b1 - n.b0) : (n.dSelf || 0);
+      return diffColor(d, this.diff.max);
+    }
+    if (n.n < 0) return '#3a3a3a';
+    if (this.hit) return this.hit(n.n) ? '#faff69' : '#242424';
+    return frameColor(this.frames[n.n], this.finfo[n.n], this.mode);
+  };
+  FlameView.prototype.width = function () { return this.cv.parentNode.clientWidth || 0; };
+  FlameView.prototype.yOf = function (d) { return this.inverted ? d * this.rowH : (this.maxD - d) * this.rowH; };
+  FlameView.prototype.draw = function () {
+    var cv = this.cv, W = this.width();
+    if (!W || !this.root) { this.drawn = []; this.rows = []; cv.dataset.rects = '0'; cv.dataset.labels = '0'; cv.dataset.key = this.key; if (!this.root) { cv.width = 0; cv.height = 0; } return; }
+    var dpr = window.devicePixelRatio || 1, H = (this.maxD + 1) * this.rowH + 2;
+    if (cv.width !== M.round(W * dpr) || cv.height !== M.round(H * dpr)) { cv.width = M.round(W * dpr); cv.height = M.round(H * dpr); cv.style.height = H + 'px'; }
+    var g = cv.getContext('2d');
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.clearRect(0, 0, W, H);
+    g.font = MONO; g.textBaseline = 'middle';
+    var x0 = this.x0, span = this.span || 1, sc = W / span, minPx = 0.35, rowH = this.rowH;
+    var rows = [], drawn = [], rects = 0, self = this, st = [this.root], placed = [];
+    var charW = g.measureText('M').width;
+    while (st.length) {
+      var n = st.pop(), nx = n._x || 0, px = (nx - x0) * sc, pw = n.t * sc;
+      if (px + pw <= 0 || px >= W || pw < minPx) continue;
+      var cx = M.max(0, px), cw = M.min(W, px + pw) - cx;
+      var y = this.yOf(n.d);
+      var fill = this.colorOf(n);
+      g.fillStyle = fill;
+      g.fillRect(cx, y + 1, M.max(0.6, cw - (cw > 3 ? 1 : 0)), rowH - 2);
+      rects++;
+      (rows[n.d] || (rows[n.d] = [])).push({ n: n, x: cx, w: cw });
+      if (n === this.sel) { g.strokeStyle = '#ffffff'; g.lineWidth = 1.5; g.strokeRect(cx + 0.75, y + 1.75, M.max(0, cw - 2.5), rowH - 3.5); }
+      if (cw >= 22) {
+        var t = this.fit(g, this.label(n), cw - 8, charW);
+        if (t) {
+          var tw = g.measureText(t).width, box = { x: cx + 4, y: y + 2, w: tw, h: rowH - 4, rx: cx, rw: cw, ry: y, t: t };
+          // 占位表：每段字都要落在自己的方块里、画布里，且两两不重叠
+          if (box.x + box.w <= cx + cw - 2 && box.x + box.w <= W && !collide(placed, box)) {
+            g.fillStyle = inkOn(fill);
+            g.fillText(t, cx + 4, y + rowH / 2 + 0.5);
+            placed.push(box); drawn.push(box);
+          }
+        }
+      }
+      if (n.c) for (var k = n.c.length - 1; k >= 0; k--) st.push(n.c[k]);
+    }
+    rows.forEach(function (r) { if (r) r.sort(function (a, b) { return a.x - b.x; }); });
+    this.rows = rows; this.drawn = drawn; this.rects = rects;
+    cv.dataset.rects = String(rects); cv.dataset.labels = String(drawn.length); cv.dataset.key = this.animating ? '' : this.key;
+    cv.setAttribute('aria-label', (this.opt.name || '火焰图') + '：' + rects + ' 个方块，' + (this.focus && this.focus !== this.root ? '已放大到 ' + this.label(this.focus) : '未缩放'));
+    function collide(list, b) {
+      for (var i = list.length - 1; i >= 0 && i >= list.length - 400; i--) { var a = list[i]; if (a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h) return true; }
+      return false;
+    }
+    void self;
+  };
+  var fitCache = new Map();
+  FlameView.prototype.fit = function (g, s, maxW, charW) {
+    if (maxW < charW * 2) return '';
+    var key = s + '\u0001' + M.floor(maxW), got = fitCache.get(key);
+    if (got !== undefined) return got;
+    var r;
+    if (g.measureText(s).width <= maxW) r = s;
+    else {
+      var lo = 0, hi = s.length;
+      while (lo < hi) { var mid = (lo + hi + 1) >> 1; if (g.measureText(s.slice(0, mid) + '…').width <= maxW) lo = mid; else hi = mid - 1; }
+      r = lo >= 1 ? s.slice(0, lo) + '…' : '';
+    }
+    if (fitCache.size > 20000) fitCache.clear();
+    fitCache.set(key, r);
+    return r;
+  };
+  FlameView.prototype.at = function (e) {
+    var r = this.cv.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
+    var row = M.floor(y / this.rowH), d = this.inverted ? row : this.maxD - row;
+    var list = this.rows[d];
+    if (!list) return null;
+    var lo = 0, hi = list.length - 1;
+    while (lo <= hi) { var mid = (lo + hi) >> 1, it = list[mid]; if (x < it.x) hi = mid - 1; else if (x >= it.x + it.w) lo = mid + 1; else return it.n; }
+    return null;
+  };
+  FlameView.prototype.tipHtml = function (n) {
+    var name = n.n < 0 ? '全部' : this.frames[n.n], tot = this.total || 1, inf = n.n >= 0 ? this.finfo[n.n] : null, h = '<b>' + esc(name) + '</b>';
+    if (this.diff) {
+      h += '<span>基线 ' + esc(this.fmt(n.b0 || 0)) + ' → 新 ' + esc(this.fmt(n.b1 || 0)) + '</span>';
+      var dt = (n.b1 || 0) - (n.b0 || 0);
+      h += '<span>总计变化 ' + (dt > 0 ? '+' : '') + esc(this.fmt(dt)) + ' · 自身变化 ' + ((n.dSelf || 0) > 0 ? '+' : '') + esc(this.fmt(n.dSelf || 0)) + '</span>';
+    } else {
+      h += '<span>总计 ' + esc(this.fmt(n.t)) + '（' + pct(n.t, tot) + '）</span><span>自身 ' + esc(this.fmt(n.s)) + '（' + pct(n.s, tot) + '）</span>';
+    }
+    if (inf && inf.file && !/:\d+:\d+$/.test(name)) h += '<span>' + esc(inf.file + (inf.line ? ':' + inf.line : '')) + '</span>';
+    return h;
+  };
+  FlameView.prototype.hover = function (e) {
+    var n = this.at(e), tip = $('fl-tip');
+    if (!n) { tip.hidden = true; return; }
+    tip.innerHTML = this.tipHtml(n); tip.hidden = false;
+    var tw = tip.offsetWidth, th = tip.offsetHeight, x = e.clientX + 14, y = e.clientY + 16;
+    if (x + tw > window.innerWidth - 8) x = M.max(8, e.clientX - tw - 14);
+    if (y + th > window.innerHeight - 8) y = M.max(8, e.clientY - th - 12);
+    tip.style.left = x + 'px'; tip.style.top = y + 'px';
+  };
+  FlameView.prototype.select = function (n) { this.sel = n; if (this.opt.onSelect) this.opt.onSelect(n); };
+  FlameView.prototype.zoomTo = function (n, instant) {
+    if (!n || !this.root) return;
+    if (n.n < 0 && n === this.root) n = this.root;
+    var from = [this.x0, this.span], to = [n._x || 0, n.t || 1], self = this;
+    var still = instant || (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+    cancelAnimationFrame(this.anim);
+    this.focus = n;
+    this.animating = !still;               // 动画期间不发布 data-key（测试等 key 就是等动画结束）
+    if (this.opt.onZoom) this.opt.onZoom(n);
+    if (still) { this.x0 = to[0]; this.span = to[1]; this.draw(); return; }
+    var t0 = performance.now(), dur = 180;
+    var step = function (now) {
+      var k = M.min(1, (now - t0) / dur), e = 1 - M.pow(1 - k, 3);
+      self.x0 = from[0] + (to[0] - from[0]) * e; self.span = from[1] + (to[1] - from[1]) * e;
+      if (k >= 1) { self.x0 = to[0]; self.span = to[1]; self.animating = false; }
+      self.draw();
+      if (k < 1) self.anim = requestAnimationFrame(step);
+    };
+    this.anim = requestAnimationFrame(step);
+  };
+  FlameView.prototype.reset = function () { this.zoomTo(this.root); };
+  FlameView.prototype.key_ = function (e) {
+    var k = e.key, n = this.sel || this.focus || this.root;
+    if (!n) return;
+    var next = null;
+    var row = this.rows[n.d] || [], idx = -1;
+    for (var i = 0; i < row.length; i++) if (row[i].n === n) { idx = i; break; }
+    var up = this.inverted ? 'ArrowUp' : 'ArrowDown', down = this.inverted ? 'ArrowDown' : 'ArrowUp';
+    if (k === 'ArrowLeft' && idx > 0) next = row[idx - 1].n;
+    else if (k === 'ArrowRight' && idx >= 0 && idx < row.length - 1) next = row[idx + 1].n;
+    else if (k === up && n.p) next = n.p;
+    else if (k === down && n.c && n.c.length) { var best = null; for (var j = 0; j < n.c.length; j++) if (!best || n.c[j].t > best.t) best = n.c[j]; next = best; }
+    else if (k === 'Enter') { e.preventDefault(); this.zoomTo(n); live('已放大到 ' + this.label(n)); return; }
+    else if (k === 'Escape') { e.preventDefault(); this.reset(); live('已复位缩放'); return; }
+    else return;
+    e.preventDefault();
+    if (next) {
+      this.select(next); this.draw();
+      live(this.label(next) + '，总计 ' + pct(next.t, this.total) + '，自身 ' + pct(next.s, this.total));
+    }
+  };
+
+  // ───────────────────────── 时间线画布 ─────────────────────────
+  function TimelineView(cv) {
+    this.cv = cv; this.tl = null; this.rowH = 18; this.t0 = 0; this.t1 = 1; this.drag = null; this.drawn = []; this.ticks = []; this.key = '';
+    var self = this;
+    cv.addEventListener('mousedown', function (e) { var r = cv.getBoundingClientRect(); self.drag = { x: e.clientX - r.left, x2: e.clientX - r.left }; });
+    cv.addEventListener('mousemove', function (e) {
+      var r = cv.getBoundingClientRect(), x = e.clientX - r.left;
+      if (self.drag) { self.drag.x2 = x; self.draw(); return; }
+      var b = self.at(x, e.clientY - r.top), tip = $('fl-tip');
+      if (!b) { tip.hidden = true; return; }
+      tip.innerHTML = '<b>' + esc(V.frames[b.n]) + '</b><span>持续 ' + esc(FL.fmtValue(b.e - b.s, 'microseconds')) + '</span><span>从 ' + esc(FL.fmtValue(b.s, 'microseconds')) + ' 开始</span>';
+      tip.hidden = false; tip.style.left = M.min(e.clientX + 14, window.innerWidth - tip.offsetWidth - 8) + 'px'; tip.style.top = (e.clientY + 16) + 'px';
+    });
+    cv.addEventListener('mouseleave', function () { $('fl-tip').hidden = true; });
+    window.addEventListener('mouseup', function () {
+      if (!self.drag) return;
+      var a = M.min(self.drag.x, self.drag.x2), b = M.max(self.drag.x, self.drag.x2); self.drag = null;
+      if (b - a > 4) { var W = self.width(), s = self.t0 + (self.t1 - self.t0) * a / W, e2 = self.t0 + (self.t1 - self.t0) * b / W; self.t0 = s; self.t1 = e2; }
+      self.draw();
+    });
+    cv.addEventListener('dblclick', function () { self.resetZoom(); });
+    cv.addEventListener('keydown', function (e) { if (e.key === 'Escape') { self.resetZoom(); e.preventDefault(); } });
+  }
+  TimelineView.prototype.width = function () { return this.cv.parentNode.clientWidth || 0; };
+  TimelineView.prototype.set = function (tl) { this.tl = tl; this.resetZoom(); };
+  TimelineView.prototype.resetZoom = function () { this.t0 = 0; this.t1 = this.tl ? (this.tl.total || 1) : 1; this.draw(); };
+  TimelineView.prototype.at = function (x, y) {
+    if (!this.tl) return null;
+    var W = this.width(), d = M.floor((y - 24) / this.rowH) + 1, t = this.t0 + (this.t1 - this.t0) * x / W;
+    var bl = this.tl.blocks;
+    for (var i = 0; i < bl.length; i++) { var b = bl[i]; if (b.d === d && b.s <= t && t < b.e) return b; }
+    return null;
+  };
+  TimelineView.prototype.draw = function () {
+    var cv = this.cv, W = this.width();
+    if (!W || !this.tl) { cv.dataset.blocks = '0'; cv.dataset.key = this.key; return; }
+    var dpr = window.devicePixelRatio || 1, H = 24 + this.tl.depth * this.rowH + 4;
+    cv.width = M.round(W * dpr); cv.height = M.round(H * dpr); cv.style.height = H + 'px';
+    var g = cv.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, W, H); g.font = MONO; g.textBaseline = 'middle';
+    var t0 = this.t0, sc = W / ((this.t1 - this.t0) || 1), drawn = [], ticks = [], placed = [], n = 0, charW = g.measureText('M').width;
+    // 时间刻度：nice step，刻度字走占位表
+    var span = this.t1 - this.t0, raw = span / 6, mag = M.pow(10, M.floor(M.log10(raw || 1))), best = mag;
+    [1, 2, 2.5, 5, 10].forEach(function (k) { var st = k * mag; if (M.abs(span / st - 6) < M.abs(span / best - 6)) best = st; });
+    g.strokeStyle = '#2a2a2a'; g.fillStyle = '#888888';
+    for (var tk = M.ceil(t0 / best) * best; tk <= this.t1; tk += best) {
+      var x = (tk - t0) * sc;
+      g.beginPath(); g.moveTo(x + 0.5, 18); g.lineTo(x + 0.5, H); g.stroke();
+      var lab = FL.fmtValue(tk, 'microseconds'), tw = g.measureText(lab).width, bx = { x: x + 3, y: 2, w: tw, h: 14 };
+      if (bx.x + bx.w <= W && !placed.some(function (p) { return p.x < bx.x + bx.w + 6 && bx.x < p.x + p.w + 6; })) { g.fillText(lab, x + 3, 10); placed.push(bx); ticks.push(bx); }
+    }
+    var bl = this.tl.blocks;
+    for (var i = 0; i < bl.length; i++) {
+      var b = bl[i], px = (b.s - t0) * sc, pw = (b.e - b.s) * sc;
+      if (px + pw <= 0 || px >= W || pw < 0.35) continue;
+      var cx = M.max(0, px), cw = M.min(W, px + pw) - cx, y = 24 + (b.d - 1) * this.rowH;
+      var label = disp(V.frames, V.finfo, b.n), fill = frameColor(V.frames[b.n], V.finfo[b.n], S.palette);
+      g.fillStyle = fill; g.fillRect(cx, y + 1, M.max(0.6, cw - (cw > 3 ? 1 : 0)), this.rowH - 2); n++;
+      if (cw >= 22) {
+        var t = FlameView.prototype.fit(g, label, cw - 8, charW);
+        if (t) { var w = g.measureText(t).width; if (cx + 4 + w <= cx + cw - 2) { g.fillStyle = inkOn(fill); g.fillText(t, cx + 4, y + this.rowH / 2 + 0.5); drawn.push({ x: cx + 4, y: y + 2, w: w, h: this.rowH - 4, rx: cx, rw: cw, t: t }); } }
+      }
+    }
+    if (this.drag) { var a = M.min(this.drag.x, this.drag.x2), z = M.abs(this.drag.x2 - this.drag.x); g.fillStyle = 'rgba(250,255,105,.15)'; g.fillRect(a, 0, z, H); g.strokeStyle = '#faff69'; g.strokeRect(a + 0.5, 0.5, z, H - 1); }
+    this.drawn = drawn; this.ticks = ticks;
+    cv.dataset.blocks = String(n); cv.dataset.labels = String(drawn.length); cv.dataset.key = this.key;
+  };
+
+  // ───────────────────────── 实例 ─────────────────────────
+  var flame = new FlameView($('fl-canvas'), { name: '火焰图', onSelect: onSelect, onZoom: function () { renderCrumbs(); } });
+  var swCallers = new FlameView($('fl-sw-callers'), { name: '调用者火焰图' });
+  var swCallees = new FlameView($('fl-sw-callees'), { name: '被调用者火焰图' });
+  var diffView = new FlameView($('fl-diff-canvas'), { name: '差分火焰图' });
+  var tlView = new TimelineView($('fl-tl-canvas'));
+
+  // ───────────────────────── 打开 profile ─────────────────────────
+  function addOpened(p, name, src) {
+    p.name = name;
+    for (var i = 0; i < S.opened.length; i++) if (S.opened[i].name === name && S.opened[i].sig === sigOf(p)) { S.cur = i; return i; }
+    S.opened.push({ id: 'o' + (++seq), name: name, profile: p, src: src || {}, sig: sigOf(p) });
+    return S.opened.length - 1;
+  }
+  function sigOf(p) {
+    var h = 0x811c9dc5, i, j, s;
+    for (i = 0; i < p.frames.length; i++) { s = p.frames[i]; for (j = 0; j < s.length; j++) { h ^= s.charCodeAt(j); h = M.imul(h, 0x01000193); } h ^= 10; }
+    for (i = 0; i < p.stacks.length; i++) { s = p.stacks[i].f.join(',') + '|' + p.stacks[i].v.join(','); for (j = 0; j < s.length; j++) { h ^= s.charCodeAt(j); h = M.imul(h, 0x01000193); } }
+    return p.format + ':' + p.stacks.length + ':' + (h >>> 0).toString(36);
+  }
+  function openProfile(p, name, src, quiet) {
+    var i = addOpened(p, name, src);
+    S.cur = i; S.typeName = null; S.gran = 'function'; S.swFn = null; flame.focus = null;
+    // 两列折叠栈（difffolded 的输出）：差分页直接对比它自己的两列
+    if (p.format === 'folded' && p.types.length === 2) { S.diffA = S.opened[i].id + '#0'; S.diffB = S.opened[i].id + '#1'; }
+    if (S.libAuto && !(src && (src.ex || src.lib))) libSave(p, name, true);
+    refreshProfSelect(); recompute();
+    if (!quiet) {
+      var w = p.warnings || [];
+      setMsg('fl-msg', '已打开「' + name + '」：' + fmtFormat(p) + '，' + p.stacks.length.toLocaleString('en-US') + ' 条不同调用栈、' + p.frames.length.toLocaleString('en-US') + ' 个不同帧', 'good');
+      $('fl-warn').innerHTML = w.map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('');
+    }
+    return i;
+  }
+  function fmtFormat(p) { return { folded: '折叠栈', perf: 'perf script', pprof: 'pprof', cpuprofile: 'V8 cpuprofile', trace: 'Chrome trace' }[p.format] || p.format; }
+  function parseInput(data, opt) {
+    // data: string 或 Uint8Array（可能是 gzip）
+    if (typeof data !== 'string' && isGz(data)) return gunzip(data).then(function (u) { return FL.parseAuto(u, opt); });
+    return Promise.resolve().then(function () { return FL.parseAuto(data, opt); });
+  }
+  function perfOpt() { var v = $('fl-perfopt').value, o = {}; if (v) o[v] = true; return { perf: o }; }
+  function openFiles(files) {
+    var list = Array.prototype.slice.call(files || []);
+    if (!list.length) return Promise.resolve();
+    setMsg('fl-msg', '正在解析 ' + list.length + ' 个文件…');
+    var idx = [];
+    return list.reduce(function (pr, f) {
+      return pr.then(function () {
+        return f.arrayBuffer().then(function (buf) { return parseInput(new Uint8Array(buf), perfOpt()); })
+          .then(function (p) { idx.push(openProfile(p, f.name, { file: f.name }, list.length > 1)); })
+          .catch(function (err) { setMsg('fl-msg', '「' + f.name + '」解析失败：' + err.message, 'bad'); throw err; });
+      });
+    }, Promise.resolve()).then(function () {
+      if (idx.length === 2) {
+        S.diffA = S.opened[idx[0]].id; S.diffB = S.opened[idx[1]].id;
+        setMsg('fl-msg', '已打开 2 个文件，差分页按「' + S.opened[idx[0]].name + '」→「' + S.opened[idx[1]].name + '」对比', 'good');
+        selectTab('diff');
+      }
+    }).catch(function () {});
+  }
+  function openExample(key, quiet) {
+    var ex = FL_DATA[key];
+    if (!ex) return Promise.resolve();
+    var data = ex.kind === 'text' ? ex.text : b64bytes(ex.b64);
+    return parseInput(data, {}).then(function (p) { return openProfile(p, ex.name, { ex: key }, quiet); });
+  }
+  function current() { return S.cur >= 0 ? S.opened[S.cur] : null; }
+
+  // ───────────────────────── 重新计算 ─────────────────────────
+  function compileField(id, val) {
+    var el = $(id);
+    try { var re = FL.compile(val); el.removeAttribute('aria-invalid'); return { re: re }; }
+    catch (e) { el.setAttribute('aria-invalid', 'true'); return { err: e.message }; }
+  }
+  function recompute() {
+    var o = current();
+    recomputeN++;
+    if (!o) { P = V = T = TOP = null; renderAll(); return; }
+    P = o.profile;
+    var lastNow = o.src.ex ? { ex: o.src.ex } : (o.src.lib || o.src.libId) ? { lib: o.src.lib || o.src.libId } : null;
+    if (lastNow && JSON.stringify(lastNow) !== JSON.stringify(S.last)) { S.last = lastNow; savePrefs(); }
+    if (P.format === 'pprof' && P.raw && (P.meta.granularity || 'function') !== S.gran) { P = FL.regranulate(P, S.gran); P.name = o.name; o.profile = P; }
+    var ti = P.defaultType;
+    if (S.typeName) { var k = P.types.map(function (t) { return t.type; }).indexOf(S.typeName); if (k >= 0) ti = k; }
+    var fo = compileField('fl-focus', S.focus), ig = compileField('fl-ignore', S.ignore), hd = compileField('fl-hide', S.hide);
+    var errs = [fo.err, ig.err, hd.err].filter(Boolean);
+    V = FL.view(P, { type: ti, focus: fo.re, ignore: ig.re, hide: hd.re, recursion: S.rec ? 'collapse' : '', keepIndex: !!P.timeline });
+    T = FL.tree(V, { order: S.order });
+    TOP = FL.top(V);
+    var fm = '';
+    if (errs.length) fm = errs[0];
+    else if (V.filtered) fm = '过滤后剩 ' + fmt(V.total) + '，丢掉 ' + V.dropped.toLocaleString('en-US') + ' 条调用栈（' + fmt(V.droppedW) + '）';
+    setMsg('fl-filtermsg', fm, errs.length ? 'bad' : '');
+    computeHit();
+    renderStats(); renderTypeSelect();
+    flame.focus = null; flame.sel = null; S.zoomPath = null;
+    renderAll();
+  }
+  function computeHit() {
+    HIT = null;
+    var el = $('fl-search');
+    if (!S.search || !T) { el.removeAttribute('aria-invalid'); $('fl-match').textContent = ''; flame.hit = null; return; }
+    var re;
+    try { re = FL.compile(S.search, { ci: true }); el.removeAttribute('aria-invalid'); }
+    catch (e) { el.setAttribute('aria-invalid', 'true'); $('fl-match').textContent = '正则有误'; flame.hit = null; return; }
+    var m = FL.matched(T, re);
+    HIT = { re: re, total: m.total, nodes: m.nodes, frames: m.hitFrames };
+    $('fl-match').textContent = m.nodes ? pct(m.total, T.t) : '0 个';
+    flame.hit = function (fid) { return m.hitFrames.get(fid) === true; };
+  }
+  function stateKey(which) {
+    var o = current();
+    var base = [o ? o.id : '-', V ? V.type : '-', S.gran, S.focus, S.ignore, S.hide, S.rec ? 1 : 0, S.order, recomputeN];
+    if (which === 'flame') return base.concat([S.orient, S.palette, S.search, flame.focus ? flame.focus.d + ':' + (flame.focus.n) : 'root', flame.width()]).join('|');
+    if (which === 'diff') return base.concat([S.diffA, S.diffB, S.diffNorm ? 1 : 0, S.diffWidth, S.diffColor, diffView.width()]).join('|');
+    if (which === 'sandwich') return base.concat([S.swFn, swCallers.width()]).join('|');
+    if (which === 'timeline') return base.concat([S.palette, tlView.width()]).join('|');
+    return base.join('|');
+  }
+
+  // ───────────────────────── 渲染 ─────────────────────────
+  function renderStats() {
+    if (!V) { ['fl-st-total', 'fl-st-hot', 'fl-st-fns', 'fl-st-depth'].forEach(function (id) { $(id).textContent = '—'; }); return; }
+    $('fl-st-total').textContent = fmt(V.total);
+    $('fl-st-total-k').textContent = '总量 · ' + V.typeName;
+    var hot = TOP.length ? TOP[0] : null;
+    $('fl-st-hot').textContent = hot ? pct(hot.flat, V.total) : '—';
+    $('fl-st-hot').nextElementSibling.textContent = hot ? '最热：' + shortName(hot.name) : '最热函数';
+    $('fl-st-hot').title = hot ? hot.name : '';
+    $('fl-st-fns').textContent = TOP.length.toLocaleString('en-US') + ' / ' + V.stacks.length.toLocaleString('en-US');
+    $('fl-st-depth').textContent = String(FL.maxDepth(T));
+  }
+  function renderTypeSelect() {
+    var sel = $('fl-type');
+    sel.innerHTML = P ? P.types.map(function (t, i) { return '<option value="' + i + '">' + esc(t.type + '（' + t.unit + '）') + '</option>'; }).join('') : '';
+    if (V) sel.value = String(V.type);
+    var g = $('fl-gran');
+    g.disabled = !(P && P.format === 'pprof' && P.raw);
+    g.value = S.gran;
+    g.title = g.disabled ? '只有刚打开的 pprof 能切换粒度' : '';
+  }
+  function refreshProfSelect() {
+    var sel = $('fl-prof');
+    sel.innerHTML = S.opened.map(function (o, i) { return '<option value="' + i + '">' + esc(o.name) + '</option>'; }).join('');
+    if (S.cur >= 0) sel.value = String(S.cur);
+  }
+  function renderAll() {
+    $('fl-work').querySelectorAll('.fl-tab .fl-dot').forEach(function (d) { d.remove(); });
+    if (P && P.timeline) $('fl-tab-timeline').insertAdjacentHTML('beforeend', '<span class="fl-dot" aria-hidden="true"></span>');
+    renderPane(S.tab);
+  }
+  function renderPane(t) {
+    if (t === 'flame') renderFlame();
+    else if (t === 'top') renderTop();
+    else if (t === 'sandwich') renderSandwich();
+    else if (t === 'diff') renderDiff();
+    else if (t === 'timeline') renderTimeline();
+    else if (t === 'lib') renderLib();
+  }
+  function renderFlame() {
+    flame.inverted = S.orient === 'icicle'; flame.mode = S.palette; flame.unit = V ? V.unit : 'count'; flame.fmt = fmt;
+    var keepFocus = flame.focus && flame.root === T ? flame.focus : null;
+    flame.key = '';
+    flame.set(T, { focus: keepFocus, sel: flame.sel && flame.root === T ? flame.sel : null });
+    flame.key = stateKey('flame'); flame.cv.dataset.key = flame.key;
+    renderCrumbs(); renderLegend();
+    onSelect(flame.sel);
+  }
+  function renderCrumbs() {
+    var c = $('fl-crumbs'), n = flame.focus, path = [];
+    while (n) { path.unshift(n); n = n.p; }
+    c.innerHTML = '';
+    if (!T) return;
+    path.forEach(function (node) {
+      var b = D.createElement('button'); b.type = 'button'; b.textContent = node.n < 0 ? '全部' : shortName(T.frames[node.n]); b.title = node.n < 0 ? '全部' : T.frames[node.n];
+      b.addEventListener('click', function () { flame.zoomTo(node); });
+      c.appendChild(b);
+    });
+    flame.key = stateKey('flame'); flame.cv.dataset.key = flame.animating ? '' : flame.key;
+  }
+  function renderLegend() {
+    var l = $('fl-legend');
+    if (!T) { l.innerHTML = ''; return; }
+    if (flame.hit) { l.innerHTML = '<span><i style="background:#faff69"></i>命中搜索</span><span><i style="background:#242424;border:1px solid #3a3a3a"></i>未命中</span><span>命中占比 = 至少含一个命中帧的样本量</span>'; return; }
+    if (S.palette === 'hot') { l.innerHTML = '<span>经典暖色：颜色只按名字区分（与 flamegraph.pl --hash 同一套 namehash），不表示热度</span>'; return; }
+    var seen = new Map();
+    (TOP || []).slice(0, 400).forEach(function (r) { var p = pkgOf(r.name, T.finfo[r.id]); if (!seen.has(p)) seen.set(p, r.cum); else seen.set(p, M.max(seen.get(p), r.cum)); });
+    var arr = Array.from(seen.entries()).sort(function (a, b) { return b[1] - a[1]; }).slice(0, 8);
+    l.innerHTML = arr.map(function (e) { var p = e[0], c = SYS[p] || p.charAt(0) === '~' ? GRAY[1] : PAL[hash32(p) % PAL.length]; return '<span><i style="background:' + c + '"></i>' + esc(p === '~sys' ? '系统 / 运行时' : p) + '</span>'; }).join('');
+  }
+  function onSelect(n) {
+    var nm = $('fl-sel-name'), mt = $('fl-sel-meta');
+    if (!n || !T) {
+      nm.textContent = '点一个方块看详情；Esc 复位缩放'; mt.textContent = '方向键在方块间移动 · 回车放大 · / 跳到搜索';
+      $('fl-sel-sw').disabled = true; $('fl-sel-focus').disabled = true; return;
+    }
+    nm.textContent = n.n < 0 ? '全部' : T.frames[n.n];
+    var inf = n.n >= 0 ? T.finfo[n.n] : null;
+    mt.textContent = '第 ' + n.d + ' 层 · 总计 ' + fmt(n.t) + '（' + pct(n.t, T.t) + '）· 自身 ' + fmt(n.s) + '（' + pct(n.s, T.t) + '）' + (inf && inf.file && !/:\d+:\d+$/.test(nm.textContent) ? ' · ' + inf.file + (inf.line ? ':' + inf.line : '') : '');
+    $('fl-sel-sw').disabled = n.n < 0; $('fl-sel-focus').disabled = n.n < 0;
+  }
+
+  // 函数表
+  function topRows() {
+    var rows = (TOP || []).slice(), k = S.topSort.k, dir = S.topSort.dir, f = S.topFilter.toLowerCase();
+    if (f) rows = rows.filter(function (r) { return r.name.toLowerCase().indexOf(f) >= 0; });
+    rows.sort(function (a, b) {
+      var x, y;
+      if (k === 'name') { x = a.name; y = b.name; return dir * FL.cmpStr(x, y); }
+      var byFlat = k === 'flat' || k === 'flatp';
+      x = byFlat ? a.flat : a.cum; y = byFlat ? b.flat : b.cum;
+      // 并列时与 pprof -top 一样：再按另一列降序，最后按名字
+      return dir * (x - y) || (byFlat ? b.cum - a.cum : b.flat - a.flat) || FL.cmpStr(a.name, b.name);
+    });
+    return rows;
+  }
+  function renderTop() {
+    var body = $('fl-top-body');
+    if (!V) { body.innerHTML = ''; $('fl-top-sum').textContent = '先打开一份 profile'; return; }
+    var rows = topRows(), tot = V.total || 1, maxFlat = rows.reduce(function (m, r) { return M.max(m, M.abs(r.flat)); }, 0) || 1;
+    var show = rows.slice(0, S.topLimit), h = [];
+    for (var i = 0; i < show.length; i++) {
+      var r = show[i];
+      h.push('<tr tabindex="0" data-id="' + r.id + '" data-name="' + esc(r.name) + '"' + (S.swFn === r.name ? ' class="fl-cur"' : '') + '><td>' + esc(r.name) + '</td><td>' + esc(fmt(r.flat)) +
+        '</td><td>' + (100 * r.flat / tot).toFixed(2) + '%<span class="fl-bar-in" style="width:' + M.round(46 * M.abs(r.flat) / maxFlat) + 'px"></span></td><td>' + esc(fmt(r.cum)) + '</td><td>' + (100 * r.cum / tot).toFixed(2) + '%</td></tr>');
+    }
+    body.innerHTML = h.join('');
+    $('fl-top-more').hidden = rows.length <= S.topLimit;
+    $('fl-top-sum').textContent = '共 ' + rows.length.toLocaleString('en-US') + ' 个函数' + (S.topFilter ? '（已筛选）' : '') + ' · 总量 ' + fmt(V.total) + ' · 自身合计 = 总量；总计里递归只算一次';
+    $('fl-top-table').querySelectorAll('th').forEach(function (th) { th.setAttribute('aria-sort', th.dataset.k === S.topSort.k ? (S.topSort.dir < 0 ? 'descending' : 'ascending') : 'none'); });
+  }
+  // 三明治
+  function renderSandwich() {
+    var sel = $('fl-sw-fn');
+    if (!V) { sel.innerHTML = ''; swCallers.set(null); swCallees.set(null); $('fl-sw-sum').textContent = '先打开一份 profile'; return; }
+    var byCum = (TOP || []).slice().sort(function (a, b) { return b.cum - a.cum || FL.cmpStr(a.name, b.name); }).slice(0, 600);
+    if (!S.swFn || !TOP.some(function (r) { return r.name === S.swFn; })) {
+      var firstUser = byCum.filter(function (r) { var p = pkgOf(r.name, V.finfo[r.id]); return !SYS[p] && p.charAt(0) !== '~' && r.name !== 'main' && !/^<module>|^main\.main$|^runtime\.main$/.test(r.name); });
+      var hotFlat = (TOP || []).filter(function (r) { return r.flat > 0; });
+      var hotUser = hotFlat.filter(function (r) { var p = pkgOf(r.name, V.finfo[r.id]); return !SYS[p] && p.charAt(0) !== '~'; });
+      S.swFn = (hotUser[0] || hotFlat[0] || firstUser[0] || byCum[0] || {}).name || null;
+    }
+    if (S.swFn && !byCum.some(function (r) { return r.name === S.swFn; })) { var extra = TOP.filter(function (r) { return r.name === S.swFn; })[0]; if (extra) byCum.unshift(extra); }
+    sel.innerHTML = byCum.map(function (r) { return '<option value="' + esc(r.name) + '">' + esc(shortName(r.name)) + ' · ' + esc(pct(r.cum, V.total)) + '</option>'; }).join('');
+    sel.value = S.swFn || '';
+    var row = TOP.filter(function (r) { return r.name === S.swFn; })[0];
+    if (!row) { swCallers.set(null); swCallees.set(null); return; }
+    var c1 = FL.callers(V, row.id, { order: S.order }), c2 = FL.callees(V, row.id, { order: S.order });
+    swCallers.mode = swCallees.mode = S.palette; swCallers.fmt = swCallees.fmt = fmt;
+    swCallers.hit = swCallees.hit = null;
+    swCallers.set(c1); swCallees.set(c2);
+    var k = stateKey('sandwich');
+    swCallers.key = swCallees.key = k; swCallers.cv.dataset.key = swCallees.cv.dataset.key = k;
+    $('fl-sw-sum').textContent = row.name + ' · 总计 ' + fmt(row.cum) + '（' + pct(row.cum, V.total) + '）· 自身 ' + fmt(row.flat) + '（' + pct(row.flat, V.total) + '）';
+    $('fl-sw-callers-n').textContent = (c1.c ? c1.c.length : 0) + ' 个直接调用者';
+    $('fl-sw-callees-n').textContent = (c2.c ? c2.c.length : 0) + ' 个直接被调用者';
+  }
+  // 差分
+  function diffSources() {
+    var out = [];
+    S.opened.forEach(function (o) {
+      out.push({ id: o.id, name: o.name, o: o });
+      if (o.profile.format === 'folded' && o.profile.types.length === 2) {
+        out.push({ id: o.id + '#0', name: o.name + ' · 列 1（基线）', o: o, col: 0 });
+        out.push({ id: o.id + '#1', name: o.name + ' · 列 2（新）', o: o, col: 1 });
+      }
+    });
+    return out;
+  }
+  function viewOf(src) {
+    var p = src.o.profile;
+    if (src.o === current()) p = P;
+    var ti = src.col != null ? src.col : p.defaultType;
+    if (src.col == null && V) { var k = p.types.map(function (t) { return t.type; }).indexOf(V.typeName); if (k >= 0) ti = k; }
+    var fo = compileField('fl-focus', S.focus).re, ig = compileField('fl-ignore', S.ignore).re, hd = compileField('fl-hide', S.hide).re;
+    return FL.view(p, { type: ti, focus: fo, ignore: ig, hide: hd, recursion: S.rec ? 'collapse' : '' });
+  }
+  function renderDiff() {
+    var srcs = diffSources(), a = $('fl-diff-a'), b = $('fl-diff-b');
+    var opts = srcs.map(function (s) { return '<option value="' + esc(s.id) + '">' + esc(s.name) + '</option>'; }).join('');
+    a.innerHTML = opts; b.innerHTML = opts;
+    var has = function (id) { return srcs.some(function (s) { return s.id === id; }); };
+    if (!has(S.diffA) || !has(S.diffB)) {
+      var two = srcs.filter(function (s) { return s.col != null; });
+      if (two.length >= 2 && current() && two[0].o === current()) { S.diffA = two[0].id; S.diffB = two[1].id; }
+      else if (srcs.length >= 2) { S.diffA = srcs[srcs.length >= 2 ? 0 : 0].id; S.diffB = (current() && current().id !== S.diffA ? current().id : srcs[1].id); }
+    }
+    if (srcs.length < 2 || !has(S.diffA) || !has(S.diffB)) {
+      diffView.set(null); $('fl-diff-body').innerHTML = ''; $('fl-diffsum').innerHTML = '<p class="fl-sub">再打开一份 profile（或者两列的折叠栈）就能对比。示例里点「差分示例」。</p>';
+      return;
+    }
+    a.value = S.diffA; b.value = S.diffB;
+    var A = srcs.filter(function (s) { return s.id === S.diffA; })[0], B = srcs.filter(function (s) { return s.id === S.diffB; })[0];
+    var va = viewOf(A), vb = viewOf(B), unit = vb.unit;
+    var dt = FL.diff(va, vb, { normalize: S.diffNorm, width: S.diffWidth === 'base' ? 'base' : 'new', order: S.order });
+    var maxAbs = 0;
+    (function walk(n) { var d = S.diffColor === 'total' ? (n.b1 - n.b0) : (n.dSelf || 0); if (n.n >= 0 && M.abs(d) > maxAbs) maxAbs = M.abs(d); if (n.c) n.c.forEach(walk); })(dt);
+    diffView.diff = { mode: S.diffColor, max: maxAbs || 1 }; diffView.hit = null;
+    diffView.fmt = function (v) { return FL.fmtValue(v, unit); };
+    diffView.set(dt);
+    diffView.key = stateKey('diff'); diffView.cv.dataset.key = diffView.key;
+    diffView.cv.dataset.total0 = String(dt.T0); diffView.cv.dataset.total1 = String(dt.T1);
+    $('fl-diffsum').innerHTML = '<div class="fl-stat"><span class="fl-stat-v">' + esc(FL.fmtValue(va.total, unit)) + '</span><span class="fl-stat-k">基线总量</span></div>' +
+      '<div class="fl-stat"><span class="fl-stat-v">' + esc(FL.fmtValue(vb.total, unit)) + '</span><span class="fl-stat-k">新总量</span></div>' +
+      '<div class="fl-stat"><span class="fl-stat-v" id="fl-diff-chg">' + (va.total ? chgText(va.total, vb.total) : '—') + '</span><span class="fl-stat-k">总量变化（未归一化）</span></div>';
+    $('fl-diff-note').textContent = dt.normalized ? '基线已按总量缩放到与新的一样大，颜色看的是占比变化' : '未归一化：颜色看的是绝对量变化';
+    var rows = FL.diffTop(va, vb), h = [];
+    rows.slice(0, 300).forEach(function (r) {
+      var f = function (v) { return esc(FL.fmtValue(v, unit)); };
+      h.push('<tr data-name="' + esc(r.name) + '"><td>' + esc(r.name) + '</td><td class="' + (r.dflat > 0 ? 'fl-pos' : r.dflat < 0 ? 'fl-neg' : '') + '">' + (r.dflat > 0 ? '+' : '') + f(r.dflat) + '</td><td class="' + (r.dcum > 0 ? 'fl-pos' : r.dcum < 0 ? 'fl-neg' : '') + '">' + (r.dcum > 0 ? '+' : '') + f(r.dcum) + '</td><td>' + f(r.cum0) + '</td><td>' + f(r.cum1) + '</td></tr>');
+    });
+    $('fl-diff-body').innerHTML = h.join('');
+  }
+  function chgText(a, b) { var x = 100 * (b - a) / a, t = M.abs(x).toFixed(1); return t === '0.0' ? '0.0%' : (x > 0 ? '+' : '−') + t + '%'; }
+  // 时间线
+  function renderTimeline() {
+    var has = !!(P && P.timeline && V && V.map);
+    $('fl-tl-empty').hidden = has; $('fl-tl-box').hidden = !has;
+    if (!has) { tlView.set(null); return; }
+    var tl = FL.timeline(P, V);
+    tlView.key = stateKey('timeline');
+    tlView.set(tl);
+    $('fl-tl-sum').textContent = '横轴是时间（共 ' + FL.fmtValue(tl.total, 'microseconds') + '，' + tl.blocks.length.toLocaleString('en-US') + ' 块）：同一个函数连续出现的样本合并成一块。拖动选一段放大，双击复位。';
+  }
+
+  // ───────────────────────── 资料库 ─────────────────────────
+  function libIndex() { try { var a = JSON.parse(localStorage.getItem(LS_IDX) || '[]'); return Array.isArray(a) ? a : []; } catch (e) { return []; } }
+  function libWriteIndex(a) { localStorage.setItem(LS_IDX, JSON.stringify(a)); }
+  function libSave(p, name, auto) {
+    var packed, s;
+    try { packed = FL.pack(p); packed.name = name; s = JSON.stringify(packed); } catch (e) { return false; }
+    if (s.length > 1600000) { if (!auto) setMsg('fl-msg', '这份 profile 解析后有 ' + (s.length / 1e6).toFixed(1) + ' MB，超过资料库单条上限 1.6 MB，没有保存', 'bad'); return false; }
+    var id = 'p' + hash32(s).toString(36) + s.length.toString(36), idx = libIndex();
+    if (idx.some(function (e) { return e.id === id; })) { if (!auto) setMsg('fl-msg', '资料库里已经有这一份了', 'good'); return true; }
+    try { localStorage.setItem(LS_ITEM + id, s); }
+    catch (e) { setMsg('fl-msg', '资料库空间不够（localStorage 约 5 MB）：先在「资料库」里删掉几份', 'bad'); return false; }
+    var vw = FL.view(p, {});
+    idx.unshift({ id: id, name: name, format: p.format, added: Date.now(), bytes: s.length, stacks: p.stacks.length, total: vw.total, unit: vw.unit, type: vw.typeName });
+    try { libWriteIndex(idx); } catch (e) { localStorage.removeItem(LS_ITEM + id); setMsg('fl-msg', '资料库空间不够', 'bad'); return false; }
+    var o = current(); if (o && o.profile === p) o.src.libId = id;
+    if (S.tab === 'lib') renderLib();
+    return true;
+  }
+  function libOpen(id) {
+    var e = libIndex().filter(function (x) { return x.id === id; })[0];
+    if (!e) return false;
+    try { var p = FL.unpack(JSON.parse(localStorage.getItem(LS_ITEM + id))); openProfile(p, e.name, { lib: id }); return true; }
+    catch (err) { setMsg('fl-msg', '读不出资料库里的「' + e.name + '」：' + err.message, 'bad'); return false; }
+  }
+  function libDelete(id) {
+    var idx = libIndex(), e = idx.filter(function (x) { return x.id === id; })[0];
+    if (!e) return;
+    var raw = localStorage.getItem(LS_ITEM + id);
+    localStorage.removeItem(LS_ITEM + id); libWriteIndex(idx.filter(function (x) { return x.id !== id; }));
+    renderLib();
+    var m = $('fl-lib-sum');
+    m.innerHTML = '已删除「' + esc(e.name) + '」 <button class="fl-btn fl-btn-sm" type="button" id="fl-lib-undo">撤销</button>';
+    $('fl-lib-undo').onclick = function () { localStorage.setItem(LS_ITEM + id, raw); var a = libIndex(); a.unshift(e); libWriteIndex(a); renderLib(); };
+  }
+  function libRename(id, name) {
+    var idx = libIndex();
+    idx.forEach(function (e) { if (e.id === id) e.name = name; });
+    libWriteIndex(idx);
+    try { var o = JSON.parse(localStorage.getItem(LS_ITEM + id)); o.name = name; localStorage.setItem(LS_ITEM + id, JSON.stringify(o)); } catch (e) { /* 条目坏了就只改索引 */ }
+    renderLib();
+  }
+  function renderLib() {
+    var idx = libIndex(), list = $('fl-lib-list'), used = 0;
+    idx.forEach(function (e) { used += (e.bytes || 0); });
+    $('fl-lib-quota').style.width = M.min(100, 100 * used * 2 / 5e6).toFixed(1) + '%';
+    if (!$('fl-lib-undo')) $('fl-lib-sum').textContent = idx.length ? '共 ' + idx.length + ' 份，占用约 ' + (used * 2 / 1048576).toFixed(2) + ' MiB（localStorage 按 UTF-16 计）' : '资料库是空的：打开的文件会自动存进来，下次来还在。';
+    var o = current(), curLib = o && o.src ? (o.src.lib || o.src.libId) : null;
+    list.innerHTML = idx.map(function (e) {
+      return '<div class="fl-libitem' + (e.id === curLib ? ' fl-open' : '') + '" data-id="' + e.id + '"><div><div class="fl-libname">' + esc(e.name) + '</div><div class="fl-libmeta">' +
+        esc(({ folded: '折叠栈', perf: 'perf script', pprof: 'pprof', cpuprofile: 'cpuprofile', trace: 'Chrome trace' })[e.format] || e.format) + ' · ' + (e.stacks || 0).toLocaleString('en-US') + ' 条栈 · ' + esc(FL.fmtValue(e.total || 0, e.unit || 'count')) + ' · ' + new Date(e.added).toLocaleString('zh-CN', { hour12: false }) + '</div></div>' +
+        '<div class="fl-libact"><button class="fl-btn fl-btn-sm fl-lib-open" type="button">打开</button><button class="fl-btn fl-btn-sm fl-lib-base" type="button">设为差分基线</button><button class="fl-btn fl-btn-sm fl-lib-ren" type="button">重命名</button><button class="fl-btn fl-btn-sm fl-lib-del" type="button">删除</button></div></div>';
+    }).join('');
+  }
+  $('fl-lib-list').addEventListener('click', function (e) {
+    var it = e.target.closest('.fl-libitem'); if (!it) return;
+    var id = it.dataset.id, btn = e.target.closest('button'); if (!btn) return;
+    if (btn.classList.contains('fl-lib-open')) { libOpen(id); selectTab('flame'); }
+    else if (btn.classList.contains('fl-lib-del')) libDelete(id);
+    else if (btn.classList.contains('fl-lib-base')) {
+      var keep = current(); if (!keep) return;
+      if (libOpen(id)) { var base = current(); S.cur = S.opened.indexOf(keep); S.diffA = base.id; S.diffB = keep.id; refreshProfSelect(); recompute(); selectTab('diff'); }
+    } else if (btn.classList.contains('fl-lib-ren')) {
+      var nameEl = it.querySelector('.fl-libname'), old = nameEl.textContent;
+      nameEl.innerHTML = '<input class="fl-in fl-lib-name-in" aria-label="新名字" value="' + esc(old) + '">';
+      var inp = nameEl.querySelector('input'); inp.focus(); inp.select();
+      var done = function (save) { if (save && inp.value.trim()) libRename(id, inp.value.trim()); else renderLib(); };
+      inp.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') done(true); else if (ev.key === 'Escape') done(false); });
+      inp.addEventListener('blur', function () { done(true); });
+    }
+  });
+
+  // ───────────────────────── 偏好（防抖写 + 离页补写） ─────────────────────────
+  var savePrefs = debounce(function () {
+    try { localStorage.setItem(LS_PREFS, JSON.stringify({ orient: S.orient, order: S.order, palette: S.palette, tab: S.tab, libAuto: S.libAuto, diffNorm: S.diffNorm, diffWidth: S.diffWidth, diffColor: S.diffColor, topSort: S.topSort, last: S.last })); } catch (e) { /* 存不下就算了 */ }
+  }, 300);
+  window.addEventListener('pagehide', function () { savePrefs.flush(); });
+  function loadPrefs() {
+    try {
+      var o = JSON.parse(localStorage.getItem(LS_PREFS) || 'null');
+      if (!o) return;
+      ['orient', 'order', 'palette', 'tab', 'libAuto', 'diffNorm', 'diffWidth', 'diffColor', 'last'].forEach(function (k) { if (o[k] !== undefined) S[k] = o[k]; });
+      if (o.topSort && o.topSort.k) S.topSort = o.topSort;
+    } catch (e) { /* 坏了就用默认 */ }
+  }
+
+  // ───────────────────────── 页签 ─────────────────────────
+  var TABS = ['flame', 'top', 'sandwich', 'diff', 'timeline', 'lib', 'about'];
+  function selectTab(t, focusTab) {
+    if (TABS.indexOf(t) < 0) t = 'flame';
+    S.tab = t;
+    TABS.forEach(function (k) {
+      var b = $('fl-tab-' + k), on = k === t;
+      b.setAttribute('aria-selected', on ? 'true' : 'false'); b.tabIndex = on ? 0 : -1;
+      $('pane-' + k).hidden = !on;
+    });
+    if (focusTab) $('fl-tab-' + t).focus();
+    savePrefs();
+    renderPane(t);
+  }
+  $('fl-tabs').addEventListener('click', function (e) { var b = e.target.closest('.fl-tab'); if (b) selectTab(b.id.replace('fl-tab-', '')); });
+  $('fl-tabs').addEventListener('keydown', function (e) {
+    var i = TABS.indexOf(S.tab), j = -1;
+    if (e.key === 'ArrowRight') j = (i + 1) % TABS.length; else if (e.key === 'ArrowLeft') j = (i - 1 + TABS.length) % TABS.length;
+    else if (e.key === 'Home') j = 0; else if (e.key === 'End') j = TABS.length - 1;
+    if (j >= 0) { e.preventDefault(); selectTab(TABS[j], true); }
+  });
+
+  // ───────────────────────── 事件 ─────────────────────────
+  function seg(ids, key, vals, after) {
+    ids.forEach(function (id, i) {
+      $(id).addEventListener('click', function () {
+        S[key] = vals[i];
+        ids.forEach(function (x, j) { $(x).setAttribute('aria-pressed', j === i ? 'true' : 'false'); });
+        savePrefs(); after();
+      });
+    });
+  }
+  function syncSeg() {
+    var pairs = [[['fl-or-icicle', 'fl-or-flame'], S.orient, ['icicle', 'flame']], [['fl-ord-alpha', 'fl-ord-weight'], S.order, ['alpha', 'weight']], [['fl-pal-pkg', 'fl-pal-hot'], S.palette, ['pkg', 'hot']],
+      [['fl-dw-new', 'fl-dw-base'], S.diffWidth, ['new', 'base']], [['fl-dc-self', 'fl-dc-total'], S.diffColor, ['self', 'total']]];
+    pairs.forEach(function (p) { p[0].forEach(function (id, i) { $(id).setAttribute('aria-pressed', p[2][i] === p[1] ? 'true' : 'false'); }); });
+    $('fl-diff-norm').checked = S.diffNorm; $('fl-lib-auto').checked = S.libAuto;
+  }
+  seg(['fl-or-icicle', 'fl-or-flame'], 'orient', ['icicle', 'flame'], function () { renderFlame(); });
+  seg(['fl-ord-alpha', 'fl-ord-weight'], 'order', ['alpha', 'weight'], function () { recompute(); });
+  seg(['fl-pal-pkg', 'fl-pal-hot'], 'palette', ['pkg', 'hot'], function () { renderAll(); });
+  seg(['fl-dw-new', 'fl-dw-base'], 'diffWidth', ['new', 'base'], function () { renderDiff(); });
+  seg(['fl-dc-self', 'fl-dc-total'], 'diffColor', ['self', 'total'], function () { renderDiff(); });
+  $('fl-diff-norm').addEventListener('change', function () { S.diffNorm = this.checked; savePrefs(); renderDiff(); });
+  $('fl-diff-a').addEventListener('change', function () { S.diffA = this.value; renderDiff(); });
+  $('fl-diff-b').addEventListener('change', function () { S.diffB = this.value; renderDiff(); });
+  $('fl-diff-swap').addEventListener('click', function () { var t = S.diffA; S.diffA = S.diffB; S.diffB = t; renderDiff(); });
+  $('fl-diff-svg').addEventListener('click', function () {
+    if (!diffView.root) return;
+    download('flame-diff.svg', FL.toSVG(diffView.root, { title: 'Flame Lab 差分：' + $('fl-diff-a').selectedOptions[0].textContent + ' → ' + $('fl-diff-b').selectedOptions[0].textContent, colorOf: function (n) { return diffView.colorOf(n); }, textOf: function (n) { return inkOn(diffView.colorOf(n)); }, fmt: diffView.fmt }), 'image/svg+xml');
+  });
+  $('fl-reset').addEventListener('click', function () { flame.reset(); });
+  $('fl-prof').addEventListener('change', function () { S.cur = +this.value; S.typeName = null; S.gran = 'function'; S.swFn = null; recompute(); });
+  $('fl-type').addEventListener('change', function () { S.typeName = P.types[+this.value].type; recompute(); });
+  $('fl-gran').addEventListener('change', function () { S.gran = this.value; recompute(); });
+  var onSearch = debounce(function () { S.search = $('fl-search').value.trim(); computeHit(); if (S.tab === 'flame') renderFlame(); }, 120);
+  $('fl-search').addEventListener('input', onSearch);
+  $('fl-search').addEventListener('keydown', function (e) {
+    if (e.key !== 'Enter' || !HIT || !T) return;
+    e.preventDefault(); onSearch.flush();
+    // 跳到下一个命中的方块：按深度优先顺序
+    var list = [], st = [T];
+    while (st.length) { var n = st.pop(); if (n.n >= 0 && HIT.frames.get(n.n)) list.push(n); if (n.c) for (var i = n.c.length - 1; i >= 0; i--) st.push(n.c[i]); }
+    if (!list.length) return;
+    var at = list.indexOf(flame.sel), nx = list[(at + 1) % list.length];
+    flame.select(nx); flame.zoomTo(nx.p || nx);
+    live('第 ' + (list.indexOf(nx) + 1) + ' / ' + list.length + ' 个命中：' + T.frames[nx.n]);
+  });
+  var onFilter = debounce(function () { S.focus = $('fl-focus').value.trim(); S.ignore = $('fl-ignore').value.trim(); S.hide = $('fl-hide').value.trim(); recompute(); }, 250);
+  ['fl-focus', 'fl-ignore', 'fl-hide'].forEach(function (id) { $(id).addEventListener('input', onFilter); });
+  $('fl-rec').addEventListener('change', function () { S.rec = this.checked; recompute(); });
+  $('fl-sel-sw').addEventListener('click', function () { if (flame.sel && flame.sel.n >= 0) { S.swFn = T.frames[flame.sel.n]; selectTab('sandwich'); } });
+  $('fl-sel-focus').addEventListener('click', function () {
+    if (!flame.sel || flame.sel.n < 0) return;
+    var name = T.frames[flame.sel.n], inf = T.finfo[flame.sel.n];
+    var src = inf && inf.name ? inf.name : name;
+    $('fl-focus').value = '^' + src.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$';
+    onFilter.flush();
+  });
+  D.addEventListener('keydown', function (e) {
+    if (e.key === '/' && !/^(INPUT|TEXTAREA|SELECT)$/.test((e.target.tagName || ''))) { e.preventDefault(); $('fl-search').focus(); }
+  });
+  // 函数表
+  $('fl-top-filter').addEventListener('input', debounce(function () { S.topFilter = $('fl-top-filter').value.trim(); S.topLimit = 200; renderTop(); }, 120));
+  $('fl-top-table').querySelector('thead').addEventListener('click', function (e) {
+    var th = e.target.closest('th'); if (!th) return;
+    var k = th.dataset.k;
+    if (S.topSort.k === k) S.topSort.dir = -S.topSort.dir; else S.topSort = { k: k, dir: k === 'name' ? 1 : -1 };
+    savePrefs(); renderTop();
+  });
+  function pickRow(tr) { if (!tr) return; S.swFn = tr.dataset.name; selectTab('sandwich'); }
+  $('fl-top-body').addEventListener('click', function (e) { pickRow(e.target.closest('tr')); });
+  $('fl-top-body').addEventListener('keydown', function (e) { if (e.key === 'Enter') pickRow(e.target.closest('tr')); });
+  $('fl-top-more').addEventListener('click', function () { S.topLimit += 200; renderTop(); });
+  $('fl-top-csv').addEventListener('click', function () {
+    if (!V) return;
+    S.topFilter = $('fl-top-filter').value.trim();   // 别让筛选框的防抖把刚清空的条件带进导出
+    var q = function (s) { return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+    var lines = ['function,flat,flat_pct,cum,cum_pct,unit'];
+    topRows().forEach(function (r) { lines.push([q(r.name), r.flat, (100 * r.flat / V.total).toFixed(4), r.cum, (100 * r.cum / V.total).toFixed(4), V.unit].join(',')); });
+    download('functions.csv', '\ufeff' + lines.join('\n') + '\n', 'text/csv;charset=utf-8');
+  });
+  $('fl-sw-fn').addEventListener('change', function () { S.swFn = this.value; renderSandwich(); });
+  // 导出
+  $('fl-exp-folded').addEventListener('click', function () { if (V) download((current().name || 'profile').replace(/\.[^.]+$/, '') + '.folded', FL.toFolded(V)); });
+  $('fl-exp-svg').addEventListener('click', function () {
+    if (!T) return;
+    download('flame.svg', FL.toSVG(T, { title: 'Flame Lab · ' + current().name + ' · ' + V.typeName, inverted: S.orient === 'icicle', colorOf: function (n) { return n.n < 0 ? '#3a3a3a' : frameColor(T.frames[n.n], T.finfo[n.n], S.palette); }, textOf: function (n) { return n.n < 0 ? '#e6e6e6' : inkOn(frameColor(T.frames[n.n], T.finfo[n.n], S.palette)); }, fmt: fmt }), 'image/svg+xml');
+  });
+  $('fl-exp-png').addEventListener('click', function () { flame.cv.toBlob(function (b) { if (b) download('flame.png', b, 'image/png'); }); });
+  // 导入
+  $('fl-file').addEventListener('change', function () { openFiles(this.files).then(function () { $('fl-file').value = ''; }); });
+  var drop = $('fl-drop');
+  ['dragenter', 'dragover'].forEach(function (t) { D.addEventListener(t, function (e) { e.preventDefault(); drop.classList.add('fl-drag'); }); });
+  ['dragleave', 'drop'].forEach(function (t) { D.addEventListener(t, function (e) { e.preventDefault(); if (t === 'drop' || e.target === D.documentElement) drop.classList.remove('fl-drag'); }); });
+  D.addEventListener('drop', function (e) { if (e.dataTransfer && e.dataTransfer.files.length) openFiles(e.dataTransfer.files); });
+  $('fl-paste-go').addEventListener('click', function () {
+    var t = $('fl-paste').value;
+    if (!t.trim()) { setMsg('fl-msg', '先粘点东西进来', 'bad'); return; }
+    parseInput(t, perfOpt()).then(function (p) {
+      if (!p.stacks.length) { setMsg('fl-msg', '没解析出任何调用栈：检查格式（折叠栈每行是「a;b;c 数字」）', 'bad'); $('fl-warn').innerHTML = (p.warnings || []).map(function (x) { return '<li>' + esc(x) + '</li>'; }).join(''); return; }
+      openProfile(p, '粘贴的' + fmtFormat(p) + ' #' + (++pasteN), { paste: 1 });
+      selectTab(S.tab === 'about' || S.tab === 'lib' ? 'flame' : S.tab);
+    }).catch(function (err) { setMsg('fl-msg', '解析失败：' + err.message, 'bad'); });
+  });
+  $('fl-lib-auto').addEventListener('change', function () { S.libAuto = this.checked; savePrefs(); });
+  $('fl-lib-save').addEventListener('click', function () { var o = current(); if (o && libSave(o.profile, o.name, false)) { setMsg('fl-msg', '已存进资料库：' + o.name, 'good'); renderLib(); } });
+  // 示例
+  var EX = [['goCpuBefore', 'Go CPU · 优化前'], ['goCpuAfter', 'Go CPU · 优化后'], ['goAllocs', 'Go 内存分配'], ['nodeBlog', 'Node cpuprofile'], ['pyLogs', 'Python 折叠栈']];
+  $('fl-examples').innerHTML = EX.map(function (e) { return '<button class="fl-btn fl-btn-sm" type="button" data-ex="' + e[0] + '">' + esc(e[1]) + '</button>'; }).join('') + '<button class="fl-btn fl-btn-sm fl-btn-y" type="button" id="fl-ex-diff">差分示例：优化前 → 后</button>';
+  $('fl-examples').addEventListener('click', function (e) {
+    var b = e.target.closest('button'); if (!b) return;
+    if (b.id === 'fl-ex-diff') { loadDiffExample(); return; }
+    openExample(b.dataset.ex).then(function () { if (S.tab === 'lib' || S.tab === 'about') selectTab('flame'); else renderPane(S.tab); });
+  });
+  function loadDiffExample() {
+    return openExample('goCpuBefore', true).then(function (i) { var a = S.opened[i].id; return openExample('goCpuAfter', true).then(function (j) { S.diffA = a; S.diffB = S.opened[j].id; S.diffNorm = true; syncSeg(); selectTab('diff'); setMsg('fl-msg', '差分示例：同一个订单服务，修掉「每个请求现编译正则 / 新建 gzip.Writer / 循环里 fmt.Sprintf」前后各跑 3 秒', 'good'); }); });
+  }
+  // 尺寸变化时重画
+  var ro = new ResizeObserver(debounce(function () {
+    if (S.tab === 'flame') { flame.key = stateKey('flame'); flame.draw(); }
+    else if (S.tab === 'sandwich') { var k = stateKey('sandwich'); swCallers.key = swCallees.key = k; swCallers.draw(); swCallees.draw(); }
+    else if (S.tab === 'diff') { diffView.key = stateKey('diff'); diffView.draw(); }
+    else if (S.tab === 'timeline') { tlView.key = stateKey('timeline'); tlView.draw(); }
+  }, 60));
+  ['fl-fig'].forEach(function (id) { ro.observe($(id)); });
+  ro.observe($('fl-diff-canvas').parentNode); ro.observe($('fl-sw-callers').parentNode); ro.observe($('fl-tl-canvas').parentNode);
+
+  // ───────────────────────── 启动 ─────────────────────────
+  loadPrefs(); syncSeg();
+  var boot;
+  if (S.last && S.last.lib && libIndex().some(function (e) { return e.id === S.last.lib; })) { libOpen(S.last.lib); boot = Promise.resolve(); }
+  else boot = openExample(S.last && S.last.ex && FL_DATA[S.last.ex] ? S.last.ex : 'goCpuBefore', true);
+  boot.then(function () {
+    // 差分页默认能看：把优化后的示例也打开
+    if (!S.opened.some(function (o) { return o.src.ex === 'goCpuAfter'; }) && current() && current().src.ex === 'goCpuBefore') {
+      var keep = S.cur;
+      return openExample('goCpuAfter', true).then(function (j) { S.diffA = S.opened[keep].id; S.diffB = S.opened[j].id; S.cur = keep; refreshProfSelect(); recompute(); });
+    }
+  }).then(function () {
+    selectTab(S.tab);
+    D.body.dataset.ready = '1';
+  }).catch(function (e) { setMsg('fl-msg', '启动失败：' + e.message, 'bad'); D.body.dataset.ready = 'err'; });
+
+  window.FLApp = {
+    S: S, P: function () { return P; }, V: function () { return V; }, T: function () { return T; }, top: function () { return TOP; },
+    flame: flame, swCallers: swCallers, swCallees: swCallees, diff: diffView, tl: tlView, stateKey: stateKey,
+    openExample: openExample, loadDiffExample: loadDiffExample, openText: function (t, name, opt) { return parseInput(t, opt || {}).then(function (p) { return openProfile(p, name || '测试', { paste: 1 }); }); },
+    openBytes: function (u8, name) { return parseInput(u8, {}).then(function (p) { return openProfile(p, name || '测试', { file: name }); }); },
+    selectTab: selectTab, libIndex: libIndex, libOpen: libOpen, frameColor: frameColor, pkgOf: pkgOf, recompute: recompute, renderAll: renderAll
+  };
+})();
+
+</script>
+</body>
+</html>
