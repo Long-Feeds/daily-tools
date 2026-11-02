@@ -132,4 +132,11 @@ export default async function ({ page, toolURL, screenshot, assert }) {
     return rows.length >= 2;
   }, undefined, { timeout: 3000 });
   await screenshot('thumb.png');
+
+  // --- 11. 改完立刻刷新也不丢（防抖 250 ms 内离页：靠 pagehide 补写；2026-11-02 回填） ---
+  await setFn(0, 'x^3 - 7');
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('#fn-list .fn-row');
+  const kept = await page.locator('.fn-input').nth(0).inputValue();
+  assert(kept === 'x^3 - 7', `edit right before reload is persisted (got ${JSON.stringify(kept)})`);
 }
