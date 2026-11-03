@@ -297,6 +297,15 @@ export default async function ({ page, toolURL, screenshot, assert }) {
   assert(ov390 <= 1, `390px 窄屏零横向溢出(得到 ${ov390}px)`);
   await page.setViewportSize({ width: 1280, height: 850 });
 
+  /* ================= 17b. 防抖窗口里刷新：最后一次编辑不能丢（2026-11-03 回填 pagehide） ================= */
+  const before17b = await page.inputValue('#cb-net');
+  const quick17b = '* 刚改完就刷新\nV1 a 0 DC 2\nR1 a 0 2k';
+  await page.fill('#cb-net', quick17b);
+  await page.reload();
+  await page.waitForFunction(() => document.querySelector('#cb-net') && document.querySelector('#cb-net').value.length > 0, null, { timeout: 10000 });
+  assert((await page.inputValue('#cb-net')) === quick17b, '改完网表、220 ms 防抖内就刷新：网表应已在 pagehide 里补写进 localStorage');
+  await settle(() => page.fill('#cb-net', before17b));
+
   /* ================= 18. 缩略图 ================= */
   await settle(() => page.click('#cb-tab-tran'));
   await page.waitForFunction(() => document.querySelectorAll('#cb-meas tr').length >= 2, null, { timeout: 10000 });
