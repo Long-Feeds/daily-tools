@@ -522,6 +522,16 @@ export default async ({ page, toolURL, screenshot, assert }) => {
   // ── 11. 零页面错误 ────────────────────────────────────────────────
   assert(errs.length === 0, '页面不应有任何 JS 错误：' + errs.slice(0, 3).join(' | '));
 
+  // ── 11b. 防抖窗口里刷新：最后一次编辑不能丢（2026-11-04 回填 pagehide） ──
+  await page.goto(toolURL.split('#')[0], { waitUntil: 'networkidle' });
+  await page.waitForSelector('#sq-tabs button', { timeout: 15000 });
+  await onTab('motion');
+  await page.fill('#mo-hp', '0.37');
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.waitForSelector('#sq-tabs button', { timeout: 15000 });
+  assert((await page.inputValue('#mo-hp')) === '0.37', '改完高通频率、90 ms 防抖内就刷新：应已在 pagehide 里补写进 localStorage');
+  await page.fill('#mo-hp', '0.05');
+
   /* 缩略图：回到「地震动」页。不能只 goto —— 上一步的分享码把 tab 存进了 localStorage，
      重新打开会停在「规范校核」，而 #mo-strip 藏在隐藏面板里，waitForSelector 等不到可见。*/
   await page.goto(toolURL.split('#')[0], { waitUntil: 'networkidle' });
