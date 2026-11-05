@@ -391,6 +391,14 @@ export default async ({ page, toolURL, screenshot, assert }) => {
   await page.waitForFunction(() => !document.getElementById('fl-pane-nav').hidden);
   assert(await page.$eval('#fl-n-edit tbody tr:last-child input[data-f=dist]', (i) => +i.value) === ORACLE.nav_fill.dist, '刷新后航段保留');
   assert(/我的 172/.test(await page.$eval('#fl-wb-prof', (s) => s.selectedOptions[0].textContent)), '刷新后机型保留');
+  // 改完立刻刷新（不等防抖）：离页补写必须把这次修改落盘（2026-11-05 pagehide 回填）
+  await set('#fl-g-lat2', '2.7457');
+  await page.reload();
+  assert(await page.$eval('#fl-g-lat2', (i) => i.value) === '2.7457', '改完立刻刷新，修改应已保存（pagehide 补写）');
+  await set('#fl-g-lat2', '2.7456');
+  await page.waitForTimeout(400);
+  await page.reload();
+  await page.waitForFunction(() => !document.getElementById('fl-pane-nav').hidden);
   // 键盘切页签
   await page.focus('#fl-tab-nav'); await page.keyboard.press('Home');
   await page.waitForFunction(() => !document.getElementById('fl-pane-wind').hidden && document.activeElement.id === 'fl-tab-wind');
