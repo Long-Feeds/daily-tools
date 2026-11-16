@@ -511,7 +511,10 @@ export default async ({ page, toolURL, screenshot, assert }) => {
   // 非法偏差会被标红而不是悄悄吞掉
   await page.fill(`#ex-off-${devIdx}`, '+1:75:00')
   await page.press(`#ex-off-${devIdx}`, 'Enter')
-  assert(await page.evaluate(([k]) => document.getElementById('ex-off-' + k).classList.contains('ex-bad'), [devIdx]), '非法偏差应标红')
+  // 标红要一直留着（之前排队的重绘曾把它和用户的输入一起抹掉：时间页重绘会复位未聚焦的输入框）
+  await page.waitForFunction(([k]) => document.getElementById('ex-off-' + k).classList.contains('ex-bad'), [devIdx], { timeout: 5000 })
+  await page.evaluate(() => { EXA.render(); return new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))) })  // 主动补一次重绘：复现「排队的重绘落在回车之后」
+  assert(await page.evaluate(([k]) => { const i = document.getElementById('ex-off-' + k); return i.classList.contains('ex-bad') && i.value === '+1:75:00' }, [devIdx]), '非法偏差应标红，且重绘后输入框里仍是用户输入的值')
   await page.fill(`#ex-off-${devIdx}`, ORACLE.offsetText)
   await page.press(`#ex-off-${devIdx}`, 'Enter')
   await page.waitForFunction(([k]) => !document.getElementById('ex-off-' + k).classList.contains('ex-bad'), [devIdx])
