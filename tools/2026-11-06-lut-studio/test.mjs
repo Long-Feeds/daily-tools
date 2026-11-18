@@ -38238,7 +38238,8 @@ export default async ({ page, toolURL, screenshot, assert }) => {
   assert(Number(xml.match(/<Saturation>([^<]*)</)[1]) === A.sat && /urn:ASC:CDL:v1\.01/.test(xml), '.cdl 饱和 / 命名空间')
   // 精度自检：33³ 四面体插值 vs 逐点直算
   await onTab('export')
-  await page.waitForFunction(() => document.getElementById('lt-exp-acc').dataset.n === '33')
+  // 等目标态而不是等 n === '33'：精度自检有 60 ms 防抖，n 在上一轮（恒等管线、误差 0 / 0）就已是 33（2026-11-18 修：机器快时读到旧值）
+  await page.waitForFunction((m) => { const d = document.getElementById('lt-exp-acc'); return d.dataset.n === '33' && Math.abs(+d.dataset.max - m) < 1e-9 }, ORACLE.A.acc.max, { timeout: 10000 }).catch(() => {})
   // 异源核对：同一组 mulberry32 随机色，Python 用 colour 的四面体插值算出的最大 / 99% 分位误差（CDL 的截断拐点与 x^0.95 让误差在 1e-2 量级，是 LUT 本身的误差）
   const acc = await page.$eval('#lt-exp-acc', (d) => ({ max: +d.dataset.max, p99: +d.dataset.p99 }))
   assert(Math.abs(acc.max - ORACLE.A.acc.max) < 1e-9 && Math.abs(acc.p99 - ORACLE.A.acc.p99) < 1e-9, `精度自检 ${acc.max} / ${acc.p99} vs colour ${ORACLE.A.acc.max} / ${ORACLE.A.acc.p99}`)
