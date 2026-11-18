@@ -326,6 +326,11 @@ export default async ({ page, toolURL, screenshot, assert }) => {
     await drawn()
   }
   const legend = () => page.$$eval('#bs-legend-rows .bs-lrow', (rs) => Object.fromEntries(rs.map((r) => [r.dataset.code, +r.querySelector('.bs-lcount').textContent.replace(/,/g, '')])))
+  // 等图例真的变成目标值（2026-11-18 修：全站负载下 regen 等到画布序号后，图例偶尔还是上一轮的「只用库存色」结果）
+  const legendIs = (exp) => page.waitForFunction((exp) => {
+    const got = Object.fromEntries([...document.querySelectorAll('#bs-legend-rows .bs-lrow')].map((r) => [r.dataset.code, +r.querySelector('.bs-lcount').textContent.replace(/,/g, '')]))
+    return [...new Set([...Object.keys(got), ...Object.keys(exp)])].every((k) => got[k] === exp[k])
+  }, exp, { timeout: 10000 }).catch(() => {})
   const status = () => page.evaluate(() => ({ total: +document.querySelector('#bs-status').dataset.total, colors: +document.querySelector('#bs-status').dataset.colors }))
   const sameCounts = (got, exp, label) => {
     const ks = [...new Set([...Object.keys(got), ...Object.keys(exp)])]
@@ -393,6 +398,7 @@ export default async ({ page, toolURL, screenshot, assert }) => {
   await page.click('#bs-cfilter [data-f="all"]')
   await onTab('make')
   await regen(() => page.check('#bs-owned'))
+  await legendIs(ORACLE.S8.counts)
   sameCounts(await legend(), ORACLE.S8.counts, 'S8 只用库存色')
   // 把用量最多的那色库存改成 10 颗 → 色号清单出「缺 n」；购物清单（多备 10%）的缺口 = Σ max(0, ⌈n×1.1⌉ − 库存)
   const top = Object.entries(ORACLE.S8.counts).sort((a, b) => b[1] - a[1])[0]
@@ -413,6 +419,7 @@ export default async ({ page, toolURL, screenshot, assert }) => {
   await page.waitForFunction(() => /缺货清单已复制/.test(document.querySelector('#bs-saved-msg').textContent))
   await onTab('make')
   await regen(() => page.uncheck('#bs-owned'))
+  await legendIs(ORACLE.S1.counts)
   sameCounts(await legend(), ORACLE.S1.counts, '关掉「只用库存色」')
 
   // ── 4. 照片：海边落日 60×40，限 12 色（S3）→ 抖动（S4）→ 杂色清理（S5）──
