@@ -1,0 +1,2965 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>描摹工坊 · Trace Studio — 位图转矢量（Potrace 1.16 内核，本机处理）</title>
+<meta name="description" content="把 PNG / JPG 位图描成 SVG 矢量：Potrace 1.16 逐函数移植、与源码编译版逐位一致；黑白与多色分层、像素精确模式，导出 SVG / PDF / DXF / PNG，全程本机处理不上传。">
+<!-- 本页以 GNU GPL v2 或更高版本发布（描摹内核移植自 Potrace 1.16，Copyright (C) 2001-2019 Peter Selinger）。源码即本文件。 -->
+<style>
+[hidden]{display:none!important}
+:root{
+  --vt-ink:#000;--vt-canvas:#fff;--vt-hair:#e6e6e6;--vt-hair2:#f1f1f1;--vt-soft:#f7f7f5;
+  --vt-lime:#dceeb1;--vt-lilac:#c5b0f4;--vt-cream:#f4ecd6;--vt-pink:#efd4d4;--vt-mint:#c8e6cd;--vt-coral:#f3c9b6;--vt-navy:#1f1d3d;
+  --vt-magenta:#ff3d8b;--vt-green:#1ea64a;
+  --vt-sans:Inter,"SF Pro Display",-apple-system,BlinkMacSystemFont,system-ui,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  --vt-mono:"JetBrains Mono","SF Mono",Menlo,Consolas,"PingFang SC",monospace;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--vt-canvas);color:var(--vt-ink);font-family:var(--vt-sans);font-size:16px;font-weight:330;line-height:1.45;letter-spacing:-.14px;font-feature-settings:"kern"}
+a{color:inherit}
+button,input,select,textarea{font:inherit;color:inherit;letter-spacing:inherit}
+:focus-visible{outline:2px solid var(--vt-ink);outline-offset:2px}
+.vt-sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+.vt-wrap{max-width:1280px;margin:0 auto;padding:0 48px}
+/* 顶栏 */
+.vt-nav{position:sticky;top:0;z-index:30;background:var(--vt-canvas);border-bottom:1px solid var(--vt-hair2)}
+.vt-nav .vt-wrap{height:56px;display:flex;align-items:center;gap:20px}
+.vt-back{font-size:16px;font-weight:480;text-decoration:none;padding:8px 12px;border-radius:9999px;white-space:nowrap}
+.vt-back:hover{background:var(--vt-soft)}
+.vt-brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:17px;letter-spacing:-.3px;white-space:nowrap}
+.vt-brand svg{width:26px;height:26px;flex:0 0 auto}
+.vt-nav-sp{flex:1}
+.vt-navbtns{display:flex;gap:8px}
+/* 按钮：一律药丸 */
+.vt-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-width:56px;min-height:40px;padding:8px 20px 9px;border-radius:50px;border:0;cursor:pointer;font-size:16px;font-weight:480;letter-spacing:-.1px;white-space:nowrap;text-decoration:none;transition:transform .12s ease}
+.vt-btn:active{transform:scale(.97)}
+.vt-btn-pri{background:var(--vt-ink);color:var(--vt-canvas)}
+.vt-btn-sec{background:var(--vt-canvas);color:var(--vt-ink);box-shadow:inset 0 0 0 1px var(--vt-hair)}
+.vt-btn-sec:hover{box-shadow:inset 0 0 0 1px var(--vt-ink)}
+.vt-btn-soft{background:var(--vt-soft);color:var(--vt-ink)}
+.vt-btn-soft:hover{background:var(--vt-hair2)}
+.vt-btn-mag{background:var(--vt-magenta);color:#fff}
+.vt-btn[disabled]{opacity:.35;cursor:not-allowed;transform:none}
+.vt-btn-sm{min-height:34px;padding:6px 16px 7px;font-size:15px}
+/* 跑马灯 */
+.vt-marquee{background:var(--vt-ink);color:#fff;height:36px;overflow:hidden;display:flex;align-items:center;font-family:var(--vt-mono);font-size:12px;letter-spacing:.6px}
+.vt-marquee-track{display:flex;gap:48px;white-space:nowrap;padding-left:48px;animation:vt-scroll 46s linear infinite}
+.vt-marquee-track span::before{content:"●";margin-right:14px;font-size:8px;vertical-align:2px}
+@keyframes vt-scroll{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+@media (prefers-reduced-motion:reduce){.vt-marquee-track{animation:none}}
+/* 标题区 */
+.vt-hero{padding:44px 0 28px}
+.vt-eyebrow{font-family:var(--vt-mono);font-size:14px;font-weight:400;letter-spacing:.54px;line-height:1.3;margin:0 0 18px}
+.vt-h1{font-size:64px;font-weight:340;line-height:1.08;letter-spacing:-.96px;margin:0}
+.vt-ph{display:inline-block}
+.vt-lead{font-size:20px;font-weight:330;line-height:1.45;letter-spacing:-.14px;margin:18px 0 0;max-width:50em}
+.vt-lead b{font-weight:540}
+/* 工作区 */
+.vt-work{display:grid;grid-template-columns:minmax(0,1fr) 392px;gap:24px;align-items:start;padding-bottom:32px}
+.vt-work>*{min-width:0}
+.vt-stagecol{display:flex;flex-direction:column;gap:14px;min-width:0}
+.vt-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+.vt-seg{display:inline-flex;flex-wrap:wrap;gap:4px;padding:4px;border-radius:50px;background:var(--vt-soft)}
+.vt-seg button{min-width:56px;min-height:34px;padding:5px 14px 6px;border-radius:50px;border:0;background:transparent;cursor:pointer;font-size:15px;font-weight:480;white-space:nowrap}
+.vt-seg button[aria-pressed="true"],.vt-seg button[aria-selected="true"]{background:var(--vt-ink);color:var(--vt-canvas)}
+.vt-seg button:not([aria-pressed="true"]):not([aria-selected="true"]):hover{background:var(--vt-canvas)}
+.vt-zoom{display:inline-flex;align-items:center;gap:6px;margin-left:auto}
+.vt-zoomlbl{font-family:var(--vt-mono);font-size:12px;letter-spacing:.6px;min-width:52px;text-align:center}
+.vt-stage{position:relative;height:clamp(380px,62vh,700px);border-radius:24px;overflow:hidden;background-color:var(--vt-soft);
+  background-image:linear-gradient(45deg,#eeeeea 25%,transparent 25%),linear-gradient(-45deg,#eeeeea 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#eeeeea 75%),linear-gradient(-45deg,transparent 75%,#eeeeea 75%);
+  background-size:20px 20px;background-position:0 0,0 10px,10px -10px,-10px 0;cursor:grab;touch-action:none;outline:none}
+.vt-stage:focus-visible{box-shadow:inset 0 0 0 2px var(--vt-ink)}
+.vt-stage.vt-dragging{cursor:grabbing}
+.vt-content{position:absolute;left:0;top:0;transform-origin:0 0}
+.vt-content>*{position:absolute;left:0;top:0}
+.vt-content canvas{image-rendering:auto}
+.vt-content.vt-px canvas{image-rendering:pixelated}
+#vt-svgbox svg{display:block;overflow:visible}
+#vt-nodes{overflow:visible;pointer-events:none}
+.vt-cmpline{position:absolute;top:0;bottom:0;width:2px;background:var(--vt-ink);pointer-events:none}
+.vt-cmpbar{position:absolute;left:24px;right:24px;bottom:16px;display:flex;align-items:center;gap:12px;padding:8px 16px;border-radius:50px;background:rgba(255,255,255,.94);box-shadow:0 4px 16px rgba(0,0,0,.06)}
+.vt-cmpbar input{flex:1;min-width:100px}
+.vt-cmpbar span{font-family:var(--vt-mono);font-size:12px;letter-spacing:.6px;white-space:nowrap}
+.vt-legend{position:absolute;left:16px;top:16px;display:flex;flex-wrap:wrap;gap:8px;font-size:14px;font-weight:480}
+.vt-legend span{display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,.94);padding:4px 12px;border-radius:50px}
+.vt-legend i{width:12px;height:12px;border-radius:3px;display:inline-block}
+.vt-drop{position:absolute;inset:16px;border:2px dashed var(--vt-ink);border-radius:18px;background:rgba(220,238,177,.86);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;text-align:center;padding:24px;pointer-events:none}
+.vt-drop strong{font-size:26px;font-weight:540;letter-spacing:-.26px}
+.vt-busy{position:absolute;right:16px;top:16px;font-family:var(--vt-mono);font-size:12px;letter-spacing:.6px;background:var(--vt-ink);color:#fff;padding:6px 12px;border-radius:50px}
+.vt-empty{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;text-align:center;padding:24px}
+.vt-empty p{margin:0;font-size:20px;font-weight:330;max-width:26em}
+/* 指标 */
+.vt-kpis{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px}
+.vt-kpi{background:var(--vt-soft);border-radius:8px;padding:12px 14px;min-width:0}
+.vt-kpi b{display:block;font-size:24px;font-weight:540;letter-spacing:-.26px;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.vt-kpi small{display:block;font-family:var(--vt-mono);font-size:12px;letter-spacing:.6px;margin-top:4px;line-height:1.35}
+.vt-status{font-size:15px;font-weight:330;min-height:22px}
+.vt-status.vt-err{color:#b00020;font-weight:480}
+/* 面板 */
+.vt-panel{border:1px solid var(--vt-hair);border-radius:24px;background:var(--vt-canvas);padding:16px}
+@media (min-width:1101px) and (min-height:760px){.vt-stagecol{position:sticky;top:72px}}
+.vt-tabs{display:flex;flex-wrap:wrap;gap:4px;padding:4px;border-radius:24px;background:var(--vt-soft);margin-bottom:16px}
+.vt-tab{flex:1 0 auto;min-width:56px;min-height:36px;padding:6px 12px 7px;border-radius:50px;border:0;background:transparent;font-size:15px;font-weight:480;cursor:pointer;white-space:nowrap}
+.vt-tab[aria-selected="true"]{background:var(--vt-ink);color:var(--vt-canvas)}
+.vt-tab:not([aria-selected="true"]):hover{background:var(--vt-canvas)}
+.vt-pane>section{padding:14px 2px;border-top:1px solid var(--vt-hair2)}
+.vt-pane>section:first-child{border-top:0;padding-top:2px}
+.vt-h3{font-size:17px;font-weight:540;letter-spacing:-.2px;margin:0 0 10px}
+.vt-cap{font-family:var(--vt-mono);font-size:12px;letter-spacing:.6px;margin:0 0 10px;line-height:1.35}
+.vt-row{display:flex;align-items:center;gap:10px;margin:10px 0;flex-wrap:wrap}
+.vt-row>label{font-size:15px;font-weight:480;min-width:84px}
+.vt-row .vt-grow{flex:1;min-width:100px}
+.vt-row output{font-family:var(--vt-mono);font-size:13px;min-width:44px;text-align:right}
+.vt-help{font-size:14px;font-weight:330;margin:4px 0 0;line-height:1.45}
+.vt-input,.vt-select{min-width:100px;min-height:36px;padding:6px 12px;border:1px solid var(--vt-hair);border-radius:8px;background:var(--vt-canvas)}
+.vt-input:focus,.vt-select:focus{outline:2px solid var(--vt-ink);outline-offset:1px}
+.vt-num{width:100px}
+.vt-color{width:100px;height:36px;padding:2px;border:1px solid var(--vt-hair);border-radius:8px;background:var(--vt-canvas);cursor:pointer}
+.vt-check{display:inline-flex;align-items:center;gap:8px;font-size:15px;font-weight:480;cursor:pointer}
+.vt-check input{width:18px;height:18px;accent-color:#000;margin:0}
+input[type=range]{-webkit-appearance:none;appearance:none;height:28px;background:transparent;min-width:100px;cursor:pointer}
+input[type=range]::-webkit-slider-runnable-track{height:4px;border-radius:4px;background:var(--vt-hair)}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;border-radius:50%;background:var(--vt-ink);margin-top:-7px;border:2px solid #fff;box-shadow:0 0 0 1px var(--vt-ink)}
+input[type=range]::-moz-range-track{height:4px;border-radius:4px;background:var(--vt-hair)}
+input[type=range]::-moz-range-thumb{width:16px;height:16px;border-radius:50%;background:var(--vt-ink);border:2px solid #fff}
+.vt-chips{display:flex;flex-wrap:wrap;gap:6px}
+.vt-chip{min-width:56px;min-height:34px;padding:5px 14px 6px;border-radius:50px;border:0;background:var(--vt-soft);font-size:15px;font-weight:480;cursor:pointer;white-space:nowrap}
+.vt-chip:hover{background:var(--vt-hair2)}
+.vt-chip[aria-pressed="true"]{background:var(--vt-ink);color:#fff}
+.vt-hint{background:var(--vt-lilac);border-radius:8px;padding:12px 14px;font-size:15px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.vt-hint span{flex:1;min-width:160px}
+.vt-pal{display:flex;flex-direction:column;gap:8px}
+.vt-palrow{display:grid;grid-template-columns:100px minmax(0,1fr) auto;align-items:center;gap:10px;padding:8px;border-radius:8px;background:var(--vt-soft)}
+.vt-palrow .vt-palinfo{min-width:0;font-size:14px}
+.vt-palrow .vt-palinfo b{display:block;font-family:var(--vt-mono);font-size:13px;font-weight:400;letter-spacing:.4px}
+.vt-palrow .vt-palinfo small{display:block;font-size:13px}
+.vt-palrow.vt-off{opacity:.45}
+.vt-code{font-family:var(--vt-mono);font-size:12px;line-height:1.5;background:var(--vt-soft);border-radius:8px;padding:12px;max-height:220px;overflow:auto;white-space:pre-wrap;word-break:break-all;margin:0}
+.vt-dlgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.vt-dlgrid .vt-btn{width:100%}
+.vt-lib{display:flex;flex-direction:column;gap:10px}
+.vt-libitem{display:grid;grid-template-columns:72px minmax(0,1fr);gap:12px;padding:10px;border-radius:8px;background:var(--vt-soft);align-items:center}
+.vt-libitem img{width:72px;height:72px;object-fit:contain;background:#fff;border-radius:6px}
+.vt-libitem h4{margin:0;font-size:15px;font-weight:540;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.vt-libitem p{margin:2px 0 6px;font-size:13px}
+.vt-libitem .vt-chips{gap:4px}
+.vt-meter{height:6px;border-radius:6px;background:var(--vt-hair);overflow:hidden}
+.vt-meter i{display:block;height:100%;background:var(--vt-ink)}
+.vt-about p,.vt-about li{font-size:15px;line-height:1.55}
+.vt-about ul{padding-left:20px;margin:6px 0}
+.vt-about code{font-family:var(--vt-mono);font-size:13px;background:var(--vt-soft);padding:1px 5px;border-radius:4px}
+/* 示例 */
+.vt-section{padding:72px 0 0}
+.vt-section h2{font-size:40px;font-weight:340;letter-spacing:-.6px;line-height:1.1;margin:0 0 10px}
+.vt-section .vt-sub{font-size:20px;font-weight:330;margin:0 0 28px;max-width:44em}
+.vt-samples{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px}
+.vt-sample{display:flex;flex-direction:column;gap:10px;padding:16px;border-radius:8px;background:var(--vt-soft);border:0;text-align:left;cursor:pointer;min-width:0}
+.vt-sample:hover{box-shadow:0 4px 16px rgba(0,0,0,.06)}
+.vt-sample[aria-pressed="true"]{box-shadow:inset 0 0 0 2px var(--vt-ink)}
+.vt-sample canvas{width:100%;aspect-ratio:4/3;object-fit:contain;background:#fff;border-radius:6px;image-rendering:auto}
+.vt-sample canvas.vt-pxl{image-rendering:pixelated}
+.vt-sample b{font-size:16px;font-weight:540}
+.vt-sample small{font-family:var(--vt-mono);font-size:12px;letter-spacing:.6px}
+/* 色块段落 */
+.vt-block{border-radius:24px;padding:48px;margin-top:96px}
+.vt-block h2{font-size:40px;font-weight:340;letter-spacing:-.6px;line-height:1.1;margin:0 0 12px}
+.vt-block p{font-size:19px;font-weight:330;line-height:1.5;margin:0 0 14px;max-width:46em}
+.vt-lime{background:var(--vt-lime)}
+.vt-lilac{background:var(--vt-lilac)}
+.vt-navy{background:var(--vt-navy);color:#fff}
+.vt-steps{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:14px;margin-top:28px;padding:0;list-style:none}
+.vt-steps li{background:rgba(255,255,255,.62);border-radius:8px;padding:18px;min-width:0}
+.vt-steps li b{display:block;font-size:19px;font-weight:540;margin:6px 0}
+.vt-steps li span{font-size:15px;line-height:1.5;display:block}
+.vt-steps li em{font-style:normal;font-family:var(--vt-mono);font-size:12px;letter-spacing:.6px}
+.vt-facts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-top:24px}
+.vt-fact{background:rgba(255,255,255,.62);border-radius:8px;padding:18px;min-width:0}
+.vt-fact b{display:block;font-size:34px;font-weight:340;letter-spacing:-.5px;line-height:1.1}
+.vt-fact span{display:block;font-size:15px;margin-top:8px;line-height:1.5}
+.vt-navy .vt-fact{background:rgba(255,255,255,.08)}
+.vt-foot{padding:96px 0 64px;font-family:var(--vt-mono);font-size:12px;letter-spacing:.6px;line-height:1.7}
+.vt-foot a{text-decoration:underline}
+@media (max-width:1100px){
+  .vt-work{grid-template-columns:minmax(0,1fr)}
+  .vt-samples{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .vt-steps{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media (max-width:720px){
+  .vt-wrap{padding:0 20px}
+  .vt-h1{font-size:40px;letter-spacing:-.6px}
+  .vt-lead{font-size:18px}
+  .vt-hero{padding:36px 0 20px}
+  .vt-brand span{display:none}
+  .vt-navbtns .vt-btn-sec{display:none}
+  .vt-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .vt-samples{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .vt-steps,.vt-facts{grid-template-columns:minmax(0,1fr)}
+  .vt-block{padding:28px 22px;margin-top:64px}
+  .vt-block h2,.vt-section h2{font-size:30px}
+  .vt-stage{height:420px}
+  .vt-zoom{margin-left:0}
+}
+</style>
+</head>
+<body>
+<header class="vt-nav">
+  <div class="vt-wrap">
+    <a class="vt-back" id="vt-back" href="../../">← 返回工具集</a>
+    <div class="vt-brand" aria-label="描摹工坊 Trace Studio">
+      <svg viewBox="0 0 26 26" aria-hidden="true"><rect x="1" y="1" width="11" height="11" rx="2" fill="#000"/><path d="M14 13h11v11c-6 0-11-5-11-11z" fill="#000"/><circle cx="19.5" cy="6.5" r="5.5" fill="none" stroke="#000" stroke-width="2"/><path d="M1 14h11v11H1z" fill="none" stroke="#000" stroke-width="2" stroke-dasharray="2 2"/></svg>
+      <span>描摹工坊 Trace Studio</span>
+    </div>
+    <div class="vt-nav-sp"></div>
+    <div class="vt-navbtns">
+      <button class="vt-btn vt-btn-sec" id="vt-open" type="button">打开图片</button>
+      <button class="vt-btn vt-btn-pri" id="vt-quick-svg" type="button">下载 SVG</button>
+    </div>
+  </div>
+</header>
+<div class="vt-marquee" aria-hidden="true"><div class="vt-marquee-track">
+  <span>POTRACE 1.16 逐函数移植</span><span>与源码编译版逐位一致</span><span>黑白 · 多色分层 · 像素精确</span><span>SVG / PDF / DXF / PNG</span><span>全程本机处理 · 图片不上传</span>
+  <span>POTRACE 1.16 逐函数移植</span><span>与源码编译版逐位一致</span><span>黑白 · 多色分层 · 像素精确</span><span>SVG / PDF / DXF / PNG</span><span>全程本机处理 · 图片不上传</span>
+</div></div>
+
+<main>
+<div class="vt-wrap">
+  <section class="vt-hero">
+    <p class="vt-eyebrow">BITMAP → VECTOR · 位图转矢量</p>
+    <h1 class="vt-h1"><span class="vt-ph">位图进来，</span><span class="vt-ph">矢量出去。</span></h1>
+    <p class="vt-lead">拖进一张 logo、签名、扫描线稿或像素画，几十毫秒后拿到干净的 <b>SVG 矢量</b>：可无限放大、能进切割机和激光雕刻。描摹内核是 <b>Potrace 1.16 的逐函数移植</b>，与它的源码编译版输出逐位相同；还能多色分层、像素精确，导出 PDF / DXF。图片只在你的浏览器里处理。</p>
+  </section>
+
+  <div class="vt-work" id="vt-work">
+    <div class="vt-stagecol">
+      <div class="vt-toolbar" id="vt-toolbar">
+        <div class="vt-seg" role="group" aria-label="查看方式" id="vt-views">
+          <button type="button" data-view="vector" aria-pressed="true">矢量</button>
+          <button type="button" data-view="source" aria-pressed="false">原图</button>
+          <button type="button" data-view="bitmap" aria-pressed="false">位图</button>
+          <button type="button" data-view="compare" aria-pressed="false">对比</button>
+          <button type="button" data-view="error" aria-pressed="false">偏差</button>
+          <button type="button" data-view="nodes" aria-pressed="false">节点</button>
+        </div>
+        <div class="vt-zoom">
+          <button class="vt-btn vt-btn-soft vt-btn-sm" type="button" id="vt-zoom-out" aria-label="缩小">−</button>
+          <span class="vt-zoomlbl" id="vt-zoom-lbl" aria-live="polite">100%</span>
+          <button class="vt-btn vt-btn-soft vt-btn-sm" type="button" id="vt-zoom-in" aria-label="放大">+</button>
+          <button class="vt-btn vt-btn-soft vt-btn-sm" type="button" id="vt-zoom-fit">适应</button>
+        </div>
+      </div>
+      <div class="vt-stage" id="vt-stage" tabindex="0" role="img" aria-label="描摹画布：拖动平移，滚轮或 + − 键缩放，0 键适应窗口">
+        <div class="vt-content" id="vt-content">
+          <canvas id="vt-src" width="1" height="1"></canvas>
+          <canvas id="vt-bits" width="1" height="1" hidden></canvas>
+          <div id="vt-svgbox"></div>
+          <canvas id="vt-errc" width="1" height="1" hidden></canvas>
+          <svg id="vt-nodes" width="1" height="1" hidden></svg>
+        </div>
+        <div class="vt-cmpline" id="vt-cmpline" hidden></div>
+        <div class="vt-legend" id="vt-legend" hidden></div>
+        <div class="vt-cmpbar" id="vt-cmpbar" hidden><span>矢量</span><input type="range" id="vt-cmp" min="0" max="100" value="50" aria-label="对比分界位置"><span>原图</span></div>
+        <div class="vt-busy" id="vt-busy" hidden>描摹中…</div>
+        <div class="vt-empty" id="vt-empty" hidden><p>把图片拖到这里、粘贴（⌘/Ctrl + V），或</p><button class="vt-btn vt-btn-pri" type="button" id="vt-open2">选择图片</button></div>
+        <div class="vt-drop" id="vt-drop" hidden><strong>松手即可描摹</strong><span>PNG · JPG · WebP · GIF · BMP</span></div>
+      </div>
+      <div class="vt-kpis" id="vt-kpis">
+        <div class="vt-kpi"><b id="vt-k-paths">–</b><small>路径 · 孔洞</small></div>
+        <div class="vt-kpi"><b id="vt-k-nodes">–</b><small id="vt-k-nodes-sub">节点</small></div>
+        <div class="vt-kpi"><b id="vt-k-size">–</b><small>SVG 大小</small></div>
+        <div class="vt-kpi"><b id="vt-k-err">–</b><small>像素偏差</small></div>
+        <div class="vt-kpi"><b id="vt-k-time">–</b><small id="vt-k-time-sub">耗时</small></div>
+      </div>
+      <p class="vt-status" id="vt-status" role="status" aria-live="polite"></p>
+    </div>
+
+    <aside class="vt-panel" aria-label="设置">
+      <div class="vt-tabs" role="tablist" id="vt-tabs">
+        <button class="vt-tab" role="tab" type="button" id="vt-tab-trace" data-tab="trace" aria-selected="true" aria-controls="vt-pane-trace">描摹</button>
+        <button class="vt-tab" role="tab" type="button" id="vt-tab-color" data-tab="color" aria-selected="false" aria-controls="vt-pane-color">颜色</button>
+        <button class="vt-tab" role="tab" type="button" id="vt-tab-export" data-tab="export" aria-selected="false" aria-controls="vt-pane-export">导出</button>
+        <button class="vt-tab" role="tab" type="button" id="vt-tab-lib" data-tab="lib" aria-selected="false" aria-controls="vt-pane-lib">我的描摹</button>
+        <button class="vt-tab" role="tab" type="button" id="vt-tab-about" data-tab="about" aria-selected="false" aria-controls="vt-pane-about">说明</button>
+      </div>
+      <div id="vt-panes">
+        <div class="vt-pane" id="vt-pane-trace" role="tabpanel" aria-labelledby="vt-tab-trace">
+          <section>
+            <h3 class="vt-h3">预设</h3>
+            <div class="vt-chips" id="vt-presets" role="group" aria-label="预设"></div>
+            <div class="vt-row"><input class="vt-input vt-grow" id="vt-preset-name" maxlength="20" placeholder="给当前参数起个名字" aria-label="自定义预设名称"><button class="vt-btn vt-btn-soft vt-btn-sm" type="button" id="vt-preset-save">存为预设</button></div>
+            <div class="vt-hint" id="vt-pxhint" hidden><span>这张图颜色很少、尺寸很小，像是像素画。</span><button class="vt-btn vt-btn-pri vt-btn-sm" type="button" id="vt-pxhint-go">用像素精确</button></div>
+          </section>
+          <section>
+            <h3 class="vt-h3">模式</h3>
+            <div class="vt-seg" role="group" aria-label="描摹模式" id="vt-mode">
+              <button type="button" data-mode="bw" aria-pressed="true">黑白</button>
+              <button type="button" data-mode="color" aria-pressed="false">彩色分层</button>
+            </div>
+          </section>
+          <section id="vt-thr-box">
+            <h3 class="vt-h3">阈值</h3>
+            <div class="vt-seg" role="group" aria-label="阈值方式" id="vt-thr-mode">
+              <button type="button" data-thr="otsu" aria-pressed="true">自动（大津）</button>
+              <button type="button" data-thr="fixed" aria-pressed="false">固定</button>
+              <button type="button" data-thr="adaptive" aria-pressed="false">自适应</button>
+            </div>
+            <div class="vt-row" id="vt-thr-fixed-row"><label for="vt-thr-value">灰度 &lt;</label><input type="range" class="vt-grow" id="vt-thr-value" min="1" max="255" step="1" value="128"><output id="vt-thr-value-o" for="vt-thr-value">128</output></div>
+            <div id="vt-thr-adapt-rows">
+              <div class="vt-row"><label for="vt-thr-radius">邻域半径</label><input type="number" class="vt-input vt-num" id="vt-thr-radius" min="0" max="400" step="1" value="0"><span class="vt-help">0 = 自动</span></div>
+              <div class="vt-row"><label for="vt-thr-offset">比周围暗</label><input type="range" class="vt-grow" id="vt-thr-offset" min="0" max="80" step="1" value="12"><output id="vt-thr-offset-o" for="vt-thr-offset">12</output></div>
+            </div>
+            <div class="vt-row"><label class="vt-check"><input type="checkbox" id="vt-invert"> 反相（描白色部分）</label></div>
+            <div class="vt-row"><label for="vt-bwcolor">填充色</label><input type="color" class="vt-color" id="vt-bwcolor" value="#000000"></div>
+            <p class="vt-help" id="vt-thr-note"></p>
+          </section>
+          <section>
+            <h3 class="vt-h3">曲线</h3>
+            <div class="vt-row"><label>预放大</label>
+              <div class="vt-seg" role="group" aria-label="预放大倍数" id="vt-scale">
+                <button type="button" data-scale="1" aria-pressed="true">1×</button><button type="button" data-scale="2" aria-pressed="false">2×</button><button type="button" data-scale="3" aria-pressed="false">3×</button><button type="button" data-scale="4" aria-pressed="false">4×</button>
+              </div>
+            </div>
+            <div class="vt-row"><label for="vt-turd">去斑点</label><input type="range" class="vt-grow" id="vt-turd" min="0" max="200" step="1" value="2"><output id="vt-turd-o" for="vt-turd">2</output></div>
+            <p class="vt-help">面积 ≤ 该值（按原图像素计）的黑点 / 白洞 / 色块会被丢掉或并入四周。</p>
+            <div class="vt-row"><label for="vt-alpha">拐角</label><input type="range" class="vt-grow" id="vt-alpha" min="0" max="1.34" step="0.01" value="1"><output id="vt-alpha-o" for="vt-alpha">1.00</output></div>
+            <p class="vt-help">越小越多尖角（0 = 全是折线），越大越圆滑（≥ 1.34 不留尖角）。</p>
+            <div class="vt-row"><label class="vt-check"><input type="checkbox" id="vt-opti" checked> 合并相邻曲线</label></div>
+            <div class="vt-row"><label for="vt-opttol">合并容差</label><input type="range" class="vt-grow" id="vt-opttol" min="0" max="2" step="0.05" value="0.2"><output id="vt-opttol-o" for="vt-opttol">0.20</output></div>
+            <div class="vt-row"><label for="vt-turn">岔路口</label>
+              <select class="vt-select vt-grow" id="vt-turn">
+                <option value="minority">少数派（默认）</option><option value="majority">多数派</option><option value="black">偏向黑</option><option value="white">偏向白</option><option value="left">总是左转</option><option value="right">总是右转</option><option value="random">随机（确定性）</option>
+              </select>
+            </div>
+            <p class="vt-help">两块黑只在对角相碰时，算连在一起还是分开。</p>
+            <div class="vt-row"><label class="vt-check"><input type="checkbox" id="vt-pixel"> 像素精确（不拟合曲线，逐像素直角轮廓）</label></div>
+            <div class="vt-row"><button class="vt-btn vt-btn-soft vt-btn-sm" type="button" id="vt-reset">恢复默认参数</button></div>
+          </section>
+        </div>
+        <div class="vt-pane" id="vt-pane-color" role="tabpanel" aria-labelledby="vt-tab-color" hidden>
+          <section id="vt-color-off">
+            <p class="vt-help">现在是黑白模式。切到彩色分层后，图片会先按颜色分成几层，每层单独描摹再叠起来。</p>
+            <div class="vt-row"><button class="vt-btn vt-btn-pri vt-btn-sm" type="button" id="vt-to-color">切到彩色分层</button></div>
+          </section>
+          <section id="vt-color-on">
+            <div class="vt-row"><label for="vt-k">颜色数</label><input type="range" class="vt-grow" id="vt-k" min="2" max="16" step="1" value="5"><output id="vt-k-o" for="vt-k">5</output></div>
+            <div class="vt-row"><label>叠放</label>
+              <div class="vt-seg" role="group" aria-label="叠放方式" id="vt-stack">
+                <button type="button" data-stack="stacked" aria-pressed="true">层叠（无缝）</button><button type="button" data-stack="cutout" aria-pressed="false">剪切（不重叠）</button>
+              </div>
+            </div>
+            <p class="vt-help">层叠：下层延伸到上层下面，放大也看不到白缝；剪切：各色互不重叠，适合分色刻字 / 丝印。</p>
+            <div class="vt-row"><label class="vt-check"><input type="checkbox" id="vt-rmbg"> 去掉背景色（透明底）</label></div>
+            <div class="vt-row"><button class="vt-btn vt-btn-soft vt-btn-sm" type="button" id="vt-reseed">重新取色</button><span class="vt-help" id="vt-color-info"></span></div>
+          </section>
+          <section>
+            <h3 class="vt-h3">调色板</h3>
+            <p class="vt-cap">点色块可改输出颜色；取消勾选可隐藏该层</p>
+            <div class="vt-pal" id="vt-pal"></div>
+          </section>
+        </div>
+        <div class="vt-pane" id="vt-pane-export" role="tabpanel" aria-labelledby="vt-tab-export" hidden>
+          <section>
+            <div class="vt-row"><label>输出</label>
+              <div class="vt-seg" role="group" aria-label="输出方式" id="vt-out">
+                <button type="button" data-out="fill" aria-pressed="true">填充</button><button type="button" data-out="stroke" aria-pressed="false">仅轮廓（切割线）</button>
+              </div>
+            </div>
+            <div class="vt-row" id="vt-sw-row"><label for="vt-sw">线宽</label><input type="number" class="vt-input vt-num" id="vt-sw" min="0.1" max="20" step="0.1" value="1"><span class="vt-help">像素</span></div>
+            <div class="vt-row"><label>背景</label>
+              <div class="vt-seg" role="group" aria-label="背景" id="vt-bgout">
+                <button type="button" data-bg="none" aria-pressed="true">透明</button><button type="button" data-bg="#ffffff" aria-pressed="false">白底</button>
+              </div>
+            </div>
+            <div class="vt-row"><label for="vt-dec">小数位</label><select class="vt-select" id="vt-dec"><option value="0">0</option><option value="1">1</option><option value="2" selected>2</option><option value="3">3</option><option value="4">4</option></select>
+              <label class="vt-check"><input type="checkbox" id="vt-rel" checked> 相对坐标（更小）</label></div>
+          </section>
+          <section>
+            <div class="vt-row"><label>尺寸单位</label>
+              <div class="vt-seg" role="group" aria-label="尺寸单位" id="vt-unit">
+                <button type="button" data-unit="px" aria-pressed="true">像素</button><button type="button" data-unit="mm" aria-pressed="false">毫米</button>
+              </div>
+            </div>
+            <div class="vt-row"><label for="vt-dpi">分辨率</label><input type="number" class="vt-input vt-num" id="vt-dpi" min="1" max="4800" step="1" value="96"><span class="vt-help">DPI</span></div>
+            <p class="vt-help" id="vt-phys"></p>
+            <div class="vt-row"><label for="vt-dxftol">DXF 弦高</label><input type="number" class="vt-input vt-num" id="vt-dxftol" min="0.001" max="5" step="0.01" value="0.05"><span class="vt-help">毫米</span></div>
+          </section>
+          <section>
+            <div class="vt-dlgrid">
+              <button class="vt-btn vt-btn-pri" type="button" id="vt-dl-svg">下载 SVG</button>
+              <button class="vt-btn vt-btn-sec" type="button" id="vt-copy-svg">复制 SVG 代码</button>
+              <button class="vt-btn vt-btn-sec" type="button" id="vt-dl-pdf">下载 PDF</button>
+              <button class="vt-btn vt-btn-sec" type="button" id="vt-dl-dxf">下载 DXF</button>
+              <button class="vt-btn vt-btn-sec" type="button" id="vt-dl-png">下载 PNG</button>
+              <select class="vt-select" id="vt-png-scale" aria-label="PNG 放大倍数"><option value="1">PNG 1×</option><option value="2" selected>PNG 2×</option><option value="4">PNG 4×</option></select>
+            </div>
+            <p class="vt-help" id="vt-export-note"></p>
+          </section>
+          <section>
+            <h3 class="vt-h3">SVG 代码预览</h3>
+            <pre class="vt-code" id="vt-code"></pre>
+          </section>
+        </div>
+        <div class="vt-pane" id="vt-pane-lib" role="tabpanel" aria-labelledby="vt-tab-lib" hidden>
+          <section>
+            <div class="vt-row"><input class="vt-input vt-grow" id="vt-save-name" maxlength="30" placeholder="名字（可空）" aria-label="描摹名称"><button class="vt-btn vt-btn-pri vt-btn-sm" type="button" id="vt-save">保存当前描摹</button></div>
+            <p class="vt-help">保存矢量结果、缩略图与参数，存在本浏览器里（localStorage），随时再下载。</p>
+            <div class="vt-meter" aria-hidden="true"><i id="vt-lib-bar" style="width:0%"></i></div>
+            <p class="vt-cap" id="vt-lib-usage"></p>
+          </section>
+          <section>
+            <div class="vt-lib" id="vt-lib-list"></div>
+            <p class="vt-help" id="vt-lib-empty">还没有保存的描摹。</p>
+          </section>
+          <section>
+            <div class="vt-row"><button class="vt-btn vt-btn-soft vt-btn-sm" type="button" id="vt-lib-clear">清空本机数据</button><span class="vt-help" id="vt-lib-clear-note"></span></div>
+          </section>
+        </div>
+        <div class="vt-pane vt-about" id="vt-pane-about" role="tabpanel" aria-labelledby="vt-tab-about" hidden>
+          <section>
+            <h3 class="vt-h3">它在做什么</h3>
+            <p>先把图片变成黑白（或按颜色分成几层），再由 Potrace 把每块黑色的边界描成贝塞尔曲线。曲线只描边界，所以放大多少倍都清晰。</p>
+            <ul>
+              <li><b>logo / 图标</b>：黑白或彩色分层，预放大 2× 让小图边缘更顺。</li>
+              <li><b>扫描线稿</b>：用「自适应」阈值对付阴影和泛黄纸张，加大去斑点。</li>
+              <li><b>像素画</b>：打开「像素精确」，每个像素都是正方形，放大不糊。</li>
+              <li><b>切割 / 激光</b>：导出 DXF（毫米，闭合多段线），或 SVG「仅轮廓」。</li>
+            </ul>
+          </section>
+          <section>
+            <h3 class="vt-h3">参数对照 Potrace</h3>
+            <ul>
+              <li>去斑点 = <code>-t turdsize</code>（这里按原图像素计，预放大 s 倍时实际用 s² 倍）</li>
+              <li>拐角 = <code>-a alphamax</code>；合并相邻曲线 / 合并容差 = <code>-O opttolerance</code>（关掉 = <code>-n</code>）</li>
+              <li>岔路口 = <code>-z turnpolicy</code></li>
+            </ul>
+          </section>
+          <section>
+            <h3 class="vt-h3">快捷键</h3>
+            <ul>
+              <li><code>1</code>–<code>6</code> 切换查看方式；<code>+</code> <code>−</code> 缩放，<code>0</code> 适应窗口，方向键平移（画布获得焦点时）</li>
+              <li><code>⌘/Ctrl + O</code> 打开图片，<code>⌘/Ctrl + S</code> 下载 SVG，<code>⌘/Ctrl + V</code> 粘贴图片</li>
+            </ul>
+          </section>
+          <section>
+            <h3 class="vt-h3">隐私与许可</h3>
+            <p>图片只在本机浏览器里处理，不上传任何服务器；保存的描摹只在本浏览器的 localStorage 里。</p>
+            <p>描摹内核逐函数移植自 <a href="https://potrace.sourceforge.net/" rel="noopener">Potrace 1.16</a>（Peter Selinger，GPL-2.0-or-later），本页因此同样以 GPL v2 或更高版本发布，源码就是这个 HTML 文件本身。</p>
+          </section>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <section class="vt-section" aria-labelledby="vt-samples-h">
+    <h2 id="vt-samples-h">先拿示例试试</h2>
+    <p class="vt-sub">六张图都由公式现场生成（任何电脑上逐字节相同），各自对应一种典型用法。</p>
+    <div class="vt-samples" id="vt-samples"></div>
+  </section>
+
+  <section class="vt-block vt-lime" aria-labelledby="vt-how-h">
+    <p class="vt-eyebrow">HOW IT WORKS</p>
+    <h2 id="vt-how-h">Potrace 的五步</h2>
+    <p>Peter Selinger 2003 年的算法：先找出像素边界，再求一个「最少边数」的多边形贴住它，然后把顶点挪到最优位置、按夹角决定圆滑还是尖角，最后把能合并的曲线合并。</p>
+    <ol class="vt-steps">
+      <li><em>01 · decompose</em><b>拆路径</b><span>沿黑白交界走一圈得到闭合路径，孔洞按「谁在谁里面」挂成树；面积不到阈值的斑点直接丢弃。</span></li>
+      <li><em>02 · polygon</em><b>最优多边形</b><span>对每个点求「还能一笔直线走多远」，再用动态规划挑边数最少、偏离最小的多边形。</span></li>
+      <li><em>03 · adjust</em><b>挪顶点</b><span>把每个顶点放到相邻两条最小二乘直线的「交点」，但不许离开原来那个像素格。</span></li>
+      <li><em>04 · smooth</em><b>圆滑或尖角</b><span>按顶点偏离程度算 α：超过「拐角」阈值留尖角，否则换成一段三次贝塞尔。</span></li>
+      <li><em>05 · opticurve</em><b>合并曲线</b><span>同向弯曲、总转角小于 179° 且误差在容差内的相邻曲线，合成一段。</span></li>
+    </ol>
+  </section>
+
+  <section class="vt-block vt-lilac" aria-labelledby="vt-oracle-h">
+    <p class="vt-eyebrow">VERIFIED · 对拍</p>
+    <h2 id="vt-oracle-h"><span class="vt-ph">和 Potrace 本尊</span><span class="vt-ph">逐位对拍</span></h2>
+    <p id="vt-oracle-text">把 Potrace 1.16 源码用 <code>-ffp-contract=off</code> 编成库当真值，与本页引擎在同一批位图、同一组参数上比较路径顺序、孔洞树、角点 / 曲线标签和每一个坐标——要求双精度逐位相等，而不是「差不多」。</p>
+    <div class="vt-facts" id="vt-facts">
+      <div class="vt-fact"><b id="vt-f1">3084/3084</b><span>噪声、团块、圆环星形、细线、棋盘、深层嵌套等 9 类位图 × 7 种岔路口策略 × 参数网格：全部坐标逐位一致，最大误差 0</span></div>
+      <div class="vt-fact"><b id="vt-f2">12.8%</b><span>Homebrew 瓶装版在 arm64 上把乘加融合成 FMA：3084 例里 2563 例末位不同、394 例连段数都变了。所以真值用关掉融合的源码编译版</span></div>
+      <div class="vt-fact"><b id="vt-f3">1050/1050</b><span>像素精确模式栅格化回去与原位图逐像素相同；另有 SVG 往返 131 万个坐标 0 失配、DXF 45 份 ezdxf 审计 0 错误</span></div>
+    </div>
+  </section>
+</div>
+</main>
+<footer class="vt-wrap vt-foot">
+  描摹工坊 Trace Studio · 每日工具集 · 描摹内核移植自 Potrace 1.16（© 2001-2019 Peter Selinger，GPL-2.0-or-later），本页同以 GPL v2+ 发布 · 图片不上传
+</footer>
+<input type="file" id="vt-file" accept="image/*" hidden>
+<script id="vt-engine">
+/* 描摹工坊 · Trace Studio —— 引擎
+ *
+ * 描摹内核逐函数移植自 Potrace 1.16（Copyright (C) 2001-2019 Peter Selinger，GPL-2.0-or-later）：
+ *   decompose.c  detrand / majority / findpath / xor_path / setbbox_path / pathlist_to_tree / findnext / bm_to_pathlist
+ *   trace.c      dorth_infty / dpara / ddenom / cyclic / pointslope / quadform / xprod / cprod / iprod / iprod1 /
+ *                ddist / bezier / tangent / calc_sums / calc_lon / penalty3 / bestpolygon / adjust_vertices /
+ *                reverse / smooth / opti_penalty / opticurve / process_path
+ *   auxiliary.h  mod / floordiv / interval / sign
+ * 因此本页（含本引擎）同样以 GNU GPL v2 或更高版本发布；源码即本 HTML 文件本身。
+ * 预处理、分色、像素精确模式、栅格化、SVG / PDF / DXF 导出为本页自写。
+ *
+ * 坐标约定与 Potrace 相同：位图 (x, y) 的 y = 0 是最下面一行；路径点在像素角上。
+ * 所有浮点运算的书写顺序与 C 源码一致（JS 不做 FMA 融合，与 -ffp-contract=off 编译的 libpotrace 逐位相同）。
+ */
+var VTE = (function () {
+  'use strict';
+  var sqrt = Math.sqrt, abs = Math.abs, floor = Math.floor, round = Math.round, min = Math.min, max = Math.max;
+
+  var CURVETO = 1, CORNER = 2;                    // potracelib.h POTRACE_CURVETO / POTRACE_CORNER
+  var TURN = { black: 0, white: 1, left: 2, right: 3, minority: 4, majority: 5, random: 6 };
+  var TURN_NAMES = ['black', 'white', 'left', 'right', 'minority', 'majority', 'random'];
+  var INFTY = 10000000;                           // trace.c INFTY
+  var COS179 = -0.999847695156;                   // trace.c COS179
+  var INT_MAX = 2147483647;
+  var DEFAULTS = { turdsize: 2, turnpolicy: 'minority', alphamax: 1.0, opticurve: true, opttolerance: 0.2 };
+
+  /* ---------------- auxiliary.h ---------------- */
+  function mod(a, n) { return a >= n ? a % n : a >= 0 ? a : n - 1 - (-1 - a) % n; }
+  function floordiv(a, n) { return a >= 0 ? (a / n) | 0 : -1 - ((-1 - a) / n | 0); }
+  function sign(x) { return x > 0 ? 1 : x < 0 ? -1 : 0; }
+  function interval(lambda, a, b) { return { x: a.x + lambda * (b.x - a.x), y: a.y + lambda * (b.y - a.y) }; }
+  function idiv2(a) { return (a / 2) | 0; }       // C 整数除法向零截断
+
+  /* ---------------- 位图 ---------------- */
+  // 位图：{ w, h, d: Uint8Array(w*h) }，d[y*w + x]，y = 0 为底行（Potrace 约定）
+  function bmNew(w, h) { return { w: w, h: h, d: new Uint8Array(w * h) }; }
+  function bmGet(bm, x, y) { return x >= 0 && x < bm.w && y >= 0 && y < bm.h ? bm.d[y * bm.w + x] : 0; }
+  function bmDup(bm) { return { w: bm.w, h: bm.h, d: new Uint8Array(bm.d) }; }
+  // 由「上行在前」的行主序掩码（1 = 黑）建位图（翻转成 Potrace 的 y 向上）
+  function bmFromMask(mask, w, h) {
+    var bm = bmNew(w, h), y, x, r;
+    for (y = 0; y < h; y++) { r = (h - 1 - y) * w; for (x = 0; x < w; x++) bm.d[y * w + x] = mask[r + x] ? 1 : 0; }
+    return bm;
+  }
+  function bmToMask(bm) {
+    var w = bm.w, h = bm.h, m = new Uint8Array(w * h), y, x;
+    for (y = 0; y < h; y++) for (x = 0; x < w; x++) m[(h - 1 - y) * w + x] = bm.d[y * w + x];
+    return m;
+  }
+  // 文本行（上行在前，'#' / '1' / 'X' 为黑）
+  function bmFromRows(rows) {
+    var h = rows.length, w = 0, i, x;
+    for (i = 0; i < h; i++) w = max(w, rows[i].length);
+    var mask = new Uint8Array(w * h);
+    for (i = 0; i < h; i++) for (x = 0; x < rows[i].length; x++) { var c = rows[i][x]; mask[i * w + x] = (c === '#' || c === '1' || c === 'X') ? 1 : 0; }
+    return bmFromMask(mask, w, h);
+  }
+
+  /* ---------------- decompose.c ---------------- */
+  var DETRAND_T = [
+    0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 1, 0, 0, 1, 1, 1, 0, 0, 0, 1, 1, 1, 0, 1,
+    0, 1, 1, 0, 1, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 1, 1, 0, 0, 1, 0, 0, 0, 0,
+    0, 1, 0, 0, 1, 1, 0, 0, 0, 1, 0, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1,
+    1, 0, 1, 1, 0, 1, 1, 1, 1, 0, 1, 0, 0, 0, 1, 1, 0, 0, 0, 0, 1, 0, 1, 1,
+    0, 0, 1, 1, 1, 0, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 0,
+    0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0, 1, 0, 0, 1, 0, 1, 1, 1, 0, 1, 0,
+    0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0, 1, 1, 0, 1, 0,
+    0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 1, 1, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1,
+    1, 0, 1, 1, 0, 0, 0, 1, 1, 1, 1, 0, 1, 0, 0, 0, 0, 1, 0, 1, 1, 1, 0, 0,
+    0, 1, 0, 1, 1, 0, 0, 1, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 1, 1, 0, 0, 1,
+    1, 1, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0
+  ];
+  // detrand：C 里 int 乘法按 2^32 回绕，用 Math.imul 复现
+  function detrand(x, y) {
+    var z = (Math.imul(Math.imul(0x04b3e375, x) ^ y, 0x05a8ef93)) >>> 0;
+    return DETRAND_T[z & 0xff] ^ DETRAND_T[(z >>> 8) & 0xff] ^ DETRAND_T[(z >>> 16) & 0xff] ^ DETRAND_T[(z >>> 24) & 0xff];
+  }
+
+  // majority：交叉点 (x,y) 周围「半径」2..4 的方框里黑白谁多
+  function majority(bm, x, y) {
+    var i, a, ct;
+    for (i = 2; i < 5; i++) {
+      ct = 0;
+      for (a = -i + 1; a <= i - 1; a++) {
+        ct += bmGet(bm, x + a, y + i - 1) ? 1 : -1;
+        ct += bmGet(bm, x + i - 1, y + a - 1) ? 1 : -1;
+        ct += bmGet(bm, x + a - 1, y - i) ? 1 : -1;
+        ct += bmGet(bm, x - i, y + a) ? 1 : -1;
+      }
+      if (ct > 0) return 1;
+      else if (ct < 0) return 0;
+    }
+    return 0;
+  }
+
+  // xor_path：把路径内部取反（逐条竖边把 [x, 参考列) 取反；参考列取 pt[0].x，结果与 C 的字对齐写法相同）
+  function xorPath(bm, p) {
+    var len = p.len; if (len <= 0) return;
+    var px = p.px, py = p.py, w = bm.w, d = bm.d;
+    var y1 = py[len - 1], xa = px[0], k, x, y, yy, a, b, i, o;
+    for (k = 0; k < len; k++) {
+      x = px[k]; y = py[k];
+      if (y !== y1) {
+        yy = y < y1 ? y : y1;
+        a = x < xa ? x : xa; b = x < xa ? xa : x;
+        o = yy * w;
+        for (i = a; i < b; i++) d[o + i] ^= 1;
+        y1 = y;
+      }
+    }
+  }
+
+  function setbboxPath(p) {
+    var bb = { x0: INT_MAX, x1: 0, y0: INT_MAX, y1: 0 }, k, x, y;
+    for (k = 0; k < p.len; k++) {
+      x = p.px[k]; y = p.py[k];
+      if (x < bb.x0) bb.x0 = x;
+      if (x > bb.x1) bb.x1 = x;
+      if (y < bb.y0) bb.y0 = y;
+      if (y > bb.y1) bb.y1 = y;
+    }
+    return bb;
+  }
+  function clearBmWithBbox(bm, bb) {
+    var y, x, w = bm.w;
+    for (y = bb.y0; y < bb.y1; y++) for (x = bb.x0; x < bb.x1; x++) bm.d[y * w + x] = 0;
+  }
+
+  // findpath：从 (x0,y0)（某像素的左上角）出发沿黑白边界走一圈，黑在左；同时累计面积
+  function findpath(bm, x0, y0, sgn, turnpolicy) {
+    var x = x0, y = y0, dirx = 0, diry = -1, len = 0, area = 0, c, d, tmp;
+    var cap = 64, px = new Int32Array(cap), py = new Int32Array(cap), nx, ny;
+    while (true) {
+      if (len >= cap) {
+        cap = cap * 2; nx = new Int32Array(cap); ny = new Int32Array(cap);
+        nx.set(px); ny.set(py); px = nx; py = ny;
+      }
+      px[len] = x; py[len] = y; len++;
+      x += dirx; y += diry;
+      area += x * diry;
+      if (x === x0 && y === y0) break;
+      c = bmGet(bm, x + idiv2(dirx + diry - 1), y + idiv2(diry - dirx - 1));
+      d = bmGet(bm, x + idiv2(dirx - diry - 1), y + idiv2(diry + dirx - 1));
+      if (c && !d) {                 // 有歧义的转弯
+        if (turnpolicy === TURN.right
+          || (turnpolicy === TURN.black && sgn === '+')
+          || (turnpolicy === TURN.white && sgn === '-')
+          || (turnpolicy === TURN.random && detrand(x, y))
+          || (turnpolicy === TURN.majority && majority(bm, x, y))
+          || (turnpolicy === TURN.minority && !majority(bm, x, y))) {
+          tmp = dirx; dirx = diry; diry = -tmp;       // 右转
+        } else {
+          tmp = dirx; dirx = -diry; diry = tmp;       // 左转
+        }
+      } else if (c) {
+        tmp = dirx; dirx = diry; diry = -tmp;
+      } else if (!d) {
+        tmp = dirx; dirx = -diry; diry = tmp;
+      }
+    }
+    return {
+      len: len, px: px.slice(0, len), py: py.slice(0, len),
+      area: area <= INT_MAX ? area : INT_MAX, sign: sgn,
+      next: null, childlist: null, sibling: null
+    };
+  }
+
+  // pathlist_to_tree：按「谁在谁里面」把路径组织成树，并重排链表（负路径紧跟其正父路径）
+  // C 里的 path_t** hook 用 {o, f} 二元组模拟
+  function hookGet(h) { return h.o[h.f]; }
+  function hookSet(h, v) { h.o[h.f] = v; }
+  function insertBeforeHook(elt, h) { elt.next = hookGet(h); hookSet(h, elt); return { o: elt, f: 'next' }; }
+  function pathlistToTree(plist, bm) {
+    var p, p1, heap, heap1h, cur, head, bb, hookIn, hookOut, h, hold, hook, keep;
+    bm.d.fill(0);
+    for (p = plist; p; p = p.next) { p.sibling = p.next; p.childlist = null; }
+    heap = plist;
+    while (heap) {
+      cur = heap; heap = heap.childlist; cur.childlist = null;
+      head = cur; cur = cur.next; head.next = null;
+      xorPath(bm, head);
+      bb = setbboxPath(head);
+      hookIn = { o: head, f: 'childlist' };
+      hookOut = { o: head, f: 'next' };
+      // list_forall_unlink(p, cur)
+      for (p = cur; p ? (cur = p.next, p.next = null, true) : false; p = cur) {
+        if (p.py[0] <= bb.y0) {
+          hookOut = insertBeforeHook(p, hookOut);
+          hookSet(hookOut, cur);                       // 剩下的整段接到 hook_out
+          break;
+        }
+        if (bmGet(bm, p.px[0], p.py[0] - 1)) hookIn = insertBeforeHook(p, hookIn);
+        else hookOut = insertBeforeHook(p, hookOut);
+      }
+      clearBmWithBbox(bm, bb);
+      if (head.next) { head.next.childlist = heap; heap = head.next; }
+      if (head.childlist) { head.childlist.childlist = heap; heap = head.childlist; }
+    }
+    p = plist;
+    while (p) { p1 = p.sibling; p.sibling = p.next; p = p1; }
+    // 由树（childlist / sibling）重建 next 链表
+    heap = plist;
+    if (heap) heap.next = null;
+    hold = { v: null }; hook = { o: hold, f: 'v' };
+    while (heap) {
+      heap1h = { v: heap.next };
+      for (p = heap; p; p = p.sibling) {
+        hook = insertBeforeHook(p, hook);
+        for (p1 = p.childlist; p1; p1 = p1.sibling) {
+          hook = insertBeforeHook(p1, hook);
+          if (p1.childlist) {                          // list_append(heap1, p1->childlist)
+            h = { o: heap1h, f: 'v' };
+            while (hookGet(h) !== null) h = { o: hookGet(h), f: 'next' };
+            keep = p1.childlist; keep.next = hookGet(h); hookSet(h, keep);
+          }
+        }
+      }
+      heap = heap1h.v;
+    }
+    return hold.v;
+  }
+
+  // findnext：从 (x,y) 起按「行从上到下（y 递减）、行内从左到右」找下一个黑像素
+  function findnext(bm, st) {
+    var w = bm.w, d = bm.d, y, x, x0 = st.x;
+    for (y = st.y; y >= 0; y--) {
+      var o = y * w;
+      for (x = x0; x < w; x++) if (d[o + x]) { st.x = x; st.y = y; return true; }
+      x0 = 0;
+    }
+    return false;
+  }
+
+  function normParams(prm) {
+    prm = prm || {};
+    var tp = prm.turnpolicy === undefined ? DEFAULTS.turnpolicy : prm.turnpolicy;
+    if (typeof tp === 'string') { if (!(tp in TURN)) throw new Error('未知的转向策略 ' + tp); tp = TURN[tp]; }
+    if (!(tp >= 0 && tp <= 6)) throw new Error('未知的转向策略 ' + tp);
+    var ts = prm.turdsize === undefined ? DEFAULTS.turdsize : +prm.turdsize;
+    var am = prm.alphamax === undefined ? DEFAULTS.alphamax : +prm.alphamax;
+    var ot = prm.opttolerance === undefined ? DEFAULTS.opttolerance : +prm.opttolerance;
+    if (!(isFinite(ts) && ts >= 0)) throw new Error('turdsize 必须是 ≥ 0 的数');
+    if (!isFinite(am)) throw new Error('alphamax 必须是数');
+    if (!(isFinite(ot) && ot >= 0)) throw new Error('opttolerance 必须是 ≥ 0 的数');
+    return {
+      turdsize: floor(ts), turnpolicy: tp, alphamax: am,
+      opticurve: prm.opticurve === undefined ? DEFAULTS.opticurve : !!prm.opticurve, opttolerance: ot
+    };
+  }
+
+  // bm_to_pathlist：拆出全部边界路径（含孔洞），去掉面积 ≤ turdsize 的斑点，再建树
+  function bmToPathlist(bm, prm) {
+    var bm1 = bmDup(bm), st = { x: 0, y: bm1.h - 1 }, p, sgn;
+    var hold = { v: null }, hook = { o: hold, f: 'v' };
+    while (findnext(bm1, st)) {
+      sgn = bmGet(bm, st.x, st.y) ? '+' : '-';
+      p = findpath(bm1, st.x, st.y + 1, sgn, prm.turnpolicy);
+      xorPath(bm1, p);
+      if (p.area <= prm.turdsize) { /* 斑点：丢弃（但已从缓冲图里抹掉） */ }
+      else hook = insertBeforeHook(p, hook);
+    }
+    return pathlistToTree(hold.v, bm1);
+  }
+
+  /* ---------------- trace.c ---------------- */
+  function dorthInfty(p0, p2) { return { x: -sign(p2.y - p0.y), y: sign(p2.x - p0.x) }; }
+  function dpara(p0, p1, p2) {
+    var x1 = p1.x - p0.x, y1 = p1.y - p0.y, x2 = p2.x - p0.x, y2 = p2.y - p0.y;
+    return x1 * y2 - x2 * y1;
+  }
+  function ddenom(p0, p2) { var r = dorthInfty(p0, p2); return r.y * (p2.x - p0.x) - r.x * (p2.y - p0.y); }
+  function cyclic(a, b, c) { return a <= c ? (a <= b && b < c) : (a <= b || b < c); }
+  function quadform(Q, w) {
+    var v0 = w.x, v1 = w.y, v2 = 1, v = [v0, v1, v2], i, j, sum = 0.0;
+    for (i = 0; i < 3; i++) for (j = 0; j < 3; j++) sum += v[i] * Q[i][j] * v[j];
+    return sum;
+  }
+  function xprod(p1x, p1y, p2x, p2y) { return p1x * p2y - p1y * p2x; }
+  function cprod(p0, p1, p2, p3) {
+    var x1 = p1.x - p0.x, y1 = p1.y - p0.y, x2 = p3.x - p2.x, y2 = p3.y - p2.y;
+    return x1 * y2 - x2 * y1;
+  }
+  function iprod(p0, p1, p2) {
+    var x1 = p1.x - p0.x, y1 = p1.y - p0.y, x2 = p2.x - p0.x, y2 = p2.y - p0.y;
+    return x1 * x2 + y1 * y2;
+  }
+  function iprod1(p0, p1, p2, p3) {
+    var x1 = p1.x - p0.x, y1 = p1.y - p0.y, x2 = p3.x - p2.x, y2 = p3.y - p2.y;
+    return x1 * x2 + y1 * y2;
+  }
+  function ddist(p, q) { var dx = p.x - q.x, dy = p.y - q.y; return sqrt(dx * dx + dy * dy); }
+  function bezier(t, p0, p1, p2, p3) {
+    var s = 1 - t;
+    return {
+      x: s * s * s * p0.x + 3 * (s * s * t) * p1.x + 3 * (t * t * s) * p2.x + t * t * t * p3.x,
+      y: s * s * s * p0.y + 3 * (s * s * t) * p1.y + 3 * (t * t * s) * p2.y + t * t * t * p3.y
+    };
+  }
+  function tangent(p0, p1, p2, p3, q0, q1) {
+    var A = cprod(p0, p1, q0, q1), B = cprod(p1, p2, q0, q1), C = cprod(p2, p3, q0, q1);
+    var a = A - 2 * B + C, b = -2 * A + 2 * B, c = A, d = b * b - 4 * a * c, s, r1, r2;
+    if (a === 0 || d < 0) return -1.0;
+    s = sqrt(d);
+    r1 = (-b + s) / (2 * a);
+    r2 = (-b - s) / (2 * a);
+    if (r1 >= 0 && r1 <= 1) return r1;
+    else if (r2 >= 0 && r2 <= 1) return r2;
+    return -1.0;
+  }
+
+  function calcSums(pp) {
+    var n = pp.len, i, x, y;
+    var sx = new Float64Array(n + 1), sy = new Float64Array(n + 1), sx2 = new Float64Array(n + 1),
+      sxy = new Float64Array(n + 1), sy2 = new Float64Array(n + 1);
+    pp.x0 = pp.px[0]; pp.y0 = pp.py[0];
+    for (i = 0; i < n; i++) {
+      x = pp.px[i] - pp.x0; y = pp.py[i] - pp.y0;
+      sx[i + 1] = sx[i] + x; sy[i + 1] = sy[i] + y;
+      sx2[i + 1] = sx2[i] + x * x; sxy[i + 1] = sxy[i] + x * y; sy2[i + 1] = sy2[i] + y * y;
+    }
+    pp.sx = sx; pp.sy = sy; pp.sx2 = sx2; pp.sxy = sxy; pp.sy2 = sy2;
+  }
+
+  function calcLon(pp) {
+    var px = pp.px, py = pp.py, n = pp.len, i, j, k, k1, dir, a, b, c, d;
+    var ct = [0, 0, 0, 0], pivk = new Int32Array(n), nc = new Int32Array(n), lon = new Int32Array(n);
+    var c0x, c0y, c1x, c1y, curx, cury, offx, offy, dkx, dky, found;
+    k = 0;
+    for (i = n - 1; i >= 0; i--) {
+      if (px[i] !== px[k] && py[i] !== py[k]) k = i + 1;
+      nc[i] = k;
+    }
+    for (i = n - 1; i >= 0; i--) {
+      ct[0] = ct[1] = ct[2] = ct[3] = 0;
+      dir = idiv2(3 + 3 * (px[mod(i + 1, n)] - px[i]) + (py[mod(i + 1, n)] - py[i]));
+      ct[dir]++;
+      c0x = 0; c0y = 0; c1x = 0; c1y = 0;
+      k = nc[i]; k1 = i; found = false;
+      while (true) {
+        dir = idiv2(3 + 3 * sign(px[k] - px[k1]) + sign(py[k] - py[k1]));
+        ct[dir]++;
+        if (ct[0] && ct[1] && ct[2] && ct[3]) { pivk[i] = k1; found = true; break; }
+        curx = px[k] - px[i]; cury = py[k] - py[i];
+        if (xprod(c0x, c0y, curx, cury) < 0 || xprod(c1x, c1y, curx, cury) > 0) break;   // constraint_viol
+        if (abs(curx) <= 1 && abs(cury) <= 1) {
+          /* 无约束 */
+        } else {
+          offx = curx + ((cury >= 0 && (cury > 0 || curx < 0)) ? 1 : -1);
+          offy = cury + ((curx <= 0 && (curx < 0 || cury < 0)) ? 1 : -1);
+          if (xprod(c0x, c0y, offx, offy) >= 0) { c0x = offx; c0y = offy; }
+          offx = curx + ((cury <= 0 && (cury < 0 || curx < 0)) ? 1 : -1);
+          offy = cury + ((curx >= 0 && (curx > 0 || cury < 0)) ? 1 : -1);
+          if (xprod(c1x, c1y, offx, offy) <= 0) { c1x = offx; c1y = offy; }
+        }
+        k1 = k;
+        k = nc[k1];
+        if (!cyclic(k, i, k1)) break;
+      }
+      if (found) continue;
+      // constraint_viol：在 k1..k 之间找最后一个仍满足约束的点
+      dkx = sign(px[k] - px[k1]); dky = sign(py[k] - py[k1]);
+      curx = px[k1] - px[i]; cury = py[k1] - py[i];
+      a = xprod(c0x, c0y, curx, cury);
+      b = xprod(c0x, c0y, dkx, dky);
+      c = xprod(c1x, c1y, curx, cury);
+      d = xprod(c1x, c1y, dkx, dky);
+      j = INFTY;
+      if (b < 0) j = floordiv(a, -b);
+      if (d > 0) j = min(j, floordiv(-c, d));
+      pivk[i] = mod(k1 + j, n);
+    }
+    j = pivk[n - 1];
+    lon[n - 1] = j;
+    for (i = n - 2; i >= 0; i--) {
+      if (cyclic(i + 1, pivk[i], j)) j = pivk[i];
+      lon[i] = j;
+    }
+    for (i = n - 1; cyclic(mod(i + 1, n), j, lon[i]); i--) lon[i] = j;
+    pp.lon = lon;
+  }
+
+  function penalty3(pp, i, j) {
+    var n = pp.len, px = pp.px, py = pp.py, x, y, x2, xy, y2, k, a, b, c, s, ppx, ppy, ex, ey, r = 0;
+    if (j >= n) { j -= n; r = 1; }
+    if (r === 0) {
+      x = pp.sx[j + 1] - pp.sx[i]; y = pp.sy[j + 1] - pp.sy[i];
+      x2 = pp.sx2[j + 1] - pp.sx2[i]; xy = pp.sxy[j + 1] - pp.sxy[i]; y2 = pp.sy2[j + 1] - pp.sy2[i];
+      k = j + 1 - i;
+    } else {
+      x = pp.sx[j + 1] - pp.sx[i] + pp.sx[n]; y = pp.sy[j + 1] - pp.sy[i] + pp.sy[n];
+      x2 = pp.sx2[j + 1] - pp.sx2[i] + pp.sx2[n]; xy = pp.sxy[j + 1] - pp.sxy[i] + pp.sxy[n];
+      y2 = pp.sy2[j + 1] - pp.sy2[i] + pp.sy2[n];
+      k = j + 1 - i + n;
+    }
+    ppx = (px[i] + px[j]) / 2.0 - px[0];
+    ppy = (py[i] + py[j]) / 2.0 - py[0];
+    ey = (px[j] - px[i]);
+    ex = -(py[j] - py[i]);
+    a = ((x2 - 2 * x * ppx) / k + ppx * ppx);
+    b = ((xy - x * ppy - y * ppx) / k + ppx * ppy);
+    c = ((y2 - 2 * y * ppy) / k + ppy * ppy);
+    s = ex * ex * a + 2 * ex * ey * b + ey * ey * c;
+    return sqrt(s);
+  }
+
+  function bestpolygon(pp) {
+    var n = pp.len, i, j, m, k, c, thispen, best;
+    var pen = new Float64Array(n + 1), prev = new Int32Array(n + 1), clip0 = new Int32Array(n),
+      clip1 = new Int32Array(n + 1), seg0 = new Int32Array(n + 1), seg1 = new Int32Array(n + 1);
+    for (i = 0; i < n; i++) {
+      c = mod(pp.lon[mod(i - 1, n)] - 1, n);
+      if (c === i) c = mod(i + 1, n);
+      clip0[i] = c < i ? n : c;
+    }
+    j = 1;
+    for (i = 0; i < n; i++) while (j <= clip0[i]) { clip1[j] = i; j++; }
+    i = 0;
+    for (j = 0; i < n; j++) { seg0[j] = i; i = clip0[i]; }
+    seg0[j] = n;
+    m = j;
+    i = n;
+    for (j = m; j > 0; j--) { seg1[j] = i; i = clip1[i]; }
+    seg1[0] = 0;
+    pen[0] = 0;
+    for (j = 1; j <= m; j++) {
+      for (i = seg1[j]; i <= seg0[j]; i++) {
+        best = -1;
+        for (k = seg0[j - 1]; k >= clip1[i]; k--) {
+          thispen = penalty3(pp, k, i) + pen[k];
+          if (best < 0 || thispen < best) { prev[i] = k; best = thispen; }
+        }
+        pen[i] = best;
+      }
+    }
+    pp.m = m;
+    pp.po = new Int32Array(m);
+    for (i = n, j = m - 1; i > 0; j--) { i = prev[i]; pp.po[j] = i; }
+  }
+
+  function pointslope(pp, i, j) {
+    var n = pp.len, x, y, x2, xy, y2, k, a, b, c, lambda2, l = 0, r = 0, dir = { x: 0, y: 0 };
+    while (j >= n) { j -= n; r += 1; }
+    while (i >= n) { i -= n; r -= 1; }
+    while (j < 0) { j += n; r -= 1; }
+    while (i < 0) { i += n; r += 1; }
+    x = pp.sx[j + 1] - pp.sx[i] + r * pp.sx[n];
+    y = pp.sy[j + 1] - pp.sy[i] + r * pp.sy[n];
+    x2 = pp.sx2[j + 1] - pp.sx2[i] + r * pp.sx2[n];
+    xy = pp.sxy[j + 1] - pp.sxy[i] + r * pp.sxy[n];
+    y2 = pp.sy2[j + 1] - pp.sy2[i] + r * pp.sy2[n];
+    k = j + 1 - i + r * n;
+    var ctr = { x: x / k, y: y / k };
+    a = (x2 - x * x / k) / k;
+    b = (xy - x * y / k) / k;
+    c = (y2 - y * y / k) / k;
+    lambda2 = (a + c + sqrt((a - c) * (a - c) + 4 * b * b)) / 2;
+    a -= lambda2;
+    c -= lambda2;
+    if (abs(a) >= abs(c)) {
+      l = sqrt(a * a + b * b);
+      if (l !== 0) { dir.x = -b / l; dir.y = a / l; }
+    } else {
+      l = sqrt(c * c + b * b);
+      if (l !== 0) { dir.x = -c / l; dir.y = b / l; }
+    }
+    if (l === 0) { dir.x = dir.y = 0; }
+    return { ctr: ctr, dir: dir };
+  }
+
+  function curveNew(n) {
+    return {
+      n: n, tag: new Int8Array(n), c: new Array(n), vertex: new Array(n),
+      alpha: new Float64Array(n), alpha0: new Float64Array(n), beta: new Float64Array(n)
+    };
+  }
+
+  function adjustVertices(pp) {
+    var m = pp.m, po = pp.po, n = pp.len, px = pp.px, py = pp.py, x0 = pp.x0, y0 = pp.y0;
+    var ctr = new Array(m), dir = new Array(m), q = new Array(m), i, j, k, l, d, v = [0, 0, 0], s, ps;
+    pp.curve = curveNew(m);
+    for (i = 0; i < m; i++) {
+      j = po[mod(i + 1, m)];
+      j = mod(j - po[i], n) + po[i];
+      ps = pointslope(pp, po[i], j);
+      ctr[i] = ps.ctr; dir[i] = ps.dir;
+    }
+    for (i = 0; i < m; i++) {
+      q[i] = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
+      d = dir[i].x * dir[i].x + dir[i].y * dir[i].y;
+      if (d === 0.0) {
+        /* 全 0 */
+      } else {
+        v[0] = dir[i].y;
+        v[1] = -dir[i].x;
+        v[2] = -v[1] * ctr[i].y - v[0] * ctr[i].x;
+        for (l = 0; l < 3; l++) for (k = 0; k < 3; k++) q[i][l][k] = v[l] * v[k] / d;
+      }
+    }
+    for (i = 0; i < m; i++) {
+      var Q = [[0, 0, 0], [0, 0, 0], [0, 0, 0]], w = { x: 0, y: 0 }, dx, dy, det, mn, cand, xmin, ymin, z;
+      s = { x: px[po[i]] - x0, y: py[po[i]] - y0 };
+      j = mod(i - 1, m);
+      for (l = 0; l < 3; l++) for (k = 0; k < 3; k++) Q[l][k] = q[j][l][k] + q[i][l][k];
+      while (true) {
+        det = Q[0][0] * Q[1][1] - Q[0][1] * Q[1][0];
+        if (det !== 0.0) {
+          w.x = (-Q[0][2] * Q[1][1] + Q[1][2] * Q[0][1]) / det;
+          w.y = (Q[0][2] * Q[1][0] - Q[1][2] * Q[0][0]) / det;
+          break;
+        }
+        // 奇异：两条线平行，补一条过单位方格中心的正交轴
+        if (Q[0][0] > Q[1][1]) { v[0] = -Q[0][1]; v[1] = Q[0][0]; }
+        else if (Q[1][1]) { v[0] = -Q[1][1]; v[1] = Q[1][0]; }
+        else { v[0] = 1; v[1] = 0; }
+        d = v[0] * v[0] + v[1] * v[1];
+        v[2] = -v[1] * s.y - v[0] * s.x;
+        for (l = 0; l < 3; l++) for (k = 0; k < 3; k++) Q[l][k] += v[l] * v[k] / d;
+      }
+      dx = abs(w.x - s.x);
+      dy = abs(w.y - s.y);
+      if (dx <= 0.5 && dy <= 0.5) {
+        pp.curve.vertex[i] = { x: w.x + x0, y: w.y + y0 };
+        continue;
+      }
+      // 极小点不在单位方格内：在方格边界上找
+      mn = quadform(Q, s);
+      xmin = s.x; ymin = s.y;
+      if (Q[0][0] !== 0.0) {
+        for (z = 0; z < 2; z++) {
+          w.y = s.y - 0.5 + z;
+          w.x = -(Q[0][1] * w.y + Q[0][2]) / Q[0][0];
+          dx = abs(w.x - s.x);
+          cand = quadform(Q, w);
+          if (dx <= 0.5 && cand < mn) { mn = cand; xmin = w.x; ymin = w.y; }
+        }
+      }
+      if (Q[1][1] !== 0.0) {
+        for (z = 0; z < 2; z++) {
+          w.x = s.x - 0.5 + z;
+          w.y = -(Q[1][0] * w.x + Q[1][2]) / Q[1][1];
+          dy = abs(w.y - s.y);
+          cand = quadform(Q, w);
+          if (dy <= 0.5 && cand < mn) { mn = cand; xmin = w.x; ymin = w.y; }
+        }
+      }
+      for (l = 0; l < 2; l++) {
+        for (k = 0; k < 2; k++) {
+          w.x = s.x - 0.5 + l;
+          w.y = s.y - 0.5 + k;
+          cand = quadform(Q, w);
+          if (cand < mn) { mn = cand; xmin = w.x; ymin = w.y; }
+        }
+      }
+      pp.curve.vertex[i] = { x: xmin + x0, y: ymin + y0 };
+    }
+  }
+
+  function reverseCurve(curve) {
+    var m = curve.n, i, j, tmp;
+    for (i = 0, j = m - 1; i < j; i++, j--) { tmp = curve.vertex[i]; curve.vertex[i] = curve.vertex[j]; curve.vertex[j] = tmp; }
+  }
+
+  function smooth(curve, alphamax) {
+    var m = curve.n, i, j, k, dd, denom, alpha, p2, p3, p4, V = curve.vertex;
+    for (i = 0; i < m; i++) {
+      j = mod(i + 1, m);
+      k = mod(i + 2, m);
+      p4 = interval(1 / 2.0, V[k], V[j]);
+      denom = ddenom(V[i], V[k]);
+      if (denom !== 0.0) {
+        dd = dpara(V[i], V[j], V[k]) / denom;
+        dd = abs(dd);
+        alpha = dd > 1 ? (1 - 1.0 / dd) : 0;
+        alpha = alpha / 0.75;
+      } else {
+        alpha = 4 / 3.0;
+      }
+      curve.alpha0[j] = alpha;
+      if (alpha >= alphamax) {
+        curve.tag[j] = CORNER;
+        curve.c[j] = [null, V[j], p4];
+      } else {
+        if (alpha < 0.55) alpha = 0.55;
+        else if (alpha > 1) alpha = 1;
+        p2 = interval(0.5 + 0.5 * alpha, V[i], V[j]);
+        p3 = interval(0.5 + 0.5 * alpha, V[k], V[j]);
+        curve.tag[j] = CURVETO;
+        curve.c[j] = [p2, p3, p4];
+      }
+      curve.alpha[j] = alpha;
+      curve.beta[j] = 0.5;
+    }
+  }
+
+  // opti_penalty：试着用一段贝塞尔替换 i+.5 .. j+.5 之间的多段；不可能时返回 null
+  function optiPenalty(pp, i, j, opttolerance, convc, areac) {
+    var cv = pp.curve, m = cv.n, V = cv.vertex, C = cv.c, k, k1, k2, conv, i1, area, alpha, d, d1, d2;
+    var p0, p1, p2, p3, pt, A, R, A1, A2, A3, A4, s, t, res;
+    if (i === j) return null;
+    k = i;
+    i1 = mod(i + 1, m);
+    k1 = mod(k + 1, m);
+    conv = convc[k1];
+    if (conv === 0) return null;
+    d = ddist(V[i], V[i1]);
+    for (k = k1; k !== j; k = k1) {
+      k1 = mod(k + 1, m);
+      k2 = mod(k + 2, m);
+      if (convc[k1] !== conv) return null;
+      if (sign(cprod(V[i], V[i1], V[k1], V[k2])) !== conv) return null;
+      if (iprod1(V[i], V[i1], V[k1], V[k2]) < d * ddist(V[k1], V[k2]) * COS179) return null;
+    }
+    p0 = C[mod(i, m)][2];
+    p1 = V[mod(i + 1, m)];
+    p2 = V[mod(j, m)];
+    p3 = C[mod(j, m)][2];
+    area = areac[j] - areac[i];
+    area -= dpara(V[0], C[i][2], C[j][2]) / 2;
+    if (i >= j) area += areac[m];
+    A1 = dpara(p0, p1, p2);
+    A2 = dpara(p0, p1, p3);
+    A3 = dpara(p0, p2, p3);
+    A4 = A1 + A3 - A2;
+    if (A2 === A1) return null;
+    t = A3 / (A3 - A4);
+    s = A2 / (A2 - A1);
+    A = A2 * t / 2.0;
+    if (A === 0.0) return null;
+    R = area / A;
+    alpha = 2 - sqrt(4 - R / 0.3);
+    res = { pen: 0, c: [interval(t * alpha, p0, p1), interval(s * alpha, p3, p2)], alpha: alpha, t: t, s: s };
+    p1 = res.c[0];
+    p2 = res.c[1];
+    for (k = mod(i + 1, m); k !== j; k = k1) {
+      k1 = mod(k + 1, m);
+      t = tangent(p0, p1, p2, p3, V[k], V[k1]);
+      if (t < -0.5) return null;
+      pt = bezier(t, p0, p1, p2, p3);
+      d = ddist(V[k], V[k1]);
+      if (d === 0.0) return null;
+      d1 = dpara(V[k], V[k1], pt) / d;
+      if (abs(d1) > opttolerance) return null;
+      if (iprod(V[k], V[k1], pt) < 0 || iprod(V[k1], V[k], pt) < 0) return null;
+      res.pen += d1 * d1;
+    }
+    for (k = i; k !== j; k = k1) {
+      k1 = mod(k + 1, m);
+      t = tangent(p0, p1, p2, p3, C[k][2], C[k1][2]);
+      if (t < -0.5) return null;
+      pt = bezier(t, p0, p1, p2, p3);
+      d = ddist(C[k][2], C[k1][2]);
+      if (d === 0.0) return null;
+      d1 = dpara(C[k][2], C[k1][2], pt) / d;
+      d2 = dpara(C[k][2], C[k1][2], V[k1]) / d;
+      d2 *= 0.75 * cv.alpha[k1];
+      if (d2 < 0) { d1 = -d1; d2 = -d2; }
+      if (d1 < d2 - opttolerance) return null;
+      if (d1 < d2) res.pen += (d1 - d2) * (d1 - d2);
+    }
+    return res;
+  }
+
+  function opticurve(pp, opttolerance) {
+    var cv = pp.curve, m = cv.n, V = cv.vertex, C = cv.c, i, j, i1, om, o, alpha, area, p0;
+    var pt = new Int32Array(m + 1), pen = new Float64Array(m + 1), len = new Int32Array(m + 1), opt = new Array(m + 1);
+    var convc = new Int32Array(m), areac = new Float64Array(m + 1);
+    for (i = 0; i < m; i++) {
+      if (cv.tag[i] === CURVETO) convc[i] = sign(dpara(V[mod(i - 1, m)], V[i], V[mod(i + 1, m)]));
+      else convc[i] = 0;
+    }
+    area = 0.0;
+    areac[0] = 0.0;
+    p0 = V[0];
+    for (i = 0; i < m; i++) {
+      i1 = mod(i + 1, m);
+      if (cv.tag[i1] === CURVETO) {
+        alpha = cv.alpha[i1];
+        area += 0.3 * alpha * (4 - alpha) * dpara(C[i][2], V[i1], C[i1][2]) / 2;
+        area += dpara(p0, C[i][2], C[i1][2]) / 2;
+      }
+      areac[i + 1] = area;
+    }
+    pt[0] = -1; pen[0] = 0; len[0] = 0;
+    for (j = 1; j <= m; j++) {
+      pt[j] = j - 1;
+      pen[j] = pen[j - 1];
+      len[j] = len[j - 1] + 1;
+      for (i = j - 2; i >= 0; i--) {
+        o = optiPenalty(pp, i, mod(j, m), opttolerance, convc, areac);
+        if (!o) break;
+        if (len[j] > len[i] + 1 || (len[j] === len[i] + 1 && pen[j] > pen[i] + o.pen)) {
+          pt[j] = i;
+          pen[j] = pen[i] + o.pen;
+          len[j] = len[i] + 1;
+          opt[j] = o;
+        }
+      }
+    }
+    om = len[m];
+    var oc = curveNew(om), s = new Float64Array(om), t = new Float64Array(om);
+    j = m;
+    for (i = om - 1; i >= 0; i--) {
+      var jm = mod(j, m);
+      if (pt[j] === j - 1) {
+        oc.tag[i] = cv.tag[jm];
+        oc.c[i] = [C[jm][0], C[jm][1], C[jm][2]];
+        oc.vertex[i] = V[jm];
+        oc.alpha[i] = cv.alpha[jm];
+        oc.alpha0[i] = cv.alpha0[jm];
+        oc.beta[i] = cv.beta[jm];
+        s[i] = t[i] = 1.0;
+      } else {
+        oc.tag[i] = CURVETO;
+        oc.c[i] = [opt[j].c[0], opt[j].c[1], C[jm][2]];
+        oc.vertex[i] = interval(opt[j].s, C[jm][2], V[jm]);
+        oc.alpha[i] = opt[j].alpha;
+        oc.alpha0[i] = opt[j].alpha;
+        s[i] = opt[j].s;
+        t[i] = opt[j].t;
+      }
+      j = pt[j];
+    }
+    for (i = 0; i < om; i++) { i1 = mod(i + 1, om); oc.beta[i] = s[i] / (s[i] + t[i1]); }
+    pp.ocurve = oc;
+  }
+
+  // 把内部曲线压成紧凑输出：c = Float64Array(n*6)（CORNER 的 c0 记 NaN）
+  function packCurve(cv) {
+    var n = cv.n, c = new Float64Array(n * 6), tag = new Int8Array(n), i, e;
+    for (i = 0; i < n; i++) {
+      e = cv.c[i]; tag[i] = cv.tag[i];
+      if (cv.tag[i] === CORNER) { c[i * 6] = NaN; c[i * 6 + 1] = NaN; }
+      else { c[i * 6] = e[0].x; c[i * 6 + 1] = e[0].y; }
+      c[i * 6 + 2] = e[1].x; c[i * 6 + 3] = e[1].y; c[i * 6 + 4] = e[2].x; c[i * 6 + 5] = e[2].y;
+    }
+    return { n: n, tag: tag, c: c };
+  }
+
+  // 把链表 + 树结构摊平成数组：按 next 顺序编号，并给出父路径下标
+  function flattenTree(plist) {
+    var arr = [], p, idx = new Map(), i;
+    for (p = plist; p; p = p.next) { idx.set(p, arr.length); arr.push(p); }
+    var parent = new Int32Array(arr.length).fill(-1), depth = new Int32Array(arr.length);
+    var stack = [];
+    for (p = plist; p; p = p.sibling) stack.push([p, -1, 0]);
+    while (stack.length) {
+      var e = stack.pop(), q = e[0], pi = idx.get(q);
+      parent[pi] = e[1]; depth[pi] = e[2];
+      for (var ch = q.childlist; ch; ch = ch.sibling) stack.push([ch, pi, e[2] + 1]);
+    }
+    var roots = []; for (p = plist; p; p = p.sibling) roots.push(idx.get(p));
+    var children = arr.map(function () { return []; });
+    for (i = 0; i < arr.length; i++) {
+      var kids = []; for (var c2 = arr[i].childlist; c2; c2 = c2.sibling) kids.push(idx.get(c2));
+      children[i] = kids;
+    }
+    return { arr: arr, parent: parent, depth: depth, roots: roots, children: children };
+  }
+
+  // potrace_trace 的等价物：返回 { w, h, paths:[{sign, area, len, n, tag, c, parent, depth, children}], roots }
+  function trace(bm, prm) {
+    prm = normParams(prm);
+    var plist = bmToPathlist(bm, prm), p;
+    for (p = plist; p; p = p.next) {
+      calcSums(p);
+      calcLon(p);
+      bestpolygon(p);
+      adjustVertices(p);
+      if (p.sign === '-') reverseCurve(p.curve);
+      smooth(p.curve, prm.alphamax);
+      if (prm.opticurve) { opticurve(p, prm.opttolerance); p.fcurve = p.ocurve; }
+      else p.fcurve = p.curve;
+    }
+    var ft = flattenTree(plist), out = [], i;
+    for (i = 0; i < ft.arr.length; i++) {
+      var q = ft.arr[i], pc = packCurve(q.fcurve);
+      out.push({ sign: q.sign, area: q.area, len: q.len, m: q.m, n: pc.n, tag: pc.tag, c: pc.c,
+        parent: ft.parent[i], depth: ft.depth[i], children: ft.children[i] });
+    }
+    return { w: bm.w, h: bm.h, params: prm, paths: out, roots: ft.roots };
+  }
+
+  // 只做分解（不做曲线拟合）：像素精确模式与调试用
+  function decompose(bm, prm) {
+    prm = normParams(prm);
+    var plist = bmToPathlist(bm, prm), ft = flattenTree(plist), out = [], i;
+    for (i = 0; i < ft.arr.length; i++) {
+      var q = ft.arr[i];
+      out.push({ sign: q.sign, area: q.area, len: q.len, px: q.px, py: q.py, parent: ft.parent[i], depth: ft.depth[i], children: ft.children[i] });
+    }
+    return { w: bm.w, h: bm.h, params: prm, paths: out, roots: ft.roots };
+  }
+
+  return {
+    CURVETO: CURVETO, CORNER: CORNER, TURN: TURN, TURN_NAMES: TURN_NAMES, DEFAULTS: DEFAULTS,
+    bmNew: bmNew, bmGet: bmGet, bmFromMask: bmFromMask, bmToMask: bmToMask, bmFromRows: bmFromRows,
+    normParams: normParams, trace: trace, decompose: decompose, detrand: detrand,
+    _int: { mod: mod, floordiv: floordiv, majority: majority, xorPath: xorPath },
+    _dbgPath: function (bm, prm, which) {
+      var plist = bmToPathlist(bm, prm), p = plist, i;
+      for (i = 0; i < which; i++) p = p.next;
+      calcSums(p); calcLon(p); bestpolygon(p); adjustVertices(p);
+      return { len: p.len, m: p.m, po: p.po, lon: p.lon, vertex: p.curve.vertex };
+    }
+  };
+})();
+if (typeof globalThis !== 'undefined') globalThis.VTE = VTE;
+
+/* 描摹工坊 —— 引擎第二部分（本页自写）：示例图、预处理、分色、分层、像素精确、栅格化、SVG / PDF / DXF 导出 */
+(function (VTE) {
+  'use strict';
+  var floor = Math.floor, ceil = Math.ceil, round = Math.round, sqrt = Math.sqrt, abs = Math.abs,
+    min = Math.min, max = Math.max, cbrt = Math.cbrt, pow = Math.pow, PI = Math.PI, cos = Math.cos, sin = Math.sin;
+  var CURVETO = VTE.CURVETO, CORNER = VTE.CORNER;
+
+  function mulberry32(a) {
+    return function () {
+      a |= 0; a = a + 0x6D2B79F5 | 0;
+      var t = Math.imul(a ^ a >>> 15, 1 | a);
+      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+
+  /* ---------------- 示例图（纯算术生成，任何机器上逐字节相同） ---------------- */
+  function imgNew(w, h) { return { w: w, h: h, data: new Uint8ClampedArray(w * h * 4) }; }
+  // 场景函数 fn(x, y) → [r,g,b]；每像素 ss×ss 次超采样后取平均
+  function renderScene(w, h, ss, fn) {
+    var img = imgNew(w, h), d = img.data, x, y, i, j, c, r, g, b, n = ss * ss;
+    for (y = 0; y < h; y++) for (x = 0; x < w; x++) {
+      r = g = b = 0;
+      for (j = 0; j < ss; j++) for (i = 0; i < ss; i++) {
+        c = fn(x + (i + 0.5) / ss, y + (j + 0.5) / ss); r += c[0]; g += c[1]; b += c[2];
+      }
+      var o = (y * w + x) * 4;
+      d[o] = round(r / n); d[o + 1] = round(g / n); d[o + 2] = round(b / n); d[o + 3] = 255;
+    }
+    return img;
+  }
+  function inPoly(px, py, pts) {
+    var inside = false, i, j, n = pts.length / 2;
+    for (i = 0, j = n - 1; i < n; j = i++) {
+      var xi = pts[2 * i], yi = pts[2 * i + 1], xj = pts[2 * j], yj = pts[2 * j + 1];
+      if ((yi > py) !== (yj > py) && px < (xj - xi) * (py - yi) / (yj - yi) + xi) inside = !inside;
+    }
+    return inside;
+  }
+  function starPts(cx, cy, R, r, k, rot) {
+    var pts = [], i, a, rr;
+    for (i = 0; i < 2 * k; i++) { a = rot + i * PI / k; rr = i % 2 ? r : R; pts.push(cx + rr * cos(a), cy + rr * sin(a)); }
+    return pts;
+  }
+  function inRoundRect(x, y, x0, y0, x1, y1, rad) {
+    if (x < x0 || x > x1 || y < y0 || y > y1) return false;
+    var cx = x < x0 + rad ? x0 + rad : x > x1 - rad ? x1 - rad : x, cy = y < y0 + rad ? y0 + rad : y > y1 - rad ? y1 - rad : y;
+    return (x - cx) * (x - cx) + (y - cy) * (y - cy) <= rad * rad;
+  }
+  var WHITE = [255, 255, 255], BLACK = [17, 17, 17];
+  function sampleEmblem() {
+    var star = starPts(360, 150, 92, 38, 5, -PI / 2);
+    return renderScene(480, 360, 4, function (x, y) {
+      var d1 = (x - 130) * (x - 130) + (y - 180) * (y - 180);
+      if (d1 <= 100 * 100 && d1 >= 70 * 70) return BLACK;
+      if (d1 <= 14 * 14) return BLACK;
+      if (inPoly(x, y, star)) return BLACK;
+      if (inRoundRect(x, y, 262, 248, 452, 322, 22)) {
+        var h1 = (x - 305) * (x - 305) + (y - 285) * (y - 285), h2 = (x - 410) * (x - 410) + (y - 285) * (y - 285);
+        if (h1 <= 15 * 15 || h2 <= 15 * 15) return WHITE;
+        if (x > 340 && x < 375 && y > 270 && y < 300) return WHITE;
+        return BLACK;
+      }
+      return WHITE;
+    });
+  }
+  // 笔画：在 ss 倍分辨率的覆盖图上沿折线盖圆章，再下采样
+  function strokeImage(w, h, ss, strokes, ink, paper) {
+    var W = w * ss, H = h * ss, cov = new Uint8Array(W * H), s, k, x, y;
+    for (s = 0; s < strokes.length; s++) {
+      var pts = strokes[s];
+      for (k = 0; k < pts.length; k += 3) {
+        var cx = pts[k] * ss, cy = pts[k + 1] * ss, rr = pts[k + 2] * ss, r2 = rr * rr;
+        var xa = max(0, floor(cx - rr)), xb = min(W - 1, ceil(cx + rr)), ya = max(0, floor(cy - rr)), yb = min(H - 1, ceil(cy + rr));
+        for (y = ya; y <= yb; y++) for (x = xa; x <= xb; x++) {
+          var dx = x + 0.5 - cx, dy = y + 0.5 - cy;
+          if (dx * dx + dy * dy <= r2) cov[y * W + x] = 1;
+        }
+      }
+    }
+    var img = imgNew(w, h), d = img.data, n = ss * ss, i, j;
+    for (y = 0; y < h; y++) for (x = 0; x < w; x++) {
+      var c = 0;
+      for (j = 0; j < ss; j++) for (i = 0; i < ss; i++) c += cov[(y * ss + j) * W + x * ss + i];
+      var o = (y * w + x) * 4, f = c / n, pc = typeof paper === 'function' ? paper(x, y) : paper;
+      d[o] = round(pc[0] + (ink[0] - pc[0]) * f); d[o + 1] = round(pc[1] + (ink[1] - pc[1]) * f);
+      d[o + 2] = round(pc[2] + (ink[2] - pc[2]) * f); d[o + 3] = 255;
+    }
+    return img;
+  }
+  function lineStroke(x0, y0, x1, y1, r) {
+    var L = sqrt((x1 - x0) * (x1 - x0) + (y1 - y0) * (y1 - y0)), n = max(2, ceil(L * 2)), out = [], i;
+    for (i = 0; i <= n; i++) out.push(x0 + (x1 - x0) * i / n, y0 + (y1 - y0) * i / n, r);
+    return out;
+  }
+  function sampleSignature() {
+    var main = [], i, n = 2400, t;
+    for (i = 0; i <= n; i++) {
+      t = i / n;
+      var x = 70 + 500 * t + 26 * sin(9 * PI * t), y = 128 + 56 * sin(7 * PI * t) * (1 - 0.45 * t) + 14 * sin(23 * PI * t);
+      var r = 1.6 + 2.2 * abs(sin(3 * PI * t + 0.4));
+      main.push(x, y, r);
+    }
+    var under = [];
+    for (i = 0; i <= 900; i++) { t = i / 900; under.push(110 + 430 * t, 214 - 10 * sin(PI * t) + 3 * t, 1.2 + 1.6 * sin(PI * t)); }
+    var dot = [];
+    for (i = 0; i <= 20; i++) dot.push(560 + i * 0.1, 62, 5.2);
+    return strokeImage(640, 260, 4, [main, under, dot], [24, 30, 64], [255, 255, 255]);
+  }
+  var PIX_ROWS = [
+    '................',
+    '.....kkkkkk.....',
+    '....kyyyyyyk....',
+    '...kyykyykyyk...',
+    '...kyykyykyyk...',
+    '...kyyyyyyyyk...',
+    '....kyyrryyk....',
+    '.....kkkkkk.....',
+    '...kkbbbbbbkk...',
+    '..kbbbwbbwbbbk..',
+    '..kbbbbbbbbbbk..',
+    '..kykbbbbbbkyk..',
+    '...k.kbbbbk.k...',
+    '.....kbkkbk.....',
+    '....kkk..kkk....',
+    '................'
+  ];
+  var PIX_PAL = { '.': [255, 255, 255], k: [26, 26, 46], y: [255, 209, 102], r: [239, 71, 111], b: [17, 138, 178], w: [255, 255, 255] };
+  function samplePixel() {
+    var img = imgNew(16, 16), d = img.data, x, y;
+    for (y = 0; y < 16; y++) for (x = 0; x < 16; x++) {
+      var c = PIX_PAL[PIX_ROWS[y][x]], o = (y * 16 + x) * 4;
+      d[o] = c[0]; d[o + 1] = c[1]; d[o + 2] = c[2]; d[o + 3] = 255;
+    }
+    return img;
+  }
+  function sampleBadge() {
+    var star = starPts(200, 204, 96, 40, 5, -PI / 2);
+    return renderScene(400, 400, 4, function (x, y) {
+      var d = (x - 200) * (x - 200) + (y - 200) * (y - 200);
+      if (d > 184 * 184) return [255, 255, 255];
+      if (d > 164 * 164) return [29, 53, 87];
+      if (d > 146 * 146) return [242, 183, 5];
+      if (inPoly(x, y, star)) return [230, 57, 70];
+      if (d > 132 * 132) return [29, 53, 87];
+      if (y > 300 && y < 316 && x > 150 && x < 250) return [242, 183, 5];
+      return [42, 157, 143];
+    });
+  }
+  function sampleScan() {
+    var rng = mulberry32(20261122), strokes = [], i, r = 2.0;
+    strokes.push(lineStroke(150, 200, 450, 200, r), lineStroke(150, 200, 150, 360, r), lineStroke(450, 200, 450, 360, r),
+      lineStroke(150, 360, 450, 360, r), lineStroke(130, 210, 300, 90, r), lineStroke(300, 90, 470, 210, r),
+      lineStroke(270, 360, 270, 280, r), lineStroke(270, 280, 330, 280, r), lineStroke(330, 280, 330, 360, r),
+      lineStroke(180, 240, 240, 240, r), lineStroke(180, 240, 180, 290, r), lineStroke(240, 240, 240, 290, r),
+      lineStroke(180, 290, 240, 290, r), lineStroke(210, 240, 210, 290, r), lineStroke(180, 265, 240, 265, r),
+      lineStroke(360, 240, 420, 240, r), lineStroke(360, 240, 360, 290, r), lineStroke(420, 240, 420, 290, r), lineStroke(360, 290, 420, 290, r));
+    var sun = []; for (i = 0; i <= 400; i++) { var a = i / 400 * 2 * PI; sun.push(520 + 34 * cos(a), 70 + 34 * sin(a), 1.8); }
+    strokes.push(sun);
+    for (i = 0; i < 8; i++) { var a2 = i * PI / 4; strokes.push(lineStroke(520 + 44 * cos(a2), 70 + 44 * sin(a2), 520 + 58 * cos(a2), 70 + 58 * sin(a2), 1.5)); }
+    var specks = [];
+    for (i = 0; i < 260; i++) specks.push(rng() * 600, rng() * 420, 0.45 + rng() * 0.9);
+    strokes.push(specks);
+    var noise = new Float64Array(600 * 420);
+    for (i = 0; i < noise.length; i++) noise[i] = (rng() - 0.5) * 18;
+    return strokeImage(600, 420, 4, strokes, [38, 36, 44], function (x, y) {
+      var v = 238 - 70 * (x / 600) * (x / 600) - 46 * (y / 420) + noise[y * 600 + x];
+      return [v, v - 2, v - 8];
+    });
+  }
+  function sampleChecker() {
+    var w = 64, h = 48, img = imgNew(w, h), d = img.data, x, y, b;
+    for (y = 0; y < h; y++) for (x = 0; x < w; x++) {
+      b = false;
+      if (x >= 4 && x < 20 && y >= 4 && y < 20) b = ((x + y) & 1) === 0;
+      if (x >= 26 && x < 60 && (x - 26 === y - 4 || x - 26 === y - 3 || 59 - x === y - 4)) b = true;
+      if (y >= 26 && y < 44 && x >= 6 && x < 24 && (abs(x - 15) <= 1 || abs(y - 35) <= 1)) b = true;
+      if ((x === 30 || x === 31) && y >= 28 && y < 44 && (y & 1)) b = true;
+      if (x >= 36 && x < 58 && y >= 30 && y < 42 && !(x >= 40 && x < 54 && y >= 33 && y < 39)) b = true;
+      if ((x === 46 || x === 48) && (y === 35 || y === 36)) b = true;
+      var o = (y * w + x) * 4, v = b ? 0 : 255;
+      d[o] = d[o + 1] = d[o + 2] = v; d[o + 3] = 255;
+    }
+    return img;
+  }
+  var SAMPLES = {
+    emblem: { name: '几何徽标', mode: 'bw', make: sampleEmblem },
+    signature: { name: '手写签名', mode: 'bw', make: sampleSignature },
+    scan: { name: '扫描线稿', mode: 'bw', make: sampleScan },
+    badge: { name: '多色徽章', mode: 'color', make: sampleBadge },
+    pixel: { name: '像素小人', mode: 'color', make: samplePixel },
+    checker: { name: '棋盘细线', mode: 'bw', make: sampleChecker }
+  };
+
+  /* ---------------- 预处理 ---------------- */
+  // RGBA → RGB（按 alpha 合成到白底；整数四舍五入）
+  function flatten(img) {
+    var n = img.w * img.h, s = img.data, out = new Uint8Array(n * 3), i, a;
+    for (i = 0; i < n; i++) {
+      a = s[i * 4 + 3];
+      out[i * 3] = ((s[i * 4] * a + 255 * (255 - a)) * 2 + 255) / 510 | 0;
+      out[i * 3 + 1] = ((s[i * 4 + 1] * a + 255 * (255 - a)) * 2 + 255) / 510 | 0;
+      out[i * 3 + 2] = ((s[i * 4 + 2] * a + 255 * (255 - a)) * 2 + 255) / 510 | 0;
+    }
+    return out;
+  }
+  // 双线性放大（像素中心对齐、边缘钳位），ch = 通道数
+  function upscale(src, w, h, ch, s) {
+    s = s | 0;
+    if (s <= 1) return { data: new Uint8Array(src), w: w, h: h };
+    var W = w * s, H = h * s, out = new Uint8Array(W * H * ch), X, Y, c;
+    var xi0 = new Int32Array(W), xi1 = new Int32Array(W), xf = new Float64Array(W);
+    for (X = 0; X < W; X++) {
+      var sx = (X + 0.5) / s - 0.5, x0 = floor(sx), fx = sx - x0, x1 = x0 + 1;
+      if (x0 < 0) { x0 = 0; x1 = 0; fx = 0; } else if (x1 > w - 1) { x1 = w - 1; if (x0 > w - 1) x0 = w - 1; }
+      xi0[X] = x0; xi1[X] = x1; xf[X] = fx;
+    }
+    for (Y = 0; Y < H; Y++) {
+      var sy = (Y + 0.5) / s - 0.5, y0 = floor(sy), fy = sy - y0, y1 = y0 + 1;
+      if (y0 < 0) { y0 = 0; y1 = 0; fy = 0; } else if (y1 > h - 1) { y1 = h - 1; if (y0 > h - 1) y0 = h - 1; }
+      var r0 = y0 * w, r1 = y1 * w, o = Y * W * ch;
+      for (X = 0; X < W; X++) {
+        var a0 = (r0 + xi0[X]) * ch, a1 = (r0 + xi1[X]) * ch, b0 = (r1 + xi0[X]) * ch, b1 = (r1 + xi1[X]) * ch, f = xf[X];
+        for (c = 0; c < ch; c++) {
+          var top = src[a0 + c] + (src[a1 + c] - src[a0 + c]) * f, bot = src[b0 + c] + (src[b1 + c] - src[b0 + c]) * f;
+          out[o + X * ch + c] = round(top + (bot - top) * fy);
+        }
+      }
+    }
+    return { data: out, w: W, h: H };
+  }
+  // 灰度：Rec.601 整数版 (299R + 587G + 114B + 500) / 1000
+  function toGray(rgb, n) {
+    var g = new Uint8Array(n), i;
+    for (i = 0; i < n; i++) g[i] = (299 * rgb[i * 3] + 587 * rgb[i * 3 + 1] + 114 * rgb[i * 3 + 2] + 500) / 1000 | 0;
+    return g;
+  }
+  // 大津法：返回阈值 T（灰度 < T 判为黑）；类间方差取第一个最大值
+  function otsu(gray) {
+    var hist = new Float64Array(256), n = gray.length, i, t, sum = 0, sumB = 0, wB = 0, best = -1, bestT = 127;
+    for (i = 0; i < n; i++) hist[gray[i]]++;
+    for (t = 0; t < 256; t++) sum += t * hist[t];
+    for (t = 0; t < 256; t++) {
+      wB += hist[t];
+      if (wB === 0) continue;
+      var wF = n - wB;
+      if (wF === 0) break;
+      sumB += t * hist[t];
+      var mB = sumB / wB, mF = (sum - sumB) / wF, between = wB * wF * (mB - mF) * (mB - mF);
+      if (between > best) { best = between; bestT = t; }
+    }
+    return bestT + 1;
+  }
+  // 二值化：mode = fixed（灰度 < T）| otsu | adaptive（比 (2r+1)² 邻域均值暗 offset 以上）
+  function binarize(gray, w, h, opt) {
+    opt = opt || {};
+    var mode = opt.mode || 'otsu', n = w * h, mask = new Uint8Array(n), i, T = 128;
+    if (mode === 'adaptive') {
+      var r = max(1, opt.radius | 0 || max(8, round(min(w, h) / 16))), off = opt.offset === undefined ? 12 : +opt.offset;
+      var S = new Float64Array((w + 1) * (h + 1)), x, y, W1 = w + 1;
+      for (y = 0; y < h; y++) {
+        var row = 0;
+        for (x = 0; x < w; x++) { row += gray[y * w + x]; S[(y + 1) * W1 + x + 1] = S[y * W1 + x + 1] + row; }
+      }
+      for (y = 0; y < h; y++) {
+        var ya = max(0, y - r), yb = min(h, y + r + 1);
+        for (x = 0; x < w; x++) {
+          var xa = max(0, x - r), xb = min(w, x + r + 1), cnt = (yb - ya) * (xb - xa);
+          var sm = S[yb * W1 + xb] - S[ya * W1 + xb] - S[yb * W1 + xa] + S[ya * W1 + xa];
+          mask[y * w + x] = gray[y * w + x] * cnt < sm - off * cnt ? 1 : 0;
+        }
+      }
+      T = NaN;
+    } else {
+      T = mode === 'fixed' ? (opt.value === undefined ? 128 : opt.value | 0) : otsu(gray);
+      for (i = 0; i < n; i++) mask[i] = gray[i] < T ? 1 : 0;
+    }
+    if (opt.invert) for (i = 0; i < n; i++) mask[i] ^= 1;
+    return { mask: mask, T: T };
+  }
+
+  /* ---------------- 分色（OKLab 加权 k-means，k-means++ 定种子） ---------------- */
+  var LIN = new Float64Array(256);
+  (function () { for (var i = 0; i < 256; i++) { var c = i / 255; LIN[i] = c <= 0.04045 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4); } })();
+  function oklab(r8, g8, b8) {
+    var r = LIN[r8], g = LIN[g8], b = LIN[b8];
+    var l = cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
+    var m = cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
+    var s = cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+    return [0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s,
+      1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s,
+      0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s];
+  }
+  function hex(c) { return '#' + ((1 << 24) | (c[0] << 16) | (c[1] << 8) | c[2]).toString(16).slice(1); }
+  // 返回 { k, palette:[{rgb,hex,count,lab}], index: Uint8Array(n) }；palette 按像素数降序
+  function quantize(rgb, w, h, k, seed) {
+    var n = w * h, map = new Map(), ucol = [], uw = [], i, key, u;
+    k = max(1, min(32, k | 0));
+    var pixU = new Int32Array(n);
+    for (i = 0; i < n; i++) {
+      key = (rgb[i * 3] << 16) | (rgb[i * 3 + 1] << 8) | rgb[i * 3 + 2];
+      u = map.get(key);
+      if (u === undefined) { u = ucol.length; map.set(key, u); ucol.push(key); uw.push(0); }
+      uw[u]++; pixU[i] = u;
+    }
+    var U = ucol.length, L = new Float64Array(U), A = new Float64Array(U), B = new Float64Array(U);
+    for (u = 0; u < U; u++) { var lab = oklab(ucol[u] >>> 16, (ucol[u] >>> 8) & 255, ucol[u] & 255); L[u] = lab[0]; A[u] = lab[1]; B[u] = lab[2]; }
+    // 点集：颜色很多时先按 5 位/通道合箱，箱心 = 成员加权均值
+    var P, PL, PA, PB, PW, binOf = null;
+    if (U > 40000) {
+      var bmap = new Map(), bl = [], ba = [], bb = [], bw = [];
+      binOf = new Int32Array(U);
+      for (u = 0; u < U; u++) {
+        var c = ucol[u], bk = ((c >>> 19) << 10) | (((c >>> 11) & 31) << 5) | ((c >>> 3) & 31), bi = bmap.get(bk);
+        if (bi === undefined) { bi = bl.length; bmap.set(bk, bi); bl.push(0); ba.push(0); bb.push(0); bw.push(0); }
+        bl[bi] += L[u] * uw[u]; ba[bi] += A[u] * uw[u]; bb[bi] += B[u] * uw[u]; bw[bi] += uw[u]; binOf[u] = bi;
+      }
+      P = bl.length; PL = new Float64Array(P); PA = new Float64Array(P); PB = new Float64Array(P); PW = new Float64Array(P);
+      for (i = 0; i < P; i++) { PL[i] = bl[i] / bw[i]; PA[i] = ba[i] / bw[i]; PB[i] = bb[i] / bw[i]; PW[i] = bw[i]; }
+    } else { P = U; PL = L; PA = A; PB = B; PW = Float64Array.from(uw); }
+    var K = min(k, P), cL = [], cA = [], cB = [], rng = mulberry32(seed === undefined ? 1 : seed | 0), D = new Float64Array(P);
+    // 种子：先按出现次数从多到少挑「彼此相距 ≥ 0.08（OKLab）」的颜色——平涂 logo 的真色一次就选中，
+    // 抗锯齿混出来的过渡色不会抢走名额；名额没用完再按 k-means++（w·D² 抽样）补
+    var byW = new Int32Array(P); for (i = 0; i < P; i++) byW[i] = i;
+    byW.sort(function (a, b) { return PW[b] - PW[a] || a - b; });
+    var SEP = 0.08 * 0.08;
+    for (var bi2 = 0; bi2 < P && cL.length < K; bi2++) {
+      var cand = byW[bi2], okc = true;
+      for (var cj = 0; cj < cL.length; cj++) if (sq3(PL[cand] - cL[cj], PA[cand] - cA[cj], PB[cand] - cB[cj]) < SEP) { okc = false; break; }
+      if (okc) { cL.push(PL[cand]); cA.push(PA[cand]); cB.push(PB[cand]); }
+    }
+    for (i = 0; i < P; i++) {
+      var dm = Infinity;
+      for (cj = 0; cj < cL.length; cj++) { var dq = sq3(PL[i] - cL[cj], PA[i] - cA[cj], PB[i] - cB[cj]); if (dq < dm) dm = dq; }
+      D[i] = dm;
+    }
+    while (cL.length < K) {
+      var tot = 0; for (i = 0; i < P; i++) tot += PW[i] * D[i];
+      if (!(tot > 0)) break;
+      var r = rng() * tot, acc = 0, pick = P - 1;
+      for (i = 0; i < P; i++) { acc += PW[i] * D[i]; if (acc >= r && PW[i] * D[i] > 0) { pick = i; break; } }
+      cL.push(PL[pick]); cA.push(PA[pick]); cB.push(PB[pick]);
+      var cl = cL.length - 1;
+      for (i = 0; i < P; i++) { var dd = sq3(PL[i] - cL[cl], PA[i] - cA[cl], PB[i] - cB[cl]); if (dd < D[i]) D[i] = dd; }
+    }
+    K = cL.length;
+    var asg = new Int32Array(P).fill(-1), it, changed;
+    for (it = 0; it < 100; it++) {
+      changed = 0;
+      for (i = 0; i < P; i++) {
+        var bj = 0, bd = Infinity;
+        for (var j = 0; j < K; j++) { var d2 = sq3(PL[i] - cL[j], PA[i] - cA[j], PB[i] - cB[j]); if (d2 < bd) { bd = d2; bj = j; } }
+        if (asg[i] !== bj) { asg[i] = bj; changed++; }
+      }
+      if (!changed && it > 0) break;
+      var sL = new Float64Array(K), sA = new Float64Array(K), sB = new Float64Array(K), sW = new Float64Array(K);
+      for (i = 0; i < P; i++) { var a = asg[i]; sL[a] += PL[i] * PW[i]; sA[a] += PA[i] * PW[i]; sB[a] += PB[i] * PW[i]; sW[a] += PW[i]; }
+      for (j = 0; j < K; j++) if (sW[j] > 0) { cL[j] = sL[j] / sW[j]; cA[j] = sA[j] / sW[j]; cB[j] = sB[j] / sW[j]; }
+    }
+    // 每个精确颜色归到最近的中心（平局取下标小的）
+    var uAsg = new Int32Array(U);
+    for (u = 0; u < U; u++) {
+      var bj2 = 0, bd2 = Infinity;
+      for (j = 0; j < K; j++) { var e = sq3(L[u] - cL[j], A[u] - cA[j], B[u] - cB[j]); if (e < bd2) { bd2 = e; bj2 = j; } }
+      uAsg[u] = bj2;
+    }
+    // 统计每簇像素数与众数色（成员里出现最多的精确颜色 = 输出填充色，平局取先出现的）
+    var cnt = new Float64Array(K), modeU = new Int32Array(K).fill(-1);
+    for (u = 0; u < U; u++) { var q = uAsg[u]; cnt[q] += uw[u]; if (modeU[q] < 0 || uw[u] > uw[modeU[q]]) modeU[q] = u; }
+    var order = []; for (j = 0; j < K; j++) if (cnt[j] > 0) order.push(j);
+    order.sort(function (x, y) { return cnt[y] - cnt[x] || x - y; });
+    var rank = new Int32Array(K).fill(-1); order.forEach(function (c, ix) { rank[c] = ix; });
+    var index = new Uint8Array(n);
+    for (i = 0; i < n; i++) index[i] = rank[uAsg[pixU[i]]];
+    var palette = order.map(function (c) {
+      var mc = ucol[modeU[c]], rgbv = [mc >>> 16, (mc >>> 8) & 255, mc & 255];
+      return { rgb: rgbv, hex: hex(rgbv), count: cnt[c], lab: [cL[c], cA[c], cB[c]] };
+    });
+    return { k: palette.length, palette: palette, index: index, uniqueColors: U, iterations: it, binned: !!binOf };
+  }
+  function sq3(a, b, c) { return a * a + b * b + c * c; }
+
+  // 去碎屑：面积 ≤ minArea、且四周有异色的同色 4 连通块，并进与它接壤次数最多的邻色（平局取色号小的）。
+  // 每一轮都按**当前颜色**重新划分物理连通块（BUG-1：按初始标签跟踪会漏掉合并后新形成的小块），
+  // 一轮内按面积从小到大处理；每次合并都让连通块总数减少，直到一轮里没有可并的块为止（上限 32 轮）。
+  function despeckle(index, w, h, minArea) {
+    minArea = minArea | 0;
+    var n = w * h, out = new Uint8Array(index);
+    if (minArea < 1 || n === 0) return { index: out, merged: 0, passes: 0 };
+    var seen = new Int32Array(n), stamp = 0, qx = new Int32Array(n), merged = 0, pass, i;
+    function nbrs(p, f) {
+      var x = p % w, y = (p / w) | 0;
+      if (x > 0) f(p - 1); if (x < w - 1) f(p + 1); if (y > 0) f(p - w); if (y < h - 1) f(p + w);
+    }
+    for (pass = 0; pass < 32; pass++) {
+      var lab = new Uint8Array(n), cands = [];
+      for (i = 0; i < n; i++) {
+        if (lab[i]) continue;
+        var c = out[i], head = 0, tail = 0, hasNb = false;
+        lab[i] = 1; qx[tail++] = i;
+        while (head < tail) {
+          nbrs(qx[head++], function (q) {
+            if (out[q] === c) { if (!lab[q]) { lab[q] = 1; qx[tail++] = q; } }
+            else hasNb = true;
+          });
+        }
+        if (tail <= minArea && hasNb) cands.push({ seed: i, area: tail });
+      }
+      if (!cands.length) break;
+      cands.sort(function (a, b) { return a.area - b.area || a.seed - b.seed; });
+      var changed = 0;
+      for (var ci = 0; ci < cands.length; ci++) {
+        var seed = cands[ci].seed, col = out[seed], px = [seed], hd = 0, cnt = new Map();
+        stamp++; seen[seed] = stamp;
+        while (hd < px.length && px.length <= minArea) {
+          nbrs(px[hd++], function (q) {
+            if (out[q] === col) { if (seen[q] !== stamp) { seen[q] = stamp; px.push(q); } }
+            else cnt.set(out[q], (cnt.get(out[q]) || 0) + 1);
+          });
+        }
+        if (px.length > minArea) continue;          // 已经长大（或本来就连着大块）
+        var best = -1, bc = -1;
+        cnt.forEach(function (v, k) { if (v > bc || (v === bc && k < best)) { bc = v; best = k; } });
+        if (best < 0) continue;                       // 整张图只有这一块
+        for (var j = 0; j < px.length; j++) out[px[j]] = best;
+        changed++; merged++;
+      }
+      if (!changed) break;
+    }
+    return { index: out, merged: merged, passes: pass + 1 };
+  }
+
+  // 分层：z 序 = [背景色] + 其余按像素数降序；stacked 模式下第 i 层 = z ≥ i 的所有颜色的并集（上层盖住下层，无缝）
+  function layerPlan(index, w, h, k, opt) {
+    opt = opt || {};
+    var border = new Float64Array(k), x, y, n = w * h, i;
+    for (x = 0; x < w; x++) { border[index[x]]++; if (h > 1) border[index[(h - 1) * w + x]]++; }
+    for (y = 1; y < h - 1; y++) { border[index[y * w]]++; if (w > 1) border[index[y * w + w - 1]]++; }
+    var bg = 0; for (i = 1; i < k; i++) if (border[i] > border[bg]) bg = i;
+    var order = [bg]; for (i = 0; i < k; i++) if (i !== bg) order.push(i);
+    var z = new Int32Array(k); order.forEach(function (c, ix) { z[c] = ix; });
+    var stacked = opt.stack !== 'cutout', removeBg = !!opt.removeBg, layers = [], zi;
+    for (zi = removeBg ? 1 : 0; zi < k; zi++) {
+      var c = order[zi], m = new Uint8Array(n);
+      if (stacked) { for (i = 0; i < n; i++) m[i] = z[index[i]] >= zi ? 1 : 0; }
+      else { for (i = 0; i < n; i++) m[i] = index[i] === c ? 1 : 0; }
+      layers.push({ cluster: c, z: zi, mask: m });
+    }
+    return { bg: bg, order: order, z: z, layers: layers, stacked: stacked, removeBg: removeBg };
+  }
+
+  /* ---------------- 像素精确：分解出的边界只保留拐点 ---------------- */
+  function pixelPolys(bm, prm) {
+    var dec = VTE.decompose(bm, prm), out = [], i, k;
+    for (i = 0; i < dec.paths.length; i++) {
+      var p = dec.paths[i], n = p.len, pts = [];
+      for (k = 0; k < n; k++) {
+        var a = (k + n - 1) % n, b = (k + 1) % n;
+        var dx1 = p.px[k] - p.px[a], dy1 = p.py[k] - p.py[a], dx2 = p.px[b] - p.px[k], dy2 = p.py[b] - p.py[k];
+        if (dx1 !== dx2 || dy1 !== dy2) pts.push(p.px[k], p.py[k]);
+      }
+      if (p.sign === '-') {           // 孔洞反向，配合 nonzero 填充规则
+        var rev = []; for (k = pts.length - 2; k >= 0; k -= 2) rev.push(pts[k], pts[k + 1]);
+        pts = rev;
+      }
+      out.push({ sign: p.sign, area: p.area, poly: Float64Array.from(pts), n: pts.length / 2, parent: p.parent, depth: p.depth, children: p.children });
+    }
+    return { w: bm.w, h: bm.h, params: dec.params, paths: out, roots: dec.roots, pixel: true };
+  }
+
+  /* ---------------- 曲线 → 折线 ---------------- */
+  // 固定细分：每段贝塞尔切 segs 段（栅格化 / 偏差统计用）
+  function flattenPath(p, segs) {
+    segs = segs || 16;
+    if (p.poly) return Array.from(p.poly);
+    var n = p.n, c = p.c, out = [], i, j, x0 = c[(n - 1) * 6 + 4], y0 = c[(n - 1) * 6 + 5];
+    out.push(x0, y0);
+    for (i = 0; i < n; i++) {
+      var o = i * 6;
+      if (p.tag[i] === CORNER) { out.push(c[o + 2], c[o + 3], c[o + 4], c[o + 5]); }
+      else {
+        for (j = 1; j <= segs; j++) {
+          var t = j / segs, s = 1 - t, a = s * s * s, b = 3 * s * s * t, d = 3 * s * t * t, e = t * t * t;
+          out.push(a * x0 + b * c[o] + d * c[o + 2] + e * c[o + 4], a * y0 + b * c[o + 1] + d * c[o + 3] + e * c[o + 5]);
+        }
+      }
+      x0 = c[o + 4]; y0 = c[o + 5];
+    }
+    out.length -= 2;                 // 最后一点 = 起点，去掉
+    return out;
+  }
+  // 自适应细分（DXF 用）：控制点到弦的距离 ≤ tol 即停
+  function flattenAdaptive(p, tol) {
+    if (p.poly) return Array.from(p.poly);
+    var n = p.n, c = p.c, out = [], i, x0 = c[(n - 1) * 6 + 4], y0 = c[(n - 1) * 6 + 5];
+    out.push(x0, y0);
+    // 曲线在控制点凸包内，到弦段的距离是凸函数 ⇒ 曲线到弦段的最大距离 ≤ 两个控制点到弦段距离的较大者
+    function segDist(px, py, ax, ay, dx, dy) {
+      var ux = dx - ax, uy = dy - ay, L2 = ux * ux + uy * uy, t = L2 > 0 ? ((px - ax) * ux + (py - ay) * uy) / L2 : 0;
+      t = t < 0 ? 0 : t > 1 ? 1 : t;
+      var ex = ax + t * ux - px, ey = ay + t * uy - py;
+      return sqrt(ex * ex + ey * ey);
+    }
+    function rec(ax, ay, bx, by, cx, cy, dx, dy, depth) {
+      var d1 = segDist(bx, by, ax, ay, dx, dy), d2 = segDist(cx, cy, ax, ay, dx, dy);
+      if (depth >= 16 || max(d1, d2) <= tol) { out.push(dx, dy); return; }
+      var abx = (ax + bx) / 2, aby = (ay + by) / 2, bcx = (bx + cx) / 2, bcy = (by + cy) / 2, cdx = (cx + dx) / 2, cdy = (cy + dy) / 2;
+      var abcx = (abx + bcx) / 2, abcy = (aby + bcy) / 2, bcdx = (bcx + cdx) / 2, bcdy = (bcy + cdy) / 2, mx = (abcx + bcdx) / 2, my = (abcy + bcdy) / 2;
+      rec(ax, ay, abx, aby, abcx, abcy, mx, my, depth + 1);
+      rec(mx, my, bcdx, bcdy, cdx, cdy, dx, dy, depth + 1);
+    }
+    for (i = 0; i < n; i++) {
+      var o = i * 6;
+      if (p.tag[i] === CORNER) out.push(c[o + 2], c[o + 3], c[o + 4], c[o + 5]);
+      else rec(x0, y0, c[o], c[o + 1], c[o + 2], c[o + 3], c[o + 4], c[o + 5], 0);
+      x0 = c[o + 4]; y0 = c[o + 5];
+    }
+    out.length -= 2;
+    return out;
+  }
+
+  /* ---------------- 栅格化（像素中心采样，nonzero 规则）→ 上行在前的掩码 ---------------- */
+  function rasterize(paths, w, h, segs) {
+    var rows = new Array(h), mask = new Uint8Array(w * h), i, k, y;
+    for (y = 0; y < h; y++) rows[y] = [];
+    for (i = 0; i < paths.length; i++) {
+      var pts = flattenPath(paths[i], segs), n = pts.length / 2;
+      for (k = 0; k < n; k++) {
+        var x1 = pts[2 * k], y1 = pts[2 * k + 1], k2 = (k + 1) % n, x2 = pts[2 * k2], y2 = pts[2 * k2 + 1];
+        if (y1 === y2) continue;
+        var dir = y2 > y1 ? 1 : -1, ya = min(y1, y2), yb = max(y1, y2);
+        var r0 = max(0, ceil(ya - 0.5)), r1 = min(h - 1, ceil(yb - 0.5) - 1);
+        for (y = r0; y <= r1; y++) {
+          var yc = y + 0.5;
+          rows[y].push(x1 + (yc - y1) * (x2 - x1) / (y2 - y1), dir);
+        }
+      }
+    }
+    for (y = 0; y < h; y++) {
+      var r = rows[y]; if (!r.length) continue;
+      var m = r.length / 2, idx = new Array(m);
+      for (k = 0; k < m; k++) idx[k] = k;
+      idx.sort(function (a, b) { return r[2 * a] - r[2 * b]; });
+      var wind = 0, mrow = (h - 1 - y) * w;
+      for (k = 0; k < m; k++) {
+        var cur = idx[k], xa = r[2 * cur];
+        wind += r[2 * cur + 1];
+        if (wind !== 0 && k + 1 < m) {
+          var xb = r[2 * idx[k + 1]], c0 = max(0, ceil(xa - 0.5)), c1 = min(w - 1, ceil(xb - 0.5) - 1);
+          for (var x = c0; x <= c1; x++) mask[mrow + x] = 1;
+        }
+      }
+    }
+    return mask;
+  }
+
+  /* ---------------- 统计 ---------------- */
+  function stats(res) {
+    var s = { paths: 0, holes: 0, segments: 0, curves: 0, corners: 0 }, i, k;
+    for (i = 0; i < res.paths.length; i++) {
+      var p = res.paths[i]; s.paths++; if (p.sign === '-') s.holes++;
+      if (p.poly) { s.segments += p.n; s.corners += p.n; continue; }
+      s.segments += p.n;
+      for (k = 0; k < p.n; k++) { if (p.tag[k] === CURVETO) s.curves++; else s.corners++; }
+    }
+    return s;
+  }
+
+  /* ---------------- 导出 ---------------- */
+  // 定点数：q = round(v·10^d)，打印时插回小数点并去掉末尾 0
+  function fmtQ(q, d) {
+    if (d === 0) return String(q);
+    var neg = q < 0; if (neg) q = -q;
+    var s = String(q); while (s.length <= d) s = '0' + s;
+    var ip = s.slice(0, s.length - d), fp = s.slice(s.length - d).replace(/0+$/, '');
+    return (neg && (ip !== '0' || fp) ? '-' : '') + ip + (fp ? '.' + fp : '');
+  }
+  // 路径分组：每条正路径 + 它的直接孔洞 = 一个 <path>（与 potrace 的 SVG 后端 grouping=1 相同）
+  function groups(res) {
+    var out = [], i;
+    for (i = 0; i < res.paths.length; i++) {
+      var p = res.paths[i];
+      if (p.sign !== '+') continue;
+      var g = [i]; for (var k = 0; k < p.children.length; k++) g.push(p.children[k]);
+      out.push(g);
+    }
+    return out;
+  }
+  // 一组路径 → SVG path d；tx/ty 把位图坐标映射成输出坐标
+  function svgD(res, grp, tx, ty, dec, rel) {
+    var parts = [], cx = 0, cy = 0, sx = 0, sy = 0, first = true, F = pow(10, dec), gi;
+    function q(v) { return round(v * F); }
+    function pt(cmd, X, Y) {
+      if (rel && !first) { parts.push(fmtQ(X - cx, dec) + ' ' + fmtQ(Y - cy, dec)); }
+      else parts.push(fmtQ(X, dec) + ' ' + fmtQ(Y, dec));
+      cx = X; cy = Y;
+    }
+    for (gi = 0; gi < grp.length; gi++) {
+      var p = res.paths[grp[gi]];
+      if (p.poly) {
+        var m = p.n;
+        parts.push(rel && !first ? 'm' : 'M'); var X0 = q(tx(p.poly[0])), Y0 = q(ty(p.poly[1]));
+        pt('M', X0, Y0); sx = X0; sy = Y0; first = false;
+        for (var k = 1; k < m; k++) {
+          var X = q(tx(p.poly[2 * k])), Y = q(ty(p.poly[2 * k + 1]));
+          if (rel) {
+            if (X === cx) { parts.push('v' + fmtQ(Y - cy, dec)); cy = Y; continue; }
+            if (Y === cy) { parts.push('h' + fmtQ(X - cx, dec)); cx = X; continue; }
+          }
+          parts.push(rel ? 'l' : 'L'); pt('L', X, Y);
+        }
+        parts.push(rel ? 'z' : 'Z'); cx = sx; cy = sy;
+        continue;
+      }
+      var n = p.n, c = p.c, o = (n - 1) * 6;
+      parts.push(rel && !first ? 'm' : 'M');
+      var MX = q(tx(c[o + 4])), MY = q(ty(c[o + 5]));
+      pt('M', MX, MY); sx = MX; sy = MY; first = false;
+      for (var i = 0; i < n; i++) {
+        o = i * 6;
+        if (p.tag[i] === CORNER) {
+          parts.push(rel ? 'l' : 'L'); pt('L', q(tx(c[o + 2])), q(ty(c[o + 3])));
+          parts.push(rel ? 'l' : 'L'); pt('L', q(tx(c[o + 4])), q(ty(c[o + 5])));
+        } else {
+          var bx = cx, by = cy;
+          var A1 = q(tx(c[o])), B1 = q(ty(c[o + 1])), A2 = q(tx(c[o + 2])), B2 = q(ty(c[o + 3])), A3 = q(tx(c[o + 4])), B3 = q(ty(c[o + 5]));
+          parts.push(rel ? 'c' : 'C');
+          if (rel) parts.push(fmtQ(A1 - bx, dec) + ' ' + fmtQ(B1 - by, dec) + ' ' + fmtQ(A2 - bx, dec) + ' ' + fmtQ(B2 - by, dec) + ' ' + fmtQ(A3 - bx, dec) + ' ' + fmtQ(B3 - by, dec));
+          else parts.push(fmtQ(A1, dec) + ' ' + fmtQ(B1, dec) + ' ' + fmtQ(A2, dec) + ' ' + fmtQ(B2, dec) + ' ' + fmtQ(A3, dec) + ' ' + fmtQ(B3, dec));
+          cx = A3; cy = B3;
+        }
+      }
+      parts.push(rel ? 'z' : 'Z'); cx = sx; cy = sy;
+    }
+    return parts.join('');
+  }
+  function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+  // doc = { w, h（位图像素）, s（放大倍数：位图像素 / 原图像素）, layers:[{hex, res}] }
+  function toSVG(doc, opt) {
+    opt = opt || {};
+    var dec = opt.decimals === undefined ? 2 : opt.decimals, rel = opt.relative !== false, s = doc.s || 1;
+    var W = doc.w / s, H = doc.h / s, dpi = opt.dpi || 96, unitW, unitH;
+    if (opt.units === 'mm') { unitW = fmtQ(round(W * 25.4 / dpi * 1000), 3) + 'mm'; unitH = fmtQ(round(H * 25.4 / dpi * 1000), 3) + 'mm'; }
+    else { unitW = fmtQ(round(W * 1000), 3); unitH = fmtQ(round(H * 1000), 3); }
+    var tx = function (x) { return x / s; }, ty = function (y) { return (doc.h - y) / s; };
+    var stroke = opt.mode === 'stroke', sw = opt.strokeWidth || 1;
+    var out = ['<svg xmlns="http://www.w3.org/2000/svg" width="' + unitW + '" height="' + unitH + '" viewBox="0 0 ' + fmtQ(round(W * 1000), 3) + ' ' + fmtQ(round(H * 1000), 3) + '">'];
+    if (opt.title) out.push('<title>' + esc(opt.title) + '</title>');
+    if (opt.background) out.push('<rect width="100%" height="100%" fill="' + esc(opt.background) + '"/>');
+    doc.layers.forEach(function (L, li) {
+      var gs = groups(L.res);
+      if (!gs.length) return;
+      var attr = stroke ? 'fill="none" stroke="' + L.hex + '" stroke-width="' + sw + '" stroke-linejoin="round"' : 'fill="' + L.hex + '"';
+      out.push('<g id="layer-' + (li + 1) + '" ' + attr + '>');
+      gs.forEach(function (g) { out.push('<path d="' + svgD(L.res, g, tx, ty, dec, rel) + '"/>'); });
+      out.push('</g>');
+    });
+    out.push('</svg>');
+    return out.join('\n') + '\n';
+  }
+  // PDF：未压缩内容流，坐标单位 pt（1 原图像素 = 72/dpi pt），y 轴向上与 potrace 一致
+  function toPDF(doc, opt) {
+    opt = opt || {};
+    var s = doc.s || 1, dpi = opt.dpi || 96, k = 72 / dpi, W = doc.w / s * k, H = doc.h / s * k, stroke = opt.mode === 'stroke';
+    function f(v) { return fmtQ(round(v * 1000), 3); }
+    function X(x) { return f(x / s * k); } function Y(y) { return f(y / s * k); }
+    var cs = [];
+    if (opt.background) { var bgc = hexRGB(opt.background); cs.push(f(bgc[0] / 255) + ' ' + f(bgc[1] / 255) + ' ' + f(bgc[2] / 255) + ' rg', '0 0 ' + f(W) + ' ' + f(H) + ' re f'); }
+    doc.layers.forEach(function (L) {
+      var c = hexRGB(L.hex), col = f(c[0] / 255) + ' ' + f(c[1] / 255) + ' ' + f(c[2] / 255), any = false, ops = [];
+      L.res.paths.forEach(function (p) {
+        any = true;
+        if (p.poly) {
+          ops.push(X(p.poly[0]) + ' ' + Y(p.poly[1]) + ' m');
+          for (var i = 1; i < p.n; i++) ops.push(X(p.poly[2 * i]) + ' ' + Y(p.poly[2 * i + 1]) + ' l');
+          ops.push('h'); return;
+        }
+        var n = p.n, cc = p.c, o = (n - 1) * 6;
+        ops.push(X(cc[o + 4]) + ' ' + Y(cc[o + 5]) + ' m');
+        for (var j = 0; j < n; j++) {
+          o = j * 6;
+          if (p.tag[j] === CORNER) { ops.push(X(cc[o + 2]) + ' ' + Y(cc[o + 3]) + ' l', X(cc[o + 4]) + ' ' + Y(cc[o + 5]) + ' l'); }
+          else ops.push(X(cc[o]) + ' ' + Y(cc[o + 1]) + ' ' + X(cc[o + 2]) + ' ' + Y(cc[o + 3]) + ' ' + X(cc[o + 4]) + ' ' + Y(cc[o + 5]) + ' c');
+        }
+        ops.push('h');
+      });
+      if (!any) return;
+      if (stroke) cs.push(col + ' RG', f((opt.strokeWidth || 1) * k) + ' w', '1 j');
+      else cs.push(col + ' rg');
+      cs.push(ops.join('\n'));
+      cs.push(stroke ? 'S' : 'f');
+    });
+    var content = cs.join('\n') + '\n';
+    var objs = [
+      '<< /Type /Catalog /Pages 2 0 R >>',
+      '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+      '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ' + f(W) + ' ' + f(H) + '] /Contents 4 0 R /Resources << >> >>',
+      '<< /Length ' + content.length + ' >>\nstream\n' + content + 'endstream',
+      '<< /Producer (Trace Studio - Potrace 1.16 port) /Title (' + pdfStr(opt.title || 'trace') + ') >>'
+    ];
+    var pdf = '%PDF-1.4\n%âãÏÓ\n', offs = [], i;
+    for (i = 0; i < objs.length; i++) { offs.push(pdf.length); pdf += (i + 1) + ' 0 obj\n' + objs[i] + '\nendobj\n'; }
+    var xref = pdf.length;
+    pdf += 'xref\n0 ' + (objs.length + 1) + '\n0000000000 65535 f \n';
+    for (i = 0; i < offs.length; i++) pdf += ('000000000' + offs[i]).slice(-10) + ' 00000 n \n';
+    pdf += 'trailer\n<< /Size ' + (objs.length + 1) + ' /Root 1 0 R /Info 5 0 R >>\nstartxref\n' + xref + '\n%%EOF\n';
+    var bytes = new Uint8Array(pdf.length);
+    for (i = 0; i < pdf.length; i++) bytes[i] = pdf.charCodeAt(i) & 255;
+    return bytes;
+  }
+  function pdfStr(s) { return String(s).replace(/[^ -~]/g, '?').replace(/([\\()])/g, '\\$1'); }
+  function hexRGB(h) { var v = parseInt(h.slice(1), 16); return [v >> 16 & 255, v >> 8 & 255, v & 255]; }
+  // AutoCAD 颜色索引：取最接近的标准色（R12 不支持真彩色）
+  var ACI = [[1, 255, 0, 0], [2, 255, 255, 0], [3, 0, 255, 0], [4, 0, 255, 255], [5, 0, 0, 255], [6, 255, 0, 255], [7, 0, 0, 0], [8, 128, 128, 128], [9, 192, 192, 192]];
+  function aciOf(hx) {
+    var c = hexRGB(hx), best = 7, bd = Infinity;
+    ACI.forEach(function (a) { var d = sq3(c[0] - a[1], c[1] - a[2], c[2] - a[3]); if (d < bd) { bd = d; best = a[0]; } });
+    return best;
+  }
+  // DXF R12（AC1009）：每条闭合路径一个 POLYLINE，曲线按弦高 tol（毫米）自适应切分，单位毫米、y 向上
+  function toDXF(doc, opt) {
+    opt = opt || {};
+    var s = doc.s || 1, dpi = opt.dpi || 96, mm = 25.4 / dpi / s, tol = (opt.tolerance || 0.05) / mm;
+    function f(v) { return fmtQ(round(v * 10000), 4); }
+    var L = [], ents = [];
+    function g(code, val) { L.push(String(code), String(val)); }
+    var names = doc.layers.map(function (Ly, i) { return 'L' + (i + 1) + '_' + Ly.hex.slice(1).toUpperCase(); });
+    var minx = Infinity, miny = Infinity, maxx = -Infinity, maxy = -Infinity;
+    doc.layers.forEach(function (Ly, li) {
+      Ly.res.paths.forEach(function (p) {
+        var pts = flattenAdaptive(p, tol), n = pts.length / 2, vs = [], i;
+        for (i = 0; i < n; i++) {
+          var x = pts[2 * i] * mm, y = pts[2 * i + 1] * mm, sx = f(x), sy = f(y);
+          if (vs.length && vs[vs.length - 1][0] === sx && vs[vs.length - 1][1] === sy) continue;
+          vs.push([sx, sy]);
+          if (x < minx) minx = x; if (y < miny) miny = y; if (x > maxx) maxx = x; if (y > maxy) maxy = y;
+        }
+        if (vs.length > 1 && vs[0][0] === vs[vs.length - 1][0] && vs[0][1] === vs[vs.length - 1][1]) vs.pop();
+        if (vs.length < 2) return;
+        ents.push({ layer: names[li], vs: vs });
+      });
+    });
+    if (!isFinite(minx)) { minx = miny = maxx = maxy = 0; }
+    g(0, 'SECTION'); g(2, 'HEADER');
+    g(9, '$ACADVER'); g(1, 'AC1009');
+    g(9, '$INSBASE'); g(10, '0.0'); g(20, '0.0'); g(30, '0.0');
+    g(9, '$EXTMIN'); g(10, f(minx)); g(20, f(miny)); g(30, '0.0');
+    g(9, '$EXTMAX'); g(10, f(maxx)); g(20, f(maxy)); g(30, '0.0');
+    g(0, 'ENDSEC');
+    g(0, 'SECTION'); g(2, 'TABLES');
+    g(0, 'TABLE'); g(2, 'LTYPE'); g(70, 1);
+    g(0, 'LTYPE'); g(2, 'CONTINUOUS'); g(70, 0); g(3, 'Solid line'); g(72, 65); g(73, 0); g(40, '0.0');
+    g(0, 'ENDTAB');
+    g(0, 'TABLE'); g(2, 'LAYER'); g(70, names.length);
+    names.forEach(function (nm, i) { g(0, 'LAYER'); g(2, nm); g(70, 0); g(62, aciOf(doc.layers[i].hex)); g(6, 'CONTINUOUS'); });
+    g(0, 'ENDTAB');
+    g(0, 'ENDSEC');
+    g(0, 'SECTION'); g(2, 'ENTITIES');
+    ents.forEach(function (e) {
+      g(0, 'POLYLINE'); g(8, e.layer); g(66, 1); g(10, '0.0'); g(20, '0.0'); g(30, '0.0'); g(70, 1);
+      e.vs.forEach(function (v) { g(0, 'VERTEX'); g(8, e.layer); g(10, v[0]); g(20, v[1]); g(30, '0.0'); });
+      g(0, 'SEQEND'); g(8, e.layer);
+    });
+    g(0, 'ENDSEC');
+    g(0, 'EOF');
+    return L.join('\n') + '\n';
+  }
+
+  /* ---------------- 流水线（主线程与 Worker 共用；cache 存上一阶段结果） ---------------- */
+  // job = { id, imgId, img?:{w,h,data}, mode:'bw'|'color', scale, thr:{mode,value,radius,offset,invert}, k, seed, stack, removeBg, prm, pixel }
+  function now() { return typeof performance !== 'undefined' ? performance.now() : Date.now(); }
+  function pipeline(job, cache) {
+    cache = cache || {};
+    var t0 = now(), ms = {};
+    if (job.img) { cache.img = job.img; cache.imgId = job.imgId; cache.k1 = cache.k2 = cache.k3 = null; }
+    if (!cache.img || cache.imgId !== job.imgId) throw new Error('图像不在缓存里（imgId ' + job.imgId + '）');
+    var img = cache.img, s = max(1, min(8, job.scale | 0 || 1)), mode = job.mode === 'color' ? 'color' : 'bw';
+    // 阶段 1：合成白底 + 放大（B/W 先转灰度再放大）
+    var k1 = [job.imgId, mode, s].join('|');
+    if (cache.k1 !== k1) {
+      var rgb = flatten(img), n0 = img.w * img.h;
+      if (mode === 'bw') { var up = upscale(toGray(rgb, n0), img.w, img.h, 1, s); cache.st1 = { gray: up.data, w: up.w, h: up.h }; }
+      else { var up3 = upscale(rgb, img.w, img.h, 3, s); cache.st1 = { rgb: up3.data, w: up3.w, h: up3.h }; }
+      cache.k1 = k1; cache.k2 = null;
+    }
+    var st1 = cache.st1, w = st1.w, h = st1.h, n = w * h;
+    ms.prep = now() - t0;
+    // 阶段 2：二值化 / 分色 + 分层
+    var t1 = now(), thr = job.thr || {}, k2;
+    if (mode === 'bw') k2 = k1 + '|' + [thr.mode, thr.value, thr.radius, thr.offset, !!thr.invert].join(',');
+    else k2 = k1 + '|' + [job.k, job.seed, job.stack, !!job.removeBg, job.speckle | 0].join(',');
+    if (cache.k2 !== k2) {
+      if (mode === 'bw') {
+        var b = binarize(st1.gray, w, h, thr);
+        cache.st2 = { mask: b.mask, T: b.T, masks: [b.mask], clusters: [0], palette: null, plan: null };
+      } else {
+        var q = quantize(st1.rgb, w, h, job.k || 5, job.seed === undefined ? 1 : job.seed);
+        var ds = despeckle(q.index, w, h, round((job.speckle === undefined ? 0 : +job.speckle) * s * s));
+        var plan = layerPlan(ds.index, w, h, q.k, { stack: job.stack, removeBg: job.removeBg });
+        cache.st2 = { index: ds.index, palette: q.palette, plan: plan, uniqueColors: q.uniqueColors, binned: q.binned, merged: ds.merged,
+          masks: plan.layers.map(function (L) { return L.mask; }), clusters: plan.layers.map(function (L) { return L.cluster; }) };
+      }
+      cache.k2 = k2; cache.k3 = null;
+    }
+    var st2 = cache.st2;
+    ms.bin = now() - t1;
+    // 阶段 3：逐层描摹
+    // 去斑点面积按原图像素计：放大 s 倍后位图里的面积 ×s²
+    var t2 = now(), prm0 = VTE.normParams(job.prm), prm = VTE.normParams({ turdsize: round(prm0.turdsize * s * s), turnpolicy: prm0.turnpolicy,
+      alphamax: prm0.alphamax, opticurve: prm0.opticurve, opttolerance: prm0.opttolerance });
+    var k3 = k2 + '|' + JSON.stringify(prm) + '|' + !!job.pixel;
+    if (cache.k3 !== k3) {
+      cache.st3 = st2.masks.map(function (m) {
+        var bm = VTE.bmFromMask(m, w, h);
+        return job.pixel ? pixelPolys(bm, prm) : VTE.trace(bm, prm);
+      });
+      cache.k3 = k3;
+    }
+    var traced = cache.st3;
+    ms.trace = now() - t2;
+    // 偏差：把矢量栅格化回去，与位图 / 分色图逐像素比
+    var t3 = now(), xor = 0, fg = 0, i, errMap = new Uint8Array(n);
+    if (mode === 'bw') {
+      var ras = rasterize(flatAll(traced), w, h);
+      for (i = 0; i < n; i++) { if (st2.mask[i]) fg++; if (ras[i] !== st2.mask[i]) { xor++; errMap[i] = ras[i] ? 1 : 2; } }
+    } else {
+      var zmap = new Int16Array(n).fill(-1), want = new Int16Array(n), plan2 = st2.plan, L, zi;
+      for (i = 0; i < n; i++) { var zz = plan2.z[st2.index[i]]; want[i] = plan2.removeBg && zz === 0 ? -1 : zz; if (want[i] >= 0) fg++; }
+      for (L = 0; L < traced.length; L++) {
+        zi = plan2.layers[L].z;
+        var r2 = rasterize(traced[L].paths, w, h);
+        for (i = 0; i < n; i++) if (r2[i]) { if (plan2.stacked) zmap[i] = zi; else if (zmap[i] < zi) zmap[i] = zi; }
+      }
+      for (i = 0; i < n; i++) if (zmap[i] !== want[i]) { xor++; errMap[i] = zmap[i] > want[i] ? 1 : 2; }
+    }
+    ms.raster = now() - t3;
+    var layers = traced.map(function (res, li) {
+      var c = st2.clusters[li];
+      return { cluster: c, z: st2.plan ? st2.plan.layers[li].z : 0, hex: st2.palette ? st2.palette[c].hex : null,
+        count: st2.palette ? st2.palette[c].count : fg, res: res, stats: stats(res) };
+    });
+    var tot = { paths: 0, holes: 0, segments: 0, curves: 0, corners: 0 };
+    layers.forEach(function (L2) { for (var key in tot) tot[key] += L2.stats[key]; });
+    ms.total = now() - t0;
+    return {
+      id: job.id, key: job.key, imgId: job.imgId, mode: mode, w: w, h: h, s: s, T: st2.T,
+      palette: st2.palette, bg: st2.plan ? st2.plan.bg : -1, order: st2.plan ? st2.plan.order : null,
+      uniqueColors: st2.uniqueColors, binned: !!st2.binned, merged: st2.merged || 0,
+      mask: mode === 'bw' ? st2.mask : null, index: mode === 'color' ? st2.index : null,
+      layers: layers, stats: tot, err: { xor: xor, fg: fg, total: n }, errMap: errMap, ms: ms, params: prm, pixel: !!job.pixel
+    };
+  }
+  function flatAll(traced) { var out = []; traced.forEach(function (r) { out = out.concat(r.paths); }); return out; }
+  VTE.pipeline = pipeline;
+
+  VTE.samples = SAMPLES;
+  VTE.mulberry32 = mulberry32;
+  VTE.prep = { flatten: flatten, upscale: upscale, toGray: toGray, otsu: otsu, binarize: binarize, oklab: oklab, hex: hex };
+  VTE.quantize = quantize;
+  VTE.layerPlan = layerPlan;
+  VTE.despeckle = despeckle;
+  VTE.pixelPolys = pixelPolys;
+  VTE.flattenPath = flattenPath;
+  VTE.flattenAdaptive = flattenAdaptive;
+  VTE.rasterize = rasterize;
+  VTE.stats = stats;
+  VTE.fmtQ = fmtQ;
+  VTE.groups = groups;
+  VTE.svgD = svgD;
+  VTE.toSVG = toSVG;
+  VTE.toPDF = toPDF;
+  VTE.toDXF = toDXF;
+  VTE.aciOf = aciOf;
+})(VTE);
+
+</script>
+<script id="vt-app">
+/* 描摹工坊 —— 界面 */
+(function () {
+  'use strict';
+  var $ = function (s, r) { return (r || document).querySelector(s); };
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); };
+  var LS_SET = 'vt.settings.v1', LS_PRE = 'vt.presets.v1', LS_LIB = 'vt.library.v1';
+  var LIB_BUDGET = 3.5 * 1024 * 1024;           // 我的描摹最多占用约 3.5 MB（localStorage 通常 5 MB）
+  var MAX_SIDE = 2400, MAX_BITMAP = 16e6;
+
+  var PRESETS = {
+    logo: { name: '标志 logo', mode: 'bw', thr: { mode: 'otsu' }, scale: 2, prm: { turdsize: 2, alphamax: 1, opticurve: true, opttolerance: 0.2, turnpolicy: 'minority' }, pixel: false },
+    sign: { name: '签名手写', mode: 'bw', thr: { mode: 'otsu' }, scale: 2, prm: { turdsize: 4, alphamax: 1.2, opticurve: true, opttolerance: 0.3, turnpolicy: 'minority' }, pixel: false },
+    scan: { name: '扫描线稿', mode: 'bw', thr: { mode: 'adaptive', radius: 0, offset: 14 }, scale: 1, prm: { turdsize: 8, alphamax: 1.1, opticurve: true, opttolerance: 0.4, turnpolicy: 'minority' }, pixel: false },
+    illus: { name: '多色插画', mode: 'color', k: 6, stack: 'stacked', removeBg: false, scale: 2, prm: { turdsize: 8, alphamax: 1, opticurve: true, opttolerance: 0.3, turnpolicy: 'minority' }, pixel: false },
+    pixel: { name: '像素画', mode: 'color', k: 16, stack: 'stacked', removeBg: false, scale: 1, prm: { turdsize: 0, alphamax: 1, opticurve: true, opttolerance: 0.2, turnpolicy: 'minority' }, pixel: true },
+    silhouette: { name: '剪影', mode: 'bw', thr: { mode: 'otsu' }, scale: 1, prm: { turdsize: 12, alphamax: 1.3, opticurve: true, opttolerance: 0.6, turnpolicy: 'minority' }, pixel: false }
+  };
+
+  function defaults() {
+    return {
+      mode: 'bw', thr: { mode: 'otsu', value: 128, radius: 0, offset: 12, invert: false }, bwColor: '#000000',
+      scale: 1, prm: { turdsize: 2, turnpolicy: 'minority', alphamax: 1, opticurve: true, opttolerance: 0.2 }, pixel: false,
+      k: 5, seed: 1, stack: 'stacked', removeBg: false, overrides: {}, hidden: {},
+      exp: { decimals: 2, relative: true, mode: 'fill', strokeWidth: 1, units: 'px', dpi: 96, background: 'none', pngScale: 2, dxfTol: 0.05 },
+      view: 'vector', tab: 'trace', preset: 'logo', sample: 'emblem'
+    };
+  }
+  var S = defaults();
+  var IMG = null, IMG_ID = '', IMG_NAME = '', IMG_SRC = '';
+  var RES = null, seq = 0, busy = false, pending = null, worker = null, workerImg = null, mainCache = {};
+  var Z = { scale: 1, tx: 0, ty: 0, fitted: true };
+  var lastSvg = '', saveTimer = null, debounceTimer = null;
+
+  /* ---------------- 持久化 ---------------- */
+  function clampNum(v, lo, hi, dflt) { v = +v; return isFinite(v) ? Math.min(hi, Math.max(lo, v)) : dflt; }
+  function loadSettings() {
+    var raw = null;
+    try { raw = JSON.parse(localStorage.getItem(LS_SET) || 'null'); } catch (e) { raw = null; }
+    if (!raw || typeof raw !== 'object') return;
+    var d = defaults();
+    S.mode = raw.mode === 'color' ? 'color' : 'bw';
+    if (raw.thr) {
+      S.thr.mode = ['otsu', 'fixed', 'adaptive'].indexOf(raw.thr.mode) >= 0 ? raw.thr.mode : 'otsu';
+      S.thr.value = clampNum(raw.thr.value, 1, 255, 128) | 0;
+      S.thr.radius = clampNum(raw.thr.radius, 0, 400, 0) | 0;
+      S.thr.offset = clampNum(raw.thr.offset, 0, 80, 12);
+      S.thr.invert = !!raw.thr.invert;
+    }
+    if (/^#[0-9a-f]{6}$/i.test(raw.bwColor || '')) S.bwColor = raw.bwColor.toLowerCase();
+    S.scale = [1, 2, 3, 4].indexOf(+raw.scale) >= 0 ? +raw.scale : 1;
+    if (raw.prm) {
+      S.prm.turdsize = clampNum(raw.prm.turdsize, 0, 200, 2) | 0;
+      S.prm.turnpolicy = VTE.TURN_NAMES.indexOf(raw.prm.turnpolicy) >= 0 ? raw.prm.turnpolicy : 'minority';
+      S.prm.alphamax = clampNum(raw.prm.alphamax, 0, 1.34, 1);
+      S.prm.opticurve = raw.prm.opticurve !== false;
+      S.prm.opttolerance = clampNum(raw.prm.opttolerance, 0, 2, 0.2);
+    }
+    S.pixel = !!raw.pixel;
+    S.k = clampNum(raw.k, 2, 16, 5) | 0;
+    S.seed = clampNum(raw.seed, 1, 1e6, 1) | 0;
+    S.stack = raw.stack === 'cutout' ? 'cutout' : 'stacked';
+    S.removeBg = !!raw.removeBg;
+    if (raw.exp) {
+      var e = raw.exp;
+      S.exp.decimals = clampNum(e.decimals, 0, 4, 2) | 0;
+      S.exp.relative = e.relative !== false;
+      S.exp.mode = e.mode === 'stroke' ? 'stroke' : 'fill';
+      S.exp.strokeWidth = clampNum(e.strokeWidth, 0.1, 20, 1);
+      S.exp.units = e.units === 'mm' ? 'mm' : 'px';
+      S.exp.dpi = clampNum(e.dpi, 1, 4800, 96);
+      S.exp.background = e.background === '#ffffff' ? '#ffffff' : 'none';
+      S.exp.pngScale = [1, 2, 4].indexOf(+e.pngScale) >= 0 ? +e.pngScale : 2;
+      S.exp.dxfTol = clampNum(e.dxfTol, 0.001, 5, 0.05);
+    }
+    S.view = ['vector', 'source', 'bitmap', 'compare', 'error', 'nodes'].indexOf(raw.view) >= 0 ? raw.view : d.view;
+    S.tab = ['trace', 'color', 'export', 'lib', 'about'].indexOf(raw.tab) >= 0 ? raw.tab : d.tab;
+    S.preset = typeof raw.preset === 'string' ? raw.preset : '';
+    S.sample = typeof raw.sample === 'string' && VTE.samples[raw.sample] ? raw.sample : 'emblem';
+  }
+  function settingsJSON() {
+    return JSON.stringify({ mode: S.mode, thr: S.thr, bwColor: S.bwColor, scale: S.scale, prm: S.prm, pixel: S.pixel, k: S.k, seed: S.seed,
+      stack: S.stack, removeBg: S.removeBg, exp: S.exp, view: S.view, tab: S.tab, preset: S.preset, sample: S.sample });
+  }
+  function flushSettings() {
+    if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
+    try { localStorage.setItem(LS_SET, settingsJSON()); } catch (e) { /* 存不进去不影响使用 */ }
+  }
+  function saveSettingsSoon() { if (saveTimer) clearTimeout(saveTimer); saveTimer = setTimeout(flushSettings, 250); }
+  window.addEventListener('pagehide', flushSettings);
+  document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'hidden') flushSettings(); });
+
+  function customPresets() { try { var a = JSON.parse(localStorage.getItem(LS_PRE) || '[]'); return Array.isArray(a) ? a.filter(function (p) { return p && p.name && p.cfg; }) : []; } catch (e) { return []; } }
+  function libItems() { try { var a = JSON.parse(localStorage.getItem(LS_LIB) || '[]'); return Array.isArray(a) ? a.filter(function (x) { return x && x.id && x.svg; }) : []; } catch (e) { return []; } }
+
+  /* ---------------- 任务与 Worker ---------------- */
+  function job() {
+    return {
+      imgId: IMG_ID, mode: S.mode, scale: effScale(),
+      thr: { mode: S.thr.mode, value: S.thr.value, radius: S.thr.radius, offset: S.thr.offset, invert: S.thr.invert },
+      k: S.k, seed: S.seed, stack: S.stack, removeBg: S.removeBg, speckle: S.mode === 'color' && !S.pixel ? S.prm.turdsize : 0,
+      prm: { turdsize: S.prm.turdsize, turnpolicy: S.prm.turnpolicy, alphamax: S.prm.alphamax, opticurve: S.prm.opticurve, opttolerance: S.prm.opttolerance },
+      pixel: S.pixel
+    };
+  }
+  function effScale() {
+    if (!IMG) return S.scale;
+    var s = S.scale;
+    while (s > 1 && IMG.w * IMG.h * s * s > MAX_BITMAP) s--;
+    return s;
+  }
+  function stateKey() { var j = job(); return JSON.stringify(j); }
+  function startWorker() {
+    try {
+      var src = document.getElementById('vt-engine').textContent;
+      var boot = 'var VT_CACHE = {};\nself.onmessage = function (e) { var r; try { r = VTE.pipeline(e.data, VT_CACHE); } catch (err) { r = { id: e.data.id, key: e.data.key, error: String(err && err.message || err) }; } self.postMessage(r); };\n';
+      var url = URL.createObjectURL(new Blob([src + '\n' + boot], { type: 'text/javascript' }));
+      var w = new Worker(url);
+      w.onmessage = function (e) { onResult(e.data); };
+      w.onerror = function (e) { e.preventDefault(); worker = null; workerImg = null; busy = false; status('后台线程不可用，改在主线程计算', false); if (pending || IMG) submit(); };
+      worker = w;
+    } catch (e) { worker = null; }
+  }
+  function schedule(ms) {
+    if (debounceTimer) clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(function () { debounceTimer = null; submit(); }, ms === undefined ? 90 : ms);
+    saveSettingsSoon();
+  }
+  function submit() {
+    if (!IMG) return;
+    var j = job(); j.id = ++seq; j.key = JSON.stringify(job());
+    if (busy) { pending = j; return; }
+    send(j);
+  }
+  function send(j) {
+    busy = true; $('#vt-busy').hidden = false;
+    if (worker) {
+      if (workerImg !== j.imgId) { j.img = IMG; workerImg = j.imgId; }
+      worker.postMessage(j);
+    } else {
+      setTimeout(function () {
+        var r;
+        try { if (mainCache.imgId !== j.imgId) j.img = IMG; r = VTE.pipeline(j, mainCache); }
+        catch (err) { r = { id: j.id, key: j.key, error: String(err && err.message || err) }; }
+        onResult(r);
+      }, 0);
+    }
+  }
+  function onResult(r) {
+    busy = false;
+    if (pending) { var p = pending; pending = null; send(p); }
+    else $('#vt-busy').hidden = true;
+    if (r.error) { status('描摹失败：' + r.error, true); return; }
+    if (r.key !== stateKey()) return;          // 过期结果
+    RES = r;
+    render();
+  }
+
+  /* ---------------- 图像载入 ---------------- */
+  function setImage(img, name, srcKind) {
+    IMG = img; IMG_NAME = name || '未命名'; IMG_SRC = srcKind || 'file';
+    IMG_ID = 'img' + (++seq) + '-' + img.w + 'x' + img.h;
+    RES = null; Z.fitted = true; S.overrides = {}; S.hidden = {};
+    var c = $('#vt-src'); c.width = img.w; c.height = img.h;
+    c.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(img.data), img.w, img.h), 0, 0);
+    $('#vt-empty').hidden = true;
+    $('#vt-content').classList.toggle('vt-px', img.w <= 160 && img.h <= 160);
+    sizeContent();
+    fit();
+    pixelHint();
+    $$('.vt-sample').forEach(function (b) { b.setAttribute('aria-pressed', String(srcKind === 'sample' && b.dataset.sample === S.sample)); });
+    submit();
+  }
+  var SAMPLE_PRESET = { emblem: 'logo', signature: 'sign', scan: 'scan', badge: 'illus', pixel: 'pixel', checker: 'logo' };
+  function loadSample(key, keepSettings) {
+    var sm = VTE.samples[key]; if (!sm) return;
+    S.sample = key;
+    var img = sm.make();
+    if (!keepSettings) { applyPreset(SAMPLE_PRESET[key] || 'logo', true); if (key === 'badge') { S.k = 5; syncControls(); } }
+    setImage({ w: img.w, h: img.h, data: new Uint8ClampedArray(img.data) }, sm.name, 'sample');
+    saveSettingsSoon();
+  }
+  function loadFile(file) {
+    if (!file) return;
+    if (!/^image\//.test(file.type || '') && !/\.(png|jpe?g|gif|webp|bmp|svg|avif)$/i.test(file.name || '')) { status('这不是图片文件：' + (file.name || ''), true); return; }
+    status('读取 ' + (file.name || '图片') + '…');
+    var url = URL.createObjectURL(file), im = new Image();
+    im.onload = function () {
+      var w = im.naturalWidth || im.width, h = im.naturalHeight || im.height, note = '';
+      if (!w || !h) { URL.revokeObjectURL(url); status('图片尺寸为 0，无法描摹', true); return; }
+      var k = Math.min(1, MAX_SIDE / Math.max(w, h));
+      if (k < 1) { note = '（原图 ' + w + '×' + h + '，已缩到 ' + Math.round(w * k) + '×' + Math.round(h * k) + '）'; w = Math.max(1, Math.round(w * k)); h = Math.max(1, Math.round(h * k)); }
+      var c = document.createElement('canvas'); c.width = w; c.height = h;
+      var g = c.getContext('2d'); g.drawImage(im, 0, 0, w, h);
+      var d;
+      try { d = g.getImageData(0, 0, w, h); } catch (e) { URL.revokeObjectURL(url); status('读不到像素：' + e.message, true); return; }
+      URL.revokeObjectURL(url);
+      S.sample = '';
+      setImage({ w: w, h: h, data: d.data }, file.name || '粘贴的图片', 'file');
+      if (note) status('已载入 ' + (file.name || '') + note);
+    };
+    im.onerror = function () { URL.revokeObjectURL(url); status('无法解码这张图片：' + (file.name || ''), true); };
+    im.src = url;
+  }
+  function pixelHint() {
+    var show = false;
+    if (IMG && IMG.w <= 128 && IMG.h <= 128 && !S.pixel) {
+      var set = new Set(), d = IMG.data;
+      for (var i = 0; i < d.length && set.size <= 32; i += 4) set.add(d[i] << 16 | d[i + 1] << 8 | d[i + 2]);
+      show = set.size <= 32;
+    }
+    $('#vt-pxhint').hidden = !show;
+  }
+
+  /* ---------------- 渲染 ---------------- */
+  function layerHex(L) {
+    if (RES.mode === 'bw') return S.bwColor;
+    return S.overrides[L.cluster] || L.hex;
+  }
+  function buildDoc(forExport) {
+    var layers = [];
+    RES.layers.forEach(function (L) {
+      if (RES.mode === 'color' && S.hidden[L.cluster]) return;
+      layers.push({ hex: layerHex(L), res: L.res });
+    });
+    return { w: RES.w, h: RES.h, s: RES.s, layers: layers };
+  }
+  function exportSVG() {
+    return VTE.toSVG(buildDoc(true), { decimals: S.exp.decimals, relative: S.exp.relative, mode: S.exp.mode, strokeWidth: S.exp.strokeWidth,
+      units: S.exp.units, dpi: S.exp.dpi, background: S.exp.background === 'none' ? '' : S.exp.background, title: IMG_NAME });
+  }
+  function sizeContent() {
+    if (!IMG) return;
+    var c = $('#vt-content'); c.style.width = IMG.w + 'px'; c.style.height = IMG.h + 'px';
+    ['#vt-src', '#vt-bits', '#vt-errc'].forEach(function (s) { var e = $(s); e.style.width = IMG.w + 'px'; e.style.height = IMG.h + 'px'; });
+    var n = $('#vt-nodes'); n.setAttribute('width', IMG.w); n.setAttribute('height', IMG.h); n.setAttribute('viewBox', '0 0 ' + IMG.w + ' ' + IMG.h);
+  }
+  function render() {
+    if (!RES || !IMG) return;
+    // 矢量视图（显示用：绝对坐标 3 位小数，填充）
+    var doc = buildDoc(false);
+    var disp = VTE.toSVG(doc, { decimals: 3, relative: false, mode: S.view === 'nodes' ? 'stroke' : 'fill', strokeWidth: 0 });
+    var box = $('#vt-svgbox'); box.innerHTML = disp;
+    var svg = box.firstElementChild;
+    if (svg) { svg.setAttribute('width', IMG.w); svg.setAttribute('height', IMG.h); svg.setAttribute('id', 'vt-vec'); }
+    if (S.view === 'nodes' && svg) $$('g', svg).forEach(function (g) { g.setAttribute('stroke-width', '1'); g.setAttribute('vector-effect', 'non-scaling-stroke'); $$('path', g).forEach(function (p) { p.setAttribute('vector-effect', 'non-scaling-stroke'); }); });
+    drawBits();
+    drawErr();
+    drawNodes();
+    lastSvg = exportSVG();
+    updateKpis();
+    updatePalette();
+    updateExportInfo();
+    applyView();
+    var note = '';
+    if (RES.mode === 'bw') note = S.thr.mode === 'adaptive' ? '自适应阈值' : ('阈值 灰度 < ' + RES.T + (S.thr.mode === 'otsu' ? '（大津法自动）' : ''));
+    else note = RES.layers.length + ' 层 · 原图 ' + RES.uniqueColors + ' 种颜色' + (RES.merged ? ' · 并掉 ' + RES.merged + ' 个碎色块' : '');
+    $('#vt-thr-note').textContent = RES.mode === 'bw' ? note : '';
+    status('已描摹「' + IMG_NAME + '」· ' + note + (RES.s > 1 ? ' · 预放大 ' + RES.s + '×' : '') + (RES.s < S.scale ? '（图太大，预放大降到 ' + RES.s + '×）' : ''));
+    $('#vt-stage').dataset.key = RES.key;
+    $('#vt-stage').dataset.view = S.view;
+  }
+  function drawBits() {
+    var c = $('#vt-bits'), w = RES.w, h = RES.h;
+    c.width = w; c.height = h;
+    var g = c.getContext('2d'), im = g.createImageData(w, h), d = im.data, i, n = w * h;
+    if (RES.mode === 'bw') {
+      var col = hexRGB(S.bwColor);
+      for (i = 0; i < n; i++) { if (RES.mask[i]) { d[i * 4] = col[0]; d[i * 4 + 1] = col[1]; d[i * 4 + 2] = col[2]; d[i * 4 + 3] = 255; } else { d[i * 4] = d[i * 4 + 1] = d[i * 4 + 2] = 255; d[i * 4 + 3] = 255; } }
+    } else {
+      var pal = RES.palette.map(function (p, ci) { return hexRGB(S.overrides[ci] || p.hex); });
+      for (i = 0; i < n; i++) {
+        var ci2 = RES.index[i];
+        if (S.removeBg && ci2 === RES.bg) { d[i * 4 + 3] = 0; continue; }
+        var cc = pal[ci2]; d[i * 4] = cc[0]; d[i * 4 + 1] = cc[1]; d[i * 4 + 2] = cc[2]; d[i * 4 + 3] = 255;
+      }
+    }
+    g.putImageData(im, 0, 0);
+  }
+  function drawErr() {
+    var c = $('#vt-errc'), w = RES.w, h = RES.h;
+    c.width = w; c.height = h;
+    var g = c.getContext('2d'), im = g.createImageData(w, h), d = im.data, i, n = w * h;
+    for (i = 0; i < n; i++) {
+      var e = RES.errMap[i];
+      if (e === 1) { d[i * 4] = 255; d[i * 4 + 1] = 61; d[i * 4 + 2] = 139; d[i * 4 + 3] = 255; }
+      else if (e === 2) { d[i * 4] = 31; d[i * 4 + 1] = 29; d[i * 4 + 2] = 61; d[i * 4 + 3] = 255; }
+      else { d[i * 4] = d[i * 4 + 1] = d[i * 4 + 2] = 255; d[i * 4 + 3] = 190; }
+    }
+    g.putImageData(im, 0, 0);
+  }
+  function drawNodes() {
+    var svg = $('#vt-nodes');
+    while (svg.firstChild) svg.removeChild(svg.firstChild);
+    if (S.view !== 'nodes' || !RES) return;
+    var NS = 'http://www.w3.org/2000/svg', s = RES.s, H = RES.h, cnt = 0, LIM = 6000;
+    var r = 3 / Z.scale, frag = document.createDocumentFragment();
+    function X(x) { return x / s; } function Y(y) { return (H - y) / s; }
+    function mk(tag, attrs) { var e = document.createElementNS(NS, tag); for (var a in attrs) e.setAttribute(a, attrs[a]); return e; }
+    var handles = mk('path', { d: '', fill: 'none', stroke: '#ff3d8b', 'stroke-width': '1', 'vector-effect': 'non-scaling-stroke' }), hd = [];
+    RES.layers.forEach(function (L) {
+      if (RES.mode === 'color' && S.hidden[L.cluster]) return;
+      L.res.paths.forEach(function (p) {
+        if (p.poly) {
+          for (var k = 0; k < p.n && cnt < LIM; k++, cnt++) frag.appendChild(mk('rect', { x: X(p.poly[2 * k]) - r, y: Y(p.poly[2 * k + 1]) - r, width: 2 * r, height: 2 * r, fill: '#000' }));
+          return;
+        }
+        var c = p.c;
+        for (var i = 0; i < p.n && cnt < LIM; i++, cnt++) {
+          var o = i * 6;
+          if (p.tag[i] === VTE.CORNER) frag.appendChild(mk('rect', { x: X(c[o + 2]) - r, y: Y(c[o + 3]) - r, width: 2 * r, height: 2 * r, fill: '#000' }));
+          else {
+            var po = (i === 0 ? p.n - 1 : i - 1) * 6;
+            hd.push('M' + X(c[po + 4]) + ' ' + Y(c[po + 5]) + 'L' + X(c[o]) + ' ' + Y(c[o + 1]) + 'M' + X(c[o + 4]) + ' ' + Y(c[o + 5]) + 'L' + X(c[o + 2]) + ' ' + Y(c[o + 3]));
+          }
+          frag.appendChild(mk('circle', { cx: X(c[o + 4]), cy: Y(c[o + 5]), r: r, fill: p.tag[i] === VTE.CORNER ? '#000' : '#fff', stroke: '#000', 'stroke-width': '1', 'vector-effect': 'non-scaling-stroke' }));
+        }
+      });
+    });
+    if (hd.length && cnt < LIM) { handles.setAttribute('d', hd.join('')); svg.appendChild(handles); }
+    svg.appendChild(frag);
+    svg.dataset.count = String(cnt);
+  }
+  function applyView() {
+    var v = S.view;
+    $$('#vt-views button').forEach(function (b) { b.setAttribute('aria-pressed', String(b.dataset.view === v)); });
+    // 一律用 hidden 属性（SVG 元素没有 .hidden 这个 IDL 属性，赋值不生效）
+    vis('#vt-src', v === 'source' || v === 'compare' || v === 'error');
+    $('#vt-src').style.opacity = v === 'error' ? '0.35' : '1';
+    vis('#vt-bits', v === 'bitmap');
+    vis('#vt-svgbox', v === 'vector' || v === 'compare' || v === 'nodes');
+    vis('#vt-errc', v === 'error');
+    vis('#vt-nodes', v === 'nodes');
+    vis('#vt-cmpbar', v === 'compare');
+    vis('#vt-cmpline', v === 'compare');
+    var lg = $('#vt-legend');
+    if (v === 'error') { lg.hidden = false; lg.innerHTML = '<span><i style="background:#ff3d8b"></i>矢量多出</span><span><i style="background:#1f1d3d"></i>矢量缺失</span>'; }
+    else if (v === 'nodes') { lg.hidden = false; lg.innerHTML = '<span><i style="background:#000"></i>角点</span><span><i style="background:#fff;box-shadow:inset 0 0 0 1px #000"></i>曲线接点</span><span><i style="background:#ff3d8b"></i>控制柄</span>'; }
+    else lg.hidden = true;
+    updateCompare();
+  }
+  function updateCompare() {
+    var box = $('#vt-svgbox'), src = $('#vt-src');
+    if (S.view !== 'compare' || !IMG) { box.style.clipPath = ''; src.style.clipPath = ''; return; }
+    var pct = +$('#vt-cmp').value;
+    box.style.clipPath = 'inset(0 ' + (100 - pct) + '% 0 0)';
+    src.style.clipPath = 'inset(0 0 0 ' + pct + '%)';
+    var st = $('#vt-stage').getBoundingClientRect();
+    var x = Z.tx + IMG.w * Z.scale * pct / 100;
+    $('#vt-cmpline').style.left = Math.max(0, Math.min(st.width - 2, x)) + 'px';
+  }
+  function fmtBytes(n) { return n < 1024 ? n + ' B' : n < 1048576 ? (n / 1024).toFixed(1) + ' KB' : (n / 1048576).toFixed(2) + ' MB'; }
+  function utf8Len(s) { return new Blob([s]).size; }
+  function updateKpis() {
+    var st = RES.stats;
+    $('#vt-k-paths').textContent = st.paths + ' · ' + st.holes;
+    $('#vt-k-nodes').textContent = String(st.segments);
+    $('#vt-k-nodes-sub').textContent = RES.pixel ? '节点 · 全为直角' : '节点 · 曲线 ' + st.curves + ' / 角 ' + st.corners;
+    $('#vt-k-size').textContent = fmtBytes(utf8Len(lastSvg));
+    var e = RES.err, pct = e.fg ? 100 * e.xor / e.fg : 0;
+    $('#vt-k-err').textContent = (pct < 0.01 && e.xor > 0 ? '<0.01' : pct.toFixed(2)) + '%';
+    $('#vt-k-err').title = e.xor + ' / ' + e.fg + ' 个前景像素不一致';
+    $('#vt-k-time').textContent = Math.max(1, Math.round(RES.ms.total)) + ' ms';
+    $('#vt-k-time-sub').textContent = '耗时 · ' + RES.w + '×' + RES.h + ' 位图';
+  }
+  function updatePalette() {
+    var on = S.mode === 'color';
+    $('#vt-color-off').hidden = on; $('#vt-color-on').hidden = !on;
+    var box = $('#vt-pal'); box.innerHTML = '';
+    if (!RES || RES.mode !== 'color') { $('#vt-color-info').textContent = ''; return; }
+    $('#vt-color-info').textContent = '原图 ' + RES.uniqueColors + ' 种颜色 → ' + RES.palette.length + ' 色';
+    var total = RES.w * RES.h, inLayer = {};
+    RES.layers.forEach(function (L) { inLayer[L.cluster] = L; });
+    RES.order.forEach(function (ci) {
+      var p = RES.palette[ci], L = inLayer[ci], row = document.createElement('div');
+      var isBg = ci === RES.bg, removed = isBg && S.removeBg;
+      row.className = 'vt-palrow' + (S.hidden[ci] || removed ? ' vt-off' : '');
+      row.dataset.cluster = String(ci);
+      var col = document.createElement('input'); col.type = 'color'; col.className = 'vt-color'; col.value = S.overrides[ci] || p.hex;
+      col.setAttribute('aria-label', '第 ' + (ci + 1) + ' 色的输出颜色'); col.disabled = removed;
+      col.addEventListener('input', function () { S.overrides[ci] = col.value.toLowerCase(); render(); saveSettingsSoon(); });
+      var info = document.createElement('div'); info.className = 'vt-palinfo';
+      info.innerHTML = '<b>' + (S.overrides[ci] || p.hex) + (S.overrides[ci] ? ' ← ' + p.hex : '') + '</b><small>' + (100 * p.count / total).toFixed(1) + '% 像素' +
+        (isBg ? ' · 背景' : '') + (L ? ' · ' + L.stats.paths + ' 条路径' : removed ? ' · 已去掉' : '') + '</small>';
+      var chk = document.createElement('label'); chk.className = 'vt-check';
+      var cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = !S.hidden[ci] && !removed; cb.disabled = removed;
+      cb.setAttribute('aria-label', '显示第 ' + (ci + 1) + ' 色');
+      cb.addEventListener('change', function () { if (cb.checked) delete S.hidden[ci]; else S.hidden[ci] = true; render(); saveSettingsSoon(); });
+      chk.appendChild(cb); chk.appendChild(document.createTextNode('显示'));
+      row.appendChild(col); row.appendChild(info); row.appendChild(chk);
+      box.appendChild(row);
+    });
+  }
+  function updateExportInfo() {
+    if (!RES) return;
+    var W = RES.w / RES.s, H = RES.h / RES.s, mmW = W * 25.4 / S.exp.dpi, mmH = H * 25.4 / S.exp.dpi;
+    $('#vt-phys').textContent = '成品尺寸 ' + W + ' × ' + H + ' 像素 ≈ ' + mmW.toFixed(1) + ' × ' + mmH.toFixed(1) + ' 毫米（' + S.exp.dpi + ' DPI）';
+    $('#vt-code').textContent = lastSvg.length > 2400 ? lastSvg.slice(0, 2400) + '\n…（共 ' + fmtBytes(utf8Len(lastSvg)) + '）' : lastSvg;
+    $('#vt-sw-row').hidden = S.exp.mode !== 'stroke';
+  }
+
+  /* ---------------- 缩放与平移 ---------------- */
+  function applyZ() {
+    $('#vt-content').style.transform = 'translate(' + Z.tx + 'px,' + Z.ty + 'px) scale(' + Z.scale + ')';
+    $('#vt-zoom-lbl').textContent = Math.round(Z.scale * 100) + '%';
+    updateCompare();
+  }
+  function fit() {
+    if (!IMG) return;
+    var st = $('#vt-stage').getBoundingClientRect(), pad = 32;
+    var sc = Math.min((st.width - pad * 2) / IMG.w, (st.height - pad * 2) / IMG.h);
+    if (!(sc > 0)) sc = 1;
+    sc = Math.min(sc, 64);
+    Z.scale = sc; Z.tx = (st.width - IMG.w * sc) / 2; Z.ty = (st.height - IMG.h * sc) / 2; Z.fitted = true;
+    applyZ();
+    if (S.view === 'nodes') drawNodes();
+  }
+  function zoomAt(f, cx, cy) {
+    if (!IMG) return;
+    var st = $('#vt-stage').getBoundingClientRect();
+    if (cx === undefined) { cx = st.width / 2; cy = st.height / 2; }
+    var ns = Math.min(64, Math.max(0.05, Z.scale * f));
+    Z.tx = cx - (cx - Z.tx) * ns / Z.scale; Z.ty = cy - (cy - Z.ty) * ns / Z.scale; Z.scale = ns; Z.fitted = false;
+    applyZ();
+    if (S.view === 'nodes') drawNodes();
+  }
+
+  /* ---------------- 控件同步 ---------------- */
+  function setPressed(groupSel, attr, val) { $$(groupSel + ' button').forEach(function (b) { b.setAttribute('aria-pressed', String(b.dataset[attr] === String(val))); }); }
+  function syncControls() {
+    setPressed('#vt-mode', 'mode', S.mode);
+    setPressed('#vt-thr-mode', 'thr', S.thr.mode);
+    setPressed('#vt-scale', 'scale', S.scale);
+    setPressed('#vt-stack', 'stack', S.stack);
+    setPressed('#vt-out', 'out', S.exp.mode);
+    setPressed('#vt-unit', 'unit', S.exp.units);
+    setPressed('#vt-bgout', 'bg', S.exp.background);
+    $('#vt-thr-box').hidden = S.mode !== 'bw';
+    $('#vt-thr-fixed-row').hidden = S.thr.mode !== 'fixed';
+    $('#vt-thr-adapt-rows').hidden = S.thr.mode !== 'adaptive';
+    $('#vt-thr-value').value = S.thr.value; $('#vt-thr-value-o').textContent = S.thr.value;
+    $('#vt-thr-radius').value = S.thr.radius;
+    $('#vt-thr-offset').value = S.thr.offset; $('#vt-thr-offset-o').textContent = S.thr.offset;
+    $('#vt-invert').checked = S.thr.invert;
+    $('#vt-bwcolor').value = S.bwColor;
+    $('#vt-turd').value = S.prm.turdsize; $('#vt-turd-o').textContent = S.prm.turdsize;
+    $('#vt-alpha').value = S.prm.alphamax; $('#vt-alpha-o').textContent = (+S.prm.alphamax).toFixed(2);
+    $('#vt-opti').checked = S.prm.opticurve;
+    $('#vt-opttol').value = S.prm.opttolerance; $('#vt-opttol-o').textContent = (+S.prm.opttolerance).toFixed(2);
+    $('#vt-opttol').disabled = !S.prm.opticurve || S.pixel;
+    $('#vt-turn').value = S.prm.turnpolicy;
+    $('#vt-pixel').checked = S.pixel;
+    $('#vt-alpha').disabled = S.pixel; $('#vt-opti').disabled = S.pixel;
+    $('#vt-k').value = S.k; $('#vt-k-o').textContent = S.k;
+    $('#vt-rmbg').checked = S.removeBg;
+    $('#vt-dec').value = String(S.exp.decimals);
+    $('#vt-rel').checked = S.exp.relative;
+    $('#vt-sw').value = S.exp.strokeWidth;
+    $('#vt-dpi').value = S.exp.dpi;
+    $('#vt-dxftol').value = S.exp.dxfTol;
+    $('#vt-png-scale').value = String(S.exp.pngScale);
+    $('#vt-sw-row').hidden = S.exp.mode !== 'stroke';
+    $$('#vt-presets .vt-chip').forEach(function (b) { b.setAttribute('aria-pressed', String(b.dataset.preset === S.preset)); });
+    updatePalette();
+  }
+  function setTab(t, focus) {
+    S.tab = t;
+    $$('#vt-tabs .vt-tab').forEach(function (b) {
+      var on = b.dataset.tab === t;
+      b.setAttribute('aria-selected', String(on)); b.tabIndex = on ? 0 : -1;
+      if (on && focus) b.focus();
+    });
+    $$('#vt-panes > .vt-pane').forEach(function (p) { p.hidden = p.id !== 'vt-pane-' + t; });
+    if (t === 'lib') renderLib();
+    saveSettingsSoon();
+  }
+  function applyPreset(key, silent) {
+    var p = PRESETS[key], cfg = p;
+    if (!p) { var cp = customPresets().filter(function (x) { return 'c:' + x.name === key; })[0]; if (!cp) return; cfg = cp.cfg; }
+    S.mode = cfg.mode === 'color' ? 'color' : 'bw';
+    if (cfg.thr) { S.thr.mode = cfg.thr.mode || 'otsu'; if (cfg.thr.value !== undefined) S.thr.value = cfg.thr.value; if (cfg.thr.radius !== undefined) S.thr.radius = cfg.thr.radius; if (cfg.thr.offset !== undefined) S.thr.offset = cfg.thr.offset; S.thr.invert = !!cfg.thr.invert; }
+    if (cfg.k) S.k = cfg.k;
+    if (cfg.stack) S.stack = cfg.stack;
+    if (cfg.removeBg !== undefined) S.removeBg = !!cfg.removeBg;
+    S.scale = cfg.scale || 1;
+    var pr = cfg.prm || {};
+    S.prm = { turdsize: pr.turdsize === undefined ? 2 : pr.turdsize, turnpolicy: pr.turnpolicy || 'minority', alphamax: pr.alphamax === undefined ? 1 : pr.alphamax,
+      opticurve: pr.opticurve !== false, opttolerance: pr.opttolerance === undefined ? 0.2 : pr.opttolerance };
+    S.pixel = !!cfg.pixel;
+    S.preset = key;
+    syncControls();
+    pixelHint();
+    if (!silent) { schedule(0); status('已套用预设「' + (p ? p.name : key.slice(2)) + '」'); }
+  }
+  function renderPresets() {
+    var box = $('#vt-presets'); box.innerHTML = '';
+    Object.keys(PRESETS).forEach(function (k) {
+      var b = document.createElement('button'); b.type = 'button'; b.className = 'vt-chip'; b.dataset.preset = k; b.textContent = PRESETS[k].name;
+      b.setAttribute('aria-pressed', String(S.preset === k));
+      b.addEventListener('click', function () { applyPreset(k); });
+      box.appendChild(b);
+    });
+    customPresets().forEach(function (cp) {
+      var b = document.createElement('button'); b.type = 'button'; b.className = 'vt-chip'; b.dataset.preset = 'c:' + cp.name; b.textContent = '★ ' + cp.name;
+      b.setAttribute('aria-pressed', String(S.preset === 'c:' + cp.name));
+      b.addEventListener('click', function () { applyPreset('c:' + cp.name); });
+      box.appendChild(b);
+    });
+  }
+
+  /* ---------------- 导出 ---------------- */
+  function baseName() { return (IMG_NAME || 'trace').replace(/\.[a-z0-9]+$/i, '').replace(/[\\/:*?"<>|]+/g, '_').slice(0, 60) || 'trace'; }
+  function download(data, name, type) {
+    var blob = data instanceof Blob ? data : new Blob([data], { type: type });
+    var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 4000);
+  }
+  function needRes() { if (!RES) { status('还没有描摹结果', true); return false; } return true; }
+  function dlSVG() { if (!needRes()) return; download(exportSVG(), baseName() + '.svg', 'image/svg+xml'); status('已导出 SVG（' + fmtBytes(utf8Len(lastSvg)) + '）'); }
+  function dlPDF() {
+    if (!needRes()) return;
+    var bytes = VTE.toPDF(buildDoc(true), { dpi: S.exp.dpi, mode: S.exp.mode, strokeWidth: S.exp.strokeWidth, background: S.exp.background === 'none' ? '' : S.exp.background, title: baseName() });
+    download(new Blob([bytes], { type: 'application/pdf' }), baseName() + '.pdf'); status('已导出 PDF（' + fmtBytes(bytes.length) + '）');
+  }
+  function dlDXF() {
+    if (!needRes()) return;
+    var txt = VTE.toDXF(buildDoc(true), { dpi: S.exp.dpi, tolerance: S.exp.dxfTol });
+    download(txt, baseName() + '.dxf', 'application/dxf'); status('已导出 DXF（毫米，' + fmtBytes(txt.length) + '）');
+  }
+  function dlPNG() {
+    if (!needRes()) return;
+    var k = S.exp.pngScale, W = Math.round(RES.w / RES.s * k), H = Math.round(RES.h / RES.s * k);
+    var svg = VTE.toSVG(buildDoc(true), { decimals: 3, relative: false, mode: S.exp.mode, strokeWidth: S.exp.strokeWidth, background: S.exp.background === 'none' ? '' : S.exp.background });
+    var im = new Image(), url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
+    im.onload = function () {
+      var c = document.createElement('canvas'); c.width = W; c.height = H;
+      c.getContext('2d').drawImage(im, 0, 0, W, H); URL.revokeObjectURL(url);
+      c.toBlob(function (b) { download(b, baseName() + '@' + k + 'x.png'); status('已导出 PNG ' + W + '×' + H); }, 'image/png');
+    };
+    im.onerror = function () { URL.revokeObjectURL(url); status('PNG 渲染失败', true); };
+    im.src = url;
+  }
+  function copySVG() {
+    if (!needRes()) return;
+    var txt = exportSVG();
+    var done = function () { status('SVG 代码已复制（' + fmtBytes(utf8Len(txt)) + '）'); $('#vt-copy-svg').dataset.copied = '1'; };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(done, function () { fallbackCopy(txt); done(); });
+    else { fallbackCopy(txt); done(); }
+  }
+  function fallbackCopy(t) { var ta = document.createElement('textarea'); ta.value = t; ta.style.position = 'fixed'; ta.style.opacity = '0'; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); } catch (e) { /* 忽略 */ } ta.remove(); }
+
+  /* ---------------- 我的描摹 ---------------- */
+  function thumbDataURL() {
+    var W = RES.w / RES.s, H = RES.h / RES.s, k = Math.min(1, 144 / Math.max(W, H));
+    var c = document.createElement('canvas'); c.width = Math.max(1, Math.round(W * k)); c.height = Math.max(1, Math.round(H * k));
+    var g = c.getContext('2d');
+    g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height);
+    g.save(); g.scale(k / RES.s, k / RES.s);
+    g.transform(1, 0, 0, -1, 0, RES.h);
+    buildDoc(true).layers.forEach(function (L) {
+      g.fillStyle = L.hex;
+      var p2 = new Path2D();
+      L.res.paths.forEach(function (p) {
+        var pts = VTE.flattenPath(p, 6);
+        for (var i = 0; i < pts.length; i += 2) { if (i === 0) p2.moveTo(pts[0], pts[1]); else p2.lineTo(pts[i], pts[i + 1]); }
+        p2.closePath();
+      });
+      g.fill(p2, 'nonzero');
+    });
+    g.restore();
+    return c.toDataURL('image/png');
+  }
+  function libUsage(items) { return utf8Len(JSON.stringify(items)); }
+  function saveToLib() {
+    if (!needRes()) return;
+    var svg = exportSVG(), items = libItems();
+    var name = ($('#vt-save-name').value || '').trim() || baseName();
+    var item = { id: 'v' + Date.now().toString(36) + Math.floor(Math.random() * 1e6).toString(36), name: name.slice(0, 30), date: new Date().toISOString(),
+      w: RES.w / RES.s, h: RES.h / RES.s, mode: RES.mode, stats: RES.stats, thumb: thumbDataURL(), svg: svg,
+      cfg: { mode: S.mode, thr: S.thr, scale: S.scale, prm: S.prm, pixel: S.pixel, k: S.k, stack: S.stack, removeBg: S.removeBg } };
+    if (utf8Len(JSON.stringify(item)) > LIB_BUDGET) { status('这次的 SVG 太大（' + fmtBytes(utf8Len(svg)) + '），超过本机存储上限，请直接下载', true); return; }
+    items.unshift(item);
+    var dropped = 0;
+    while (items.length > 1 && libUsage(items) > LIB_BUDGET) { items.pop(); dropped++; }
+    try { localStorage.setItem(LS_LIB, JSON.stringify(items)); }
+    catch (e) { status('浏览器存储已满，没能保存：' + e.message, true); return; }
+    $('#vt-save-name').value = '';
+    renderLib();
+    status('已保存到「我的描摹」' + (dropped ? '（为腾空间移除了最早的 ' + dropped + ' 条）' : ''));
+  }
+  function renderLib() {
+    var items = libItems(), box = $('#vt-lib-list'); box.innerHTML = '';
+    $('#vt-lib-empty').hidden = items.length > 0;
+    var used = libUsage(items);
+    $('#vt-lib-bar').style.width = Math.min(100, 100 * used / LIB_BUDGET).toFixed(1) + '%';
+    $('#vt-lib-usage').textContent = items.length + ' 条 · 已用 ' + fmtBytes(used) + ' / ' + fmtBytes(LIB_BUDGET);
+    items.forEach(function (it) {
+      var el = document.createElement('div'); el.className = 'vt-libitem'; el.dataset.id = it.id;
+      var img = document.createElement('img'); img.src = it.thumb || ''; img.alt = it.name + ' 的缩略图';
+      var body = document.createElement('div');
+      var h = document.createElement('h4'); h.textContent = it.name;
+      var p = document.createElement('p'); p.textContent = it.w + '×' + it.h + ' · ' + (it.mode === 'color' ? '彩色' : '黑白') + ' · ' + (it.stats ? it.stats.segments + ' 节点 · ' : '') + fmtBytes(utf8Len(it.svg)) + ' · ' + (it.date || '').slice(0, 10);
+      var acts = document.createElement('div'); acts.className = 'vt-chips';
+      [['下载', function () { download(it.svg, (it.name || 'trace').replace(/[\\/:*?"<>|]+/g, '_') + '.svg', 'image/svg+xml'); status('已下载「' + it.name + '」'); }],
+        ['套用参数', function () { applyCfg(it.cfg); status('已套用「' + it.name + '」的参数'); }],
+        ['删除', function () { var rest = libItems().filter(function (x) { return x.id !== it.id; }); localStorage.setItem(LS_LIB, JSON.stringify(rest)); renderLib(); status('已删除「' + it.name + '」'); }]
+      ].forEach(function (a) { var b = document.createElement('button'); b.type = 'button'; b.className = 'vt-chip'; b.textContent = a[0]; b.addEventListener('click', a[1]); acts.appendChild(b); });
+      body.appendChild(h); body.appendChild(p); body.appendChild(acts);
+      el.appendChild(img); el.appendChild(body); box.appendChild(el);
+    });
+  }
+  function applyCfg(cfg) {
+    if (!cfg) return;
+    S.mode = cfg.mode === 'color' ? 'color' : 'bw';
+    if (cfg.thr) S.thr = { mode: cfg.thr.mode || 'otsu', value: cfg.thr.value || 128, radius: cfg.thr.radius || 0, offset: cfg.thr.offset === undefined ? 12 : cfg.thr.offset, invert: !!cfg.thr.invert };
+    S.scale = cfg.scale || 1; if (cfg.prm) S.prm = Object.assign({}, S.prm, cfg.prm); S.pixel = !!cfg.pixel;
+    if (cfg.k) S.k = cfg.k; if (cfg.stack) S.stack = cfg.stack; S.removeBg = !!cfg.removeBg; S.preset = '';
+    syncControls(); renderPresets(); schedule(0);
+  }
+  var clearArmed = 0;
+  function clearAll() {
+    var now = Date.now();
+    if (!clearArmed || now - clearArmed > 5000) {
+      clearArmed = now; $('#vt-lib-clear').textContent = '再点一次确认清空'; $('#vt-lib-clear-note').textContent = '会删除我的描摹、自定义预设和偏好设置';
+      setTimeout(function () { if (clearArmed === now) { clearArmed = 0; $('#vt-lib-clear').textContent = '清空本机数据'; $('#vt-lib-clear-note').textContent = ''; } }, 5000);
+      return;
+    }
+    clearArmed = 0;
+    [LS_SET, LS_PRE, LS_LIB].forEach(function (k) { try { localStorage.removeItem(k); } catch (e) { /* 忽略 */ } });
+    var keepView = S.view;
+    S = defaults(); S.view = keepView; S.tab = 'lib';
+    $('#vt-lib-clear').textContent = '清空本机数据'; $('#vt-lib-clear-note').textContent = '已清空';
+    renderPresets(); syncControls(); renderLib(); schedule(0);
+    window.__vtCleared = (window.__vtCleared || 0) + 1;
+  }
+
+  /* ---------------- 杂项 ---------------- */
+  function vis(sel, on) { var el = typeof sel === 'string' ? $(sel) : sel; if (on) el.removeAttribute('hidden'); else el.setAttribute('hidden', ''); }
+  function status(msg, err) { var el = $('#vt-status'); el.textContent = msg; el.classList.toggle('vt-err', !!err); }
+  function hexRGB(h) { var v = parseInt(h.slice(1), 16); return [v >> 16 & 255, v >> 8 & 255, v & 255]; }
+  function renderSamples() {
+    var box = $('#vt-samples'), keys = Object.keys(VTE.samples);
+    keys.forEach(function (k) {
+      var sm = VTE.samples[k], b = document.createElement('button');
+      b.type = 'button'; b.className = 'vt-sample'; b.dataset.sample = k; b.setAttribute('aria-pressed', 'false');
+      b.innerHTML = '<canvas width="4" height="3" aria-hidden="true"></canvas><b></b><small></small>';
+      b.querySelector('b').textContent = sm.name;
+      b.querySelector('small').textContent = sm.mode === 'color' ? (k === 'pixel' ? '像素精确' : '彩色分层') : (k === 'scan' ? '自适应阈值' : '黑白');
+      b.addEventListener('click', function () { loadSample(k); window.scrollTo({ top: $('#vt-work').offsetTop - 70, behavior: 'smooth' }); });
+      box.appendChild(b);
+    });
+    var i = 0;
+    (function next() {
+      if (i >= keys.length) return;
+      var k = keys[i++], img = VTE.samples[k].make(), c = $('.vt-sample[data-sample="' + k + '"] canvas');
+      c.width = img.w; c.height = img.h; if (img.w < 100) c.classList.add('vt-pxl');
+      c.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(img.data), img.w, img.h), 0, 0);
+      setTimeout(next, 30);
+    })();
+  }
+
+  function bind() {
+    $('#vt-open').addEventListener('click', function () { $('#vt-file').click(); });
+    $('#vt-open2').addEventListener('click', function () { $('#vt-file').click(); });
+    $('#vt-file').addEventListener('change', function () { loadFile(this.files[0]); this.value = ''; });
+    $('#vt-quick-svg').addEventListener('click', dlSVG);
+    $$('#vt-views button').forEach(function (b) { b.addEventListener('click', function () { S.view = b.dataset.view; if (RES) render(); else applyView(); saveSettingsSoon(); }); });
+    $('#vt-cmp').addEventListener('input', updateCompare);
+    $('#vt-zoom-in').addEventListener('click', function () { zoomAt(1.25); });
+    $('#vt-zoom-out').addEventListener('click', function () { zoomAt(0.8); });
+    $('#vt-zoom-fit').addEventListener('click', fit);
+    $$('#vt-tabs .vt-tab').forEach(function (b) { b.addEventListener('click', function () { setTab(b.dataset.tab); }); });
+    $('#vt-tabs').addEventListener('keydown', function (e) {
+      var tabs = $$('#vt-tabs .vt-tab'), i = tabs.findIndex(function (t) { return t.dataset.tab === S.tab; });
+      if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') { e.preventDefault(); var j = (i + (e.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length; setTab(tabs[j].dataset.tab, true); }
+      else if (e.key === 'Home' || e.key === 'End') { e.preventDefault(); setTab(tabs[e.key === 'Home' ? 0 : tabs.length - 1].dataset.tab, true); }
+    });
+    function seg(sel, attr, fn) { $$(sel + ' button').forEach(function (b) { b.addEventListener('click', function () { fn(b.dataset[attr]); syncControls(); }); }); }
+    seg('#vt-mode', 'mode', function (v) { S.mode = v; S.preset = ''; renderPresets(); pixelHint(); schedule(0); });
+    seg('#vt-thr-mode', 'thr', function (v) { S.thr.mode = v; S.preset = ''; schedule(); });
+    seg('#vt-scale', 'scale', function (v) { S.scale = +v; S.preset = ''; schedule(); });
+    seg('#vt-stack', 'stack', function (v) { S.stack = v; schedule(); });
+    seg('#vt-out', 'out', function (v) { S.exp.mode = v; if (RES) render(); saveSettingsSoon(); });
+    seg('#vt-unit', 'unit', function (v) { S.exp.units = v; if (RES) render(); saveSettingsSoon(); });
+    seg('#vt-bgout', 'bg', function (v) { S.exp.background = v; if (RES) render(); saveSettingsSoon(); });
+    function rng(id, fn, fmt) { var el = $(id); el.addEventListener('input', function () { fn(el.value); var o = $(id + '-o'); if (o) o.textContent = fmt ? fmt(el.value) : el.value; S.preset = ''; $$('#vt-presets .vt-chip').forEach(function (b) { b.setAttribute('aria-pressed', 'false'); }); schedule(); }); }
+    rng('#vt-thr-value', function (v) { S.thr.value = +v; });
+    rng('#vt-thr-offset', function (v) { S.thr.offset = +v; });
+    rng('#vt-turd', function (v) { S.prm.turdsize = +v; });
+    rng('#vt-alpha', function (v) { S.prm.alphamax = +v; }, function (v) { return (+v).toFixed(2); });
+    rng('#vt-opttol', function (v) { S.prm.opttolerance = +v; }, function (v) { return (+v).toFixed(2); });
+    rng('#vt-k', function (v) { S.k = +v; S.overrides = {}; S.hidden = {}; });
+    $('#vt-thr-radius').addEventListener('change', function () { S.thr.radius = clampNum(this.value, 0, 400, 0) | 0; this.value = S.thr.radius; schedule(); });
+    $('#vt-invert').addEventListener('change', function () { S.thr.invert = this.checked; schedule(); });
+    $('#vt-bwcolor').addEventListener('input', function () { S.bwColor = this.value.toLowerCase(); if (RES) render(); saveSettingsSoon(); });
+    $('#vt-opti').addEventListener('change', function () { S.prm.opticurve = this.checked; syncControls(); schedule(); });
+    $('#vt-turn').addEventListener('change', function () { S.prm.turnpolicy = this.value; schedule(); });
+    $('#vt-pixel').addEventListener('change', function () { S.pixel = this.checked; S.preset = ''; syncControls(); pixelHint(); schedule(); });
+    $('#vt-pxhint-go').addEventListener('click', function () { applyPreset('pixel'); });
+    $('#vt-reset').addEventListener('click', function () { var d = defaults(); S.prm = d.prm; S.thr = d.thr; S.scale = 1; S.pixel = false; S.preset = ''; syncControls(); renderPresets(); schedule(0); status('参数已恢复默认（Potrace 原版默认值）'); });
+    $('#vt-rmbg').addEventListener('change', function () { S.removeBg = this.checked; schedule(); });
+    $('#vt-to-color').addEventListener('click', function () { S.mode = 'color'; S.preset = ''; syncControls(); renderPresets(); schedule(0); });
+    $('#vt-reseed').addEventListener('click', function () { S.seed = (S.seed % 1000000) + 1; S.overrides = {}; S.hidden = {}; schedule(0); });
+    $('#vt-dec').addEventListener('change', function () { S.exp.decimals = +this.value; if (RES) render(); saveSettingsSoon(); });
+    $('#vt-rel').addEventListener('change', function () { S.exp.relative = this.checked; if (RES) render(); saveSettingsSoon(); });
+    $('#vt-sw').addEventListener('change', function () { S.exp.strokeWidth = clampNum(this.value, 0.1, 20, 1); this.value = S.exp.strokeWidth; if (RES) render(); saveSettingsSoon(); });
+    $('#vt-dpi').addEventListener('change', function () { S.exp.dpi = clampNum(this.value, 1, 4800, 96); this.value = S.exp.dpi; if (RES) render(); saveSettingsSoon(); });
+    $('#vt-dxftol').addEventListener('change', function () { S.exp.dxfTol = clampNum(this.value, 0.001, 5, 0.05); this.value = S.exp.dxfTol; saveSettingsSoon(); });
+    $('#vt-png-scale').addEventListener('change', function () { S.exp.pngScale = +this.value; saveSettingsSoon(); });
+    $('#vt-dl-svg').addEventListener('click', dlSVG);
+    $('#vt-dl-pdf').addEventListener('click', dlPDF);
+    $('#vt-dl-dxf').addEventListener('click', dlDXF);
+    $('#vt-dl-png').addEventListener('click', dlPNG);
+    $('#vt-copy-svg').addEventListener('click', copySVG);
+    $('#vt-save').addEventListener('click', saveToLib);
+    $('#vt-lib-clear').addEventListener('click', clearAll);
+    $('#vt-preset-save').addEventListener('click', function () {
+      var nm = ($('#vt-preset-name').value || '').trim().slice(0, 20);
+      if (!nm) { status('先给预设起个名字', true); $('#vt-preset-name').focus(); return; }
+      var list = customPresets().filter(function (p) { return p.name !== nm; });
+      list.push({ name: nm, cfg: { mode: S.mode, thr: Object.assign({}, S.thr), scale: S.scale, prm: Object.assign({}, S.prm), pixel: S.pixel, k: S.k, stack: S.stack, removeBg: S.removeBg } });
+      try { localStorage.setItem(LS_PRE, JSON.stringify(list.slice(-12))); } catch (e) { status('存不进预设：' + e.message, true); return; }
+      S.preset = 'c:' + nm; $('#vt-preset-name').value = ''; renderPresets(); saveSettingsSoon(); status('已存为预设「' + nm + '」');
+    });
+    // 拖放 / 粘贴
+    var stage = $('#vt-stage'), dragDepth = 0;
+    stage.addEventListener('dragenter', function (e) { e.preventDefault(); dragDepth++; $('#vt-drop').hidden = false; });
+    stage.addEventListener('dragover', function (e) { e.preventDefault(); });
+    stage.addEventListener('dragleave', function () { dragDepth = Math.max(0, dragDepth - 1); if (!dragDepth) $('#vt-drop').hidden = true; });
+    stage.addEventListener('drop', function (e) { e.preventDefault(); dragDepth = 0; $('#vt-drop').hidden = true; var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]; if (f) loadFile(f); });
+    document.addEventListener('paste', function (e) {
+      var items = (e.clipboardData && e.clipboardData.items) || [];
+      for (var i = 0; i < items.length; i++) if (items[i].kind === 'file' && /^image\//.test(items[i].type)) { loadFile(items[i].getAsFile()); e.preventDefault(); return; }
+    });
+    // 平移 / 缩放
+    var drag = null;
+    stage.addEventListener('pointerdown', function (e) {
+      if (e.target.closest('.vt-cmpbar, .vt-empty, button')) return;
+      drag = { x: e.clientX, y: e.clientY, tx: Z.tx, ty: Z.ty }; stage.setPointerCapture(e.pointerId); stage.classList.add('vt-dragging');
+    });
+    stage.addEventListener('pointermove', function (e) { if (!drag) return; Z.tx = drag.tx + e.clientX - drag.x; Z.ty = drag.ty + e.clientY - drag.y; Z.fitted = false; applyZ(); });
+    function endDrag() { if (drag) { drag = null; stage.classList.remove('vt-dragging'); } }
+    stage.addEventListener('pointerup', endDrag); stage.addEventListener('pointercancel', endDrag);
+    stage.addEventListener('wheel', function (e) {
+      if (!IMG) return; e.preventDefault();
+      var r = stage.getBoundingClientRect(); zoomAt(Math.exp(-e.deltaY * 0.0015), e.clientX - r.left, e.clientY - r.top);
+    }, { passive: false });
+    stage.addEventListener('keydown', function (e) {
+      if (e.key === '+' || e.key === '=') { zoomAt(1.25); e.preventDefault(); }
+      else if (e.key === '-' || e.key === '_') { zoomAt(0.8); e.preventDefault(); }
+      else if (e.key === '0') { fit(); e.preventDefault(); }
+      else if (/^Arrow/.test(e.key)) {
+        var d = e.shiftKey ? 80 : 24;
+        if (e.key === 'ArrowLeft') Z.tx += d; if (e.key === 'ArrowRight') Z.tx -= d; if (e.key === 'ArrowUp') Z.ty += d; if (e.key === 'ArrowDown') Z.ty -= d;
+        Z.fitted = false; applyZ(); e.preventDefault();
+      }
+    });
+    document.addEventListener('keydown', function (e) {
+      var tag = (e.target && e.target.tagName) || '';
+      if ((e.metaKey || e.ctrlKey) && (e.key === 's' || e.key === 'S')) { e.preventDefault(); dlSVG(); return; }
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'o' || e.key === 'O')) { e.preventDefault(); $('#vt-file').click(); return; }
+      if (/INPUT|SELECT|TEXTAREA/.test(tag) || e.metaKey || e.ctrlKey || e.altKey) return;
+      var views = ['vector', 'source', 'bitmap', 'compare', 'error', 'nodes'], k = +e.key;
+      if (k >= 1 && k <= 6) { S.view = views[k - 1]; if (RES) render(); else applyView(); saveSettingsSoon(); }
+    });
+    var rt = null;
+    window.addEventListener('resize', function () { if (rt) clearTimeout(rt); rt = setTimeout(function () { if (Z.fitted) fit(); else updateCompare(); }, 80); });
+  }
+
+  /* ---------------- 启动 ---------------- */
+  loadSettings();
+  renderPresets();
+  bind();
+  syncControls();
+  setTab(S.tab);
+  renderSamples();
+  startWorker();
+  loadSample(S.sample || 'emblem', true);
+  applyView();
+
+  window.VT = {
+    S: function () { return S; }, result: function () { return RES; }, stateKey: stateKey, job: job,
+    exportSVG: exportSVG, buildDoc: buildDoc, loadSample: loadSample, setImage: setImage, applyPreset: applyPreset,
+    zoom: function () { return { scale: Z.scale, tx: Z.tx, ty: Z.ty }; }, usingWorker: function () { return !!worker; }, flush: flushSettings,
+    lastSvg: function () { return lastSvg; }, image: function () { return IMG; }
+  };
+})();
+
+</script>
+</body>
+</html>
